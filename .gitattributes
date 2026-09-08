@@ -1,0 +1,5 @@
+# git archive 出包时排除仓库元文件（make package 用的就是 git archive）
+.github        export-ignore
+.gitattributes export-ignore
+.gitignore     export-ignore
+CLAUDE.md      export-ignore
