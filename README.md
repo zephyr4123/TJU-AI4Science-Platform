@@ -2,12 +2,6 @@
 
 <p align="center">TJU AI for Science · 生产代码仓</p>
 
-<p align="center">
-  <a href="https://github.com/zephyr4123/tju-ai4science-platform/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/zephyr4123/tju-ai4science-platform/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/zephyr4123/tju-ai4science-platform/releases"><img alt="release" src="https://img.shields.io/github/v/release/zephyr4123/tju-ai4science-platform?include_prereleases&label=release"></a>
-  <a href="CHANGELOG.md"><img alt="changelog" src="https://img.shields.io/badge/changelog-keep%20a%20changelog-blue"></a>
-</p>
-
 ## 这是什么
 
 科研全自动化平台的生产代码，一个 monorepo 装下前端、后端、不分端的核心库、执行端、数据库与部署配置。项目文档、调研与决策记录在外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/tju-ai4science)，本仓由它的 `./repos clone all` 拉到 `platform/` 目录下。
