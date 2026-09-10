@@ -15,5 +15,5 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: TBD
-[0.1.0]: TBD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/releases/tag/v0.1.0
