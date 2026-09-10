@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tju-ai4science/schemas/manifest.schema.json",
+  "$comment": "任务包 manifest 的契约。形态取自纲领 packs.md §2，但按 P-8 反过来用：没有读取点的字段不进 schema。本轮被砍掉的字段：conditions（实验条件，纲领里由设计与实验能力读，platform 0.2.0 的设计能力还没落地，框架里一个读取点都没有，所以先不进 schema；additionalProperties=false 意味着现在写 conditions 会被判不合法，等设计能力落地时连同读取点一起加回来）。metrics[].primary 恰好一个、id 等于目录名这两条 JSON Schema 表达不了，由 framework/packs.py 检查。",
+  "title": "ai4sci task manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "question", "metrics", "budget", "requirements"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "任务 id，必须等于任务目录名（packs.py 的 discover_tasks 与 validate_task 都读它）"
+    },
+    "domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "对应 domains/<id>/profile.yaml；不写则按 generic 兜底（读取点：packs.py::_check_domain）"
+    },
+    "title": {"type": "string", "minLength": 1},
+    "question": {"type": "string", "minLength": 1},
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "direction"],
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$"},
+          "direction": {
+            "enum": ["minimize", "maximize"],
+            "description": "runner 比较时只读这里（workflow.md §2）"
+          },
+          "primary": {"type": "boolean"}
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wall_clock_s", "max_iterations", "repeat_k", "accept_sigma"],
+      "properties": {
+        "wall_clock_s": {"type": "number", "exclusiveMinimum": 0},
+        "max_iterations": {"type": "integer", "minimum": 1},
+        "repeat_k": {"type": "integer", "minimum": 1},
+        "accept_sigma": {"type": "number", "minimum": 0}
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "must_pass", "description"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "type": {"enum": ["numeric", "artifact", "discussion"]},
+          "must_pass": {"type": "boolean"},
+          "description": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

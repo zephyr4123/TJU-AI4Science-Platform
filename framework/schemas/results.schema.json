@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tju-ai4science/schemas/results.schema.json",
+  "$comment": "harness 唯一的输出形状（packs.md §2）。metrics 的值不许 NaN / Inf：JSON 标准里它们本来就不合法，但 Python 的 json 默认会把 NaN / Infinity 解析出来，所以 packs.py 读的时候用 parse_constant 拒一次、读到值再用 math.isfinite 断一次。",
+  "title": "ai4sci harness results",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["metrics", "elapsed_s", "seed", "status"],
+  "properties": {
+    "metrics": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-zA-Z][a-zA-Z0-9_]*$"},
+      "additionalProperties": {"type": "number"}
+    },
+    "elapsed_s": {"type": "number", "minimum": 0},
+    "seed": {"type": "integer"},
+    "status": {"enum": ["ok", "failed", "timeout", "crash", "invalid"]}
+  }
+}

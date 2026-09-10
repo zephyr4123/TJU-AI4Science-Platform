@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# 复现 run_0/：基线一次 + repeat_k 次重复 + σ。改了 code/ 或数据后重跑它。
+# run_0 是改进率的分母，也是统计门的基线（packs.md §2 第 4 步）。
+set -euo pipefail
+
+TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$TASK_DIR"
+
+SEEDS=(42 43 44)   # 与 manifest.budget.repeat_k=3 对应；改一处就要改另一处
+BASE_SEED=42
+
+rm -rf run_0
+mkdir -p run_0/repeats
+
+AI4SCI_SEED="$BASE_SEED" harness/launcher.sh
+cp results.json run_0/results.json
+
+for seed in "${SEEDS[@]}"; do
+  AI4SCI_SEED="$seed" harness/launcher.sh
+  cp results.json "run_0/repeats/results-${seed}.json"
+done
+
+# σ 用样本标准差（n-1），纯标准库算，任务包零依赖这条对 harness 同样成立。
+python3 - <<'PY'
+import json
+import statistics
+from pathlib import Path
+
+run0 = Path("run_0")
+seeds, values = [], []
+for path in sorted(run0.glob("repeats/results-*.json")):
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    seeds.append(doc["seed"])
+    values.append(doc["metrics"]["val_mse"])
+
+order = sorted(range(len(seeds)), key=lambda i: seeds[i])
+seeds = [seeds[i] for i in order]
+values = [values[i] for i in order]
+sigma = statistics.stdev(values) if len(values) > 1 else 0.0
+(run0 / "sigma.json").write_text(
+    json.dumps({"val_mse": {"sigma": sigma, "seeds": seeds, "values": values}}),
+    encoding="utf-8",
+)
+print(f"sigma.json: val_mse sigma={sigma:.6g} seeds={seeds}")
+PY
+
+rm -f predictions.json timing.json results.json
+echo "run_0 就绪"

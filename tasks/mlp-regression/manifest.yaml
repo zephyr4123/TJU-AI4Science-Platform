@@ -1,0 +1,24 @@
+# 玩具任务：一维函数回归。存在的意义是让框架的契约、runner、账本有个能在 30 秒内
+# 跑完、零依赖、结果可复现的靶子；科学上没有价值，别拿它的分数说事。
+# 字段以 framework/schemas/manifest.schema.json 为准（本轮没有读取点的字段不进 schema，
+# 所以这里没有 conditions）。
+id: mlp-regression
+domain: generic
+title: 一维函数回归的固定预算调参
+question: >
+  在 30 秒墙钟预算内，对含噪的一维函数 y = sin(3x) + 0.3x + N(0, 0.1^2)，
+  单隐层 MLP 用什么超参数与训练策略能把验证集 MSE 压到最低
+metrics:
+  - name: val_mse
+    direction: minimize
+    primary: true
+budget:
+  wall_clock_s: 30      # harness 到 80% 就让训练优雅停，超 1.5 倍判跑飞
+  max_iterations: 30    # 实验内环轮数上限
+  repeat_k: 3           # 统计门：同配置重复次数
+  accept_sigma: 2.0     # 统计门：改进要大于 2σ 才算数
+requirements:
+  - id: R1
+    type: numeric
+    must_pass: true
+    description: 主指标 val_mse 优于 run_0 基线，且差值超过 accept_sigma 倍的重复跑标准差
