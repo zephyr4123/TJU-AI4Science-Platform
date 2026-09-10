@@ -21,7 +21,18 @@ import pytest
 from compute import Job
 from compute._procs import group_alive
 from compute.local import LocalCompute
-from framework import gitwork, ledger, loop
+from framework.capabilities.experiment import (
+    InflightPending,
+    ResumeMismatch,
+    StopReason,
+    resume_loop,
+    run_loop,
+)
+from framework.memory import ledger
+from framework.run import gitwork
+from framework.run.checkpoint import read_checkpoint, write_checkpoint
+from framework.run.context import TaskInvalid, default_runs_root
+from framework.run.lifecycle import extend_run, new_run
 from tests.fixtures import packs_factory as pf
 from tests.fixtures.scripted_backend import ScriptedRunner, ScriptExhausted, write_train
 
@@ -124,7 +135,7 @@ def _write_score_run0(task_dir: Path) -> None:
 
 def start_run(tmp_path: Path, **budget: object) -> tuple[Path, pf.Pack]:
     pack = make_loop_pack(tmp_path, **budget)
-    run_dir = loop.new_run(pack.task_dir, tmp_path / "runs", "r1",
+    run_dir = new_run(pack.task_dir, tmp_path / "runs", "r1",
                            domains_root=pack.domains_root)
     return run_dir, pack
 
@@ -169,12 +180,12 @@ FULL_SCRIPT = [
 
 
 @pytest.fixture(scope="module")
-def full_run(tmp_path_factory) -> tuple[Path, list[ledger.LedgerRow], loop.StopReason]:
+def full_run(tmp_path_factory) -> tuple[Path, list[ledger.LedgerRow], StopReason]:
     """跑满 22 轮的那一次，A-4 / A-8 / A-9 与六类失败的用例共用（跑一次要十几秒）。"""
     tmp_path = tmp_path_factory.mktemp("full")
     run_dir, _ = start_run(tmp_path, max_iterations=22)
     runner = ScriptedRunner(list(FULL_SCRIPT))
-    stop = loop.run_loop(run_dir, runner, LocalCompute(), max_iters=22)
+    stop = run_loop(run_dir, runner, LocalCompute(), max_iters=22)
     return run_dir, rows_of(run_dir), stop
 
 
@@ -217,7 +228,7 @@ def test_a4_six_failure_classes_each_appear(full_run):
 
 def test_a4_head_is_best_and_checkpoint_agrees(full_run):
     run_dir, rows, _ = full_run
-    state = loop.read_checkpoint(run_dir)
+    state = read_checkpoint(run_dir)
     assert gitwork.head(run_dir / "work") == state["best_commit"]
     keeps = [r for r in rows if r.status == "keep"]
     assert state["best_metric"] == pytest.approx(keeps[-1].metric)
@@ -248,16 +259,16 @@ def test_a8_gate_holds_in_both_directions(tmp_path, direction):
     """同一批预测，两个方向要得出同一串裁决：过门 keep、门内 discard、变差 discard。"""
     pack = (make_loop_pack(tmp_path) if direction == "minimize"
             else make_maximize_pack(tmp_path))
-    run_dir = loop.new_run(pack.task_dir, tmp_path / "runs", "r-gate",
+    run_dir = new_run(pack.task_dir, tmp_path / "runs", "r-gate",
                            domains_root=pack.domains_root)
     script = [train_for_mse(0.018), train_for_mse(0.0175), train_for_mse(0.5)]
-    loop.run_loop(run_dir, ScriptedRunner(script), LocalCompute(), max_iters=3)
+    run_loop(run_dir, ScriptedRunner(script), LocalCompute(), max_iters=3)
     rows = rows_of(run_dir)
     assert [r.status for r in rows] == ["keep", "discard", "discard"]
     assert {r.direction for r in rows} == {direction}
     assert "within noise" in rows[1].note
     assert "变差" in rows[2].note
-    best = loop.read_checkpoint(run_dir)["best_metric"]
+    best = read_checkpoint(run_dir)["best_metric"]
     assert best == pytest.approx(0.018 if direction == "minimize" else 1 - 0.018)
 
 
@@ -302,21 +313,21 @@ def test_a5_resume_after_kill_records_interrupted_and_continues(tmp_path):
               train_for_mse(0.8), NOOP]
     killed = ScriptedRunner(list(script), raise_at=10)
     with pytest.raises(KeyboardInterrupt):  # 异常原样冒出来，不许被吞
-        loop.run_loop(run_dir, killed, LocalCompute(), max_iters=12)
+        run_loop(run_dir, killed, LocalCompute(), max_iters=12)
 
-    state = loop.read_checkpoint(run_dir)
+    state = read_checkpoint(run_dir)
     assert state["last_iter"] == 9
     best_before = state["best_metric"]
     assert inflight_path(run_dir).is_file()
 
     resumed = ScriptedRunner(script[9:])
-    stop = loop.resume_loop(run_dir, resumed, LocalCompute(), max_iters=2)
+    stop = resume_loop(run_dir, resumed, LocalCompute(), max_iters=2)
     rows = rows_of(run_dir)
     by_iter = {row.iter: row for row in rows}
     assert by_iter[10].status == "interrupted"
     assert by_iter[11].iter == 11 and by_iter[11].status != "interrupted"
     assert [r.iter for r in rows] == list(range(1, 13))
-    assert loop.read_checkpoint(run_dir)["best_metric"] == best_before
+    assert read_checkpoint(run_dir)["best_metric"] == best_before
     assert stop.reason == "batch_exhausted"
     assert not inflight_path(run_dir).exists()
     assert ledger.reconcile(run_dir / "experiment" / "ledger.tsv", run_dir / "work") == []
@@ -333,7 +344,7 @@ def test_a5_resume_reaps_an_in_flight_job(tmp_path):
     (run_dir / "experiment" / "inflight.json").write_text(
         json.dumps({"iter": 1, "started_at": job.started_at}), encoding="utf-8")
 
-    stop = loop.resume_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=1)
+    stop = resume_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=1)
     rows = rows_of(run_dir)
     assert rows[0].status == "interrupted" and rows[0].iter == 1
     assert math.isnan(rows[0].cost_usd), "被中断那一轮的成本是未知，不是 0"
@@ -342,25 +353,25 @@ def test_a5_resume_reaps_an_in_flight_job(tmp_path):
 
 def test_resume_fails_closed_when_ledger_and_checkpoint_disagree(tmp_path):
     run_dir, _ = start_run(tmp_path)
-    loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(), max_iters=1)
-    state = loop.read_checkpoint(run_dir)
-    loop.write_checkpoint(run_dir, {**state, "last_iter": 7, "stop_reason": None})
-    with pytest.raises(loop.ResumeMismatch):
-        loop.resume_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute())
+    run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(), max_iters=1)
+    state = read_checkpoint(run_dir)
+    write_checkpoint(run_dir, {**state, "last_iter": 7, "stop_reason": None})
+    with pytest.raises(ResumeMismatch):
+        resume_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute())
 
 
 def test_resume_clears_a_stale_marker_when_the_round_was_already_settled(tmp_path):
     """崩溃窗口一：_settle 全做完了，只剩 inflight.json 没删就被杀——清掉标记接着跑。"""
     run_dir, _ = start_run(tmp_path)
-    loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(), max_iters=1)
-    settled = loop.read_checkpoint(run_dir)
+    run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(), max_iters=1)
+    settled = read_checkpoint(run_dir)
     mark_inflight(run_dir, 1)
 
-    stop = loop.resume_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=1)
+    stop = resume_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=1)
     rows = rows_of(run_dir)
     assert [r.iter for r in rows] == [1, 2], "已经结算过的那一轮不许被记第二遍"
     assert rows[0].status == "keep" and rows[1].status == "noop"
-    state = loop.read_checkpoint(run_dir)
+    state = read_checkpoint(run_dir)
     assert state["best_commit"] == settled["best_commit"] and state["best_iter"] == 1
     assert stop.reason == "batch_exhausted"
     assert not inflight_path(run_dir).exists()
@@ -369,17 +380,17 @@ def test_resume_clears_a_stale_marker_when_the_round_was_already_settled(tmp_pat
 def test_resume_rebuilds_checkpoint_when_the_ledger_is_one_row_ahead(tmp_path):
     """崩溃窗口二：账本记完、checkpoint 还没写就被杀——以账本为准把 best 前移。"""
     run_dir, _ = start_run(tmp_path)
-    loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(), max_iters=1)
-    settled = loop.read_checkpoint(run_dir)
+    run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(), max_iters=1)
+    settled = read_checkpoint(run_dir)
     baseline = gitwork.root_commit(run_dir / "work")
-    loop.write_checkpoint(run_dir, {**settled, "last_iter": 0, "best_iter": 0,
+    write_checkpoint(run_dir, {**settled, "last_iter": 0, "best_iter": 0,
                                     "best_metric": 0.030, "best_commit": baseline})
     mark_inflight(run_dir, 1)
 
-    loop.resume_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=1)
+    resume_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=1)
     rows = rows_of(run_dir)
     assert [r.iter for r in rows] == [1, 2] and rows[0].status == "keep"
-    state = loop.read_checkpoint(run_dir)
+    state = read_checkpoint(run_dir)
     assert state["best_iter"] == 1 and state["best_commit"] == settled["best_commit"]
     assert state["best_metric"] == pytest.approx(0.018)
     assert gitwork.head(run_dir / "work") == settled["best_commit"]
@@ -388,15 +399,15 @@ def test_resume_rebuilds_checkpoint_when_the_ledger_is_one_row_ahead(tmp_path):
 def test_resume_fails_closed_when_a_keep_row_and_head_disagree(tmp_path):
     """账本领先一行说是 keep，HEAD 却不是那个 commit：三方对不上，停。"""
     run_dir, _ = start_run(tmp_path)
-    loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(), max_iters=1)
-    settled = loop.read_checkpoint(run_dir)
+    run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(), max_iters=1)
+    settled = read_checkpoint(run_dir)
     baseline = gitwork.root_commit(run_dir / "work")
-    loop.write_checkpoint(run_dir, {**settled, "last_iter": 0, "best_iter": 0,
+    write_checkpoint(run_dir, {**settled, "last_iter": 0, "best_iter": 0,
                                     "best_metric": 0.030, "best_commit": baseline})
     gitwork.revert_to(run_dir / "work", baseline)  # HEAD 退回基线，与 keep 行对不上了
     mark_inflight(run_dir, 1)
-    with pytest.raises(loop.ResumeMismatch) as exc:
-        loop.resume_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=1)
+    with pytest.raises(ResumeMismatch) as exc:
+        resume_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=1)
     assert "keep" in str(exc.value) and "HEAD" in str(exc.value)
 
 
@@ -405,8 +416,8 @@ def test_run_refuses_to_start_while_a_round_is_in_flight(tmp_path):
     run_dir, _ = start_run(tmp_path)
     mark_inflight(run_dir, 1)
     runner = ScriptedRunner([NOOP])
-    with pytest.raises(loop.InflightPending) as exc:
-        loop.run_loop(run_dir, runner, LocalCompute(), max_iters=1)
+    with pytest.raises(InflightPending) as exc:
+        run_loop(run_dir, runner, LocalCompute(), max_iters=1)
     assert "第 1 轮没走完" in str(exc.value) and "loop resume r1" in str(exc.value)
     assert runner.calls == 0, "还没收尸就不该叫执行层"
 
@@ -428,7 +439,7 @@ def test_keyboard_interrupt_cancels_the_in_flight_job(tmp_path):
     run_dir, _ = start_run(tmp_path)
     compute = _KilledDuringWait()
     with pytest.raises(KeyboardInterrupt):
-        loop.run_loop(run_dir, ScriptedRunner([SLEEPY_TRAIN]), compute, max_iters=1)
+        run_loop(run_dir, ScriptedRunner([SLEEPY_TRAIN]), compute, max_iters=1)
     job = Job.from_json(
         (run_dir / "experiment" / "runs" / "run_1" / "job.json").read_text(encoding="utf-8"))
     assert [j.pgid for j in compute.cancelled] == [job.pgid], "在飞的任务没被 cancel"
@@ -440,9 +451,9 @@ def test_a6_fake_success_is_no_results_and_rolls_back(tmp_path):
     """严格 launcher（set -e）下 evaluate 拒收产物会让整条链退非 0，仍须判 no_results。"""
     run_dir, _ = start_run(tmp_path)
     baseline = (run_dir / "work" / "code" / "train.py").read_text(encoding="utf-8")
-    stop = loop.run_loop(run_dir, ScriptedRunner([FAKE_SUCCESS]), LocalCompute(), max_iters=1)
+    stop = run_loop(run_dir, ScriptedRunner([FAKE_SUCCESS]), LocalCompute(), max_iters=1)
     row = rows_of(run_dir)[0]
-    state = loop.read_checkpoint(run_dir)
+    state = read_checkpoint(run_dir)
     assert row.status == "no_results" and row.metric is None
     assert (run_dir / "work" / "code" / "train.py").read_text(encoding="utf-8") == baseline
     assert gitwork.head(run_dir / "work") == state["best_commit"]
@@ -453,11 +464,11 @@ def test_a7_touching_harness_is_readonly_violated_and_hash_restored(tmp_path):
     run_dir, _ = start_run(tmp_path)
     work = run_dir / "work"
     before = (work / "harness" / "evaluate.py").read_text(encoding="utf-8")
-    loop.run_loop(run_dir, ScriptedRunner([tamper_harness]), LocalCompute(), max_iters=1)
+    run_loop(run_dir, ScriptedRunner([tamper_harness]), LocalCompute(), max_iters=1)
     row = rows_of(run_dir)[0]
     assert row.status == "readonly_violated" and row.commit == ledger.MISSING
     assert (work / "harness" / "evaluate.py").read_text(encoding="utf-8") == before
-    assert gitwork.head(work) == loop.read_checkpoint(run_dir)["best_commit"]
+    assert gitwork.head(work) == read_checkpoint(run_dir)["best_commit"]
     assert _sums_match(work), "回滚后 harness 的 SHA256SUMS 与磁盘对不上"
 
 
@@ -465,10 +476,10 @@ def test_changes_swallowed_by_gitignore_are_recorded_as_noop(tmp_path):
     """改动全被任务包的 .gitignore 挡住：git 里留不下东西，按没改记账并把原因说清楚。"""
     pack = make_loop_pack(tmp_path)
     (pack.task_dir / ".gitignore").write_text("code/*.bin\n", encoding="utf-8")
-    run_dir = loop.new_run(pack.task_dir, tmp_path / "runs", "r-ignored",
+    run_dir = new_run(pack.task_dir, tmp_path / "runs", "r-ignored",
                            domains_root=pack.domains_root)
     runner = ScriptedRunner([IGNORED_BLOB])
-    loop.run_loop(run_dir, runner, LocalCompute(), max_iters=1)
+    run_loop(run_dir, runner, LocalCompute(), max_iters=1)
     row = rows_of(run_dir)[0]
     assert runner.prompts, "这一轮该叫过执行层"
     assert row.status == "noop" and row.commit == ledger.MISSING
@@ -499,33 +510,33 @@ def make_flat_pack(tmp_path: Path, **budget: object) -> pf.Pack:
 
 def test_zero_sigma_without_min_delta_fails_closed(tmp_path):
     pack = make_flat_pack(tmp_path)
-    run_dir = loop.new_run(pack.task_dir, tmp_path / "runs", "r-flat",
+    run_dir = new_run(pack.task_dir, tmp_path / "runs", "r-flat",
                            domains_root=pack.domains_root)
     runner = ScriptedRunner([train_for_mse(0.0299)])
-    with pytest.raises(loop.TaskInvalid) as exc:
-        loop.run_loop(run_dir, runner, LocalCompute(), max_iters=1)
+    with pytest.raises(TaskInvalid) as exc:
+        run_loop(run_dir, runner, LocalCompute(), max_iters=1)
     assert "min_delta" in str(exc.value) and "σ=0" in str(exc.value)
     assert runner.calls == 0, "门都立不起来就不该开跑"
 
 
 def test_min_delta_is_the_gate_when_sigma_is_zero(tmp_path):
     pack = make_flat_pack(tmp_path, min_delta=0.01)
-    run_dir = loop.new_run(pack.task_dir, tmp_path / "runs", "r-flat",
+    run_dir = new_run(pack.task_dir, tmp_path / "runs", "r-flat",
                            domains_root=pack.domains_root)
     script = [train_for_mse(0.025), train_for_mse(0.015)]
-    loop.run_loop(run_dir, ScriptedRunner(script), LocalCompute(), max_iters=2)
+    run_loop(run_dir, ScriptedRunner(script), LocalCompute(), max_iters=2)
     rows = rows_of(run_dir)
     assert rows[0].status == "discard" and "within noise" in rows[0].note
     assert "gate=0.01" in rows[0].note, "门该是 min_delta，不是退化后的 0"
     assert rows[1].status == "keep"
-    assert loop.read_checkpoint(run_dir)["best_metric"] == pytest.approx(0.015)
+    assert read_checkpoint(run_dir)["best_metric"] == pytest.approx(0.015)
 
 
 # ── 停止条件 ────────────────────────────────────────────────────────────
 def test_three_same_failures_in_a_row_stop_as_unrecoverable(tmp_path):
     run_dir, _ = start_run(tmp_path)
     runner = ScriptedRunner([CRASH_TRAIN, CRASH_TRAIN, CRASH_TRAIN, train_for_mse(0.001)])
-    stop = loop.run_loop(run_dir, runner, LocalCompute(), max_iters=10)
+    stop = run_loop(run_dir, runner, LocalCompute(), max_iters=10)
     assert stop.reason == "unrecoverable:crash" and stop.iter == 3
     assert runner.calls == 3, "判不可修复之后不该再叫执行层"
     _assert_stop_json_matches(run_dir, stop)
@@ -534,7 +545,7 @@ def test_three_same_failures_in_a_row_stop_as_unrecoverable(tmp_path):
 def test_patience_stops_after_consecutive_no_improvement(tmp_path):
     run_dir, _ = start_run(tmp_path, patience=3)
     runner = ScriptedRunner([train_for_mse(0.5), NOOP, train_for_mse(0.6), train_for_mse(0.7)])
-    stop = loop.run_loop(run_dir, runner, LocalCompute(), max_iters=10)
+    stop = run_loop(run_dir, runner, LocalCompute(), max_iters=10)
     assert stop.reason == "patience" and stop.iter == 3
     _assert_stop_json_matches(run_dir, stop)
 
@@ -542,7 +553,7 @@ def test_patience_stops_after_consecutive_no_improvement(tmp_path):
 def test_max_cost_stops_the_loop(tmp_path):
     run_dir, _ = start_run(tmp_path, max_cost_usd=0.025)
     runner = ScriptedRunner([NOOP, NOOP, NOOP, NOOP], cost_usd=0.01)
-    stop = loop.run_loop(run_dir, runner, LocalCompute(), max_iters=10)
+    stop = run_loop(run_dir, runner, LocalCompute(), max_iters=10)
     assert stop.reason == "max_cost_usd" and stop.iter == 3
     _assert_stop_json_matches(run_dir, stop)
 
@@ -550,7 +561,7 @@ def test_max_cost_stops_the_loop(tmp_path):
 def test_max_iterations_from_manifest_caps_the_run(tmp_path):
     run_dir, _ = start_run(tmp_path, max_iterations=2)
     runner = ScriptedRunner([NOOP, NOOP, NOOP])
-    stop = loop.run_loop(run_dir, runner, LocalCompute(), max_iters=10)
+    stop = run_loop(run_dir, runner, LocalCompute(), max_iters=10)
     assert stop.reason == "max_iterations" and stop.iter == 2
     assert runner.calls == 2
 
@@ -558,12 +569,12 @@ def test_max_iterations_from_manifest_caps_the_run(tmp_path):
 def test_max_iters_is_a_batch_not_a_cap_on_the_run(tmp_path):
     """--max-iters 是本次增量：max_iters=2 跑两次就是 4 轮，中间不写 stop、不锁 run。"""
     run_dir, _ = start_run(tmp_path)
-    first = loop.run_loop(run_dir, ScriptedRunner([NOOP, NOOP]), LocalCompute(), max_iters=2)
+    first = run_loop(run_dir, ScriptedRunner([NOOP, NOOP]), LocalCompute(), max_iters=2)
     assert first.reason == "batch_exhausted" and first.iter == 2
     assert not (run_dir / "experiment" / "stop.json").exists(), "配额用完不是 run 的结局"
-    assert loop.read_checkpoint(run_dir)["stop_reason"] is None
+    assert read_checkpoint(run_dir)["stop_reason"] is None
 
-    second = loop.run_loop(run_dir, ScriptedRunner([NOOP, NOOP]), LocalCompute(), max_iters=2)
+    second = run_loop(run_dir, ScriptedRunner([NOOP, NOOP]), LocalCompute(), max_iters=2)
     assert second.reason == "batch_exhausted" and second.iter == 4
     assert [r.iter for r in rows_of(run_dir)] == [1, 2, 3, 4]
 
@@ -571,16 +582,16 @@ def test_max_iters_is_a_batch_not_a_cap_on_the_run(tmp_path):
 def test_stopped_run_does_not_restart_itself(tmp_path):
     """manifest 触顶写下的 stop_reason 会锁住这个 run；本次配额用完则不会。"""
     run_dir, _ = start_run(tmp_path, max_iterations=1)
-    loop.run_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute())
-    assert loop.read_checkpoint(run_dir)["stop_reason"] == "max_iterations"
+    run_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute())
+    assert read_checkpoint(run_dir)["stop_reason"] == "max_iterations"
     again = ScriptedRunner([NOOP])
-    stop = loop.run_loop(run_dir, again, LocalCompute())
+    stop = run_loop(run_dir, again, LocalCompute())
     assert stop.reason == "max_iterations" and again.calls == 0
 
 
-def _assert_stop_json_matches(run_dir: Path, stop: loop.StopReason) -> None:
+def _assert_stop_json_matches(run_dir: Path, stop: StopReason) -> None:
     doc = json.loads((run_dir / "experiment" / "stop.json").read_text(encoding="utf-8"))
-    state = loop.read_checkpoint(run_dir)
+    state = read_checkpoint(run_dir)
     assert doc == {"reason": stop.reason, "iter": stop.iter, "best_metric": stop.best_metric}
     assert state["stop_reason"] == stop.reason and state["last_iter"] == stop.iter
     assert state["best_metric"] == stop.best_metric
@@ -593,19 +604,19 @@ def test_new_run_lays_out_the_disk_and_rejects_broken_packs(tmp_path):
     assert (run_dir / "journal.md").read_text(encoding="utf-8") == ""
     assert (run_dir / "experiment" / "runs").is_dir()
     assert gitwork.is_clean(run_dir / "work")
-    assert loop.read_checkpoint(run_dir)["best_metric"] == 0.030
+    assert read_checkpoint(run_dir)["best_metric"] == 0.030
     with pytest.raises(FileExistsError):
-        loop.new_run(pack.task_dir, tmp_path / "runs", "r1", domains_root=pack.domains_root)
+        new_run(pack.task_dir, tmp_path / "runs", "r1", domains_root=pack.domains_root)
 
     (pack.task_dir / "manifest.yaml").write_text("id: toy\n", encoding="utf-8")
-    with pytest.raises(loop.TaskInvalid):
-        loop.new_run(pack.task_dir, tmp_path / "runs", "r2", domains_root=pack.domains_root)
+    with pytest.raises(TaskInvalid):
+        new_run(pack.task_dir, tmp_path / "runs", "r2", domains_root=pack.domains_root)
 
 
 def test_prompt_is_constant_size_and_carries_the_fix_hint(tmp_path):
     run_dir, _ = start_run(tmp_path)
     runner = ScriptedRunner([CRASH_TRAIN, NOOP, NOOP, NOOP, NOOP, NOOP, NOOP])
-    loop.run_loop(run_dir, runner, LocalCompute(), max_iters=7)
+    run_loop(run_dir, runner, LocalCompute(), max_iters=7)
     assert "只准改 `code/`" in runner.prompts[0] or "只改 `code/`" in runner.prompts[0]
     assert "先照 stderr 摘要修掉报错" in runner.prompts[1], "上一轮的修复提示没喂给执行层"
     tail = runner.prompts[-1].split("## 最近的账本")[1].split("## 上一轮")[0]
@@ -617,29 +628,29 @@ def test_domain_prompt_is_appended_when_present(tmp_path):
     extra = pack.domains_root / "generic" / "prompts"
     extra.mkdir(parents=True)
     (extra / "experiment.md").write_text("本领域：先看数据再动模型。", encoding="utf-8")
-    run_dir = loop.new_run(pack.task_dir, tmp_path / "runs", "r-domain",
+    run_dir = new_run(pack.task_dir, tmp_path / "runs", "r-domain",
                            domains_root=pack.domains_root)
     runner = ScriptedRunner([NOOP])
-    loop.run_loop(run_dir, runner, LocalCompute(), max_iters=1)
+    run_loop(run_dir, runner, LocalCompute(), max_iters=1)
     assert "本领域：先看数据再动模型。" in runner.prompts[0]
 
 
 def test_runs_root_env_override(tmp_path, monkeypatch):
     monkeypatch.setenv("AI4SCI_RUNS_ROOT", str(tmp_path / "elsewhere"))
-    assert loop.default_runs_root() == tmp_path / "elsewhere"
+    assert default_runs_root() == tmp_path / "elsewhere"
 
 
 def test_script_exhausted_is_loud(tmp_path):
     run_dir, _ = start_run(tmp_path)
     with pytest.raises(ScriptExhausted):
-        loop.run_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=3)
+        run_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=3)
 
 
 def test_executor_logs_are_stashed_per_iteration_and_survive_revert(tmp_path):
     """适配器写在 work/.ai4sci/ 的事件流必须搬到 experiment/executor/iter-N/：
     revert-to-best 用 git clean -x，留在 work/ 里的日志下一轮开头就没了（真跑时丢过一次）。"""
     run_dir, _ = start_run(tmp_path)
-    loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.018), FAKE_SUCCESS]), LocalCompute(),
+    run_loop(run_dir, ScriptedRunner([train_for_mse(0.018), FAKE_SUCCESS]), LocalCompute(),
                   max_iters=2)
     stash = run_dir / "experiment" / "executor"
     assert sorted(p.name for p in stash.iterdir()) == ["iter-1", "iter-2"]
@@ -651,7 +662,7 @@ def test_no_results_note_carries_the_harness_reason(tmp_path):
     """harness 拒收产物的原因在 stderr 末行；账本 note 与下一轮提示都要带上它。"""
     run_dir, _ = start_run(tmp_path)
     runner = ScriptedRunner([FAKE_SUCCESS, train_for_mse(0.018)])
-    loop.run_loop(run_dir, runner, LocalCompute(), max_iters=2)
+    run_loop(run_dir, runner, LocalCompute(), max_iters=2)
     row = rows_of(run_dir)[0]
     assert row.status == "no_results"
     assert "stderr 末行" in row.note and "predictions.json" in row.note
@@ -665,7 +676,7 @@ def test_notebook_records_each_round_and_feeds_the_next_prompt(tmp_path):
     runner = ScriptedRunner([train_for_mse(0.018), train_for_mse(0.0175)])
     runner.reports = ["假设：步长太大。改动：LR 减半。预期：更稳。",
                       "假设：再减一点。改动：LR 再减半。预期：略好。"]
-    loop.run_loop(run_dir, runner, LocalCompute(), max_iters=2)
+    run_loop(run_dir, runner, LocalCompute(), max_iters=2)
     text = (run_dir / "experiment" / "notebook.md").read_text(encoding="utf-8")
     assert "第 1 轮 · keep" in text and "LR 减半" in text and "code/train.py" in text
     assert "第 2 轮 · discard" in text and "within noise" in text
@@ -676,7 +687,7 @@ def test_notebook_records_each_round_and_feeds_the_next_prompt(tmp_path):
 def test_notebook_survives_revert_to_best(tmp_path):
     """笔记活在棘轮之外：discard 后 work/ 被 reset，笔记一个字不少。"""
     run_dir, _ = start_run(tmp_path)
-    loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.018), FAKE_SUCCESS]), LocalCompute(),
+    run_loop(run_dir, ScriptedRunner([train_for_mse(0.018), FAKE_SUCCESS]), LocalCompute(),
                   max_iters=2)
     text = (run_dir / "experiment" / "notebook.md").read_text(encoding="utf-8")
     assert text.count("### 第 ") == 2 and "no_results" in text
@@ -685,14 +696,14 @@ def test_notebook_survives_revert_to_best(tmp_path):
 # ── 续命：协调层给已停的 run 加预算 ─────────────────────────────────────
 def test_extend_run_clears_stop_and_lets_the_loop_continue(tmp_path):
     run_dir, _ = start_run(tmp_path, patience=1)
-    stop = loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.0299)]), LocalCompute())
+    stop = run_loop(run_dir, ScriptedRunner([train_for_mse(0.0299)]), LocalCompute())
     assert stop.reason == "patience" and (run_dir / "experiment" / "stop.json").is_file()
-    done = loop.extend_run(run_dir, patience=5, reason="统计门偏严，再给几轮")
+    done = extend_run(run_dir, patience=5, reason="统计门偏严，再给几轮")
     assert done["cleared"] == "patience" and done["changes"] == ["patience: 1 → 5"]
-    assert loop.read_checkpoint(run_dir)["stop_reason"] is None
+    assert read_checkpoint(run_dir)["stop_reason"] is None
     assert not (run_dir / "experiment" / "stop.json").exists()
     assert "续命" in (run_dir / "journal.md").read_text(encoding="utf-8")
-    stop = loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(),
+    stop = run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(),
                          max_iters=1)
     assert stop.reason == "batch_exhausted" and rows_of(run_dir)[-1].status == "keep"
 
@@ -700,7 +711,7 @@ def test_extend_run_clears_stop_and_lets_the_loop_continue(tmp_path):
 def test_extend_run_rejects_nonpositive_budget(tmp_path):
     run_dir, _ = start_run(tmp_path)
     with pytest.raises(AssertionError):
-        loop.extend_run(run_dir, patience=0)
+        extend_run(run_dir, patience=0)
 
 
 # ── 执行层会话没走完：被杀 / 超时 / CLI 崩 ─────────────────────────────
@@ -709,7 +720,7 @@ def test_executor_killed_mid_round_is_a_recorded_failure_not_a_crash(tmp_path):
     run_dir, _ = start_run(tmp_path)
     baseline = (run_dir / "work" / "code" / "train.py").read_text(encoding="utf-8")
     runner = ScriptedRunner([train_for_mse(0.018), train_for_mse(0.018)], die_at=(1,))
-    loop.run_loop(run_dir, runner, LocalCompute(), max_iters=2)
+    run_loop(run_dir, runner, LocalCompute(), max_iters=2)
     rows = rows_of(run_dir)
     assert rows[0].status == "executor_failed" and rows[0].commit == ledger.MISSING
     assert "退出码 -9" in rows[0].note
@@ -723,5 +734,5 @@ def test_executor_killed_mid_round_is_a_recorded_failure_not_a_crash(tmp_path):
 def test_three_executor_failures_in_a_row_are_unrecoverable(tmp_path):
     run_dir, _ = start_run(tmp_path)
     runner = ScriptedRunner([train_for_mse(0.018)] * 4, die_at=(1, 2, 3))
-    stop = loop.run_loop(run_dir, runner, LocalCompute())
+    stop = run_loop(run_dir, runner, LocalCompute())
     assert stop.reason == "unrecoverable:executor_failed" and runner.calls == 3

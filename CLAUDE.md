@@ -18,6 +18,21 @@
 
 依赖只指向一个方向：`framework/` → `backends/`、`compute/`、`tools/`；适配器只 import 自己包根的端口定义，不 import `framework/`。任何目录都不依赖外层仓的路径。
 
+### `framework/` 的子包
+
+按概念分包，依赖**只许自上而下**，同层与包内随意：
+
+| 子包 | 放什么 | 可以 import |
+|---|---|---|
+| `cli/` | 一个子命令一个模块（`task` `run` `loop` `status`），`__init__` 装配 parser 并导出 `main` | 下面全部 |
+| `capabilities/` | 一个能力一个子包，互不 import；`experiment/` 是实验内环（`loop` 主循环 / `judge` 裁决结算 / `gate` 统计门 / `failures` 失败分类 / `prompt.md`） | executor、memory、run、contracts |
+| `executor/` | 组 prompt（`prompting`）、起执行层会话并留档日志（`session`） | memory、run、contracts |
+| `memory/` | 账本 `ledger`、实验笔记 `notebook`；项目级记忆以后加在这 | run、contracts |
+| `run/` | 一个 run 的磁盘状态：`layout` 路径、`checkpoint`、`context` 只读上下文、`lifecycle` 建 run 与续命、`gitwork` | contracts |
+| `contracts/` | `schemas/*.json`、任务包发现与校验 `packs`、产物读取 `results` | 谁都不 import（framework 内） |
+
+`backends/` 与 `compute/` 是端口：framework 任何子包都可以 import 它们，它们不许 import framework。这条与上表都由 `tests/test_layering.py` 用 ast 逐条查，不是靠人 review。
+
 ## 红线
 
 1. 框架零模型调用：`framework/` 下 grep 不到 anthropic / openai / claude_sdk（纲领 P-1）。

@@ -1,4 +1,4 @@
-"""framework/packs.py 的测试：一个合法夹具 + 逐条破坏。
+"""framework/contracts/packs.py 的测试：一个合法夹具 + 逐条破坏。
 
 夹具全部长在 tmp_path 上，删掉仓里的 tasks/ 与 domains/ 这些用例照过（P-5）。
 每条用例断言问题清单里带得出定位关键词——问题清单读不出"哪个文件的哪个字段"就等于没报。
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from framework import packs
+from framework.contracts import packs
 from tests.fixtures import packs_factory as pf
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

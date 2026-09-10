@@ -14,10 +14,11 @@ from pathlib import Path
 import pytest
 
 from compute.local import LocalCompute
-from framework import gitwork, loop
+from framework.capabilities.experiment import run_loop
+from framework.run import gitwork
 from tests.fixtures import packs_factory as pf
 from tests.fixtures.scripted_backend import ScriptedRunner
-from tests.test_loop import start_run, train_for_mse
+from tests.test_experiment_loop import start_run, train_for_mse
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -155,7 +156,7 @@ def test_status_prints_best_and_ledger_tail(tmp_path):
 def test_status_reconciles_the_ledger_and_exits_one_when_git_lost_a_row(tmp_path):
     """status 顺手对账：被弃的那一轮的 attempts ref 被删掉，账本就跟 git 对不上了。"""
     run_dir, _ = start_run(tmp_path)  # run_id 是 r1，runs 根是 tmp_path/runs
-    loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.5)]), LocalCompute(), max_iters=1)
+    run_loop(run_dir, ScriptedRunner([train_for_mse(0.5)]), LocalCompute(), max_iters=1)
     refs = gitwork.attempt_refs(run_dir / "work")
     assert refs, "改坏的那一轮该留在 refs/attempts/ 下"
     ok = run_cli("status", "r1", "--runs-root", str(tmp_path / "runs"))

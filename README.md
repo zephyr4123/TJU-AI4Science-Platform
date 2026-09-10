@@ -12,6 +12,12 @@
 platform/
 ├── coordinator/   协调层 skill 包（执行层不加载）
 ├── framework/     框架：能力、runner、契约、验证、ai4sci CLI；零模型调用
+│   ├── cli/           一个子命令一个模块
+│   ├── capabilities/  一个能力一个子包（experiment/ 实验内环），互不 import
+│   ├── executor/      组 prompt、起执行层会话、留档日志
+│   ├── memory/        账本、实验笔记
+│   ├── run/           run 的布局、checkpoint、上下文、生命周期、work/ 的 git
+│   └── contracts/     schema、任务包校验、产物读取
 ├── backends/      执行层适配器：claude_code.py …
 ├── compute/       算力适配器：local.py …
 ├── tools/         确定性脚本
@@ -22,6 +28,8 @@ platform/
 ├── Makefile       check / venv / lock / package / release
 └── CHANGELOG.md
 ```
+
+依赖只许自上而下：`cli → capabilities → executor → memory → run → contracts`；`backends/` 与 `compute/` 是端口，framework 用它们、它们不认识 framework。这条规矩由 `tests/test_layering.py` 用 ast 逐条查。
 
 ## 怎么跑
 

@@ -18,6 +18,7 @@
 - 玩具任务 `tasks/mlp-regression/`（R-3，外层 #12 #21）：纯 Python 单隐层 MLP 拟合含噪一维函数，单标量 `val_mse` minimize，一次 0.25 s；harness 只吃 predictions.json 算分，预测缺失 / 长度不对 / NaN 一律退非 0 且不写 results.json；`run_0/` 含基线、三个种子的重复与 σ（0.0036，基线 0.0231），`harness/make_run0.sh` 可复现
 
 ### 变更
+- `framework/` 按概念拆子包（外层 #30），纯搬家不改行为：`cli/`（一个子命令一个模块，`__init__` 装配 parser，`__main__.py` 接住 `python -m framework.cli`）、`contracts/`（`schemas/*.json` + `packs.py` + 从 `failures` 搬出的 `results.py`）、`run/`（`layout` 路径拼接 / `checkpoint` / `context` 只读上下文 / `lifecycle` 建 run 与续命 / `gitwork`）、`memory/`（`ledger` `notebook`）、`executor/`（`prompting` 组模板 + `session` 起会话并留档日志，模板路径改由能力传入）、`capabilities/experiment/`（`loop` 主循环 / `judge` 裁决与结算 / `gate` 统计门 / `failures` 六类分类 / `prompt.md`）。依赖只许自上而下 `cli → capabilities → executor → memory → run → contracts`，端口 `backends/` `compute/` 不许 import framework，能力之间互不 import——这三条由新增的 `tests/test_layering.py` 用 ast 逐条查（含反向 import 的自证用例）；`pyproject` 的 package-data 跟着 schema 与 prompt.md 的新位置改
 - 目录按纲领四层重建：`coordinator/ framework/ backends/ compute/ tools/ domains/ tasks/ runs/ tests/`，原 monorepo 占位目录（apps / packages / workers / db / infra）删除
 - 定栈 Python：`pyproject.toml`、`.venv` + `requirements.lock`、ruff（含 BLE 裸 except 门禁）+ pytest 接进 `make check`，CI 装 Python 3.14。框架依赖只有 pyyaml 与 jsonschema，数值库是任务包自己的事
 

@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from framework import gitwork, ledger
+from framework.memory import ledger
+from framework.run import gitwork
 
 
 def row(**kw) -> ledger.LedgerRow:

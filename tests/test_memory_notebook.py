@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from framework import notebook
+from framework.memory import notebook
 
 
 def test_append_then_read_keeps_order_and_marks_missing_commit(tmp_path):

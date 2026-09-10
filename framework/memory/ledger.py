@@ -5,6 +5,9 @@
 东西，跟着仓一起被 reset 就等于没记。
 
 拿不到的值一律写 `-`（未知），绝不写 0：0 是一个成绩，未知不是（P-7）。
+
+在四层的 memory 层：`reconcile` 要拿每一行去 work/ 的 git 里查，所以本模块 import
+`run.gitwork`；反过来 run 层不认识账本。
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from framework import gitwork
+from framework.run import gitwork
 
 COLUMNS = ("iter", "commit", "parent", "metric", "direction", "elapsed_s", "seed", "status",
            "sigma", "harness_sha", "note", "cost_usd", "executor_s")

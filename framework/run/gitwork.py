@@ -6,6 +6,9 @@
 
 执行层不碰 git，提交由 runner 做，作者写死成 runner 自己：账本上的作者不该是
 每轮换一个 CLI 的名字，那会让"谁改的"这个问题失去意义。
+
+在四层的 run 层：work/ 是 run 目录的一部分，它的 git 状态就是这个 run 的状态。
+本模块只跑 git 子进程，不 import framework 的任何东西。
 """
 
 from __future__ import annotations

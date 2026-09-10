@@ -1,5 +1,8 @@
 """任务包的发现与校验。
 
+在四层的最底层 contracts：本模块不 import framework 的任何其它包，也不知道 run 与
+能力的存在——它只回答"这个包合不合约"。
+
 为什么在 framework/ 而不是跟任务走：契约校验是框架的活，删掉全部 `tasks/` 与
 `domains/` 之后本模块的测试也要照过（纲领 P-5）。所以这里不 import 任何任务包的
 东西，任务目录、领域目录一律由调用方以参数传入。
@@ -39,7 +42,7 @@ _SCHEMA_CACHE: dict[str, dict[str, Any]] = {}
 # 小工具
 # --------------------------------------------------------------------------
 def _load_schema(name: str) -> dict[str, Any]:
-    """读 framework/schemas/<name>；读不出来是框架自己坏了，直接抛。"""
+    """读 framework/contracts/schemas/<name>；读不出来是框架自己坏了，直接抛。"""
     if name not in _SCHEMA_CACHE:
         with (SCHEMA_DIR / name).open(encoding="utf-8") as fh:
             _SCHEMA_CACHE[name] = json.load(fh)

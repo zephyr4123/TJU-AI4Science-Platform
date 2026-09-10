@@ -4,6 +4,10 @@
 上下文会让每轮的输入线性增长，成本与跑飞的概率一起涨。摘要是常数大小的。
 
 模板用 `string.Template`：占位符缺一个就抛 KeyError，不会静默留下一个 `$xxx` 在提示里。
+
+模板路径由调用方传进来，本模块不持有它：模板是**能力**的资产（实验内环的模板在
+`capabilities/experiment/prompt.md`），组装是执行层这一层的活。写死一个路径就等于把
+executor 焊在实验内环上，别的能力再想用同一套组装就得复制一份。
 """
 
 from __future__ import annotations
@@ -11,9 +15,8 @@ from __future__ import annotations
 from pathlib import Path
 from string import Template
 
-from framework.ledger import LedgerRow
+from framework.memory.ledger import LedgerRow
 
-TEMPLATE_PATH = Path(__file__).resolve().parent / "prompts" / "experiment.md"
 LEDGER_TAIL_ROWS = 5
 DIRECTION_ZH = {"minimize": "越小", "maximize": "越大"}
 
@@ -39,9 +42,9 @@ def last_round_note(rows: list[LedgerRow], hint: str) -> str:
     return f"{text}\n\n修复提示：{hint}" if hint else text
 
 
-def build_prompt(values: dict[str, object], domain_extra: str = "") -> str:
+def build_prompt(template_path: Path, values: dict[str, object], domain_extra: str = "") -> str:
     """套模板；领域包的追加段存在才追加，缺了不追加也不回退到别的模板。"""
-    text = Template(TEMPLATE_PATH.read_text(encoding="utf-8")).substitute(values)
+    text = Template(Path(template_path).read_text(encoding="utf-8")).substitute(values)
     if domain_extra.strip():
         text += "\n\n## 领域约定\n\n" + domain_extra.strip() + "\n"
     return text

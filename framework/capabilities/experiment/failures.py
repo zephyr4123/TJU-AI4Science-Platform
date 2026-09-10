@@ -15,20 +15,20 @@
 （去把产物写出来 vs 去照 stderr 修报错），所以退非 0 而 stderr 没有 traceback 时一律
 先看产物，判 no_results。反过来，退非 0 但 results.json 合法、主指标有限的极端情况仍
 归 crash——产物齐了却非正常退出，说明跑的过程中出了事，这个成绩不能采信。
+
+本模块属于实验内环这个能力（capabilities/experiment/），不是通用层：分类规则、修复
+提示、取证读法都只对"跑 harness 比分数"这件事成立，别的能力有别的失败谱系。产物本身
+怎么读是契约层的事（`contracts.results.read_results`），这里只判它算哪一类。
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
 
-import jsonschema
-
 from backends._snapshot import snapshot  # 与执行层取证同一份快照实现，不另起一套 sha 逻辑
-from framework.packs import SCHEMA_DIR
 
 READONLY_VIOLATED = "readonly_violated"
 TIMEOUT = "timeout"
@@ -40,7 +40,6 @@ NOOP = "noop"
 
 # 只读区：执行层与 harness 都不许动它们（纲领 §2）
 READONLY_DIRS = ("harness/", "data/")
-SCHEMA_PATH = SCHEMA_DIR / "results.schema.json"
 
 # 执行层会话自己没走完（被杀、超时、CLI 崩了）：不是 harness 的六类，但同样是失败，
 # 连续三次也要停——CLI 坏了不该无限烧钱
@@ -141,7 +140,8 @@ def _tail_line(stderr_tail: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# 分类要用的取证：只读文件的指纹、harness 产物、stderr 尾巴
+# 分类要用的取证：只读文件的指纹、harness 自身的指纹、stderr 尾巴
+# （产物 results.json 怎么读在 framework/contracts/results.py）
 # --------------------------------------------------------------------------
 def readonly_hashes(root: Path) -> dict[str, str]:
     """`harness/` 与 `data/` 的内容指纹——"评测和数据没被改"的唯一证据（纲领 §2）。"""
@@ -158,38 +158,6 @@ def harness_sha(work: Path) -> str:
     """账本里的 harness_sha：SHA256SUMS 自身的指纹，一列就能证明评测那套没换过。"""
     sums = Path(work) / "harness" / "SHA256SUMS"
     return hashlib.sha256(sums.read_bytes()).hexdigest() if sums.is_file() else "-"
-
-
-def read_results(path: Path, metric_name: str) -> tuple[float | None, list[str]]:
-    """读 harness 的产物，返回（主指标, 问题清单）。
-
-    NaN 照收不误：Python 的 json 默认解析 NaN，而 NaN 要走 nan_metric 这一类，
-    在这里当成"文件不合法"会把病因说错，下一轮给执行层的修复提示也就跟着错。
-
-    `status` 是 harness 自己对这一趟的定性，不是 ok 就当成"没有可用结果"（问题清单里带上
-    它自报的值）：指标算出来了但 harness 说这趟不算数时，采信指标就是采信一个作废的成绩。
-    """
-    path = Path(path)
-    if not path.is_file():
-        return None, [f"results.json 缺失：{path}"]
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except ValueError as exc:
-        return None, [f"results.json 解析失败：{' '.join(str(exc).split())}"]
-    schema = json.loads((SCHEMA_PATH).read_text(encoding="utf-8"))
-    problems = [
-        f"results.json 不合 schema：{' '.join(str(e.message).split())}"
-        for e in jsonschema.Draft202012Validator(schema).iter_errors(doc)
-    ]
-    status = doc.get("status") if isinstance(doc, dict) else None
-    if status is not None and status != "ok":
-        problems.append(f"harness 自报 status={status!r}，不是 ok")
-    value = doc.get("metrics", {}).get(metric_name) if isinstance(doc, dict) else None
-    if value is not None and not isinstance(value, (int, float)):
-        return None, [*problems, f"主指标 {metric_name} 不是数字：{value!r}"]
-    if value is None and not problems:
-        problems.append(f"results.json 里没有主指标 {metric_name}")
-    return value, problems
 
 
 def stderr_tail(path: Path, limit: int = 4000) -> str:

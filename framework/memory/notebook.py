@@ -7,6 +7,9 @@
 为什么由 runner 写而不是执行层写：笔记必须活在棘轮之外——执行层只能改 code/，而 code/
 在 discard 时会被 reset 掉；runner 写在 experiment/ 下，回滚不抹。
 
+在四层的 memory 层，且不 import framework 的任何东西：笔记是纯文本的追加与读回，
+文件名归 `run.layout` 管（NOTEBOOK_NAME 在那里定义，避免两处各写一遍）。
+
 为什么它不违反 P-9：P-9 挡的是 stdout 与整段日志，不是记忆。每条笔记有硬上限，整本的
 上限由 max_iterations 决定，是有界的。
 """
@@ -15,7 +18,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-NOTEBOOK_NAME = "notebook.md"
 REPORT_CHARS = 600   # 执行层自述最多留这么多字符：够写假设与改动，不够贴日志
 DIFFSTAT_LINES = 6   # git diff --stat 最多留几行
 
