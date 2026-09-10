@@ -20,13 +20,14 @@ from typing import Any
 
 from backends import Runner, RunResult
 from compute import Compute, Job
-from framework import failures, gitwork, ledger, packs, prompting
+from framework import failures, gitwork, ledger, notebook, packs, prompting
 from framework.runstate import (
     LOGGER,
     RunContext,
     TaskInvalid,
     default_runs_root,
     executor_timeout_s,
+    extend_run,
     load_context,
     new_run,
     read_checkpoint,
@@ -35,7 +36,8 @@ from framework.runstate import (
 
 # 转出 runstate 的入口：协调层与 CLI 只认 framework.loop 这一个门面
 __all__ = ["StopReason", "ResumeMismatch", "InflightPending", "TaskInvalid", "run_loop",
-           "resume_loop", "new_run", "load_context", "read_checkpoint", "default_runs_root"]
+           "resume_loop", "new_run", "extend_run", "load_context", "read_checkpoint",
+           "default_runs_root"]
 
 UNRECOVERABLE_REPEATS = 3  # 同类失败连续这么多次判不可修复（纲领 §2）
 LAUNCH_CMD = ["bash", "harness/launcher.sh"]
@@ -311,6 +313,14 @@ def _settle(
 
     _append_row(ctx, parent, iter_n, commit=commit, metric=metric, elapsed_s=elapsed_s,
                 status=status, note=note, cost_usd=result.cost_usd, executor_s=result.duration_s)
+    # 笔记在账本之后、checkpoint 之前写：它是记忆不是账，丢一条不影响对账，
+    # 但必须在下一轮开跑前落盘
+    notebook.append(
+        ctx.experiment / notebook.NOTEBOOK_NAME, iter_n=iter_n, status=status,
+        metric="-" if metric is None else f"{metric:.6g}", note=note,
+        report=_executor_report(result),
+        diffstat=gitwork.diff_stat(ctx.work, parent, commit) if commit != ledger.MISSING else "",
+    )
     state = {**state, "last_iter": iter_n}
     write_checkpoint(ctx.run_dir, state)
     _clear_inflight(ctx)
@@ -407,7 +417,15 @@ def _build_prompt(
         "sigma": f"{ctx.sigma:.6g}", "wall_clock_s": f"{ctx.wall_clock_s:g}",
         "ledger_tail": prompting.summarize_ledger(rows),
         "last_round": prompting.last_round_note(rows, hint),
+        "notebook": notebook.read(ctx.experiment / notebook.NOTEBOOK_NAME),
     }, ctx.domain_extra)
+
+
+def _executor_report(result: RunResult) -> str:
+    """执行层这一轮的自述 = stream-json 最终 result 事件的文本；没有就空串，不编。"""
+    final = next((e for e in reversed(result.events) if e.get("type") == "result"), None)
+    text = (final or {}).get("result")
+    return text.strip() if isinstance(text, str) else ""
 
 
 def _cancel_inflight_job(ctx: RunContext, compute: Compute) -> None:

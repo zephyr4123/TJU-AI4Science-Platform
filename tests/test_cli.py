@@ -192,3 +192,16 @@ def test_loop_resume_unknown_backend_exits_two(tmp_path):
                    "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_USAGE
     assert "claude_code" in proc.stderr
+
+
+def test_run_extend_needs_at_least_one_budget_field_and_reports_changes(tmp_path):
+    new_run_via_cli(tmp_path)
+    proc = run_cli("run", "extend", "r1", "--runs-root", str(tmp_path / "runs"))
+    assert proc.returncode == EXIT_USAGE and "至少给一项" in proc.stderr
+    proc = run_cli("run", "extend", "r1", "--patience", "9", "--reason", "测试",
+                   "--runs-root", str(tmp_path / "runs"))
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert proc.stdout.startswith("ok r1\t") and "patience:" in proc.stdout and "→ 9" in proc.stdout
+    proc = run_cli("run", "extend", "nope", "--patience", "9",
+                   "--runs-root", str(tmp_path / "runs"))
+    assert proc.returncode == EXIT_USAGE

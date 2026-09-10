@@ -80,6 +80,11 @@ def revert_to(work: Path, sha: str) -> None:
     git(work, "reset", "-q", "--hard", sha)
 
 
+def diff_stat(work: Path, base: str, sha: str) -> str:
+    """两个 commit 之间的 --stat，给实验笔记用；没有差异返回空串。"""
+    return git(work, "diff", "--stat", base, sha).stdout.strip()
+
+
 def keep_attempt(work: Path, iter_n: int, sha: str) -> str:
     """把被弃的候选存进 refs/attempts/iter-N，reset 之前调用；返回 ref 名。"""
     ref = f"{ATTEMPT_REF_PREFIX}/iter-{iter_n}"

@@ -95,6 +95,21 @@ def _cmd_run_new(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_run_extend(args: argparse.Namespace) -> int:
+    run_dir = _runs_root(args) / args.run_id
+    if not (run_dir / "checkpoint.json").is_file():
+        print(f"run 不存在或没有 checkpoint：{run_dir}", file=sys.stderr)
+        return EXIT_USAGE
+    if args.patience is None and args.max_iterations is None and args.max_cost_usd is None:
+        print("至少给一项：--patience / --max-iterations / --max-cost-usd", file=sys.stderr)
+        return EXIT_USAGE
+    _setup_logging()
+    done = loop.extend_run(run_dir, patience=args.patience, max_iterations=args.max_iterations,
+                           max_cost_usd=args.max_cost_usd, reason=args.reason)
+    print(f"ok {args.run_id}\tcleared={done['cleared']}\t{'；'.join(done['changes'])}")
+    return EXIT_OK
+
+
 def _open_run(args: argparse.Namespace) -> tuple[Path, object, object] | int:
     run_dir = _runs_root(args) / args.run_id
     if not (run_dir / "checkpoint.json").is_file():
@@ -178,6 +193,14 @@ def build_parser() -> argparse.ArgumentParser:
     creating.add_argument("--run-id", default=None, help="缺省 <任务名>-<UTC 时间戳>")
     _add_runs_root(creating)
     creating.set_defaults(func=_cmd_run_new)
+    extending = run_actions.add_parser("extend", help="给已停的 run 续命：改预算、清停止标记")
+    extending.add_argument("run_id")
+    extending.add_argument("--patience", type=int, default=None, help="连续不改进几轮才停")
+    extending.add_argument("--max-iterations", type=int, default=None, help="总轮数上限")
+    extending.add_argument("--max-cost-usd", type=float, default=None, help="总花费上限")
+    extending.add_argument("--reason", default="", help="为什么续命，记进 journal.md")
+    _add_runs_root(extending)
+    extending.set_defaults(func=_cmd_run_extend)
 
     loop_group = groups.add_parser("loop", help="实验内环")
     loop_actions = loop_group.add_subparsers(dest="action", required=True)

@@ -656,3 +656,48 @@ def test_no_results_note_carries_the_harness_reason(tmp_path):
     assert row.status == "no_results"
     assert "stderr 末行" in row.note and "predictions.json" in row.note
     assert "predictions.json" in runner.prompts[1]
+
+
+# ── 轮间记忆：实验笔记 ───────────────────────────────────────────────────
+def test_notebook_records_each_round_and_feeds_the_next_prompt(tmp_path):
+    """执行层的自述 + diff stat + 裁决每轮进笔记；下一轮的 prompt 里整本都在（#28）。"""
+    run_dir, _ = start_run(tmp_path)
+    runner = ScriptedRunner([train_for_mse(0.018), train_for_mse(0.0175)])
+    runner.reports = ["假设：步长太大。改动：LR 减半。预期：更稳。",
+                      "假设：再减一点。改动：LR 再减半。预期：略好。"]
+    loop.run_loop(run_dir, runner, LocalCompute(), max_iters=2)
+    text = (run_dir / "experiment" / "notebook.md").read_text(encoding="utf-8")
+    assert "第 1 轮 · keep" in text and "LR 减半" in text and "code/train.py" in text
+    assert "第 2 轮 · discard" in text and "within noise" in text
+    assert "还没有笔记" in runner.prompts[0]
+    assert "LR 减半" in runner.prompts[1] and "不要重复已经试过" in runner.prompts[1]
+
+
+def test_notebook_survives_revert_to_best(tmp_path):
+    """笔记活在棘轮之外：discard 后 work/ 被 reset，笔记一个字不少。"""
+    run_dir, _ = start_run(tmp_path)
+    loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.018), FAKE_SUCCESS]), LocalCompute(),
+                  max_iters=2)
+    text = (run_dir / "experiment" / "notebook.md").read_text(encoding="utf-8")
+    assert text.count("### 第 ") == 2 and "no_results" in text
+
+
+# ── 续命：协调层给已停的 run 加预算 ─────────────────────────────────────
+def test_extend_run_clears_stop_and_lets_the_loop_continue(tmp_path):
+    run_dir, _ = start_run(tmp_path, patience=1)
+    stop = loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.0299)]), LocalCompute())
+    assert stop.reason == "patience" and (run_dir / "experiment" / "stop.json").is_file()
+    done = loop.extend_run(run_dir, patience=5, reason="统计门偏严，再给几轮")
+    assert done["cleared"] == "patience" and done["changes"] == ["patience: 1 → 5"]
+    assert loop.read_checkpoint(run_dir)["stop_reason"] is None
+    assert not (run_dir / "experiment" / "stop.json").exists()
+    assert "续命" in (run_dir / "journal.md").read_text(encoding="utf-8")
+    stop = loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(),
+                         max_iters=1)
+    assert stop.reason == "batch_exhausted" and rows_of(run_dir)[-1].status == "keep"
+
+
+def test_extend_run_rejects_nonpositive_budget(tmp_path):
+    run_dir, _ = start_run(tmp_path)
+    with pytest.raises(AssertionError):
+        loop.extend_run(run_dir, patience=0)

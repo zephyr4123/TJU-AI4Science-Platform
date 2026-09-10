@@ -44,6 +44,8 @@ class ScriptedRunner:
         self.exception = exception or KeyboardInterrupt()
         self.calls = 0
         self.prompts: list[str] = []
+        # 每轮的自述，与 moves 一一对应；缺省一句"剧本第 N 步"，测试笔记时显式给
+        self.reports: list[str] = []
 
     def run(
         self, prompt: str, cwd: Path, timeout_s: float, allowed_paths: list[Path]
@@ -64,8 +66,12 @@ class ScriptedRunner:
         (log_dir / f"executor-scripted-{self.calls}.jsonl").write_text(
             '{"type":"system","subtype":"init","scripted":true}\n', encoding="utf-8"
         )
+        report = self.reports.pop(0) if self.reports else f"剧本第 {self.calls} 步"
         return RunResult(
-            exit_code=0, events=[], changed_files=diff(before, snapshot(cwd)),
+            exit_code=0,
+            # 与真后端同形：自述放在最终 result 事件的 result 字段里
+            events=[{"type": "result", "result": report}],
+            changed_files=diff(before, snapshot(cwd)),
             cost_usd=self.cost_usd, duration_s=self.duration_s, timed_out=False,
             stdout_tail="scripted",
         )

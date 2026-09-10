@@ -141,6 +141,40 @@ def _snapshot_domain_prompt(domain_dir: Path, run_dir: Path) -> None:
         shutil.copy2(src, run_dir / "prompts" / "experiment-domain.md")
 
 
+def extend_run(
+    run_dir: Path, *, patience: int | None = None, max_iterations: int | None = None,
+    max_cost_usd: float | None = None, reason: str = "",
+) -> dict[str, Any]:
+    """协调层给已停的 run 续命：改快照里的 budget、清 stop_reason 与 stop.json、journal 记一行。
+
+    只改这三样：要不要继续是协调层的决定（P-10），但怎么继续必须留痕——journal.md 是
+    协调层自己的本子，续命这条记在这里而不是账本里，账本只记轮次。
+    """
+    run_dir = Path(run_dir).resolve()
+    manifest = load_manifest(run_dir)
+    budget = manifest["budget"]
+    changes = []
+    for key, value in (("patience", patience), ("max_iterations", max_iterations),
+                       ("max_cost_usd", max_cost_usd)):
+        if value is None:
+            continue
+        assert value > 0, f"{key} 必须是正数，得到 {value!r}"
+        changes.append(f"{key}: {budget.get(key)} → {value}")
+        budget[key] = value
+    (run_dir / packs.MANIFEST_NAME).write_text(
+        yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    state = read_checkpoint(run_dir)
+    cleared = state.get("stop_reason")
+    write_checkpoint(run_dir, {**state, "stop_reason": None})
+    (run_dir / "experiment" / "stop.json").unlink(missing_ok=True)
+    line = (f"- {datetime.now(UTC).isoformat(timespec='seconds')} 续命：清掉 stop_reason={cleared}"
+            f"；{'；'.join(changes) or '预算未改'}；原因：{reason or '未说明'}\n")
+    with (run_dir / "journal.md").open("a", encoding="utf-8") as fh:
+        fh.write(line)
+    LOGGER.info("run_extend run_dir=%s cleared=%s changes=%s", run_dir, cleared, changes)
+    return {"cleared": cleared, "changes": changes}
+
+
 def load_manifest(run_dir: Path) -> dict[str, Any]:
     """只读 run 目录里的 manifest 快照：跑起来后不再回头看任务包（纲领磁盘布局）。"""
     return yaml.safe_load((Path(run_dir) / packs.MANIFEST_NAME).read_text(encoding="utf-8"))
