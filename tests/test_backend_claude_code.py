@@ -142,6 +142,13 @@ def test_final_metrics_raises_rather_than_reporting_zero():
         final_metrics([{"type": "system", "subtype": "init"}], timed_out=False, wall_s=12.0)
 
 
+def test_final_metrics_reports_nan_when_process_died_without_result():
+    # 被外部 kill -9（真跑第 10 轮）或 CLI 自己崩了：没有 result 事件，成本未知不是 0，
+    # 也不该把整个内环炸掉——那是执行层这一轮失败，由 loop 记账
+    cost, duration_s = final_metrics([], timed_out=False, wall_s=20.0, exit_code=-9)
+    assert math.isnan(cost) and duration_s == 20.0
+
+
 def test_final_metrics_reports_nan_when_killed_on_timeout():
     # 超时被杀时 result 事件根本没发出来，成本只能是"未知"；填 0 会让预算统计静默偏低
     cost, duration_s = final_metrics([], timed_out=True, wall_s=20.0)

@@ -42,7 +42,12 @@ NOOP = "noop"
 READONLY_DIRS = ("harness/", "data/")
 SCHEMA_PATH = SCHEMA_DIR / "results.schema.json"
 
-FAILURE_STATUSES = (READONLY_VIOLATED, TIMEOUT, MISSING_DEPENDENCY, CRASH, NO_RESULTS, NAN_METRIC)
+# 执行层会话自己没走完（被杀、超时、CLI 崩了）：不是 harness 的六类，但同样是失败，
+# 连续三次也要停——CLI 坏了不该无限烧钱
+EXECUTOR_FAILED = "executor_failed"
+
+FAILURE_STATUSES = (READONLY_VIOLATED, TIMEOUT, MISSING_DEPENDENCY, CRASH, NO_RESULTS, NAN_METRIC,
+                    EXECUTOR_FAILED)
 
 # stderr 里出现这些字样就判缺依赖：三条都是解释器自己吐的固定串，不做模糊匹配。
 _DEPENDENCY_MARKERS = ("ModuleNotFoundError", "ImportError", "No module named")
@@ -60,6 +65,7 @@ HINTS = {
     NO_RESULTS: "上一轮没产出合规的 results.json；train.py 必须真的写出预测产物，光打印分数不算数",
     NAN_METRIC: "上一轮主指标是 NaN 或 Inf；通常是学习率过大或除零，先把数值稳定性修掉",
     NOOP: "上一轮一个文件都没改；这一轮必须在 code/ 下落到实际改动",
+    EXECUTOR_FAILED: "上一轮执行层会话没走完（超时或被杀），改动已丢弃；这一轮重新来，动作小一点",
 }
 
 
@@ -76,6 +82,11 @@ def readonly_verdict(paths: list[str]) -> Verdict:
 
 def noop_verdict() -> Verdict:
     return Verdict(NOOP, "一个文件都没改")
+
+
+def executor_failed_verdict(exit_code: int, timed_out: bool) -> Verdict:
+    why = "执行层超时被杀" if timed_out else f"执行层会话异常退出（退出码 {exit_code}）"
+    return Verdict(EXECUTOR_FAILED, f"{why}，改动未采信")
 
 
 def gitignored_verdict() -> Verdict:

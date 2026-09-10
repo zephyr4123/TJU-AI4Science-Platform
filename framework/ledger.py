@@ -20,7 +20,8 @@ COLUMNS = ("iter", "commit", "parent", "metric", "direction", "elapsed_s", "seed
 
 # keep / discard 是裁决，其余是这一轮没能产生可比成绩的原因（六类失败 + noop + interrupted）。
 STATUSES = frozenset({"keep", "discard", "noop", "readonly_violated", "timeout",
-                      "missing_dependency", "crash", "no_results", "nan_metric", "interrupted"})
+                      "missing_dependency", "crash", "no_results", "nan_metric", "interrupted",
+                      "executor_failed"})
 MISSING = "-"
 
 

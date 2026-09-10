@@ -258,6 +258,11 @@ def _judge(
 
     harness 根本没跑起来的几条路径，墙钟一律填 NaN：那不是"跑了 0 秒"，是没量过（P-7）。
     """
+    if result.timed_out or result.exit_code != 0:
+        # 会话没走完就没有可采信的改动：半截的编辑一律丢弃，记一轮执行层失败（真跑第 10 轮
+        # 被 kill -9 时这里曾把整个内环炸掉，现在是可记账的一轮）
+        return (failures.executor_failed_verdict(result.exit_code, result.timed_out),
+                ledger.MISSING, None, math.nan)
     outside = [p for p in result.changed_files if not p.startswith(CODE_PREFIX)]
     if outside:  # 第一道门是 CLI 权限，真正的门是这里（纲领 §5）
         return failures.readonly_verdict(outside), ledger.MISSING, None, math.nan

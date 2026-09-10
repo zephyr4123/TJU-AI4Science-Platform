@@ -34,6 +34,7 @@ class ScriptedRunner:
         duration_s: float = 0.5,
         raise_at: int | None = None,
         exception: BaseException | None = None,
+        die_at: tuple[int, ...] = (),
     ) -> None:
         self.moves = list(moves)
         self.cost_usd = cost_usd
@@ -42,6 +43,8 @@ class ScriptedRunner:
         # 由它一路冒到调用方（不吞异常），剩下的靠 resume 收拾。
         self.raise_at = raise_at
         self.exception = exception or KeyboardInterrupt()
+        # die_at：这几次调用模拟执行层被外部 kill -9——改了一半、退出码 -9、没有 result 事件
+        self.die_at = set(die_at)
         self.calls = 0
         self.prompts: list[str] = []
         # 每轮的自述，与 moves 一一对应；缺省一句"剧本第 N 步"，测试笔记时显式给
@@ -60,6 +63,10 @@ class ScriptedRunner:
         move = self.moves.pop(0)
         before = snapshot(cwd)
         _apply(move, Path(cwd))
+        if self.calls in self.die_at:
+            return RunResult(exit_code=-9, events=[], changed_files=diff(before, snapshot(cwd)),
+                             cost_usd=float("nan"), duration_s=self.duration_s,
+                             timed_out=False, stdout_tail="")
         # 与真适配器同形：事件流写在 cwd/.ai4sci/，框架负责把它搬到按轮留档的位置
         log_dir = Path(cwd) / ".ai4sci"
         log_dir.mkdir(exist_ok=True)

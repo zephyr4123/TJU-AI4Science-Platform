@@ -139,7 +139,7 @@ class ClaudeCodeRunner:
         wall_s = time.monotonic() - started
         events, junk = parse_events(raw)
         self._persist(cwd, raw, err)
-        cost, duration_s = final_metrics(events, timed_out, wall_s)
+        cost, duration_s = final_metrics(events, timed_out, wall_s, proc.returncode)
         return RunResult(exit_code=proc.returncode, events=events,
                          changed_files=diff(before, snapshot(cwd)), cost_usd=cost,
                          duration_s=duration_s, timed_out=timed_out,
@@ -170,17 +170,21 @@ def parse_events(raw: list[str]) -> tuple[list[dict], list[str]]:
     return events, junk
 
 
-def final_metrics(events: list[dict], timed_out: bool, wall_s: float) -> tuple[float, float]:
+def final_metrics(
+    events: list[dict], timed_out: bool, wall_s: float, exit_code: int = 0
+) -> tuple[float, float]:
     """成本与耗时只认最终 result 事件；拿不到就抛，不填 0 蒙混。
 
-    唯一的例外是超时被杀：result 事件根本没机会发出来，此时成本填 NaN 表示"未知"。
+    例外是进程没能正常走完：超时被杀、被外部 kill、CLI 自己崩了（退出码非 0），
+    result 事件根本没机会发出来，此时成本填 NaN 表示"未知"，由调用方把这一轮判成
+    执行层失败。正常退出（0）却没有 result 才是协议坏了，照抛。
 
     实测到的 result.subtype：`success`、`error_max_turns`、`error_max_budget_usd`。
     三者都带 total_cost_usd，所以这里不区分——失败分类是 runner 读 events 的事，不是本函数的事。
     """
     result = next((e for e in reversed(events) if e.get("type") == "result"), None)
     if result is None:
-        if timed_out:
+        if timed_out or exit_code != 0:
             return math.nan, wall_s
         raise RuntimeError(
             "stream-json 事件流里没有 result 事件，拿不到 total_cost_usd 与 duration_ms"

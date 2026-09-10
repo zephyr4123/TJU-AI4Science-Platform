@@ -701,3 +701,27 @@ def test_extend_run_rejects_nonpositive_budget(tmp_path):
     run_dir, _ = start_run(tmp_path)
     with pytest.raises(AssertionError):
         loop.extend_run(run_dir, patience=0)
+
+
+# ── 执行层会话没走完：被杀 / 超时 / CLI 崩 ─────────────────────────────
+def test_executor_killed_mid_round_is_a_recorded_failure_not_a_crash(tmp_path):
+    """真跑第 10 轮 kill -9 执行层时整个内环炸了；现在是可记账的一轮：改动丢弃、回到 best、继续。"""
+    run_dir, _ = start_run(tmp_path)
+    baseline = (run_dir / "work" / "code" / "train.py").read_text(encoding="utf-8")
+    runner = ScriptedRunner([train_for_mse(0.018), train_for_mse(0.018)], die_at=(1,))
+    loop.run_loop(run_dir, runner, LocalCompute(), max_iters=2)
+    rows = rows_of(run_dir)
+    assert rows[0].status == "executor_failed" and rows[0].commit == ledger.MISSING
+    assert "退出码 -9" in rows[0].note
+    assert rows[0].cost_usd is None or math.isnan(rows[0].cost_usd)
+    assert rows[1].status == "keep"
+    assert "执行层会话没走完" in runner.prompts[1]
+    # 第 1 轮改了一半就被杀：起第 2 轮前必须回到基线，第 2 轮 keep 后才离开基线
+    assert (run_dir / "work" / "code" / "train.py").read_text(encoding="utf-8") != baseline
+
+
+def test_three_executor_failures_in_a_row_are_unrecoverable(tmp_path):
+    run_dir, _ = start_run(tmp_path)
+    runner = ScriptedRunner([train_for_mse(0.018)] * 4, die_at=(1, 2, 3))
+    stop = loop.run_loop(run_dir, runner, LocalCompute())
+    assert stop.reason == "unrecoverable:executor_failed" and runner.calls == 3
