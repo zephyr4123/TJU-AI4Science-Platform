@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### 变更
+- 目录按纲领四层重建：`coordinator/ framework/ backends/ compute/ tools/ domains/ tasks/ runs/ tests/`，原 monorepo 占位目录（apps / packages / workers / db / infra）删除
+- 定栈 Python：`pyproject.toml`、`.venv` + `requirements.lock`、ruff（含 BLE 裸 except 门禁）+ pytest 接进 `make check`，CI 装 Python 3.14。框架依赖只有 pyyaml 与 jsonschema，数值库是任务包自己的事
+
 ## [0.1.0] - 2026-09-08
 
 ### 新增

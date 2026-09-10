@@ -18,3 +18,7 @@ __pycache__/
 *.pyc
 .venv/
 node_modules/
+
+# ── 运行产物：runs/ 里的东西按纲领不进 git ──
+runs/
+*.egg-info/

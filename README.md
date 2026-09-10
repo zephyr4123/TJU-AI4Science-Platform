@@ -4,44 +4,36 @@
 
 ## 这是什么
 
-科研全自动化平台的生产代码，一个 monorepo 装下前端、后端、不分端的核心库、执行端、数据库与部署配置。项目文档、调研与决策记录在外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/tju-ai4science)，本仓由它的 `./repos clone all` 拉到 `platform/` 目录下。
+科研全自动化平台的生产代码。四层：协调层（人 + agent）做科研判断，框架是诚实执行的基底，执行层 coding agent CLI 是唯一执行者，工具是确定性脚本。纲领、spec 与决策记录在外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 的 `docs/`，本仓由它的 `./repos clone all` 拉到 `platform/` 目录下。
 
 ## 目录
 
 ```
 platform/
-├── apps/
-│   ├── web/          前端
-│   └── api/          后端：HTTP 入口、任务编排
-├── packages/
-│   └── core/         不分端：agent 流水线、领域模型、共享工具
-├── workers/          实验执行端：GPU / 集群作业
-├── db/               schema、migrations、seed
-├── infra/            docker-compose、k8s、部署配置
-├── tests/            跨模块的集成与端到端测试
-├── Makefile          check / package / release 入口，本地与 CI 共用
-└── CHANGELOG.md      变更日志
+├── coordinator/   协调层 skill 包（执行层不加载）
+├── framework/     框架：能力、runner、契约、验证、ai4sci CLI；零模型调用
+├── backends/      执行层适配器：claude_code.py …
+├── compute/       算力适配器：local.py …
+├── tools/         确定性脚本
+├── domains/       领域包（generic/ 兜底）
+├── tasks/         任务包（mlp-regression/ …）
+├── runs/          运行产物，不进 git
+├── tests/         框架测试
+├── Makefile       check / venv / lock / package / release
+└── CHANGELOG.md
 ```
-
-技术栈尚未确定，目录只是位置约定；定栈后 `Makefile` 里的 lint / test / package 接上真实命令即可，CI 不用改。
 
 ## 怎么跑
 
-技术栈确定后补充。当前可用的：
-
 ```bash
-make check                       # 门禁：CHANGELOG 校验 + lint + test（后两项占位）
-make package VERSION=0.1.0       # 出包到 dist/
+make venv                                   # 建 .venv，按 requirements.lock 装依赖
+make check                                  # 门禁：CHANGELOG 校验 + ruff + pytest
+.venv/bin/ai4sci task validate tasks/mlp-regression
+AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会花钱，CI 不跑
 ```
 
 ## 版本与发布
 
 1. 改动合并时把条目写进 `CHANGELOG.md` 的 Unreleased。
 2. `make release VERSION=0.2.0`：轮转 CHANGELOG、提交、打 tag，不 push。
-3. `git push origin main --follow-tags`：tag 触发流水线，对账 CHANGELOG、`make check`、`make package`、建 GitHub Release 并附上 `dist/` 里的包。
-
-从 0.1.0 起步，0.x 自动标 pre-release；正式发布才进入 1.0.0。
-
-## 约定
-
-规矩集中在 [`CLAUDE.md`](CLAUDE.md)。架构决策记录在外层仓 `docs/adr/`。
+3. 推 tag 触发 GitHub Release，0.x 自动标 pre-release。

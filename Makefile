@@ -1,17 +1,33 @@
 # 本地与 CI 共用的入口：CI 跑的就是 `make check`，发版流水线跑的就是 `make package`。
-# 技术栈未定：lint / test 目前是占位，定栈后把真实命令接进来，CI 与流水线不用改。
-.PHONY: check changelog lint test package release
+# 技术栈：Python，venv 隔离（红线：依赖不装全局）。依赖钉在 requirements.lock，改依赖走 `make lock`。
+.PHONY: check changelog lint test venv lock package release
+
+VENV := .venv
+PY   := $(VENV)/bin/python
 
 check: changelog lint test         ## 全部门禁
 
 changelog:                         ## CHANGELOG.md 格式校验
 	.github/scripts/changelog.sh check
 
-lint:                              ## 静态检查（占位）
-	@echo "lint：技术栈未定，暂无检查项 —— 定栈后在这里接 linter"
+venv: $(VENV)/.stamp               ## 建 venv 并按 lock 装依赖（幂等）
 
-test:                              ## 测试（占位）
-	@echo "test：技术栈未定，暂无测试 —— 定栈后在这里接测试"
+$(VENV)/.stamp: pyproject.toml requirements.lock
+	test -x $(PY) || python3 -m venv $(VENV)
+	$(VENV)/bin/pip install -q --upgrade pip
+	$(VENV)/bin/pip install -q -r requirements.lock
+	$(VENV)/bin/pip install -q --no-deps -e .
+	touch $@
+
+lock: venv                         ## 改了 pyproject 的依赖后重新钉版本
+	$(VENV)/bin/pip install -q -e ".[dev]"
+	$(VENV)/bin/pip freeze --exclude-editable > requirements.lock
+
+lint: venv                         ## 静态检查：ruff（含裸 except 门禁）
+	$(VENV)/bin/ruff check .
+
+test: venv                         ## 框架测试；真 CLI 冒烟测试要 AI4SCI_LIVE=1
+	$(PY) -m pytest
 
 package:                           ## make package VERSION=0.1.0 → dist/<name>-<ver>.tar.gz + sha256
 	.github/scripts/package.sh $(VERSION)
