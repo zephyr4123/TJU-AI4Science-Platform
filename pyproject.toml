@@ -22,6 +22,12 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["framework*", "backends*", "compute*", "tools*"]
 
+# schema 与提示模板是框架在运行时要读的文件，不是文档：不随包带走，装出来的 ai4sci
+# 会在第一次校验任务包或拼提示时才发现文件不在（读取点：packs.py::_load_schema、
+# failures.py::SCHEMA_PATH、prompting.py::TEMPLATE_PATH）。
+[tool.setuptools.package-data]
+framework = ["schemas/*.json", "prompts/*.md"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

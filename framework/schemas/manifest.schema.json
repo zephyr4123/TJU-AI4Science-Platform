@@ -44,7 +44,22 @@
         "wall_clock_s": {"type": "number", "exclusiveMinimum": 0},
         "max_iterations": {"type": "integer", "minimum": 1},
         "repeat_k": {"type": "integer", "minimum": 1},
-        "accept_sigma": {"type": "number", "minimum": 0}
+        "accept_sigma": {"type": "number", "minimum": 0},
+        "min_delta": {
+          "type": "number",
+          "minimum": 0,
+          "description": "统计门的兜底最小改进量：门取 max(accept_sigma×σ, min_delta)。run_0 的重复跑完全一致时 σ=0，统计门会退化成 0（任何差值都算改进），那时必须显式给它；不写按 0（读取点：framework/runstate.py::load_context，判据在 loop.py::_gate）"
+        },
+        "patience": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "连续多少轮不改进就停；不写按 5（读取点：framework/runstate.py::load_context）"
+        },
+        "max_cost_usd": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "执行层累计成本上限（美元），用尽即停；不写表示不设上限（读取点同上，判据在 loop.py::_stop_reason）"
+        }
       }
     },
     "requirements": {
