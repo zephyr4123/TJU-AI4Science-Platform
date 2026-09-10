@@ -58,6 +58,12 @@ class ScriptedRunner:
         move = self.moves.pop(0)
         before = snapshot(cwd)
         _apply(move, Path(cwd))
+        # 与真适配器同形：事件流写在 cwd/.ai4sci/，框架负责把它搬到按轮留档的位置
+        log_dir = Path(cwd) / ".ai4sci"
+        log_dir.mkdir(exist_ok=True)
+        (log_dir / f"executor-scripted-{self.calls}.jsonl").write_text(
+            '{"type":"system","subtype":"init","scripted":true}\n', encoding="utf-8"
+        )
         return RunResult(
             exit_code=0, events=[], changed_files=diff(before, snapshot(cwd)),
             cost_usd=self.cost_usd, duration_s=self.duration_s, timed_out=False,

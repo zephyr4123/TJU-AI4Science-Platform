@@ -107,7 +107,12 @@ def classify_run(
     if failed and any(marker in stderr_tail for marker in _CRASH_MARKERS):
         return Verdict(CRASH, f"退出码 {code}：{_tail_line(stderr_tail)}")
     if results_problems:
-        return Verdict(NO_RESULTS, results_problems[0])
+        # 带上 stderr 末行：harness 拒收产物的原因（NaN、长度不对）就在那一行，
+        # 只说"results.json 缺失"会把执行层引去修文件路径而不是修数值
+        note = results_problems[0]
+        if stderr_tail.strip():
+            note = f"{note}；stderr 末行：{_tail_line(stderr_tail)}"
+        return Verdict(NO_RESULTS, note)
     if metric is None:
         return Verdict(NO_RESULTS, "results.json 里没有主指标")
     if failed:

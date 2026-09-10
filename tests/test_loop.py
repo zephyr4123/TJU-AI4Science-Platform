@@ -633,3 +633,26 @@ def test_script_exhausted_is_loud(tmp_path):
     run_dir, _ = start_run(tmp_path)
     with pytest.raises(ScriptExhausted):
         loop.run_loop(run_dir, ScriptedRunner([NOOP]), LocalCompute(), max_iters=3)
+
+
+def test_executor_logs_are_stashed_per_iteration_and_survive_revert(tmp_path):
+    """适配器写在 work/.ai4sci/ 的事件流必须搬到 experiment/executor/iter-N/：
+    revert-to-best 用 git clean -x，留在 work/ 里的日志下一轮开头就没了（真跑时丢过一次）。"""
+    run_dir, _ = start_run(tmp_path)
+    loop.run_loop(run_dir, ScriptedRunner([train_for_mse(0.018), FAKE_SUCCESS]), LocalCompute(),
+                  max_iters=2)
+    stash = run_dir / "experiment" / "executor"
+    assert sorted(p.name for p in stash.iterdir()) == ["iter-1", "iter-2"]
+    assert list((stash / "iter-2").glob("executor-*.jsonl"))
+    assert not (run_dir / "work" / ".ai4sci").exists()
+
+
+def test_no_results_note_carries_the_harness_reason(tmp_path):
+    """harness 拒收产物的原因在 stderr 末行；账本 note 与下一轮提示都要带上它。"""
+    run_dir, _ = start_run(tmp_path)
+    runner = ScriptedRunner([FAKE_SUCCESS, train_for_mse(0.018)])
+    loop.run_loop(run_dir, runner, LocalCompute(), max_iters=2)
+    row = rows_of(run_dir)[0]
+    assert row.status == "no_results"
+    assert "stderr 末行" in row.note and "predictions.json" in row.note
+    assert "predictions.json" in runner.prompts[1]

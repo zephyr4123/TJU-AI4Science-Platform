@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -226,8 +227,26 @@ def _run_iteration(
         prompt=_build_prompt(ctx, state, rows, iter_n), cwd=ctx.work,
         timeout_s=executor_timeout_s(), allowed_paths=[ctx.work / "code"],
     )
+    _stash_executor_logs(ctx, iter_n)
     verdict, commit, metric, elapsed = _judge(ctx, iter_n, result, compute)
     return _settle(ctx, state, iter_n, verdict, commit, metric, elapsed, result)
+
+
+def _stash_executor_logs(ctx: RunContext, iter_n: int) -> None:
+    """把适配器写在 work/.ai4sci/ 下的事件流搬到 experiment/executor/iter-N/。
+
+    为什么要搬：revert-to-best 用 git clean -x 连 ignored 文件一起清，取证日志留在 work/
+    里会在下一轮开头被抹掉（真跑时就丢过一次）。日志是账本之外唯一能回答"执行层那一轮
+    到底干了什么"的证据（P-3、P-9），必须和快照一样按轮留档。
+    """
+    src = ctx.work / ".ai4sci"
+    if not src.is_dir():
+        return
+    dst = ctx.experiment / "executor" / f"iter-{iter_n}"
+    dst.mkdir(parents=True, exist_ok=True)
+    for path in sorted(src.iterdir()):
+        shutil.move(str(path), str(dst / path.name))
+    src.rmdir()
 
 
 def _judge(
