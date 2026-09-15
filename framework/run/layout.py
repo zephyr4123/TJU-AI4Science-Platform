@@ -9,6 +9,8 @@
                    work/（任务包拷贝，自己的 git 仓）
                    experiment/{ledger.tsv, notebook.md, inflight.json, stop.json,
                                runs/run_N/, executor/iter-N/}
+                   analysis/{analysis.md, executor/}   verify/report.json
+                   <能力>_v{n}/  重跑时旧目录改名留档，不覆盖
 
 本模块在四层的最底下一档（run 层），只依赖 contracts 里的 manifest 文件名，不读盘、
 不建目录——它只回答"东西该在哪儿"。
@@ -95,3 +97,16 @@ def executor_scratch(work_dir: Path) -> Path:
 def domain_prompt(run_dir: Path) -> Path:
     """领域包实验追加段的 run 内快照；不存在就是"这个领域没有追加段"。"""
     return Path(run_dir) / "prompts" / "experiment-domain.md"
+
+
+def capability_dir(run_dir: Path, name: str) -> Path:
+    """一个能力的产物目录 `runs/<run_id>/<name>/`；实验能力的是 `experiment/`（见上）。"""
+    return Path(run_dir) / name
+
+
+def analysis_doc(run_dir: Path) -> Path:
+    return capability_dir(run_dir, "analysis") / "analysis.md"
+
+
+def verify_report(run_dir: Path) -> Path:
+    return capability_dir(run_dir, "verify") / "report.json"

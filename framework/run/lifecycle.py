@@ -105,3 +105,21 @@ def extend_run(
         fh.write(line)
     LOGGER.info("run_extend run_dir=%s cleared=%s changes=%s", run_dir, cleared, changes)
     return {"cleared": cleared, "changes": changes}
+
+
+def rotate_capability_dir(run_dir: Path, name: str) -> Path | None:
+    """重跑一个能力前把旧产物目录改名成 `<name>_v{n}`，不覆盖（纲领 workflow.md §1）。
+
+    返回改名后的路径；没有旧目录返回 None。n 从 1 起、取还没用过的最小值，
+    这样第三次重跑不会把 _v1 盖掉。
+    """
+    current = layout.capability_dir(run_dir, name)
+    if not current.is_dir():
+        return None
+    n = 1
+    while (archived := current.with_name(f"{name}_v{n}")).exists():
+        n += 1
+    current.rename(archived)
+    LOGGER.info("capability_dir_rotated run_dir=%s name=%s archived=%s",
+                run_dir, name, archived.name)
+    return archived
