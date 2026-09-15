@@ -6,7 +6,7 @@
 
 | 目录 | 放什么 |
 |---|---|
-| `coordinator/` | 协调层 skill 包：怎么当科研助理、怎么驱动框架。注入到当协调层的 CLI；执行层会话不许加载 |
+| `coordinator/` | 协调层入口指南：怎么当科研助理、怎么驱动框架跑固定流。注入到当协调层的 CLI；执行层会话不许加载 |
 | `framework/` | 框架：能力、runner、契约 schema、验证、裁判、`ai4sci` CLI。零模型调用，不随任务改 |
 | `backends/` | 执行层适配器：一个 coding agent CLI 一个文件；端口 `Runner` 定义在 `backends/__init__.py` |
 | `compute/` | 算力适配器：一个后端一个文件；端口 `Compute` 定义在 `compute/__init__.py` |
@@ -24,12 +24,12 @@
 
 | 子包 | 放什么 | 可以 import |
 |---|---|---|
-| `cli/` | 一个子命令一个模块（`task` `run` `loop` `status`），`__init__` 装配 parser 并导出 `main` | 下面全部 |
-| `capabilities/` | 一个能力一个子包，互不 import；`experiment/` 是实验内环（`loop` 主循环 / `judge` 裁决结算 / `gate` 统计门 / `failures` 失败分类 / `prompt.md`） | executor、memory、run、contracts |
+| `cli/` | 一个子命令一个模块（`task` `run` `loop` `cap` `status`），`__init__` 装配 parser 并导出 `main`；`cap` 的子命令从能力描述符生成 | 下面全部 |
+| `capabilities/` | 一个能力一个子包，互不 import，每个导出 `DESCRIPTOR` 与 `run(run_dir, ports, **params)`，`discover()` 扫目录并断言签名；`experiment/` 实验内环（`loop` / `judge` / `gate` / `failures` / `prompt.md`）、`analysis/` 分析（`analyze` + `prompt.md`）、`verify/` 验证（`checks` 零模型） | executor、memory、run、contracts |
 | `executor/` | 组 prompt（`prompting`）、起执行层会话并留档日志（`session`） | memory、run、contracts |
 | `memory/` | 账本 `ledger`、实验笔记 `notebook`；项目级记忆以后加在这 | run、contracts |
-| `run/` | 一个 run 的磁盘状态：`layout` 路径、`checkpoint`、`context` 只读上下文、`lifecycle` 建 run 与续命、`gitwork` | contracts |
-| `contracts/` | `schemas/*.json`、任务包发现与校验 `packs`、产物读取 `results` | 谁都不 import（framework 内） |
+| `run/` | 一个 run 的磁盘状态：`layout` 路径、`checkpoint`、`context` 只读上下文、`lifecycle` 建 run / 续命 / 能力目录轮转、`gitwork`、`artifacts` 结果索引 | contracts |
+| `contracts/` | `schemas/*.json`、任务包发现与校验 `packs`、产物读取 `results`、能力描述符与入口形状 `capability`、`analysis.md` 数据表契约 `analysis`、验证报告 `report` | 谁都不 import（framework 内） |
 
 `backends/` 与 `compute/` 是端口：framework 任何子包都可以 import 它们，它们不许 import framework。这条与上表都由 `tests/test_layering.py` 用 ast 逐条查，不是靠人 review。
 

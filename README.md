@@ -10,14 +10,14 @@
 
 ```
 platform/
-├── coordinator/   协调层 skill 包（执行层不加载）
+├── coordinator/   协调层入口指南（执行层不加载）
 ├── framework/     框架：能力、runner、契约、验证、ai4sci CLI；零模型调用
 │   ├── cli/           一个子命令一个模块
-│   ├── capabilities/  一个能力一个子包（experiment/ 实验内环），互不 import
+│   ├── capabilities/  一个能力一个子包（experiment/ 实验内环、analysis/ 分析、verify/ 验证），互不 import，各带描述符
 │   ├── executor/      组 prompt、起执行层会话、留档日志
 │   ├── memory/        账本、实验笔记
-│   ├── run/           run 的布局、checkpoint、上下文、生命周期、work/ 的 git
-│   └── contracts/     schema、任务包校验、产物读取
+│   ├── run/           run 的布局、checkpoint、上下文、生命周期、work/ 的 git、结果索引
+│   └── contracts/     schema、任务包校验、产物读取、能力描述符、analysis.md 与 report.json 契约
 ├── backends/      执行层适配器：claude_code.py …
 ├── compute/       算力适配器：local.py …
 ├── tools/         确定性脚本
@@ -39,6 +39,18 @@ make check                                  # 门禁：CHANGELOG 校验 + ruff +
 .venv/bin/ai4sci task validate tasks/mlp-regression
 AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会花钱，CI 不跑
 ```
+
+一条 auto-research 流，四条命令由协调层手工串（框架不连跑，见 `coordinator/README.md`）：
+
+```bash
+.venv/bin/ai4sci run new tasks/mlp-regression --run-id demo   # 建 run
+.venv/bin/ai4sci loop run demo --max-iters 5                  # 实验内环，执行层 Claude Code 改 code/
+.venv/bin/ai4sci cap analysis demo                            # 执行层写 analysis/analysis.md
+.venv/bin/ai4sci cap verify demo                              # 零模型验证，退出码就是 PASS / FAIL
+.venv/bin/ai4sci cap list --json                              # 全部能力的描述符
+```
+
+执行层用哪个模型、超时多久走环境变量：`AI4SCI_EXECUTOR_MODEL=sonnet`、`AI4SCI_EXECUTOR_TIMEOUT_S=600`。
 
 ## 版本与发布
 
