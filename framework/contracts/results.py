@@ -49,3 +49,28 @@ def read_results(path: Path, metric_name: str) -> tuple[float | None, list[str]]
     if value is None and not problems:
         problems.append(f"results.json 里没有主指标 {metric_name}")
     return value, problems
+
+
+def read_metrics(path: Path) -> tuple[dict[str, float] | None, list[str]]:
+    """读一份 results.json 的全部指标，给分析（列清单）与验证（回溯）用。
+
+    与 `read_results` 同一把尺子（schema、status）；不合约就返回 None 加问题清单，
+    不返回半份指标——半份指标会让验证把"文件坏了"读成"数字对不上"。
+    """
+    path = Path(path)
+    if not path.is_file():
+        return None, [f"results.json 缺失：{path}"]
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        return None, [f"results.json 解析失败：{' '.join(str(exc).split())}"]
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    problems = [
+        f"results.json 不合 schema：{' '.join(str(e.message).split())}"
+        for e in jsonschema.Draft202012Validator(schema).iter_errors(doc)
+    ]
+    if problems:
+        return None, problems
+    if doc["status"] != "ok":
+        return None, [f"harness 自报 status={doc['status']!r}，不是 ok"]
+    return {k: float(v) for k, v in doc["metrics"].items()}, []

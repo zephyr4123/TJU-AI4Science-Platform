@@ -88,6 +88,15 @@ def diff_stat(work: Path, base: str, sha: str) -> str:
     return git(work, "diff", "--stat", base, sha).stdout.strip()
 
 
+def diff_full(work: Path, base: str, sha: str, max_chars: int) -> str:
+    """两个 commit 之间的完整 diff，给分析能力读；超过 max_chars 截断并注明，别整段塞进 prompt。"""
+    text = git(work, "diff", base, sha).stdout
+    if len(text) <= max_chars:
+        return text.strip()
+    note = f"\n\n…（diff 共 {len(text)} 字符，只保留前 {max_chars} 字符）"
+    return text[:max_chars].rstrip() + note
+
+
 def keep_attempt(work: Path, iter_n: int, sha: str) -> str:
     """把被弃的候选存进 refs/attempts/iter-N，reset 之前调用；返回 ref 名。"""
     ref = f"{ATTEMPT_REF_PREFIX}/iter-{iter_n}"
