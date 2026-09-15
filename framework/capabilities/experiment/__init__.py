@@ -18,7 +18,7 @@ from framework.capabilities.experiment.loop import (
     resume_loop,
     run_loop,
 )
-from framework.contracts.capability import Artifact, Capability, Param, Ports
+from framework.contracts.capability import Artifact, Capability, CapabilityFailed, Param, Ports
 
 __all__ = ["DESCRIPTOR", "InflightPending", "ResumeMismatch", "StopReason", "resume_loop",
            "run", "run_loop"]
@@ -54,5 +54,9 @@ DESCRIPTOR = Capability(
 def run(run_dir: Path, ports: Ports, *, max_iters: int | None = None) -> str:
     """统一入口：等价于 `ai4sci loop run`。续跑走 `resume_loop`，不在这里。"""
     assert ports.runner is not None and ports.compute is not None, "实验能力要执行层与算力两个端口"
-    stop = run_loop(run_dir, ports.runner, ports.compute, max_iters)
+    try:
+        stop = run_loop(run_dir, ports.runner, ports.compute, max_iters)
+    except (ResumeMismatch, InflightPending) as exc:
+        # 通用驱动只认能力契约里的异常；内环自己的两种"现状不许往下跑"原话照转
+        raise CapabilityFailed(str(exc)) from exc
     return f"stop {stop.reason}\titer={stop.iter}\tbest={stop.best_metric}"

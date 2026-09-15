@@ -206,3 +206,76 @@ def test_run_extend_needs_at_least_one_budget_field_and_reports_changes(tmp_path
     proc = run_cli("run", "extend", "nope", "--patience", "9",
                    "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_USAGE
+
+
+# ── cap：按名字跑一个能力 ────────────────────────────────────────────────
+def test_cap_list_prints_every_capability():
+    proc = run_cli("cap", "list")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    names = [line.split("\t")[0] for line in proc.stdout.splitlines()]
+    assert names == ["analysis", "experiment", "verify"]
+
+
+def test_cap_list_json_is_descriptor_dicts():
+    import json
+
+    proc = run_cli("cap", "list", "--json")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    descriptors = json.loads(proc.stdout)
+    assert {d["name"] for d in descriptors} == {"analysis", "experiment", "verify"}
+    assert all({"inputs", "outputs", "params", "criteria"} <= set(d) for d in descriptors)
+
+
+def test_cap_unknown_capability_is_a_usage_error(tmp_path):
+    proc = run_cli("cap", "writing", "r1", "--runs-root", str(tmp_path))
+    assert proc.returncode == EXIT_USAGE
+
+
+def test_cap_verify_unknown_run_exits_two(tmp_path):
+    proc = run_cli("cap", "verify", "nope", "--runs-root", str(tmp_path))
+    assert proc.returncode == EXIT_USAGE
+    assert "checkpoint" in proc.stderr
+
+
+def test_cap_analysis_unknown_backend_exits_two(tmp_path):
+    from tests.fixtures import runs_factory as rf
+
+    run_dir = rf.make_run(tmp_path)
+    proc = run_cli("cap", "analysis", "r1", "--backend", "nope", "--runs-root",
+                   str(run_dir.parent))
+    assert proc.returncode == EXIT_USAGE
+    assert "未知的执行层后端" in proc.stderr
+
+
+def test_cap_verify_exit_code_follows_the_verdict(tmp_path):
+    from tests.fixtures import runs_factory as rf
+
+    run_dir = rf.make_run(tmp_path)
+    rf.write_analysis(run_dir, rf.good_analysis(run_dir))
+    proc = run_cli("cap", "verify", "r1", "--runs-root", str(run_dir.parent))
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert proc.stdout.strip() == "verify PASS\tchecks=4\tpath=verify/report.json"
+    rf.write_analysis(run_dir, rf.good_analysis(run_dir) + "\n另外 0.4321 也不错。\n")
+    proc = run_cli("cap", "verify", "r1", "--tolerance", "0.02", "--runs-root",
+                   str(run_dir.parent))
+    assert proc.returncode == EXIT_INVALID
+    assert proc.stdout == "" and "verify FAIL 1/4：prose_numbers_in_table" in proc.stderr
+
+
+def test_cap_analysis_runs_the_capability_with_the_named_backend(tmp_path, monkeypatch, capsys):
+    """进程内跑：剧本后端没法按名字从子进程里取，把取后端的那一步换掉即可。"""
+    from framework.cli import main
+    from tests.fixtures import runs_factory as rf
+
+    run_dir = rf.make_run(tmp_path)
+    runner = ScriptedRunner([{"analysis/analysis.md": rf.good_analysis(run_dir)}])
+    monkeypatch.setattr("framework.cli._common.get_backend", lambda name: runner)
+    code = main(["cap", "analysis", "r1", "--runs-root", str(run_dir.parent)])
+    assert code == EXIT_OK
+    assert capsys.readouterr().out.startswith("analysis ok\tclaims=4")
+    proc = run_cli("status", "r1", "--runs-root", str(run_dir.parent))
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert "analysis\tanalysis/analysis.md" in proc.stdout and "verify\t-" in proc.stdout
+    run_cli("cap", "verify", "r1", "--runs-root", str(run_dir.parent))
+    proc = run_cli("status", "r1", "--runs-root", str(run_dir.parent))
+    assert "verify\tPASS" in proc.stdout

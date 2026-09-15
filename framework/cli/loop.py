@@ -8,44 +8,30 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
-from backends import BackendNotFound, get_backend
-from compute import ComputeNotFound, get_compute
 from framework.capabilities import experiment
 from framework.cli._common import (
     EXIT_INVALID,
     EXIT_OK,
-    EXIT_USAGE,
     add_runs_root,
-    runs_root,
+    open_run_dir,
+    resolve_ports,
     setup_logging,
 )
 from framework.run.context import TaskInvalid
 
 
-def _open_run(args: argparse.Namespace) -> tuple[Path, object, object] | int:
-    run_dir = runs_root(args) / args.run_id
-    if not (run_dir / "checkpoint.json").is_file():
-        print(f"run 不存在或没有 checkpoint：{run_dir}", file=sys.stderr)
-        return EXIT_USAGE
-    try:
-        return run_dir, get_backend(args.backend), get_compute(args.compute)
-    except (BackendNotFound, ComputeNotFound) as exc:
-        # 名字对不上就报错退出，绝不静默回退到某个默认后端（纲领 §5）
-        print(str(exc), file=sys.stderr)
-        return EXIT_USAGE
-
-
 def cmd_loop(args: argparse.Namespace) -> int:
-    opened = _open_run(args)
-    if isinstance(opened, int):
-        return opened
-    run_dir, runner, compute = opened
+    run_dir = open_run_dir(args)
+    if isinstance(run_dir, int):
+        return run_dir
+    ports = resolve_ports(args.backend, args.compute)
+    if isinstance(ports, int):
+        return ports
     setup_logging()
     go = experiment.resume_loop if args.action == "resume" else experiment.run_loop
     try:
-        stop = go(run_dir, runner, compute, args.max_iters)
+        stop = go(run_dir, ports.runner, ports.compute, args.max_iters)
     except (experiment.ResumeMismatch, experiment.InflightPending, TaskInvalid) as exc:
         # 三者都是"现状不允许往下跑"：把那句话原样给协调层，别留半个栈让人猜（P-7）
         print(str(exc), file=sys.stderr)
