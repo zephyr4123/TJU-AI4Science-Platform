@@ -1,0 +1,6 @@
+# 领域包：PEtab 参数估计工具链（pyPESTO + petab + libroadrunner）。
+# 按工具链命名不按学科：平台看到的是"若干参数最小化一个 NLL"这个形状，学科在任务包 source 指回的案例卡里。
+# 字段只收有读取点的：id 与 display_name（framework/contracts/packs.py 只查文件存在，读取点在纲领 packs.md §3）。
+# prompts/experiment.md 与 skills/*/SKILL.md 由 ai4sci run new 快照进 run，随执行层提示的「领域约定」段注入。
+id: petab
+display_name: PEtab 参数估计
