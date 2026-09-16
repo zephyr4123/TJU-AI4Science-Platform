@@ -19,6 +19,7 @@
 4. `evaluate.py` 是裁判：**NLL 必须由它用同一份 PEtab 问题重新算**，不许读 `code/` 自己报的分数。`code/` 只产出参数向量。
 5. 拒收产物（文件缺失、长度不对、名字不对、NaN、越界）时：打一句话到 stderr，`raise SystemExit(非零)`，**不写 results.json，不抛 traceback**。
 6. 注释用中文，写"为什么"，不复述代码在做什么。文件短、单入口、可调参数集中放顶上并注明含义。不写没人用的函数。
+7. 行宽不超过 100 列，`harness/` 下的 Python 要过平台的 ruff（E / F / W / B / I / BLE / UP）；`code/` 不查 lint。
 
 ## manifest.yaml（只读，照它的指标名与预算写）
 

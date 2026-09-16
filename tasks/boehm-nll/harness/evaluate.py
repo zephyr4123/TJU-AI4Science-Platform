@@ -36,7 +36,7 @@ def _fail(code: int, message: str) -> None:
 def _elapsed_s() -> float:
     raw = os.environ.get("AI4SCI_START_EPOCH")
     if not raw:
-        _fail(5, "拿不到墙钟:AI4SCI_START_EPOCH 未设(须由 harness/launcher.sh 起跑,而非单独调用 evaluate.py)")
+        _fail(5, "拿不到墙钟:AI4SCI_START_EPOCH 未设(须由 harness/launcher.sh 起跑,不能单独调用)")
     try:
         started = float(raw)
     except ValueError:
