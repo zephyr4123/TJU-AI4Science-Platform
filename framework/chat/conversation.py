@@ -16,6 +16,7 @@ import json
 import logging
 import math
 import os
+import re
 import secrets
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
@@ -32,6 +33,10 @@ TRANSCRIPT_NAME = "transcript.md"
 INFLIGHT_NAME = "inflight.json"
 TIMEOUT_ENV = "AI4SCI_COORDINATOR_TIMEOUT_S"
 DEFAULT_TIMEOUT_S = 900.0
+# transcript.md 里一轮的样子；写在 `_close_turn`，读在 `read_turns`，两处必须同步改
+TURN_HEADING = "## 第 {n} 轮"
+TURN_RE = re.compile(r"^## 第 (\d+) 轮\n\n\*\*人\*\*：(.*?)\n\n\*\*agent\*\*：(.*?)"
+                     r"(?=\n## 第 \d+ 轮\n|\Z)", re.S | re.M)
 
 
 class ConversationNotFound(FileNotFoundError):
@@ -112,6 +117,13 @@ def list_conversations(runs_root: Path) -> list[Conversation]:
             if (p / META_NAME).is_file()]
 
 
+def read_turns(conv: Conversation) -> list[dict[str, Any]]:
+    """把 transcript.md 读回成一轮一条 {turn, message, reply}：页面要的是结构，不是 markdown。"""
+    text = (conv.dir / TRANSCRIPT_NAME).read_text(encoding="utf-8")
+    return [{"turn": int(n), "message": message.strip(), "reply": reply.strip()}
+            for n, message, reply in TURN_RE.findall(text)]
+
+
 def send(
     conv: Conversation, chat: Chat, message: str, *, system_prompt: str,
     allowed_paths: list[Path], bash_rules: tuple[str, ...], timeout_s: float | None = None,
@@ -175,6 +187,6 @@ def _close_turn(conv: Conversation, turn_n: int, message: str, event: ChatEvent)
     conv.save()
     reply = event.text if event.kind == "done" else f"（这一轮没走完：{event.text}）"
     with (conv.dir / TRANSCRIPT_NAME).open("a", encoding="utf-8") as fh:
-        fh.write(f"\n## 第 {turn_n} 轮\n\n**人**：{message}\n\n**agent**：{reply}\n")
+        fh.write(f"\n{TURN_HEADING.format(n=turn_n)}\n\n**人**：{message}\n\n**agent**：{reply}\n")
     LOGGER.info("chat_turn_end chat_id=%s turn=%d kind=%s cost_usd=%s session=%s",
                 conv.chat_id, turn_n, event.kind, event.cost_usd, conv.session_id or "-")

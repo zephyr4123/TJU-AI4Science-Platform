@@ -16,6 +16,22 @@ from tests.fixtures.scripted_chat import ScriptedChat, reply, with_tool
 CATALOG = [{"name": "design", "level": "task"}, {"name": "experiment", "level": "run"}]
 
 
+def flow_check(steps: list[str]) -> dict:
+    """剧本版：与 cli.serve._flow_check 同形状，只认 CATALOG 里的名字。"""
+    known = {c["name"] for c in CATALOG}
+    unknown = [s for s in steps if s not in known]
+    return {"steps": steps, "problems": [f"没有这些能力：{unknown}"] if unknown else []}
+
+
+def ui_dir(tmp_path):
+    """一个最小的页面构建目录：index.html 与一个带哈希名的 assets 文件。"""
+    root = tmp_path / "dist"
+    (root / "assets").mkdir(parents=True)
+    (root / "index.html").write_text("<!doctype html><title>ai4sci</title>", encoding="utf-8")
+    (root / "assets" / "app-abc123.js").write_text("console.log(1)", encoding="utf-8")
+    return root
+
+
 @pytest.fixture
 def served(tmp_path):
     chat = ScriptedChat([reply("你好"), with_tool("三个", "Bash", {"command": "ls"}, "a\nb")])
@@ -26,7 +42,8 @@ def served(tmp_path):
         return chat
 
     server = ChatServer(("127.0.0.1", 0), runs_root=tmp_path / "runs", cwd=tmp_path,
-                        catalog=lambda: CATALOG, chat_factory=factory, system_prompt="指南")
+                        catalog=lambda: CATALOG, flow_check=flow_check, chat_factory=factory,
+                        system_prompt="指南", ui_dir=ui_dir(tmp_path))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -84,7 +101,10 @@ def test_chat_lifecycle_over_http(served):
 
     status, _, body = call(base, f"/chats/{chat_id}")
     doc = json.loads(body)
-    assert status == 200 and doc["turns"] == 2 and "## 第 2 轮" in doc["transcript"]
+    assert status == 200 and doc["turns"] == [
+        {"turn": 1, "message": "你好", "reply": "你好"},
+        {"turn": 2, "message": "有几个？", "reply": "三个"}]
+    assert "## 第 2 轮" in doc["transcript"]
     status, _, body = call(base, "/chats")
     assert status == 200 and [c["chat_id"] for c in json.loads(body)] == [chat_id]
 
@@ -93,7 +113,6 @@ def test_error_status_codes(served, tmp_path):
     base, _ = served
     assert call(base, "/chats/nope")[0] == 404
     assert call(base, "/chats/nope/messages", {"text": "x"})[0] == 404
-    assert call(base, "/nothing")[0] == 404
     status, _, body = call(base, "/chats", {"backend": "nope"})
     assert status == 400 and "nope" in json.loads(body)["error"]
     chat_id = json.loads(call(base, "/chats", {})[2])["chat_id"]
@@ -111,3 +130,91 @@ def test_bad_json_body_is_400(served):
     with pytest.raises(urllib.error.HTTPError) as exc:
         urllib.request.urlopen(req, timeout=10)
     assert exc.value.code == 400
+
+
+# ── 看板端点、两颗键、静态页 ──────────────────────────────────────────────
+def test_task_board_and_publish_key(served, tmp_path):
+    from tests.fixtures.packs_factory import make_pack
+
+    base, _ = served
+    pack = make_pack(tmp_path, published=False)
+    status, _, body = call(base, "/tasks")
+    rows = json.loads(body)
+    assert status == 200 and [r["id"] for r in rows] == ["toy"]
+    assert rows[0]["stage"] == "drafting" and rows[0]["publish"]["ok"] is False
+
+    status, _, body = call(base, "/tasks/toy")
+    doc = json.loads(body)
+    assert status == 200 and doc["design"] and doc["headroom"]["metric"] == "val_mse"
+    assert call(base, "/tasks/nope")[0] == 404
+    assert call(base, "/tasks/../etc")[0] == 404
+
+    assert call(base, "/tasks/toy/publish", {})[0] == 400  # 不署名不发
+    status, _, body = call(base, "/tasks/toy/publish", {"by": "张三"})
+    doc = json.loads(body)
+    assert status == 201
+    assert doc["publish"] == {"ok": True, "by": "张三", "at": doc["publish"]["at"], "reason": None}
+    assert doc["stage"] == "baselined" and (pack.task_dir / "publish.json").is_file()
+
+    (pack.task_dir / "design.md").write_text("", encoding="utf-8")  # 空 design 发不了
+    status, _, body = call(base, "/tasks/toy/publish", {"by": "张三"})
+    assert status == 422 and "design.md" in json.loads(body)["error"]
+
+
+def test_run_board_and_accept_key(served, tmp_path):
+    from tests.fixtures.runs_factory import make_run
+
+    base, _ = served
+    assert json.loads(call(base, "/runs")[2]) == []
+    run_dir = make_run(tmp_path)
+    assert run_dir.parent == tmp_path / "runs"
+    status, _, body = call(base, "/runs")
+    rows = json.loads(body)
+    assert status == 200 and rows[0]["run_id"] == run_dir.name and rows[0]["accept"] is None
+    status, _, body = call(base, f"/runs/{run_dir.name}")
+    doc = json.loads(body)
+    assert status == 200 and len(doc["ledger"]) == 3
+    assert call(base, "/runs/nope")[0] == 404
+    assert call(base, "/runs/../runs")[0] == 404
+
+    assert call(base, f"/runs/{run_dir.name}/accept", {"by": ""})[0] == 400
+    status, _, body = call(base, f"/runs/{run_dir.name}/accept", {"by": "李四"})
+    doc = json.loads(body)
+    assert status == 201 and doc["accept"]["by"] == "李四" and doc["accept"]["stale"] is False
+    (run_dir / "experiment" / "inflight.json").write_text("{}", encoding="utf-8")
+    status, _, body = call(base, f"/runs/{run_dir.name}/accept", {"by": "李四"})
+    assert status == 422 and "正在跑" in json.loads(body)["error"]
+
+
+def test_flow_check_endpoint(served):
+    base, _ = served
+    assert call(base, "/flow/check")[0] == 400
+    status, _, body = call(base, "/flow/check?steps=design,experiment")
+    assert status == 200 and json.loads(body) == {"steps": ["design", "experiment"], "problems": []}
+    status, _, body = call(base, "/flow/check?steps=design,nope")
+    assert status == 200 and "nope" in json.loads(body)["problems"][0]
+
+
+def test_static_page_and_spa_fallback(served):
+    base, _ = served
+    status, ctype, body = call(base, "/")
+    assert status == 200 and ctype.startswith("text/html") and "ai4sci" in body
+    status, ctype, body = call(base, "/assets/app-abc123.js")
+    assert status == 200 and "javascript" in ctype
+    status, ctype, body = call(base, "/some/client/route")  # 单页应用的路由回 index.html
+    assert status == 200 and ctype.startswith("text/html")
+    assert call(base, "/nothing")[0] == 200  # 同上：不是接口前缀的路径都归页面
+    assert call(base, "/chats/x/y/z")[0] == 404  # 接口前缀下的怪路径还是 404
+
+
+def test_no_ui_dir_says_how_to_build(tmp_path):
+    server = ChatServer(("127.0.0.1", 0), runs_root=tmp_path / "runs", cwd=tmp_path,
+                        catalog=lambda: CATALOG, flow_check=flow_check, system_prompt="指南")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, _, body = call(f"http://127.0.0.1:{server.server_address[1]}", "/")
+        assert status == 404 and "npm run build" in json.loads(body)["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
