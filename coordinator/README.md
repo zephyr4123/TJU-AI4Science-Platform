@@ -33,7 +33,7 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 | `loop run` 退 1 说有 in-flight | 上次被杀在半路 | `ai4sci loop resume <id>`；对不上就停下来找人，不要手改 checkpoint |
 | `cap analysis` 退 1 | 执行层越界 / 没写出 / 形状不合约 | 看 stderr 那一句；重跑会把旧 `analysis/` 改名 `analysis_v1` 留档 |
 | `cap verify` 退 1 | 分析里有编的数、正文有表外的数、账本对不上 | 读 `verify/report.json` 的 `details`；数字问题重跑 `cap analysis`，账本问题停下来找人 |
-| `cap verify` 退 0 | 这份分析的数字全部可回溯 | 把结论与 run id 记进 `journal.md` |
+| `cap verify` 退 0 | 这份分析的数字全部可回溯 | 把结论与 run id 记进 `journal.md`，然后**请人验收**：页面「结果」看板上的验收键，或终端里的 `ai4sci run accept <id> --by <人名>`。**你不替人按**——它签的是这一版 best 与验证结论，best 再变记录就失效 |
 
 `runs/<id>/journal.md` 是你的本子：每个决定一行——为什么跑这个能力、看到什么、下一步、指回哪条 issue。框架只建空文件、续命时追一行，其余是你写。
 
@@ -69,4 +69,4 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 
 ## 还没有的
 
-文献、假设、写作三个能力（纲领 workflow §1）等后续版本。`ai4sci cap list` 列出的就是现在全部的能力：接任务与跑基线是 task 级（动任务包），实验、分析、验证是 run 级。停点还没有机器可读的状态文件，`next=` 那一行是给你念给人听的；发布记录 `publish.json` 是现在唯一的钥匙。套餐（固定流）还是这份 README 里的文字，`flow check` 只查一串能力通不通、不跑。
+文献、假设、写作三个能力（纲领 workflow §1）等后续版本。`ai4sci cap list` 列出的就是现在全部的能力：接任务与跑基线是 task 级（动任务包），实验、分析、验证是 run 级。两颗人按的键都有记录：需求的 `publish.json`、结果的 `accept.json`；中间的停点没有状态文件，`next=` 那一行是给你念给人听的。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、按键，看板显示的就是这些文件。套餐（固定流）还是这份 README 里的文字，`flow check` 只查一串能力通不通、不跑。
