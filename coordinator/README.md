@@ -37,6 +37,31 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 
 `runs/<id>/journal.md` 是你的本子：每个决定一行——为什么跑这个能力、看到什么、下一步、指回哪条 issue。框架只建空文件、续命时追一行，其余是你写。
 
+## 固定流之二：接一个真任务（设计流程手工版）
+
+设计能力还没有描述符与子命令；这条流是它的手工版，外层 [#40](https://github.com/zephyr4123/TJU-AI4Science/issues/40) 用学长案例二走过一遍。前提：外层 `docs/cases/<slug>/` 有案例卡，`domains/<d>/` 有领域包（没有就先建，见纲领 packs §3）。
+
+1. **协调层填 `manifest.yaml`**：`format_version: 1`、`id`、`domain`、`source` 指回案例卡、`question`、指标与方向、预算与统计门。数字是决策，理由写在注释里；拿不准的问人。
+2. **准备 `data/` 与 `env/`**：问题定义放 `data/`，来源与许可写进 `data/README.md`；`env/python-version` 一行，`env/requirements.lock` 是完整的 `pip freeze`（`uv pip sync` 要列全）。`ai4sci task env build tasks/<id>` 建出 `.venv/`。
+3. **起执行层写 harness 与基线**：提示模板 `coordinator/prompts/design-harness.md`，填四段（manifest、产物契约、领域 skill 正文、参考实现）。走平台自己的执行层端口，只放行 `harness/` 与 `code/`，日志留档：
+
+   ```python
+   from backends.claude_code import ClaudeCodeRunner
+   from framework.executor.session import run_session
+   result = run_session(ClaudeCodeRunner(), prompt, cwd=task_dir,
+                        allowed_paths=[task_dir / "harness", task_dir / "code"],
+                        log_dir=runs_root / f"design-{task_id}" / "executor" / "session-1",
+                        timeout_s=900)
+   ```
+
+   `AI4SCI_EXECUTOR_MODEL=sonnet`。看 `result.changed_files` 是否只落在那两个目录，读它收尾的三行自述（写了什么、不确定什么、建议校验什么）。
+4. **协调层补执行层做不了的两步**：隔离会话没有 Bash，`chmod +x harness/*.sh` 与 `shasum -a 256 launcher.sh evaluate.py make_run0.sh > harness/SHA256SUMS` 由你做。
+5. **人签 `evaluate.py`**：判分只能由 harness 用问题定义重算，`code/` 自报的分数不进 `results.json`；拒收路径退非零、不写 `results.json`、不抛 traceback。签字前不跑基线。
+6. **`bash harness/make_run0.sh` → `ai4sci task validate tasks/<id>` 退 0**。validate 的报错一行一条，喂回第 3 步再起一个会话改，不要自己替执行层改。
+7. **案例卡回填**任务包路径、run_0 与 σ，然后进固定流之一。
+
+σ 大不是错：多起点随机性大的基线，统计门就严，改进必须超过基线自己的抖动才算数。要不要放宽 `accept_sigma` 是人的决定，改了写进 manifest 注释。
+
 ## 什么时候找人
 
 - manifest 要填或要改（方向、预算、统计门、验收判据）：这是人 + 你一起拍板的值，不要自己编。
@@ -52,4 +77,4 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 
 ## 还没有的
 
-文献、假设、设计、写作四个能力（纲领 workflow §1）：0.2.0 里设计用现成任务包代替，其余等后续版本；现在 `ai4sci cap list` 列出的就是全部。
+文献、假设、写作三个能力（纲领 workflow §1）等后续版本；设计能力现在是上面的手工流，`mlp-regression`（手写）与 `boehm-nll`（执行层写）两个实例已有，描述符与 `ai4sci cap design` 从这两个实例抽（P-12）。`ai4sci cap list` 列出的就是现在全部的能力。
