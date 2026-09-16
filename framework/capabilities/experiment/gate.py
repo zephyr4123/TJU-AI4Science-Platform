@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from framework.contracts.headroom import gate_height
 from framework.run.context import RunContext
 
 # 分数与 best 完全相同：几乎只有"改动没生效"一种解释（rahman-1 第 2 轮：逐起点调优化器时换撒点
@@ -14,13 +15,9 @@ NO_EFFECT_NOTE = "持平 delta=0：分数与 best 完全相同，改动很可能
 
 
 def gate(ctx: RunContext) -> float:
-    """统计门的高度：`max(accept_sigma×σ, min_delta)`。
-
-    σ 会退化：run_0 的几次重复完全一致时 σ=0，`accept_sigma×σ` 也就是 0，那时任何
-    一点点差值都算"改进"，统计门形同虚设。`budget.min_delta` 是这种情况下的兜底最小
-    改进量，两者取大的那个——门只会被抬高，不会被放低（M4）。
-    """
-    return max(ctx.accept_sigma * ctx.sigma, ctx.min_delta)
+    """统计门的高度。算式只有一处定义（`contracts.headroom.gate_height`）：接任务的预检与
+    内环的比较用的是同一个门，预检说"有空间"内环就不会用另一把尺子。"""
+    return gate_height(ctx.accept_sigma, ctx.sigma, ctx.min_delta)
 
 
 def compare(ctx: RunContext, best_metric: float, metric: float) -> tuple[str, str]:

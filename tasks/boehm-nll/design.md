@@ -1,6 +1,6 @@
 # design.md · 给执行层的产物契约与基线策略
 
-协调层写，执行层照它写 `harness/` 与 `code/`（`ai4sci task design` 把它原样贴进提示）。这份是第一个真任务的样本：第一版按单次 NLL 写，2026-09-16 改成 3 个内部 seed 的均值（理由见 manifest.yaml 顶部注释，外层 #40），下面是改后的契约。
+协调层写，执行层照它写 `harness/` 与 `code/`（`ai4sci cap design` 把它原样贴进提示；发布签的就是它和 manifest）。这份是第一个真任务的样本：第一版按单次 NLL 写，2026-09-16 改成 3 个内部 seed 的均值（理由见 manifest.yaml 顶部注释，外层 #40），下面是改后的契约。
 
 ## code/optimize.py 产出什么
 

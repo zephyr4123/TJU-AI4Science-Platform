@@ -30,11 +30,12 @@ from framework.capabilities.experiment import (
     resume_loop,
     run_loop,
 )
+from framework.contracts import publish
 from framework.memory import ledger
 from framework.run import gitwork
 from framework.run.checkpoint import read_checkpoint, write_checkpoint
 from framework.run.context import TaskInvalid, default_runs_root, load_context
-from framework.run.lifecycle import extend_run, new_run
+from framework.run.lifecycle import NotPublished, extend_run, new_run
 from tests.fixtures import packs_factory as pf
 from tests.fixtures.scripted_backend import ScriptedRunner, ScriptExhausted, write_train
 
@@ -511,14 +512,12 @@ def make_flat_pack(tmp_path: Path, **budget: object) -> pf.Pack:
 
 
 def test_zero_sigma_without_min_delta_fails_closed(tmp_path):
+    """门是 0 在 run new 的预检就停（外层 #48），不留一个开了跑不了的 run；loop 那道检查仍在。"""
     pack = make_flat_pack(tmp_path)
-    run_dir = new_run(pack.task_dir, tmp_path / "runs", "r-flat",
-                           domains_root=pack.domains_root)
-    runner = ScriptedRunner([train_for_mse(0.0299)])
     with pytest.raises(TaskInvalid) as exc:
-        run_loop(run_dir, runner, LocalCompute(), max_iters=1)
+        new_run(pack.task_dir, tmp_path / "runs", "r-flat", domains_root=pack.domains_root)
     assert "min_delta" in str(exc.value) and "σ=0" in str(exc.value)
-    assert runner.calls == 0, "门都立不起来就不该开跑"
+    assert not (tmp_path / "runs" / "r-flat").exists(), "门都立不起来就不该建 run"
 
 
 def test_min_delta_is_the_gate_when_sigma_is_zero(tmp_path):
@@ -610,7 +609,11 @@ def test_new_run_lays_out_the_disk_and_rejects_broken_packs(tmp_path):
     with pytest.raises(FileExistsError):
         new_run(pack.task_dir, tmp_path / "runs", "r1", domains_root=pack.domains_root)
 
+    # 发布后改了 manifest：先撞钥匙（需求变了要人重新看），重新签了钥匙才轮到契约校验
     (pack.task_dir / "manifest.yaml").write_text("id: toy\n", encoding="utf-8")
+    with pytest.raises(NotPublished, match="改过了"):
+        new_run(pack.task_dir, tmp_path / "runs", "r2", domains_root=pack.domains_root)
+    publish.write_record(pack.task_dir, by="t")
     with pytest.raises(TaskInvalid):
         new_run(pack.task_dir, tmp_path / "runs", "r2", domains_root=pack.domains_root)
 

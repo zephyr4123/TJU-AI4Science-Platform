@@ -1,0 +1,9 @@
+{
+  "format_version": 1,
+  "published_at": "2026-09-16T11:00:01+00:00",
+  "by": "zephyr",
+  "files": {
+    "manifest.yaml": "b24b441d482a3e998f9c63c6b77c4cdb0698216a95745767701ff45831d405e6",
+    "design.md": "331b7c556d34f71dfc79c9c499bc4ec81040c865dc8b1a6f597353aabf9afae7"
+  }
+}

@@ -27,8 +27,8 @@ from framework.run.context import strip_frontmatter
 
 LOGGER = logging.getLogger("ai4sci.design")
 TEMPLATE = Path(__file__).resolve().parent / "design_prompt.md"
-# 协调层写给执行层的产物契约与基线策略，放任务根：它是 harness 的出处，和 manifest 一样留在包里
-BRIEF_NAME = "design.md"
+# 协调层写给执行层的产物契约与基线策略；文件名归 contracts（发布签的就是它），这里只是转出
+BRIEF_NAME = packs.BRIEF_NAME
 # 执行层只许改这两个目录（纲领 packs.md §2：harness 由设计步骤写、之后锁死；code 是唯一可改处）
 WRITABLE_DIRS = ("harness", "code")
 # lint 规则与 pyproject [tool.ruff] 一致；同一组常数渲染进提示第 7 条，执行层被告知的就是被检查的

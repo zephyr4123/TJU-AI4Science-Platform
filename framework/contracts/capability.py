@@ -23,14 +23,17 @@ from typing import Any
 from backends import Runner
 from compute import Compute
 
-LEVELS = ("run", "project")
+# task：动任务包（接任务、跑基线），产物路径相对任务包目录，入口 run(task_dir, ports, ...)；
+# run：动一个 run，产物路径相对 runs/<run_id>/，入口 run(run_dir, ports, ...)；project 还没有实例
+LEVELS = ("task", "run", "project")
 # 参数只认这三种标量：CLI 与 UI 表单都能直接映射；要更复杂的输入应当是产物文件，不是参数
 PARAM_TYPES: dict[str, type] = {"int": int, "float": float, "str": str}
 
 
 @dataclass(frozen=True)
 class Artifact:
-    """一个产物：相对 `runs/<run_id>/` 的路径（目录以 / 结尾），谁生产它由描述符的归属决定。"""
+    """一个产物：相对根目录的路径（目录以 / 结尾）。根由能力的 level 定：run 级相对
+    `runs/<run_id>/`，task 级相对任务包目录。谁生产它由描述符的归属决定。"""
 
     name: str
     path: str

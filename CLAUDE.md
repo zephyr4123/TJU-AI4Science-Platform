@@ -12,7 +12,7 @@
 | `compute/` | 算力适配器：一个后端一个文件；端口 `Compute` 定义在 `compute/__init__.py` |
 | `tools/` | 确定性脚本：文献 API、引用校验、出图、harness 基类 |
 | `domains/` | 领域包，按工具链命名，一个领域一个目录；`generic/` 兜底、`petab/` 参数估计；`prompts/<能力>.md` 与 `skills/*/SKILL.md` 由 `run new` 快照进 run、随执行层提示的「领域约定」段注入（执行层的隔离参数关掉了 CLI 原生 skill 加载） |
-| `tasks/` | 任务包，一个任务一个目录：`manifest.yaml`（`format_version` 必填）`env/`（python-version + requirements.lock）`harness/` `code/` `data/` `run_0/`，可选 `design.md`（协调层写给执行层的产物契约，`ai4sci task design` 读）；框架起 harness 时保证给 `AI4SCI_PYTHON` `AI4SCI_BUDGET_S` `AI4SCI_INNER_K`（后者来自 `budget.inner_k`），harness 给它们写默认值过不了 `task validate`；`.venv/` 由 `ai4sci task env build` 建，`run_0/` 由 `ai4sci task baseline` 跑，都不进 git |
+| `tasks/` | 任务包，一个任务一个目录：`manifest.yaml`（`format_version` 必填）`design.md`（产物契约与「怎么算好」）`publish.json`（发布记录：`ai4sci task publish` 签前两个文件；`cap design` `cap baseline` `run new` 没它不开，改了要重发）`env/`（python-version + requirements.lock）`harness/` `code/` `data/` `run_0/`；框架起 harness 时保证给 `AI4SCI_PYTHON` `AI4SCI_BUDGET_S` `AI4SCI_INNER_K`（后者来自 `budget.inner_k`），harness 给它们写默认值过不了 `task validate`；`.venv/` 由 `ai4sci task env build` 建，`run_0/` 由 `ai4sci cap baseline` 跑（跑完预检：门与 `metrics[].attainable` 尽头值），都不进 git |
 | `docs/` | 面向接任务的人的指南 |
 | `runs/` | 运行产物，不进 git；每个 run 自带 `.venv/` |
 | `tests/` | 框架测试；单测跟着模块走 |
@@ -25,12 +25,12 @@
 
 | 子包 | 放什么 | 可以 import |
 |---|---|---|
-| `cli/` | 一个子命令一个模块（`task` `run` `loop` `cap` `status`），`__init__` 装配 parser 并导出 `main`；`cap` 的子命令从能力描述符生成 | 下面全部 |
-| `capabilities/` | 一个能力一个子包，互不 import，每个导出 `DESCRIPTOR` 与 `run(run_dir, ports, **params)`，`discover()` 扫目录并断言签名；`experiment/` 实验内环（`loop` / `judge` / `gate` / `failures` / `prompt.md`）、`analysis/` 分析（`analyze` + `prompt.md`）、`verify/` 验证（`checks` 零模型） | executor、memory、run、contracts |
-| `executor/` | 组 prompt（`prompting`）、起执行层会话并留档日志（`session`）、接任务的设计步骤（`design` + `design_prompt.md`：执行层写 harness 与基线草稿，框架封 harness、ruff、校验；不是能力，因为它动的是任务包不是 run） | memory、run、contracts |
+| `cli/` | 一个子命令一个模块（`task` `run` `loop` `cap` `flow` `status`），`__init__` 装配 parser 并导出 `main`；`cap` 的子命令从能力描述符生成（位置参数按 level：run 级 run_id、task 级任务包目录），`flow check` 按描述符对吃吐文件说一串能力通不通 | 下面全部 |
+| `capabilities/` | 一个能力一个子包，互不 import，每个导出 `DESCRIPTOR` 与 `run(run_dir, ports, **params)`（task 级是 `run(task_dir, ports, ...)`），`discover()` 扫目录并按 level 断言签名；task 级：`design/` 接任务（薄壳，干活的在 executor）、`baseline/` 跑基线 + 预检；run 级：`experiment/` 实验内环（`loop` / `judge` / `gate` / `failures` / `prompt.md`）、`analysis/` 分析（`analyze` + `prompt.md`）、`verify/` 验证（`checks` 零模型） | executor、memory、run、contracts |
+| `executor/` | 组 prompt（`prompting`）、起执行层会话并留档日志（`session`）、接任务的设计步骤（`design` + `design_prompt.md`：执行层写 harness 与基线草稿，框架封 harness、ruff、校验；能力 `capabilities/design` 是它的薄壳） | memory、run、contracts |
 | `memory/` | 账本 `ledger`、实验笔记 `notebook`；项目级记忆以后加在这 | run、contracts |
 | `run/` | 一个 run 的磁盘状态：`layout` 路径、`checkpoint`、`context` 只读上下文、`lifecycle` 建 run / 续命 / 能力目录轮转、`gitwork`、`artifacts` 结果索引 | contracts |
-| `contracts/` | `schemas/*.json`、任务包发现与校验 `packs`、任务环境 `env`（读 env/、uv 建 venv）、产物读取 `results`、能力描述符与入口形状 `capability`、`analysis.md` 数据表契约 `analysis`、验证报告 `report` | 谁都不 import（framework 内） |
+| `contracts/` | `schemas/*.json`、任务包发现与校验 `packs`、发布记录 `publish`（钥匙）、接任务预检 `headroom`（门高的唯一定义）、流通不通 `flow`、任务环境 `env`（读 env/、uv 建 venv）、产物读取 `results`、能力描述符与入口形状 `capability`、`analysis.md` 数据表契约 `analysis`、验证报告 `report` | 谁都不 import（framework 内） |
 
 `backends/` 与 `compute/` 是端口：framework 任何子包都可以 import 它们，它们不许 import framework。这条与上表都由 `tests/test_layering.py` 用 ast 逐条查，不是靠人 review。
 

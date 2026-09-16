@@ -19,13 +19,14 @@ from typing import Any
 
 import yaml
 
-from framework.contracts import env, packs
+from framework.contracts import env, headroom, packs, publish
 from framework.run import gitwork, layout
 from framework.run.checkpoint import read_checkpoint, write_checkpoint
 from framework.run.context import TaskInvalid, load_manifest, primary_metric
 
-__all__ = ["TaskInvalid", "EnvBuildError", "new_run", "extend_run"]
+__all__ = ["TaskInvalid", "EnvBuildError", "NotPublished", "new_run", "extend_run"]
 EnvBuildError = env.EnvBuildError
+NotPublished = publish.NotPublished
 
 LOGGER = logging.getLogger("ai4sci.run")
 
@@ -37,16 +38,21 @@ IGNORED_DIRS = (".git", layout.EXECUTOR_SCRATCH, "__pycache__", env.VENV_DIRNAME
 def new_run(
     task_dir: Path, runs_root: Path, run_id: str, *, domains_root: Path | None = None
 ) -> Path:
-    """建 runs/<run_id>/：校验 → 拷 work/ → 快照领域包 → 建任务环境 → git init → 记基线。
+    """建 runs/<run_id>/：钥匙 → 校验 → 预检 → 拷 work/ → 快照领域包 → 建环境 → git init → 基线。
 
-    环境建不出来就把半截的 run 目录删掉再抛：一个没有环境的 run 跑不了任何一轮，留着只会让
-    `loop run` 在更晚的地方以更难懂的方式失败。
+    开跑是花钱的第一步，所以三道门都在这：需求没发布不开（`NotPublished`）、包不合约不开、
+    预检说这道题无解不开（都是 `TaskInvalid`）。环境建不出来就把半截的 run 目录删掉再抛：
+    一个没有环境的 run 跑不了任何一轮，留着只会让 `loop run` 在更晚的地方以更难懂的方式失败。
     """
     task_dir = Path(task_dir).resolve()
-    domains_root = Path(domains_root) if domains_root else task_dir.parent.parent / "domains"
+    publish.require_published(task_dir)
+    domains_root = Path(domains_root) if domains_root else packs.default_domains_root(task_dir)
     problems = packs.validate_task(task_dir, domains_root)
     if problems:
         raise TaskInvalid("任务包不合契约，不开跑：\n" + "\n".join(problems))
+    problems = headroom.assess(task_dir).problems()
+    if problems:
+        raise TaskInvalid("预检没过，不开跑：\n" + "\n".join(problems))
 
     run_dir = Path(runs_root).resolve() / run_id
     if run_dir.exists():

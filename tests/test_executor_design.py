@@ -35,7 +35,7 @@ GOOD_DRAFT = {
 @pytest.fixture
 def pack(tmp_path):
     """接任务那一刻的任务包：有 manifest、env、data、design.md，没有 harness、code、run_0。"""
-    made = pf.make_pack(tmp_path)
+    made = pf.make_pack(tmp_path, published=False)
     for name in ("harness", "run_0", "code"):
         shutil.rmtree(made.task_dir / name)
     (made.task_dir / design.BRIEF_NAME).write_text(BRIEF, encoding="utf-8")

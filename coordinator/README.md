@@ -39,17 +39,18 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 
 ## 固定流之二：接一个真任务
 
-前提：外层 `docs/cases/<slug>/` 有案例卡（或研究者当面给的材料），`domains/<d>/` 有领域包（没有就先建，见纲领 packs §3）。第一个真任务 boehm-nll（外层 [#40](https://github.com/zephyr4123/TJU-AI4Science/issues/40)）是手工走的，设计那一步现在是按钮（外层 [#41](https://github.com/zephyr4123/TJU-AI4Science/issues/41)）。
+前提：外层 `docs/cases/<slug>/` 有案例卡（或研究者当面给的材料），`domains/<d>/` 有领域包（没有就先建，见纲领 packs §3）。第一个真任务 boehm-nll（外层 [#40](https://github.com/zephyr4123/TJU-AI4Science/issues/40)）是手工走的；接任务与跑基线现在都是按钮（外层 [#41](https://github.com/zephyr4123/TJU-AI4Science/issues/41) [#49](https://github.com/zephyr4123/TJU-AI4Science/issues/49)），流程往下走的钥匙是人按的发布（外层 [#48](https://github.com/zephyr4123/TJU-AI4Science/issues/48)）。
 
-**先问三句，不合适当场说清，别让人走到第六步才撞墙**：有一段能跑的代码吗（没有：先一起写出来，或者这还不是实验任务）；一次跑几分钟（一次一天的进不了内环，能不能改成只做推理对账）；出一个数吗、越小还是越大越好（出不了一个数就还没到能调的时候）。
+**先问四句，不合适当场说清，别让人走到第七步才撞墙**：有一段能跑的代码吗（没有：先一起写出来，或者这还不是实验任务）；一次跑几分钟（一次一天的进不了内环，能不能改成只做推理对账）；出一个数吗、越小还是越大越好（出不了一个数就还没到能调的时候）；**值不值得跑——尽头在哪**（外层 [#42](https://github.com/zephyr4123/TJU-AI4Science/issues/42)：撒一大批起点探一个尽头值，或拿文献值，写进 manifest 主指标的 `attainable`；基线跑完框架会算"基线到尽头有几个门的空间"，不到一个门直接停，那就要改题——比如改成稳定性——或者松门）。
 
-1. **填 `manifest.yaml`**：`format_version: 1`、`id`、`domain`、`source` 指回案例卡、`question`、指标与方向、预算与统计门；评分内部要重复几次取均值就写 `budget.inner_k`（它决定信噪比，也决定 `wall_clock_s` 要覆盖几次固定开销）。数字是决策，理由写在注释里；拿不准的问人。
+1. **填 `manifest.yaml`**：`format_version: 1`、`id`、`domain`、`source` 指回案例卡、`question`、指标与方向、预算与统计门；评分内部要重复几次取均值就写 `budget.inner_k`（它决定信噪比，也决定 `wall_clock_s` 要覆盖几次固定开销）；探到尽头就写主指标的 `attainable`。数字是决策，理由写在注释里；拿不准的问人。
 2. **准备 `data/` 与 `env/`**：问题定义放 `data/`，来源与许可写进 `data/README.md`；`env/python-version` 一行，`env/requirements.lock` 是完整的 `pip freeze`（`uv pip sync` 要列全）。`ai4sci task env build tasks/<id>` 建出 `.venv/`。
-3. **写 `design.md`**（任务根）：给执行层的产物契约与基线策略——`code/` 写什么文件、什么形状；`evaluate.py` 查什么、怎么用 `data/` 重算指标、退出码；基线用什么策略（研究者给的那个，不要替他调好）。这是你和人拍板的东西，执行层照它写。`tasks/boehm-nll/design.md` 是样本。
-4. **按按钮**：`AI4SCI_EXECUTOR_MODEL=sonnet ai4sci task design tasks/<id>`。框架起执行层写 `harness/` 与 `code/` 草稿（只放行这两个目录），回来自己加执行位、写 SHA256SUMS、跑 ruff、跑 validate（此时不查 run_0），stdout 一行结论（`next=` 说停在哪），stderr 一行一条问题，然后停。退 1 就把 stderr 喂回去：`ai4sci task design tasks/<id> --feedback @<文件>`，执行层会看到现状文件照着改；**不要自己替它改 harness**。日志在 `runs/design-<id>/executor/session-N/`（提示原文、事件流、自述）。
-5. **人签 `evaluate.py`**：判分只能由 harness 用问题定义重算，`code/` 自报的分数不进 `results.json`；拒收路径退非零、不写 `results.json`、不抛 traceback。签字前不跑基线。要改就回第 4 步喂反馈。
-6. **`ai4sci task baseline tasks/<id>` → `ai4sci task validate tasks/<id>` 退 0**。基线由框架起，预算与 `budget.inner_k` 和内环用同一组环境变量，不要自己 `bash make_run0.sh`。
-7. **案例卡回填**任务包路径、run_0 与 σ，然后进固定流之一。
+3. **写 `design.md`**（任务根）：给执行层的产物契约与基线策略——`code/` 写什么文件、什么形状；`evaluate.py` 查什么、怎么用 `data/` 重算指标、退出码；基线用什么策略（研究者给的那个，不要替他调好）。这就是「怎么算好」的人话版，人签字签的是它，不是代码。`tasks/boehm-nll/design.md` 是样本。
+4. **人发布**：`ai4sci task publish tasks/<id> --by <人名>`。这是需求看板上那颗键，**你不替人按**：把 manifest 与 `design.md` 念给人听，人说"对"再按。没发布，后面的按钮一个都不开；发布后改了这两个文件，钥匙失效，得重新发布。
+5. **按按钮**：`AI4SCI_EXECUTOR_MODEL=sonnet ai4sci cap design tasks/<id>`。框架起执行层写 `harness/` 与 `code/` 草稿（只放行这两个目录），回来自己加执行位、写 SHA256SUMS、跑 ruff、跑 validate（此时不查 run_0），stdout 一行结论（`next=` 说停在哪），有问题一行一条在 stderr、退 1。退 1 就把 stderr 喂回去：`ai4sci cap design tasks/<id> --feedback @<文件>`，执行层会看到现状文件照着改；**不要自己替它改 harness**。日志在 `runs/design-<id>/executor/session-N/`（提示原文、事件流、自述）。
+6. **核对裁判，人不读代码**：把 `harness/evaluate.py` 和 `design.md` 的「怎么算好」逐条对——算的指标、拿什么数据重算、拒收什么、退出码。一致就告诉人"一致"；有出入就说清哪条（"起点数写死了"），喂回第 5 步。这是模型核对模型写的东西，漏了整个跑就在错的尺子上量，所以「怎么算好」原文要一直跟到结果页。
+7. **`ai4sci cap baseline tasks/<id>` → `ai4sci task validate tasks/<id>` 退 0**。基线由框架起，预算与 `budget.inner_k` 和内环用同一组环境变量，不要自己 `bash make_run0.sh`。跑完框架预检：门是 0、或基线到尽头不到一个门，退 1 并说清，别硬跑；退 0 那一行带 `baseline / sigma / gate / room`，念给人听即可，不用等人点头。
+8. **案例卡回填**任务包路径、run_0 与 σ，然后进固定流之一。拼单点之前可以先问一句通不通：`ai4sci flow check design baseline experiment analysis verify`。
 
 σ 大不是错：多起点随机性大的基线，统计门就严，改进必须超过基线自己的抖动才算数。要不要放宽 `accept_sigma` 是人的决定，改了写进 manifest 注释。
 
@@ -68,4 +69,4 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 
 ## 还没有的
 
-文献、假设、写作三个能力（纲领 workflow §1）等后续版本。设计那一步是 `ai4sci task design`（`framework/executor/design.py`，不是能力：能力的入口是 run 目录，设计动的是任务包），升格成带描述符的能力、进 `ai4sci cap`，等面板要把它当节点画时再做。停点还没有机器可读的状态文件，`next=` 那一行是给你念给人听的。`ai4sci cap list` 列出的就是现在全部的能力。
+文献、假设、写作三个能力（纲领 workflow §1）等后续版本。`ai4sci cap list` 列出的就是现在全部的能力：接任务与跑基线是 task 级（动任务包），实验、分析、验证是 run 级。停点还没有机器可读的状态文件，`next=` 那一行是给你念给人听的；发布记录 `publish.json` 是现在唯一的钥匙。套餐（固定流）还是这份 README 里的文字，`flow check` 只查一串能力通不通、不跑。

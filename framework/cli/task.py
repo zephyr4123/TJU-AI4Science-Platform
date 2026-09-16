@@ -1,41 +1,21 @@
-"""`ai4sci task validate|list|env build|design`：任务包这一侧的驱动面。
+"""`ai4sci task validate|list|env build|publish`：任务包这一侧的驱动面。
 
-在 cli 层。校验、列表、建环境只调 contracts；`design` 是接任务时协调 agent 按的那个按钮，
-它要执行层端口，所以还调 executor（`executor.design`）。跑完即退，停点用一行 `next=` 说给
-协调层听，要不要按下一步是人的事（P-10）。
+在 cli 层，只调 contracts。接任务与跑基线两个按钮是 task 级能力，走 `ai4sci cap design|baseline`
+（子命令从描述符生成），不在这里。`publish` 是需求看板上那颗键：人按的，协调 agent 不该替人按。
 """
 
 from __future__ import annotations
 
 import argparse
-import math
-import os
-import subprocess
+import getpass
 import sys
 from pathlib import Path
 
-import yaml
-
-from framework.cli._common import (
-    EXIT_INVALID,
-    EXIT_OK,
-    EXIT_USAGE,
-    add_runs_root,
-    resolve_ports,
-    runs_root,
-    setup_logging,
-)
-from framework.contracts import env, packs
-from framework.executor.design import BRIEF_NAME, DesignFailed, design_task
+from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE
+from framework.contracts import env, packs, publish
 
 # framework/cli/ 往上两级就是仓根，`task list` 不给 --root 时按它兜底。
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DOMAINS_DIRNAME = "domains"
-
-
-def _default_domains_root(task_dir: Path) -> Path:
-    """缺省领域根：<task_dir>/../../domains，即任务包同一个仓里的 domains/。"""
-    return task_dir.resolve().parent.parent / DOMAINS_DIRNAME
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -43,7 +23,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     if not task_dir.is_dir():
         print(f"任务目录不存在：{task_dir}", file=sys.stderr)
         return EXIT_USAGE
-    domains_root = Path(args.domains) if args.domains else _default_domains_root(task_dir)
+    domains_root = Path(args.domains) if args.domains else packs.default_domains_root(task_dir)
     problems = packs.validate_task(task_dir, domains_root)
     if problems:
         for problem in problems:
@@ -85,85 +65,19 @@ def cmd_env_build(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def cmd_design(args: argparse.Namespace) -> int:
-    """接任务的按钮：执行层写草稿 → 框架封 harness、ruff、validate（不查 run_0）→ 停。"""
+def cmd_publish(args: argparse.Namespace) -> int:
+    """需求看板的发布键：签 manifest.yaml 与 design.md，写 publish.json；后面的按钮都查它。"""
     task_dir = Path(args.task_dir)
     if not task_dir.is_dir():
         print(f"任务目录不存在：{task_dir}", file=sys.stderr)
         return EXIT_USAGE
-    domains_root = Path(args.domains) if args.domains else _default_domains_root(task_dir)
-    feedback = args.feedback or ""
-    if feedback.startswith("@"):
-        path = Path(feedback[1:])
-        if not path.is_file():
-            print(f"--feedback 指的文件不存在：{path}", file=sys.stderr)
-            return EXIT_USAGE
-        feedback = path.read_text(encoding="utf-8")
-    ports = resolve_ports(args.backend, None)
-    if isinstance(ports, int):
-        return ports
-    setup_logging()
     try:
-        outcome = design_task(task_dir, domains_root, ports.runner, runs_root(args),
-                              feedback=feedback)
-    except DesignFailed as exc:
+        record = publish.publish_task(task_dir, by=args.by)
+    except publish.PublishRefused as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
-    for problem in outcome.problems:
-        print(problem, file=sys.stderr)
-    cost = "nan" if math.isnan(outcome.cost_usd) else f"{outcome.cost_usd:.4f}"
-    if outcome.problems:
-        status = "draft"
-        nxt = f"把 stderr 的问题喂回：ai4sci task design {task_dir} --feedback @<文件>"
-    else:
-        status = "ok"
-        nxt = "人签 harness/evaluate.py → bash harness/make_run0.sh → ai4sci task validate"
-    print(f"design {status}\tsession={outcome.session}\tchanged={len(outcome.changed_files)}"
-          f"\tsealed={','.join(outcome.sealed) or '-'}\tlint={len(outcome.lint_problems)}"
-          f"\tvalidate={len(outcome.validate_problems)}\tcost_usd={cost}\tlog={outcome.log_dir}"
-          f"\tnext={nxt}")
-    return EXIT_INVALID if outcome.problems else EXIT_OK
-
-
-def cmd_baseline(args: argparse.Namespace) -> int:
-    """跑 harness/make_run0.sh 出基线：框架给它和内环同一组保证的环境变量。
-
-    为什么不让人直接 `bash harness/make_run0.sh`：launcher 从 AI4SCI_BUDGET_S / AI4SCI_INNER_K
-    读这两个数，人手工起就得自己想着导出，忘了就是一次"看着像跑了"的基线。按钮把两处的
-    环境收成一处（contracts.env.harness_env），基线和内环跑的是同一份约定。
-    """
-    task_dir = Path(args.task_dir).resolve()
-    if not task_dir.is_dir():
-        print(f"任务目录不存在：{task_dir}", file=sys.stderr)
-        return EXIT_USAGE
-    script = task_dir / "harness" / "make_run0.sh"
-    if not script.is_file():
-        print(f"缺 {script.relative_to(task_dir)}：先 ai4sci task design 写出 harness",
-              file=sys.stderr)
-        return EXIT_INVALID
-    python = env.venv_python(task_dir / env.VENV_DIRNAME)
-    if not python.is_file():
-        print(f"任务环境不存在：{python}（先 ai4sci task env build {task_dir}）", file=sys.stderr)
-        return EXIT_INVALID
-    manifest = yaml.safe_load((task_dir / packs.MANIFEST_NAME).read_text(encoding="utf-8"))
-    budget = manifest.get("budget") if isinstance(manifest, dict) else None
-    if not isinstance(budget, dict) or not isinstance(budget.get("wall_clock_s"), (int, float)):
-        print(f"{packs.MANIFEST_NAME} 缺 budget.wall_clock_s，先 ai4sci task validate",
-              file=sys.stderr)
-        return EXIT_INVALID
-    inner_k = budget.get("inner_k", 1)
-    if not isinstance(inner_k, int) or inner_k < 1:
-        print(f"{packs.MANIFEST_NAME} 的 budget.inner_k 要是正整数，实际 {inner_k!r}",
-              file=sys.stderr)
-        return EXIT_INVALID
-    harness_env = env.harness_env(python, float(budget["wall_clock_s"]), inner_k)
-    # stdout / stderr 直通：这是人在看的一步，基线跑出来的 σ 那一行要让人当场看到
-    proc = subprocess.run(["bash", str(script)], cwd=task_dir,
-                          env={**os.environ, **harness_env}, check=False)
-    if proc.returncode != 0:
-        print(f"make_run0.sh 退出码 {proc.returncode}，run_0 不可信", file=sys.stderr)
-        return EXIT_INVALID
-    print(f"ok {task_dir.name}\tinner_k={inner_k}\tnext=ai4sci task validate {task_dir}")
+    print(f"ok {task_dir.resolve().name}\tby={record['by']}\tat={record['published_at']}"
+          f"\tnext=ai4sci cap design {task_dir}")
     return EXIT_OK
 
 
@@ -174,7 +88,8 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     validate = actions.add_parser("validate", help="校验一个任务包是否合契约")
     validate.add_argument("task_dir", help="任务包目录")
     validate.add_argument(
-        "--domains", default=None, help="领域包根目录，缺省 <task_dir>/../../domains"
+        "--domains", default=None,
+        help=f"领域包根目录，缺省 ${packs.DOMAINS_ROOT_ENV} 或 <task_dir>/../../domains",
     )
     validate.set_defaults(func=cmd_validate)
 
@@ -188,23 +103,11 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     building.add_argument("task_dir", help="任务包目录")
     building.set_defaults(func=cmd_env_build)
 
-    designing = actions.add_parser(
-        "design", help="起执行层给任务包写 harness 与基线草稿，封 harness、ruff、校验，然后停"
+    publishing = actions.add_parser(
+        "publish",
+        help="发布需求：人看过 manifest.yaml 与 design.md 后按；写 publish.json，后面的按钮都查它",
     )
-    designing.add_argument("task_dir", help=f"任务包目录，要先有 manifest.yaml 与 {BRIEF_NAME}")
-    designing.add_argument(
-        "--domains", default=None, help="领域包根目录，缺省 <task_dir>/../../domains"
-    )
-    designing.add_argument("--backend", default="claude_code", help="执行层后端名")
-    designing.add_argument(
-        "--feedback", default="", help="喂回执行层的修改意见（改第二版）；写 @<文件> 就读那个文件"
-    )
-    add_runs_root(designing)
-    designing.set_defaults(func=cmd_design)
-
-    baseline = actions.add_parser(
-        "baseline",
-        help="跑 harness/make_run0.sh 出基线，环境变量与内环同一组（解释器、预算、inner_k）",
-    )
-    baseline.add_argument("task_dir", help="任务包目录，要先 task env build")
-    baseline.set_defaults(func=cmd_baseline)
+    publishing.add_argument("task_dir", help="任务包目录")
+    publishing.add_argument("--by", default=getpass.getuser(),
+                            help="谁发布的，记在钥匙上；缺省当前登录名")
+    publishing.set_defaults(func=cmd_publish)

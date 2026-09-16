@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from framework.contracts import publish
+
 # 夹具 harness：形状与真任务一致（清产物 → 训练 → 评分），但只有几行。
 LAUNCHER_SH = """#!/usr/bin/env bash
 set -euo pipefail
@@ -62,6 +64,9 @@ PYTHON_VERSION = f"{sys.version_info[0]}.{sys.version_info[1]}"
 # 只 print 一行"成绩"、什么都不产出的假成功脚本，用来验证 harness 拦得住它。
 FAKE_SUCCESS_TRAIN_PY = 'print("val_mse 0.0001")\n'
 
+# 夹具的 design.md：需求看板聊出来的"怎么算好"，发布签的就是它和 manifest
+BRIEF = "code/ 写 predictions.json：{\"y_pred\": [...]}；evaluate.py 算 val_mse 写 results.json。\n"
+PUBLISHED_BY = "fixture"
 DEFAULT_SEEDS = (42, 43, 44)
 DEFAULT_VALUES = (0.50, 0.52, 0.48)
 
@@ -117,8 +122,13 @@ def make_pack(
     seeds: tuple[int, ...] = DEFAULT_SEEDS,
     values: tuple[float, ...] = DEFAULT_VALUES,
     elapsed_s: float = 1.0,
+    published: bool = True,
 ) -> Pack:
-    """造一个默认合法的任务包；每个参数对应一处可被单独破坏的地方。"""
+    """造一个默认合法的任务包；每个参数对应一处可被单独破坏的地方。
+
+    默认已发布（design.md + publish.json）：夹具代表"接任务那一刻已经过了需求看板"，
+    `run new` 与 task 级能力开门前查的钥匙都在。`published=False` 是没发布那条路的入口。
+    """
     root = tmp_path
     tasks_root = root / "tasks"
     task_dir = tasks_root / (dir_name or task_id)
@@ -137,11 +147,15 @@ def make_pack(
         manifest_text = to_yaml(manifest or default_manifest(task_id))
     text = manifest_text
     (task_dir / "manifest.yaml").write_text(text, encoding="utf-8")
+    (task_dir / "design.md").write_text(BRIEF, encoding="utf-8")
 
     (task_dir / "code" / "train.py").write_text(TRAIN_PY, encoding="utf-8")
     write_env(task_dir)
     write_harness(task_dir)
     write_run0(task_dir, seeds=seeds, values=values, elapsed_s=elapsed_s)
+    if published:
+        # 直接写钥匙不过检查：夹具要能造"发布过的坏包"，坏在哪由各测试自己破坏
+        publish.write_record(task_dir, by=PUBLISHED_BY)
     return Pack(root=root, tasks_root=tasks_root, task_dir=task_dir, domains_root=domains_root)
 
 

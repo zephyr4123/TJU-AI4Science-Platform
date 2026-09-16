@@ -5,6 +5,7 @@
 
     DESCRIPTOR: Capability                       机器可读的自我描述（contracts/capability.py）
     run(run_dir: Path, ports: Ports, *, <params>) -> str   统一入口；失败 raise CapabilityFailed
+    （task 级能力的第一个参数叫 task_dir：它动的是任务包，那时还没有 run）
 
 签名与描述符对不上在这里就断言炸掉，而不是等 CLI 起来才发现某个参数没人读（P-8）。
 `discover()` 是 CLI 与 UI 后端拿能力的唯一入口，测试也走它。
@@ -20,7 +21,8 @@ from types import ModuleType
 from framework.contracts.capability import Capability
 
 ENTRYPOINT = "run"
-LEADING_PARAMS = ("run_dir", "ports")
+# 前两个参数按 level 定：第一个参数的名字就说明了这个能力动的是什么目录
+LEADING_PARAMS_BY_LEVEL = {"task": ("task_dir", "ports"), "run": ("run_dir", "ports")}
 
 
 def discover() -> dict[str, ModuleType]:
@@ -44,15 +46,19 @@ def check_capability_module(package_name: str, module: ModuleType) -> Capability
         f"能力 {package_name} 的描述符名字是 {descriptor.name!r}，必须等于子包名")
     entry = getattr(module, ENTRYPOINT, None)
     assert callable(entry), f"能力 {package_name} 没有导出 {ENTRYPOINT}()"
+    assert descriptor.level in LEADING_PARAMS_BY_LEVEL, (
+        f"能力 {package_name} 的 level {descriptor.level!r} 还没有入口约定"
+        f"（有的：{tuple(LEADING_PARAMS_BY_LEVEL)}）")
+    leading = LEADING_PARAMS_BY_LEVEL[descriptor.level]
     params = inspect.signature(entry).parameters
     names = tuple(params)
-    assert names[: len(LEADING_PARAMS)] == LEADING_PARAMS, (
-        f"能力 {package_name} 的 {ENTRYPOINT}() 前两个参数必须是 {LEADING_PARAMS}，"
-        f"得到 {names[:2]}")
+    assert names[: len(leading)] == leading, (
+        f"能力 {package_name}（level={descriptor.level}）的 {ENTRYPOINT}() 前两个参数必须是 "
+        f"{leading}，得到 {names[:2]}")
     keyword_only = tuple(n for n, p in params.items() if p.kind is inspect.Parameter.KEYWORD_ONLY)
     assert keyword_only == descriptor.param_names(), (
         f"能力 {package_name} 的 {ENTRYPOINT}() 关键字参数 {keyword_only} 与描述符 params "
         f"{descriptor.param_names()} 对不上")
-    assert len(names) == len(LEADING_PARAMS) + len(keyword_only), (
-        f"能力 {package_name} 的 {ENTRYPOINT}() 除 {LEADING_PARAMS} 外只许关键字参数")
+    assert len(names) == len(leading) + len(keyword_only), (
+        f"能力 {package_name} 的 {ENTRYPOINT}() 除 {leading} 外只许关键字参数")
     return descriptor

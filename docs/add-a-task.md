@@ -15,7 +15,8 @@
 ```
 tasks/<name>/
 ├── manifest.yaml        任务声明：问题、指标、预算、验收
-├── design.md            可选：给执行层的产物契约与基线策略（ai4sci task design 读它）
+├── design.md            产物契约与「怎么算好」；发布签它，ai4sci cap design 照它写
+├── publish.json         发布记录：ai4sci task publish 写，后面的按钮都查它
 ├── env/                 任务自带环境
 │   ├── python-version   一行，如 3.14
 │   └── requirements.lock  逐行 name==version；零依赖就留空文件
@@ -94,7 +95,7 @@ env/requirements.lock   numpy==2.5.3
 #!/usr/bin/env bash
 set -euo pipefail
 : "${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON：先 ai4sci task env build <task_dir>}"
-: "${AI4SCI_BUDGET_S:?}"      # 框架与 ai4sci task baseline 都会给
+: "${AI4SCI_BUDGET_S:?}"      # 框架与 ai4sci cap baseline 都会给
 : "${AI4SCI_INNER_K:?}"
 TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$TASK_DIR"
@@ -105,15 +106,18 @@ export AI4SCI_START_EPOCH
 "$AI4SCI_PYTHON" harness/evaluate.py
 ```
 
-`code/` 从环境变量 `AI4SCI_SEED` 拿种子；同一 seed 必须复现同一结果。`make_run0.sh` 照抄 `mlp-regression` 的，只改指标名与种子列表；它由 `ai4sci task baseline` 起，预算与 inner_k 从那里来。
+`code/` 从环境变量 `AI4SCI_SEED` 拿种子；同一 seed 必须复现同一结果。`make_run0.sh` 照抄 `mlp-regression` 的，只改指标名与种子列表；它由 `ai4sci cap baseline` 起，预算与 inner_k 从那里来。
 
-## 4. 三条命令
+## 4. 四条命令
 
 ```bash
 .venv/bin/ai4sci task env build tasks/<name>     # 建 tasks/<name>/.venv
-.venv/bin/ai4sci task baseline tasks/<name>      # 跑 make_run0.sh：基线 + repeat_k 次重复 + σ → run_0/
+.venv/bin/ai4sci task publish tasks/<name> --by <你>   # 发布：签 manifest.yaml 与 design.md，写 publish.json
+.venv/bin/ai4sci cap baseline tasks/<name>       # 跑 make_run0.sh：基线 + repeat_k 次重复 + σ → run_0/，跑完预检
 .venv/bin/ai4sci task validate tasks/<name>       # 退 0 才算接进来了
 ```
+
+没发布，`cap baseline` 与 `run new` 都不开；发布后改了 manifest 或 design.md 要重新发布。预检退 1 说"无解"是门太高或题太浅（manifest 主指标可写 `attainable` 尽头值），改题或松门，别硬跑。
 
 `validate` 退 1 时 stderr 一行一条告诉你哪个文件哪个字段期望什么、实际什么。
 
@@ -143,4 +147,4 @@ export AI4SCI_START_EPOCH
 
 ## 谁做什么
 
-真实任务通常不是一个人手写全部文件：协调层（人 + agent）填 `manifest.yaml`、把产物契约与基线策略写进 `tasks/<name>/design.md`；然后 `ai4sci task design tasks/<name>` 起执行层 agent 在只放行 `harness/` `code/` 的会话里写基线与评测草稿，框架替你加执行位、写 SHA256SUMS、跑 lint 与校验，停下来等你签 `evaluate.py`；签完再跑第 4 节的后两条命令。分工与理由见外层纲领 `docs/architecture/packs.md` §2，协调层的操作步骤见 `coordinator/README.md` 固定流之二。第一个真任务 `tasks/boehm-nll/` 就是这么接进来的，它的 `design.md` 是样本。
+真实任务通常不是一个人手写全部文件：协调层（人 + agent）填 `manifest.yaml`、把产物契约与基线策略写进 `tasks/<name>/design.md`；人看过这两个文件后 `ai4sci task publish` 发布；然后 `ai4sci cap design tasks/<name>` 起执行层 agent 在只放行 `harness/` `code/` 的会话里写基线与评测草稿，框架替你加执行位、写 SHA256SUMS、跑 lint 与校验；协调 agent 把 `evaluate.py` 和 design.md 的「怎么算好」逐条对过，再跑第 4 节的后两条命令。分工与理由见外层纲领 `docs/architecture/packs.md` §2，协调层的操作步骤见 `coordinator/README.md` 固定流之二。第一个真任务 `tasks/boehm-nll/` 就是这么接进来的，它的 `design.md` 是样本。

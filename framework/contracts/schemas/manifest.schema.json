@@ -62,6 +62,10 @@
           },
           "primary": {
             "type": "boolean"
+          },
+          "attainable": {
+            "type": "number",
+            "description": "已知可达的最好值（尽头探针或文献）；只对主指标有意义。接任务预检用它算改进空间：基线到尽头的距离 ≤ 统计门就判这道题在这个门下无解（读取点：contracts/headroom.py::assess，由 cap baseline 与 run new 调）"
           }
         }
       }

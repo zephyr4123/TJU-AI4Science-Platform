@@ -18,6 +18,7 @@ import ast
 import hashlib
 import json
 import math
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -29,7 +30,13 @@ from framework.contracts.env import GUARANTEED_ENV, read_env
 
 SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
 MANIFEST_NAME = "manifest.yaml"
+# 协调层写给执行层的产物契约与基线策略（"怎么算好"的人话版），放任务根：它和 manifest 一起
+# 就是需求看板上的东西，发布签的就是这两个文件（contracts/publish.py）
+BRIEF_NAME = "design.md"
 TASKS_DIRNAME = "tasks"
+DOMAINS_DIRNAME = "domains"
+# 领域根的覆盖入口：测试与搬了目录的部署用；缺省是任务包同一个仓里的 domains/
+DOMAINS_ROOT_ENV = "AI4SCI_DOMAINS_ROOT"
 PROFILE_NAME = "profile.yaml"
 
 # manifest 不写 domain 时的兜底领域（packs.md §2）。
@@ -105,6 +112,31 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: fh.read(65536), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def default_domains_root(task_dir: Path) -> Path:
+    """`AI4SCI_DOMAINS_ROOT`，缺省 `<task_dir>/../../domains`（任务包同一个仓里的 domains/）。"""
+    override = os.environ.get(DOMAINS_ROOT_ENV)
+    if override:
+        return Path(override).resolve()
+    return Path(task_dir).resolve().parent.parent / DOMAINS_DIRNAME
+
+
+def intake_problems(task_dir: Path) -> list[str]:
+    """需求看板发布前要过的最小检查：manifest 合 schema、design.md 在且非空。
+
+    比 `validate_task` 早得多：此时 harness/ code/ run_0/ 都还没有，那些是发布**之后**
+    按钮产出的东西。这里只管人和 agent 聊出来的两个文件。
+    """
+    task_dir = Path(task_dir)
+    _, problems = _check_manifest(task_dir)
+    brief = task_dir / BRIEF_NAME
+    if not brief.is_file() or not brief.read_text(encoding="utf-8").strip():
+        problems.append(
+            f"{task_dir.name}/{BRIEF_NAME}: 缺失或为空，需求看板要先写清产物契约与"
+            "「怎么算好」（code/ 写什么文件、evaluate.py 查什么与怎么重算指标、基线策略）"
+        )
+    return problems
 
 
 # --------------------------------------------------------------------------

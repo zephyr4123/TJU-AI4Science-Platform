@@ -26,9 +26,10 @@ def _module(name: str, descriptor: object, entry: object) -> ModuleType:
     return module
 
 
-def test_discover_finds_the_three_capabilities_and_all_pass_the_checks():
+def test_discover_finds_the_five_capabilities_and_all_pass_the_checks():
     found = discover()
-    assert {"experiment", "analysis", "verify"} <= set(found)
+    assert {"design", "baseline", "experiment", "analysis", "verify"} <= set(found)
+    assert {found[n].DESCRIPTOR.level for n in ("design", "baseline")} == {"task"}
     for name, module in found.items():
         assert module.DESCRIPTOR.name == name
         json.dumps(module.DESCRIPTOR.to_dict(), ensure_ascii=False)  # UI 后端要能直接吃
@@ -55,6 +56,9 @@ def test_param_names_match_entrypoint_keyword_arguments():
      lambda run_dir, ports: "", "对不上"),
     (Capability("cap", "run", "s", (), OUT), lambda run_dir, ports, *, k=1: "", "对不上"),
     (Capability("cap", "run", "s", (), OUT), lambda run_dir, ports, extra: "", "只许关键字参数"),
+    # task 级的第一个参数叫 task_dir：名字说明它动的是哪种目录
+    (Capability("cap", "task", "s", (), OUT), lambda run_dir, ports: "", "前两个参数"),
+    (Capability("cap", "project", "s", (), OUT), lambda project_dir, ports: "", "还没有入口约定"),
 ])
 def test_check_rejects_modules_that_do_not_match(descriptor, entry, message):
     with pytest.raises(AssertionError, match=message):

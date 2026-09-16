@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import argparse
 
-from framework.cli import cap, loop, run, status, task
+from framework.cli import cap, flow, loop, run, status, task
 
 __all__ = ["build_parser", "main"]
 
@@ -27,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_parser(groups)
     loop.add_parser(groups)
     cap.add_parser(groups)
+    flow.add_parser(groups)
     status.add_parser(groups)
     return parser
 

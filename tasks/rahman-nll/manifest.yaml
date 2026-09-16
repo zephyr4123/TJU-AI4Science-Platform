@@ -39,6 +39,7 @@ metrics:
   - name: nll_mean        # 主指标：harness 内 25 次独立优化的 NLL 均值，量的是策略的期望表现
     direction: minimize
     primary: true
+    attainable: 21.18     # 尽头值：300 个起点探出来的谷底（顶部注释）；cap baseline 与 run new 的预检用它算改进空间
   - name: nll_max         # 25 次里最惨的一次：直接回答"最差能差到哪"，只记录不判分
     direction: minimize
   - name: nll_min         # 25 次里最好的一次，只记录，给分析看运气成分

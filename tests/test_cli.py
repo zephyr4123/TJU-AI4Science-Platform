@@ -247,7 +247,7 @@ def test_cap_list_prints_every_capability():
     proc = run_cli("cap", "list")
     assert proc.returncode == EXIT_OK, proc.stderr
     names = [line.split("\t")[0] for line in proc.stdout.splitlines()]
-    assert names == ["analysis", "experiment", "verify"]
+    assert names == ["analysis", "baseline", "design", "experiment", "verify"]
 
 
 def test_cap_list_json_is_descriptor_dicts():
@@ -256,7 +256,8 @@ def test_cap_list_json_is_descriptor_dicts():
     proc = run_cli("cap", "list", "--json")
     assert proc.returncode == EXIT_OK, proc.stderr
     descriptors = json.loads(proc.stdout)
-    assert {d["name"] for d in descriptors} == {"analysis", "experiment", "verify"}
+    assert {d["name"] for d in descriptors} == {"analysis", "baseline", "design", "experiment",
+                                                "verify"}
     assert all({"inputs", "outputs", "params", "criteria"} <= set(d) for d in descriptors)
 
 
@@ -315,58 +316,87 @@ def test_cap_analysis_runs_the_capability_with_the_named_backend(tmp_path, monke
     assert "verify\tPASS" in proc.stdout
 
 
-# ── task design：接任务的按钮 ──────────────────────────────────────────────
-def test_task_design_missing_dir_exits_two(tmp_path):
-    proc = run_cli("task", "design", str(tmp_path / "nope"))
-    assert proc.returncode == EXIT_USAGE
-
-
-def test_task_design_missing_feedback_file_exits_two(tmp_path):
-    pack = pf.make_pack(tmp_path)
-    proc = run_cli("task", "design", str(pack.task_dir), "--feedback", "@/nonexistent/f.md",
+# ── task publish：需求看板的发布键 ─────────────────────────────────────
+def test_task_publish_writes_the_key_and_run_new_needs_it(tmp_path):
+    pack = pf.make_pack(tmp_path, published=False)
+    proc = run_cli("run", "new", str(pack.task_dir), "--run-id", "r1",
                    "--runs-root", str(tmp_path / "runs"))
+    assert proc.returncode == EXIT_INVALID and "还没发布" in proc.stderr
+    assert not (tmp_path / "runs" / "r1").exists()
+
+    proc = run_cli("task", "publish", str(pack.task_dir), "--by", "小王")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert proc.stdout.startswith("ok toy\tby=小王\tat=")
+    assert "next=ai4sci cap design" in proc.stdout
+    proc = run_cli("run", "new", str(pack.task_dir), "--run-id", "r1",
+                   "--runs-root", str(tmp_path / "runs"))
+    assert proc.returncode == EXIT_OK, proc.stderr
+
+
+def test_task_publish_refuses_a_pack_whose_brief_is_missing(tmp_path):
+    pack = pf.make_pack(tmp_path, published=False)
+    (pack.task_dir / "design.md").unlink()
+    proc = run_cli("task", "publish", str(pack.task_dir), "--by", "小王")
+    assert proc.returncode == EXIT_INVALID and "design.md" in proc.stderr
+    assert not (pack.task_dir / "publish.json").exists()
+
+
+def test_task_publish_missing_dir_exits_two(tmp_path):
+    assert run_cli("task", "publish", str(tmp_path / "nope")).returncode == EXIT_USAGE
+
+
+# ── cap design：接任务的按钮（task 级能力，子命令从描述符生成）──────────────
+def test_cap_design_missing_dir_exits_two(tmp_path):
+    proc = run_cli("cap", "design", str(tmp_path / "nope"))
     assert proc.returncode == EXIT_USAGE
+
+
+def test_cap_design_missing_feedback_file_exits_one(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    proc = run_cli("cap", "design", str(pack.task_dir), "--feedback", "@/nonexistent/f.md")
+    assert proc.returncode == EXIT_INVALID
     assert "--feedback" in proc.stderr
 
 
-def test_task_design_without_brief_exits_one_before_any_session(tmp_path):
-    pack = pf.make_pack(tmp_path)
-    proc = run_cli("task", "design", str(pack.task_dir), "--runs-root", str(tmp_path / "runs"))
+def test_cap_design_unpublished_exits_one_before_any_session(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI4SCI_RUNS_ROOT", str(tmp_path / "runs"))
+    pack = pf.make_pack(tmp_path, published=False)
+    proc = run_cli("cap", "design", str(pack.task_dir))
     assert proc.returncode == EXIT_INVALID
-    assert "design.md" in proc.stderr
+    assert "还没发布" in proc.stderr and "task publish" in proc.stderr
     assert not (tmp_path / "runs" / "design-toy").exists()
 
 
-def test_task_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch, capsys):
+def test_cap_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch, capsys):
     """进程内跑：剧本后端没法按名字从子进程里取，把取后端的那一步换掉即可。"""
     import shutil
 
     from framework.cli import main
-    from tests.test_executor_design import BRIEF, GOOD_DRAFT
+    from tests.test_executor_design import GOOD_DRAFT
 
+    monkeypatch.setenv("AI4SCI_RUNS_ROOT", str(tmp_path / "runs"))
     pack = pf.make_pack(tmp_path)
     for name in ("harness", "run_0", "code"):
         shutil.rmtree(pack.task_dir / name)
-    (pack.task_dir / "design.md").write_text(BRIEF, encoding="utf-8")
     runner = ScriptedRunner([GOOD_DRAFT, {"harness/launcher.sh": pf.BARE_PYTHON_LAUNCHER_SH}])
     monkeypatch.setattr("framework.cli._common.get_backend", lambda name: runner)
 
-    code = main(["task", "design", str(pack.task_dir), "--runs-root", str(tmp_path / "runs")])
+    code = main(["cap", "design", str(pack.task_dir)])
     out = capsys.readouterr().out
     assert code == EXIT_OK
     assert out.startswith(
         "design ok\tsession=1\tchanged=4\tsealed=evaluate.py,launcher.sh,make_run0.sh")
-    assert "next=人签 harness/evaluate.py" in out
+    assert "next=对照 design.md" in out and "ai4sci cap baseline" in out
+    assert (tmp_path / "runs" / "design-toy" / "executor" / "session-1" / "prompt.md").is_file()
 
-    code = main(["task", "design", str(pack.task_dir), "--feedback", "改坏它",
-                 "--runs-root", str(tmp_path / "runs")])
+    code = main(["cap", "design", str(pack.task_dir), "--feedback", "改坏它"])
     captured = capsys.readouterr()
     assert code == EXIT_INVALID
-    assert captured.out.startswith("design draft\tsession=2\t")
-    assert "裸调 python" in captured.err and "--feedback @" in captured.out
+    assert captured.err.startswith("design draft\tsession=2\t")
+    assert "裸调 python" in captured.err and "--feedback @" in captured.err
 
 
-# ── task baseline：跑 make_run0.sh，环境变量与内环同一组 ─────────────────
+# ── cap baseline：跑 make_run0.sh，环境变量与内环同一组，跑完预检 ─────────
 MAKE_RUN0_RECORDING = (
     "#!/usr/bin/env bash\nset -euo pipefail\n"
     ': "${AI4SCI_INNER_K:?}"\n: "${AI4SCI_BUDGET_S:?}"\n'
@@ -376,25 +406,64 @@ MAKE_RUN0_RECORDING = (
 )
 
 
-def test_task_baseline_runs_make_run0_with_the_guaranteed_env(tmp_path):
+def test_cap_baseline_runs_make_run0_with_the_guaranteed_env_and_reports_headroom(tmp_path):
     manifest = pf.default_manifest()
     manifest["budget"]["inner_k"] = 7
+    manifest["metrics"][0]["attainable"] = 0.3
     pack = pf.make_pack(tmp_path, manifest=manifest)
     (pack.task_dir / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
     assert run_cli("task", "env", "build", str(pack.task_dir)).returncode == EXIT_OK
-    proc = run_cli("task", "baseline", str(pack.task_dir))
+    proc = run_cli("cap", "baseline", str(pack.task_dir))
     assert proc.returncode == EXIT_OK, proc.stderr
-    assert proc.stdout.strip().startswith("ok toy\tinner_k=7\tnext=ai4sci task validate")
+    line = proc.stdout.strip()
+    assert line.startswith("ok toy\tinner_k=7\tbaseline=0.5\tsigma=0.02\tgate=0.04\t")
+    assert "attainable=0.3\troom=0.2（5.0 个门）" in line and "next=ai4sci task validate" in line
     seen = json.loads((pack.task_dir / "baseline-env.json").read_text(encoding="utf-8"))
     assert seen["inner_k"] == "7"
     assert seen["budget"] == f"{manifest['budget']['wall_clock_s']:g}"
     assert seen["python"] == str(pack.task_dir / ".venv" / "bin" / "python")
 
 
-def test_task_baseline_without_venv_or_script_exits_one(tmp_path):
+def test_cap_baseline_stops_when_the_headroom_check_fails(tmp_path):
+    manifest = pf.default_manifest()
+    manifest["metrics"][0]["attainable"] = 0.49  # 基线 0.5 离尽头 0.01，门 0.04：无解
+    pack = pf.make_pack(tmp_path, manifest=manifest)
+    (pack.task_dir / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
+    assert run_cli("task", "env", "build", str(pack.task_dir)).returncode == EXIT_OK
+    proc = run_cli("cap", "baseline", str(pack.task_dir))
+    assert proc.returncode == EXIT_INVALID
+    assert "无解" in proc.stderr and "baseline=0.5" in proc.stderr
+
+
+def test_cap_baseline_without_venv_or_script_or_key_exits_one(tmp_path):
     pack = pf.make_pack(tmp_path)
-    proc = run_cli("task", "baseline", str(pack.task_dir))
+    proc = run_cli("cap", "baseline", str(pack.task_dir))
     assert proc.returncode == EXIT_INVALID and "make_run0.sh" in proc.stderr
     (pack.task_dir / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
-    proc = run_cli("task", "baseline", str(pack.task_dir))
+    proc = run_cli("cap", "baseline", str(pack.task_dir))
     assert proc.returncode == EXIT_INVALID and "task env build" in proc.stderr
+    (pack.task_dir / "publish.json").unlink()
+    proc = run_cli("cap", "baseline", str(pack.task_dir))
+    assert proc.returncode == EXIT_INVALID and "还没发布" in proc.stderr
+
+
+# ── flow check：按描述符对吃吐文件 ─────────────────────────────────────────
+def test_flow_check_passes_the_whole_line_and_prints_it():
+    proc = run_cli("flow", "check", "design", "baseline", "experiment", "analysis", "verify")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert proc.stdout.strip() == "ok 5 步：design → baseline → experiment → analysis → verify"
+
+
+def test_flow_check_reports_every_gap_and_json_carries_them():
+    proc = run_cli("flow", "check", "verify")
+    assert proc.returncode == EXIT_INVALID
+    assert "过桥" in proc.stderr and "analysis/analysis.md" in proc.stderr
+    proc = run_cli("flow", "check", "verify", "--json")
+    assert proc.returncode == EXIT_INVALID
+    doc = json.loads(proc.stdout)
+    assert doc["steps"] == ["verify"] and len(doc["problems"]) >= 2
+
+
+def test_flow_check_unknown_capability_is_a_usage_error():
+    proc = run_cli("flow", "check", "design", "nope")
+    assert proc.returncode == EXIT_USAGE and "nope" in proc.stderr
