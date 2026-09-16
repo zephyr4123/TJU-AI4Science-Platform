@@ -41,6 +41,18 @@ describe('reduceTrace', () => {
     const items = fold([ev({ kind: 'tool_result', text: '孤儿' }), ev({ kind: 'error', text: '超时' })])
     expect(items).toEqual([{ kind: 'text', text: '孤儿' }, { kind: 'error', text: '超时' }])
   })
+
+  it('被拒绝后再来的 tool_result 挂到那个工具行上，不当成助理的话', () => {
+    const items = fold([
+      ev({ kind: 'tool_use', tool: 'Bash', tool_input: { command: 'cat x' } }),
+      ev({ kind: 'denied', text: '不许' }),
+      ev({ kind: 'tool_result', text: 'Permission denied…', is_error: true }),
+    ])
+    expect(items).toEqual([
+      { kind: 'tool', tool: 'Bash', input: { command: 'cat x' }, result: '不许\n\nPermission denied…',
+        isError: true, denied: true },
+    ])
+  })
 })
 
 describe('describeTool', () => {

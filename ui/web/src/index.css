@@ -5,8 +5,8 @@
 @plugin "@tailwindcss/typography";
 
 /*
-  色板：纯白工作面 + 一个琥珀色主色（只给主动作、当前选中、状态点用）+ 偏冷的一层侧栏灰。
-  暖意由主色与字体带，不放在底色里。只做浅色：使用场景是白天实验室里的笔记本，读密集数字。
+  视觉系统见 docs/DESIGN.md。纯白工作面 + 一个琥珀主色（只给两颗键、当前页签、正向数字）+ 偏冷的灰。
+  只做浅色：白天实验室里读数字。
 */
 @theme inline {
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, "PingFang SC",
@@ -38,7 +38,6 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  /* 状态语义色：账本的 keep / discard / 失败、运行中；全站只用这四个，不另造 */
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
   --color-warn: var(--warn);
@@ -66,12 +65,13 @@
   --secondary: oklch(0.965 0.003 250);
   --secondary-foreground: oklch(0.25 0.01 80);
   --muted: oklch(0.965 0.003 250);
-  --muted-foreground: oklch(0.47 0.01 260);
-  --accent: oklch(0.955 0.03 80);
+  /* 次要文字对白底 ≥ 4.5:1：L 0.45 */
+  --muted-foreground: oklch(0.45 0.012 260);
+  --accent: oklch(0.96 0.03 80);
   --accent-foreground: oklch(0.32 0.08 70);
   --destructive: oklch(0.55 0.2 27);
   --border: oklch(0.91 0.004 250);
-  --input: oklch(0.91 0.004 250);
+  --input: oklch(0.88 0.005 250);
   --ring: oklch(0.72 0.11 75);
   --radius: 0.5rem;
   --sidebar: oklch(0.975 0.004 250);
@@ -82,11 +82,11 @@
   --sidebar-accent-foreground: oklch(0.17 0.01 80);
   --sidebar-border: oklch(0.9 0.005 250);
   --sidebar-ring: oklch(0.72 0.11 75);
-  --ok: oklch(0.5 0.13 150);
+  --ok: oklch(0.48 0.13 150);
   --ok-soft: oklch(0.95 0.04 150);
-  --warn: oklch(0.6 0.13 70);
+  --warn: oklch(0.55 0.13 70);
   --warn-soft: oklch(0.96 0.05 80);
-  --bad: oklch(0.55 0.2 27);
+  --bad: oklch(0.52 0.2 27);
   --bad-soft: oklch(0.96 0.03 27);
 }
 
@@ -107,17 +107,33 @@
   h1, h2, h3 {
     text-wrap: balance;
   }
-  /* 数字对齐：指标、成本、轮次都按等宽数字排，列才对得齐 */
+  p {
+    text-wrap: pretty;
+  }
   .tabular {
     font-variant-numeric: tabular-nums;
   }
 }
 
 @layer components {
-  /* 页面里所有 markdown 用同一套排版：设计说明、分析全文、助理回复 */
+  /* 一页纸的四种字：结论、大数字、正文、标签（docs/DESIGN.md） */
+  .t-lede {
+    @apply text-[1.375rem] leading-[1.35] font-semibold tracking-tight text-balance;
+  }
+  .t-big {
+    @apply font-sans text-[2.25rem] leading-none font-semibold tracking-tight tabular-nums;
+  }
+  .t-body {
+    @apply text-[0.9375rem] leading-[1.65] max-w-[68ch];
+  }
+  .t-label {
+    @apply text-[0.8125rem] leading-[1.4] text-muted-foreground;
+  }
+  /* 页面里所有 markdown 用同一套排版：设计说明、分析、助理回复 */
   .prose-ai4sci {
-    @apply prose prose-sm max-w-none prose-headings:font-semibold prose-headings:tracking-tight
-      prose-p:leading-relaxed prose-pre:bg-muted prose-pre:text-foreground prose-pre:text-xs
+    @apply prose prose-sm max-w-[68ch] prose-headings:font-semibold prose-headings:tracking-tight
+      prose-p:leading-[1.65] prose-p:text-[0.9375rem] prose-li:text-[0.9375rem]
+      prose-pre:bg-muted prose-pre:text-foreground prose-pre:text-xs
       prose-code:before:content-none prose-code:after:content-none prose-code:font-normal
       prose-code:text-[0.8em] prose-a:text-primary prose-table:text-xs prose-th:py-1 prose-td:py-1;
   }

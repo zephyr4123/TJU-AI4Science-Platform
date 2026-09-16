@@ -1,10 +1,10 @@
-// 三栏：左边对话列表，中间对话，右边三张看板（需求 / 编排 / 结果）。
+// 两栏：对话为主，右边一张看板（需求 / 进度 / 结果 三个页签）；对话列表收在左侧抽屉。
 // 页面只是 `ai4sci serve` 的客户端：所有数据经 `api/`，这里只管把它们摆在一起。
 
 import { useCallback, useState } from 'react'
 
 import { api } from '@/api/client'
-import { FlowBoard } from '@/boards/FlowBoard'
+import { ProgressBoard } from '@/boards/ProgressBoard'
 import { RunBoard } from '@/boards/RunBoard'
 import { TaskBoard } from '@/boards/TaskBoard'
 import { ChatView } from '@/chat/ChatView'
@@ -12,9 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
-import { Sidebar } from '@/sidebar/Sidebar'
+import { ChatDrawer } from '@/sidebar/ChatDrawer'
 
-type Board = 'task' | 'flow' | 'run'
+type Board = 'task' | 'progress' | 'run'
 
 export default function App() {
   const chats = useResource(api.chats, [])
@@ -49,32 +49,41 @@ export default function App() {
     setEpoch((e) => e + 1)
   }, [chats])
 
+  const healthy = health.loading && !health.data ? null : health.data?.ok === true
+
   return (
     <TooltipProvider>
-      <div className="grid h-dvh grid-cols-[15rem_minmax(0,1fr)_auto] overflow-hidden">
-        <Sidebar chats={chats.data} error={chats.error} selected={chatId}
-                 healthy={health.loading && !health.data ? null : health.data?.ok === true}
-                 creating={creating} onSelect={setPicked} onNew={() => void newChat()} />
-        <ChatView key={chatId ?? 'none'} chatId={chatId} boardOpen={boardOpen}
-                  onToggleBoard={() => setBoardOpen((v) => !v)}
-                  onNew={() => void newChat()} onTurnDone={turnDone} />
-        <aside className={cn('h-full min-h-0 border-l bg-muted/30 transition-[width] duration-200',
-                             boardOpen ? 'w-[28rem]' : 'w-0 overflow-hidden border-l-0')}
-               aria-label="看板" aria-hidden={!boardOpen}>
-          <Tabs value={board} onValueChange={(v) => setBoard(v as Board)}
-                className="flex h-full flex-col gap-0">
-            <TabsList className="m-3 grid w-auto grid-cols-3">
+      <div className="flex h-dvh overflow-hidden">
+        <ChatView
+          key={chatId ?? 'none'}
+          chatId={chatId}
+          boardOpen={boardOpen}
+          onToggleBoard={() => setBoardOpen((v) => !v)}
+          onNew={() => void newChat()}
+          onTurnDone={turnDone}
+          drawer={
+            <ChatDrawer chats={chats.data} error={chats.error} selected={chatId} healthy={healthy}
+                        creating={creating} onSelect={setPicked} onNew={() => void newChat()} />
+          }
+        />
+        <aside
+          className={cn('h-full shrink-0 border-l bg-sidebar transition-[width] duration-200',
+                        boardOpen ? 'w-[30rem]' : 'w-0 overflow-hidden border-l-0')}
+          aria-label="看板" aria-hidden={!boardOpen}
+        >
+          <Tabs value={board} onValueChange={(v) => setBoard(v as Board)} className="flex h-full w-[30rem] flex-col gap-0">
+            <TabsList className="mx-6 mt-5 mb-2 grid w-auto grid-cols-3 bg-transparent p-0">
               <TabsTrigger value="task">需求</TabsTrigger>
-              <TabsTrigger value="flow">编排</TabsTrigger>
+              <TabsTrigger value="progress">进度</TabsTrigger>
               <TabsTrigger value="run">结果</TabsTrigger>
             </TabsList>
-            {/* 原生滚动而不是 ScrollArea：后者的视口让宽内容（账本表）把整栏撑开 */}
-            <div className="min-h-0 w-[28rem] flex-1 overflow-x-hidden overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
               <TabsContent value="task" className="mt-0">
                 <TaskBoard epoch={epoch} selected={taskId} onSelect={setTaskId} />
               </TabsContent>
-              <TabsContent value="flow" className="mt-0">
-                <FlowBoard />
+              <TabsContent value="progress" className="mt-0">
+                <ProgressBoard epoch={epoch} onOpenTask={(id) => { setTaskId(id); setBoard('task') }}
+                               onOpenRun={(id) => { setRunId(id); setBoard('run') }} />
               </TabsContent>
               <TabsContent value="run" className="mt-0">
                 <RunBoard epoch={epoch} selected={runId} onSelect={setRunId} />

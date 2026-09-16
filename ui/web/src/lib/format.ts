@@ -1,10 +1,12 @@
 // 数字与时间的显示口径，全页面只此一处：指标六位有效数字（与 CLI 的 `:.6g` 一致）、钱两位小数。
 
-export function metric(value: number | null | undefined): string {
+export function metric(value: number | null | undefined, digits = 6): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
-  const text = Number(value.toPrecision(6))
-  return String(text)
+  return String(Number(value.toPrecision(digits)))
 }
+
+/** 正文与大数字里的数：四位有效数字够读，精确值在细节层。 */
+export const prose = (value: number | null | undefined) => metric(value, 4)
 
 export function usd(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
@@ -36,4 +38,9 @@ export function improvement(
 ): number | null {
   if (baseline === null) return null
   return direction === 'minimize' ? baseline - best : best - baseline
+}
+
+/** 对话列表里的名字：第一句话；还没说话就按开始时间叫它。 */
+export function chatTitle(chat: { title: string | null; created_at: string }): string {
+  return chat.title ?? `${when(chat.created_at)} 开始的对话`
 }

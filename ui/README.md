@@ -18,7 +18,7 @@
 |---|---|---|
 | 对话 | `POST /chats`、`POST /chats/<id>/messages`（SSE）、`GET /chats[/<id>]` | 和协调 agent 说话；agent 按的每个按钮以 `tool_use` / `tool_result` 事件流回来 |
 | 需求 | `GET /tasks[/<id>]`、`POST /tasks/<id>/publish` | 看 manifest、设计说明、预检；按**发布**。发布是钥匙（`publish.json`），后面的按钮没它不开 |
-| 编排 | `GET /cap`、`GET /flow/check?steps=a,b` | 看有哪些按钮、摆一串查通不通；不跑 |
+| 进度 | `GET /tasks`、`GET /runs` | 每个课题走到哪了：接任务 → 跑基线 → 做实验 → 写分析 → 验证，做完打勾、下一步一句话（`GET /cap`、`GET /flow/check` 留给 CLI 与以后的画布，页面第二版不用） |
 | 结果 | `GET /runs[/<id>]`、`POST /runs/<id>/accept` | 看 best、账本、分析、验证；按**验收**（`accept.json`，签这一版 best 与验证结论） |
 
 两颗键（发布、验收）是产品形态里仅有的两个人工停点（外层 `docs/vision.md`「两个发布键、一次验收」）。
@@ -37,14 +37,18 @@ ai4sci serve       # 起后端并端出页面：http://127.0.0.1:8765
 
 ## 网页的结构
 
+设计口径在 `docs/PRODUCT.md`（给谁用、反例、原则）与 `docs/DESIGN.md`（色板、字阶、布局）。
+每张看板是助理写给研究者的一页纸：一句话结论 → 三个大数字 → 几段人话 → 细节折叠 → 键在文末。
+正文只许出现 `lib/humanize.ts` 翻译过的句子；状态码、哈希、命令只在折叠层。
+
 ```
 web/src/
   api/        契约：types.ts（响应体的类型）、client.ts（每个端点一个函数）、sse.ts（事件流）
-  chat/       对话：trace.ts（事件流折成给人看的条目，纯函数、有单测）、ChatView / TurnView / Composer
-  boards/     三张看板：TaskBoard（需求 + 发布键）、FlowBoard（编排）、RunBoard（结果 + 验收键）
-  sidebar/    对话列表
-  components/ 共用小件（bits.tsx、Markdown.tsx）、shadcn 生成的 ui/、reactbits 的两个动效件
-  lib/        格式化、取数 hook、署名记忆
+  chat/       对话：trace.ts（事件流折成条目，纯函数、有单测）、ChatView（含欢迎屏）/ TurnView / Composer
+  boards/     三页：TaskBoard（需求 + 发布键）、ProgressBoard（进度）、RunBoard（结果 + 验收键）
+  sidebar/    对话列表抽屉
+  components/ 一页纸的零件 bits.tsx、Markdown.tsx、shadcn 生成的 ui/、reactbits 的 Waves / BlurText / ClickSpark
+  lib/        humanize.ts（术语翻人话，有单测）、progress.ts（五步进度，有单测）、format、取数 hook、署名记忆
 ```
 
 依赖方向：`App → boards / chat / sidebar → components → api`；`api/` 不 import 任何组件。
@@ -52,6 +56,6 @@ web/src/
 
 ## 不做（第一版）
 
-- 拖拽编排画布：等套餐文件有了第二个用例（外层 #47 第 6 件）
+- 拖拽编排画布与「摆一串查通不通」：等套餐文件有了第二个用例（外层 #47 第 6 件）；第一版做过的检查工具已砍，CLI 的 `flow check` 还在
 - 多用户、鉴权、token 级流式：后端是本机单人服务
 - 深色主题：使用场景是白天实验室里读数字，先只做浅色
