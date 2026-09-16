@@ -1,0 +1,31 @@
+# 第一个真任务（学长案例二，外层 #40）：Boehm 2014 STAT5 模型的多起点参数估计。
+# 由协调层拍板后填写（纲领 packs.md §2）：方向、预算、统计门是决策，不是框架给的。
+# 名义参数处 NLL = 138.2220（探针实测，见 #40 评论），基线策略（5 个随机起点）通常停在 200 以上，
+# 差距就是执行层要在预算内追回来的东西。
+format_version: 1
+id: boehm-nll
+domain: petab
+source: docs/cases/boehm-stat5-petab
+title: Boehm 2014 STAT5 模型的多起点参数估计策略
+question: >
+  对 Boehm_JProteomeRes2014 这个 9 个自由参数、48 个测量点的 PEtab 问题，在 30 秒墙钟内，
+  什么样的起点撒法、起点数与优化器组合能把负对数似然（NLL）压到最低；名义参数处 NLL 为 138.22
+metrics:
+  - name: nll
+    direction: minimize
+    primary: true
+budget:
+  wall_clock_s: 30      # 单次评估亚毫秒、30 个起点约 3 秒；30 秒够放几百个起点，预算要能卡住"无脑加起点"
+  max_iterations: 30
+  repeat_k: 3           # 三个 seed：多起点的随机性就是这道题的噪声来源
+  accept_sigma: 2.0
+  min_delta: 1.0        # σ 来自随机起点，可能很大也可能为 0；同一局部最优的数值抖动在 1 以内，不算改进
+requirements:
+  - id: R1
+    type: numeric
+    must_pass: true
+    description: 主指标 nll 优于 run_0 基线，且差值超过 accept_sigma 倍的重复跑标准差（或 min_delta）
+  - id: R2
+    type: artifact
+    must_pass: true
+    description: code/ 只产出 params.json（9 个自由参数，log10 尺度，在 PEtab 边界内）；NLL 由 harness 用同一份 PEtab 问题重算，code/ 自己算的数不进 results.json
