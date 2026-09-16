@@ -30,14 +30,16 @@ def test_task_summary_and_publish_state(tmp_path):
     pack = make_pack(tmp_path, published=False)
     found = boards.task_summary(pack.task_dir)
     assert found["id"] == "toy" and found["metric"]["name"] == "val_mse"
-    assert found["publish"]["ok"] is False and "还没发布" in found["publish"]["reason"]
+    assert found["publish"]["ok"] is False and found["publish"]["state"] == "missing"
+    assert "还没发布" in found["publish"]["reason"]
     publish.publish_task(pack.task_dir, by="张三")
     found = boards.task_summary(pack.task_dir)
-    assert found["publish"] == {"ok": True, "by": "张三", "at": found["publish"]["at"],
-                                "reason": None}
+    assert found["publish"] == {"ok": True, "state": "ok", "by": "张三",
+                                "at": found["publish"]["at"], "reason": None}
     # 发布后改了签的文件：钥匙失效，原因原样给看板
     (pack.task_dir / "design.md").write_text("改了\n", encoding="utf-8")
-    assert "改过了" in boards.task_summary(pack.task_dir)["publish"]["reason"]
+    found = boards.task_summary(pack.task_dir)["publish"]
+    assert found["state"] == "invalid" and "改过了" in found["reason"]
 
 
 def test_task_detail_has_design_intake_and_headroom(tmp_path):

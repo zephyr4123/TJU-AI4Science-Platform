@@ -59,12 +59,16 @@ def task_detail(task_dir: Path) -> dict[str, Any]:
 
 
 def publish_state(task_dir: Path) -> dict[str, Any]:
-    """钥匙现在是否有效；无效时 `reason` 就是 `require_published` 那句话，看板原样给人看。"""
+    """钥匙现在是否有效。`state`：ok / missing（从没发布过，看板用自己的话说）/ invalid
+    （发布过但签的文件改了或记录坏了，`reason` 是 `require_published` 那句话，原样给人看）。"""
     try:
         record = publish.require_published(task_dir)
     except publish.NotPublished as exc:
-        return {"ok": False, "by": None, "at": None, "reason": str(exc)}
-    return {"ok": True, "by": record["by"], "at": record["published_at"], "reason": None}
+        missing = not (Path(task_dir) / publish.PUBLISH_NAME).is_file()
+        return {"ok": False, "state": "missing" if missing else "invalid",
+                "by": None, "at": None, "reason": str(exc)}
+    return {"ok": True, "state": "ok", "by": record["by"], "at": record["published_at"],
+            "reason": None}
 
 
 def stage(task_dir: Path) -> str:

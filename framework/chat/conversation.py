@@ -117,6 +117,15 @@ def list_conversations(runs_root: Path) -> list[Conversation]:
             if (p / META_NAME).is_file()]
 
 
+def title(conv: Conversation) -> str | None:
+    """给列表用的一句话：第一轮人说的第一行；还没说过话就是 None，页面自己起名。"""
+    message = conv.dir / "turn-1" / "message.md"
+    if not message.is_file():
+        return None
+    first = message.read_text(encoding="utf-8").strip().splitlines()
+    return first[0].strip()[:60] if first else None
+
+
 def read_turns(conv: Conversation) -> list[dict[str, Any]]:
     """把 transcript.md 读回成一轮一条 {turn, message, reply}：页面要的是结构，不是 markdown。"""
     text = (conv.dir / TRANSCRIPT_NAME).read_text(encoding="utf-8")

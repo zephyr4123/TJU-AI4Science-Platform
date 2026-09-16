@@ -101,12 +101,13 @@ def test_chat_lifecycle_over_http(served):
 
     status, _, body = call(base, f"/chats/{chat_id}")
     doc = json.loads(body)
-    assert status == 200 and doc["turns"] == [
+    assert status == 200 and doc["turns"] == 2 and doc["history"] == [
         {"turn": 1, "message": "你好", "reply": "你好"},
         {"turn": 2, "message": "有几个？", "reply": "三个"}]
     assert "## 第 2 轮" in doc["transcript"]
     status, _, body = call(base, "/chats")
-    assert status == 200 and [c["chat_id"] for c in json.loads(body)] == [chat_id]
+    assert status == 200 and [(c["chat_id"], c["title"]) for c in json.loads(body)] == [
+        (chat_id, "你好")]
 
 
 def test_error_status_codes(served, tmp_path):
@@ -153,7 +154,8 @@ def test_task_board_and_publish_key(served, tmp_path):
     status, _, body = call(base, "/tasks/toy/publish", {"by": "张三"})
     doc = json.loads(body)
     assert status == 201
-    assert doc["publish"] == {"ok": True, "by": "张三", "at": doc["publish"]["at"], "reason": None}
+    assert doc["publish"] == {"ok": True, "state": "ok", "by": "张三", "at": doc["publish"]["at"],
+                              "reason": None}
     assert doc["stage"] == "baselined" and (pack.task_dir / "publish.json").is_file()
 
     (pack.task_dir / "design.md").write_text("", encoding="utf-8")  # 空 design 发不了

@@ -7,9 +7,9 @@ capabilities，依赖方向不能反过来。页面是这些端点的客户端�
     GET  /health                   {"ok": true}
     GET  /cap                      能力描述符清单（编排看板的节点定义）
     GET  /flow/check?steps=a,b     {"steps", "problems"}：这串能力通不通，不跑
-    GET  /chats                    全部对话的 meta
+    GET  /chats                    全部对话的 meta + title（第一句话）
     POST /chats                    {"backend"?} → 新对话的 meta
-    GET  /chats/<id>               meta + transcript + turns（一轮一条 message / reply）
+    GET  /chats/<id>               meta + transcript + history（一轮一条 message / reply）
     POST /chats/<id>/messages      {"text"} → text/event-stream，每个事件一条 `event: <kind>`
     GET  /tasks                    需求看板：任务包清单（阶段、钥匙）
     GET  /tasks/<id>               manifest、design.md、发布前检查、预检
@@ -91,15 +91,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(HTTPStatus.BAD_REQUEST, "要有 steps=能力名,能力名")
             return self._json(self.server.flow_check(steps))
         if parts == ["chats"]:
-            return self._json([c.to_dict() for c in
+            return self._json([{**c.to_dict(), "title": conversation.title(c)} for c in
                                conversation.list_conversations(self.server.runs_root)])
         if len(parts) == 2 and parts[0] == "chats":
             conv = self._conversation(parts[1])
             if conv is None:
                 return None
             transcript = (conv.dir / conversation.TRANSCRIPT_NAME).read_text(encoding="utf-8")
-            return self._json({**conv.to_dict(), "transcript": transcript,
-                               "turns": conversation.read_turns(conv)})
+            return self._json({**conv.to_dict(), "title": conversation.title(conv),
+                               "transcript": transcript,
+                               "history": conversation.read_turns(conv)})
         if parts == ["tasks"]:
             try:
                 return self._json(boards.list_tasks(self.server.cwd))
