@@ -49,6 +49,7 @@ budget:
   wall_clock_s: 60               # 一次跑完的墙钟预算；超 1.5 倍判超时
   max_iterations: 30             # 内环最多跑几轮
   repeat_k: 3                    # 同配置重复几次估噪声
+  # inner_k: 1                   # 评分脚本内部把 code/ 跑几次取均值当一次成绩；不写按 1
   accept_sigma: 2.0              # 改进要大于几倍 σ 才算数
   # min_delta: 0.001             # 重复跑完全一致（σ=0）时必填：最小改进量
 requirements:
@@ -76,7 +77,7 @@ env/requirements.lock   numpy==2.5.3
 
 三条硬规矩，`ai4sci task validate` 都会查：
 
-1. **Python 只经 `"$AI4SCI_PYTHON"` 起。** 框架跑你的 harness 时把任务 venv 的解释器放进这个变量；脚本里出现裸 `python` / `python3` 直接判不合法。
+1. **Python 只经 `"$AI4SCI_PYTHON"` 起。** 框架跑你的 harness 时把任务 venv 的解释器放进这个变量；脚本里出现裸 `python` / `python3` 直接判不合法。框架同时保证给 `AI4SCI_BUDGET_S`（一次跑的墙钟预算，等于 `wall_clock_s`）和 `AI4SCI_INNER_K`（评分内部重复次数，等于 `budget.inner_k`）：launcher 用 `"${AI4SCI_INNER_K:?}"` 这种写法拿，拿不到就停；**给这几个变量写默认值判不合法**（`os.environ.get("AI4SCI_INNER_K", 5)` 这种会算出一份看着合法的假成绩）。`AI4SCI_SEED` 缺省 42 是唯一允许的默认值。
 2. **`evaluate.py` 只读产物文件**，算完写 `results.json`，形状固定：
    ```json
    {"metrics": {"val_mse": 0.0231}, "elapsed_s": 0.27, "seed": 42, "status": "ok"}
@@ -93,6 +94,8 @@ env/requirements.lock   numpy==2.5.3
 #!/usr/bin/env bash
 set -euo pipefail
 : "${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON：先 ai4sci task env build <task_dir>}"
+: "${AI4SCI_BUDGET_S:?}"      # 框架与 ai4sci task baseline 都会给
+: "${AI4SCI_INNER_K:?}"
 TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$TASK_DIR"
 rm -f <你的产物文件> results.json
@@ -102,13 +105,13 @@ export AI4SCI_START_EPOCH
 "$AI4SCI_PYTHON" harness/evaluate.py
 ```
 
-`code/` 从环境变量 `AI4SCI_SEED` 拿种子；同一 seed 必须复现同一结果。`make_run0.sh` 照抄 `mlp-regression` 的，只改指标名与种子列表。
+`code/` 从环境变量 `AI4SCI_SEED` 拿种子；同一 seed 必须复现同一结果。`make_run0.sh` 照抄 `mlp-regression` 的，只改指标名与种子列表；它由 `ai4sci task baseline` 起，预算与 inner_k 从那里来。
 
 ## 4. 三条命令
 
 ```bash
 .venv/bin/ai4sci task env build tasks/<name>     # 建 tasks/<name>/.venv
-tasks/<name>/harness/make_run0.sh                 # 基线 + repeat_k 次重复 + σ → run_0/
+.venv/bin/ai4sci task baseline tasks/<name>      # 跑 make_run0.sh：基线 + repeat_k 次重复 + σ → run_0/
 .venv/bin/ai4sci task validate tasks/<name>       # 退 0 才算接进来了
 ```
 
@@ -131,6 +134,7 @@ tasks/<name>/harness/make_run0.sh                 # 基线 + repeat_k 次重复 
 | `字段 <顶层>: 'format_version' is a required property` | manifest 缺契约版本 | 第一行加 `format_version: 1` |
 | `env/: 目录缺失` | 没带环境 | 建 `env/` 两个文件，零依赖也要有空的 lock |
 | `harness/launcher.sh:12: 裸调 python` | launcher 用了 PATH 上的 python | 改成 `"$AI4SCI_PYTHON"` |
+| `harness/evaluate.py:45: 给 AI4SCI_INNER_K 写了默认值` | 评分脚本拿不到框架保证的变量时自己兜底 | 改成拿不到就 `SystemExit(非零)` |
 | `requirements.lock:3: 期望钉死的 name==version` | 依赖没钉版本 | 写成 `name==x.y.z` |
 | `harness/evaluate.py: sha256 不一致` | 改了 harness 没更新校验和 | 重新生成 SHA256SUMS |
 | `run_0/repeats/: 期望恰好 budget.repeat_k=3 个` | 重复次数与 manifest 不符 | 改 make_run0.sh 的 SEEDS 或 manifest 的 repeat_k |

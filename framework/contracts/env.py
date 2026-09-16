@@ -34,6 +34,15 @@ VENV_DIRNAME = ".venv"
 # harness 经这个环境变量拿到任务 venv 的解释器：框架提交 harness 时设，
 # make_run0.sh 缺省指到任务目录的 .venv
 PYTHON_ENV = "AI4SCI_PYTHON"
+# 框架起 harness 时**保证**给出的另外几个变量（packs.md §2）：一次跑的墙钟预算、评分内部重复
+# 次数；起跑时刻由 launcher 自己设给 evaluate.py。保证给出就意味着 harness 拿不到时必须停，
+# 不许写默认值——rahman-nll 第一版评分脚本缺 INNER_K 时默认按 5 份算，算出一份看着合法的
+# 假成绩，签字的人没看出来（外层 #44）。种子不在此列：AI4SCI_SEED 缺省 42 是契约的一部分。
+BUDGET_ENV = "AI4SCI_BUDGET_S"
+INNER_K_ENV = "AI4SCI_INNER_K"
+START_EPOCH_ENV = "AI4SCI_START_EPOCH"
+SEED_ENV = "AI4SCI_SEED"
+GUARANTEED_ENV = (PYTHON_ENV, BUDGET_ENV, INNER_K_ENV, START_EPOCH_ENV)
 
 _VERSION_RE = re.compile(r"^(\d+)\.(\d+)$")
 # 钉死的一行：名字（可带 extras）== 版本；别的写法（>=、URL、-e）一律不收
@@ -49,6 +58,13 @@ class EnvBuildError(RuntimeError):
 class EnvSpec:
     python_version: str
     requirements: tuple[str, ...]
+
+
+def harness_env(python: Path, wall_clock_s: float, inner_k: int) -> dict[str, str]:
+    """框架起 harness（内环的 launcher、基线的 make_run0）时给的那组环境变量，两处走同一个函数。"""
+    assert inner_k >= 1, f"inner_k 要是正整数：{inner_k!r}"
+    assert wall_clock_s > 0, f"wall_clock_s 要是正数：{wall_clock_s!r}"
+    return {PYTHON_ENV: str(python), BUDGET_ENV: f"{wall_clock_s:g}", INNER_K_ENV: str(inner_k)}
 
 
 def env_dir(task_dir: Path) -> Path:

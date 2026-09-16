@@ -403,3 +403,55 @@ def test_validate_can_skip_run0_for_the_design_stage(tmp_path):
     assert packs.validate_task(pack.task_dir, pack.domains_root, require_run0=False) == []
     full = packs.validate_task(pack.task_dir, pack.domains_root)
     assert full and all("run_0/" in p for p in full)
+
+
+# ── inner_k 与保证变量不许写默认值（外层 #43 #44）────────────────────
+def test_inner_k_must_be_a_positive_integer(tmp_path):
+    manifest = pf.default_manifest()
+    manifest["budget"]["inner_k"] = 0
+    pack = pf.make_pack(tmp_path, manifest=manifest)
+    problems = packs.validate_task(pack.task_dir, pack.domains_root)
+    assert any("inner_k" in p for p in problems)
+    manifest["budget"]["inner_k"] = 25
+    pack = pf.make_pack(tmp_path / "ok", manifest=manifest)
+    assert packs.validate_task(pack.task_dir, pack.domains_root) == []
+
+
+@pytest.mark.parametrize("line", [
+    'k = int(os.environ.get("AI4SCI_INNER_K", "5"))',
+    'budget = float(os.getenv("AI4SCI_BUDGET_S", 30))',
+    'start = os.environ.get("AI4SCI_START_EPOCH", time.time())',
+])
+def test_default_for_a_guaranteed_env_var_in_evaluate_is_invalid(tmp_path, line):
+    pack = pf.make_pack(tmp_path)
+    evaluate = pack.task_dir / "harness" / "evaluate.py"
+    evaluate.write_text("import os\nimport time\n" + line + "\n" + pf.EVALUATE_PY, encoding="utf-8")
+    pf.refresh_sums(pack.task_dir)
+    problems = packs.validate_task(pack.task_dir, pack.domains_root)
+    assert len(problems) == 1 and "harness/evaluate.py:3" in problems[0]
+    assert "写了默认值" in problems[0]
+
+
+def test_seed_default_and_plain_reads_are_allowed(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    evaluate = pack.task_dir / "harness" / "evaluate.py"
+    evaluate.write_text(
+        'import os\nseed = int(os.environ.get("AI4SCI_SEED", "42"))\n'
+        'k = os.environ.get("AI4SCI_INNER_K")\nother = os.environ.get("HOME", "/")\n'
+        + pf.EVALUATE_PY,
+        encoding="utf-8")
+    pf.refresh_sums(pack.task_dir)
+    assert packs.validate_task(pack.task_dir, pack.domains_root) == []
+
+
+def test_default_for_a_guaranteed_env_var_in_launcher_is_invalid(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    launcher = pack.task_dir / "harness" / "launcher.sh"
+    launcher.write_text(pf.LAUNCHER_SH.replace(
+        'cd "$TASK_DIR"',
+        'cd "$TASK_DIR"\nK="${AI4SCI_INNER_K:-3}"\n# ${AI4SCI_BUDGET_S:-1} 注释不算'),
+        encoding="utf-8")
+    pf.refresh_sums(pack.task_dir)
+    problems = packs.validate_task(pack.task_dir, pack.domains_root)
+    assert len(problems) == 1 and "harness/launcher.sh:5" in problems[0]
+    assert "AI4SCI_INNER_K" in problems[0]

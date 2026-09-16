@@ -43,12 +43,12 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 
 **先问三句，不合适当场说清，别让人走到第六步才撞墙**：有一段能跑的代码吗（没有：先一起写出来，或者这还不是实验任务）；一次跑几分钟（一次一天的进不了内环，能不能改成只做推理对账）；出一个数吗、越小还是越大越好（出不了一个数就还没到能调的时候）。
 
-1. **填 `manifest.yaml`**：`format_version: 1`、`id`、`domain`、`source` 指回案例卡、`question`、指标与方向、预算与统计门。数字是决策，理由写在注释里；拿不准的问人。
+1. **填 `manifest.yaml`**：`format_version: 1`、`id`、`domain`、`source` 指回案例卡、`question`、指标与方向、预算与统计门；评分内部要重复几次取均值就写 `budget.inner_k`（它决定信噪比，也决定 `wall_clock_s` 要覆盖几次固定开销）。数字是决策，理由写在注释里；拿不准的问人。
 2. **准备 `data/` 与 `env/`**：问题定义放 `data/`，来源与许可写进 `data/README.md`；`env/python-version` 一行，`env/requirements.lock` 是完整的 `pip freeze`（`uv pip sync` 要列全）。`ai4sci task env build tasks/<id>` 建出 `.venv/`。
 3. **写 `design.md`**（任务根）：给执行层的产物契约与基线策略——`code/` 写什么文件、什么形状；`evaluate.py` 查什么、怎么用 `data/` 重算指标、退出码；基线用什么策略（研究者给的那个，不要替他调好）。这是你和人拍板的东西，执行层照它写。`tasks/boehm-nll/design.md` 是样本。
 4. **按按钮**：`AI4SCI_EXECUTOR_MODEL=sonnet ai4sci task design tasks/<id>`。框架起执行层写 `harness/` 与 `code/` 草稿（只放行这两个目录），回来自己加执行位、写 SHA256SUMS、跑 ruff、跑 validate（此时不查 run_0），stdout 一行结论（`next=` 说停在哪），stderr 一行一条问题，然后停。退 1 就把 stderr 喂回去：`ai4sci task design tasks/<id> --feedback @<文件>`，执行层会看到现状文件照着改；**不要自己替它改 harness**。日志在 `runs/design-<id>/executor/session-N/`（提示原文、事件流、自述）。
 5. **人签 `evaluate.py`**：判分只能由 harness 用问题定义重算，`code/` 自报的分数不进 `results.json`；拒收路径退非零、不写 `results.json`、不抛 traceback。签字前不跑基线。要改就回第 4 步喂反馈。
-6. **`bash harness/make_run0.sh` → `ai4sci task validate tasks/<id>` 退 0**。
+6. **`ai4sci task baseline tasks/<id>` → `ai4sci task validate tasks/<id>` 退 0**。基线由框架起，预算与 `budget.inner_k` 和内环用同一组环境变量，不要自己 `bash make_run0.sh`。
 7. **案例卡回填**任务包路径、run_0 与 σ，然后进固定流之一。
 
 σ 大不是错：多起点随机性大的基线，统计门就严，改进必须超过基线自己的抖动才算数。要不要放宽 `accept_sigma` 是人的决定，改了写进 manifest 注释。

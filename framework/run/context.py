@@ -26,6 +26,7 @@ EXECUTOR_TIMEOUT_ENV = "AI4SCI_EXECUTOR_TIMEOUT_S"
 DEFAULT_EXECUTOR_TIMEOUT_S = 900.0
 DEFAULT_PATIENCE = 5  # manifest 不写 budget.patience 时的缺省（读取点在 load_context）
 DEFAULT_MIN_DELTA = 0.0  # manifest 不写 budget.min_delta 时的缺省（读取点同上）
+DEFAULT_INNER_K = 1  # manifest 不写 budget.inner_k 时的缺省：评分脚本内部只跑一次（读取点同上）
 DIRECTIONS = ("minimize", "maximize")
 
 
@@ -48,6 +49,7 @@ class RunContext:
     accept_sigma: float
     min_delta: float
     wall_clock_s: float
+    inner_k: int
     max_iterations: int
     patience: int
     max_cost_usd: float | None
@@ -128,6 +130,8 @@ def load_context(run_dir: Path) -> RunContext:
     seed = json.loads((work / "run_0" / "results.json").read_text(encoding="utf-8"))["seed"]
     patience = budget.get("patience", DEFAULT_PATIENCE)
     assert isinstance(patience, int) and patience >= 1, f"budget.patience 要是正整数：{patience!r}"
+    inner_k = budget.get("inner_k", DEFAULT_INNER_K)
+    assert isinstance(inner_k, int) and inner_k >= 1, f"budget.inner_k 要是正整数：{inner_k!r}"
     max_cost = budget.get("max_cost_usd")
     assert max_cost is None or max_cost > 0, f"budget.max_cost_usd 要是正数：{max_cost!r}"
     direction = metric["direction"]
@@ -153,7 +157,7 @@ def load_context(run_dir: Path) -> RunContext:
         ledger_path=layout.ledger(run_dir), question=manifest["question"],
         metric_name=metric["name"], direction=direction, sigma=sigma,
         accept_sigma=float(budget["accept_sigma"]), min_delta=min_delta,
-        wall_clock_s=float(budget["wall_clock_s"]),
+        wall_clock_s=float(budget["wall_clock_s"]), inner_k=inner_k,
         max_iterations=int(budget["max_iterations"]), patience=patience, max_cost_usd=max_cost,
         seed=int(seed), python=python, domain_extra=read_domain_extra(run_dir),
     )

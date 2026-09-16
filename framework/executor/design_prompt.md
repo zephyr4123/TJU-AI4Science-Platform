@@ -25,7 +25,12 @@
   {"metrics": {"<指标名>": <有限数>}, "elapsed_s": <float>, "seed": <int>, "status": "ok"}
   ```
 
-- 环境变量：`AI4SCI_SEED`（种子，缺省 42；同一 seed 必须复现同一结果）、`AI4SCI_BUDGET_S`（一次跑的墙钟预算，与 manifest 的 `wall_clock_s` 一致；`code/` 只花它的 80%，留时间评分，按墙钟自截断，不按常数反推工作量）、`AI4SCI_START_EPOCH`（launcher 起跑时设，evaluate.py 用它算 `elapsed_s`）、`AI4SCI_PYTHON`（解释器）。
+- 框架起 launcher 时**保证**给出四个环境变量，harness 拿不到就必须停，**不许写默认值**（`os.environ.get(名字, 默认)`、`$${名字:-默认}` 一律不许；框架校验会抓）：
+  - `AI4SCI_PYTHON`：解释器。
+  - `AI4SCI_BUDGET_S`：一次跑的墙钟预算，等于 manifest 的 `wall_clock_s`。评分内部重复 K 次时，launcher 用它除以 K 得到每次的份额再传给 `code/`；`code/` 只花份额的 80%，按墙钟自截断，不按常数反推工作量。
+  - `AI4SCI_INNER_K`：评分内部重复次数，等于 manifest 的 `budget.inner_k`（不写就是 1）。launcher 照它循环，并原样传给 evaluate.py；**不要在脚本里写死这个数**。
+  - `AI4SCI_START_EPOCH`：launcher 起跑时自己设，evaluate.py 用它算 `elapsed_s`。
+- `AI4SCI_SEED` 是唯一允许缺省的：缺省 42，同一 seed 必须复现同一结果。
 - `make_run0.sh`：基线一次（seed 42）+ manifest `budget.repeat_k` 次重复（seed 42、43、44 …）+ `run_0/sigma.json`，σ 是样本标准差，**每个指标一条**：`{"<指标名>": {"sigma": <float>, "seeds": [...], "values": [...]}}`。
 - evaluate.py 退出码：0 正常；2 产物缺失或读不出；3 形状 / 长度对不上；4 NaN / Inf / 越界；5 计时缺失。
 
@@ -51,12 +56,16 @@ $skills
 #!/usr/bin/env bash
 # 唯一执行入口：先清干净上一轮的产物，再跑基线、再评分——"results.json 存在"永远等于"这一轮真跑出了成绩"。
 set -euo pipefail
-: "$${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON：先 ai4sci task env build <task_dir>，或由框架提交}"
+# 三个保证变量拿不到就停在这里，不兜底（框架与 ai4sci task baseline 都会给）
+: "$${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON}"
+: "$${AI4SCI_BUDGET_S:?未设 AI4SCI_BUDGET_S}"
+: "$${AI4SCI_INNER_K:?未设 AI4SCI_INNER_K}"
 TASK_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$$TASK_DIR"
 rm -f <产物文件> results.json
 AI4SCI_START_EPOCH="$$("$$AI4SCI_PYTHON" -c 'import time; print(time.time())')"
 export AI4SCI_START_EPOCH
+# inner_k 为 1 时就是一次；大于 1 时按它循环，每次预算 = AI4SCI_BUDGET_S / AI4SCI_INNER_K，产物按序号改名
 "$$AI4SCI_PYTHON" code/<入口>.py
 "$$AI4SCI_PYTHON" harness/evaluate.py
 ```
@@ -69,7 +78,10 @@ export AI4SCI_START_EPOCH
 set -euo pipefail
 TASK_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$$TASK_DIR"
+# 由 ai4sci task baseline 起：解释器、预算、inner_k 都从它来；这里只给解释器一个指向任务自己 .venv 的缺省
 export AI4SCI_PYTHON="$${AI4SCI_PYTHON:-$$TASK_DIR/.venv/bin/python}"
+: "$${AI4SCI_BUDGET_S:?未设 AI4SCI_BUDGET_S：经 ai4sci task baseline 起}"
+: "$${AI4SCI_INNER_K:?未设 AI4SCI_INNER_K：经 ai4sci task baseline 起}"
 if [ ! -x "$$AI4SCI_PYTHON" ]; then
   echo "make_run0: 任务环境不存在：$$AI4SCI_PYTHON（先跑 ai4sci task env build $$TASK_DIR）" >&2
   exit 1

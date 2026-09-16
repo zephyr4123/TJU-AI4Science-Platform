@@ -12,7 +12,7 @@
 | `compute/` | 算力适配器：一个后端一个文件；端口 `Compute` 定义在 `compute/__init__.py` |
 | `tools/` | 确定性脚本：文献 API、引用校验、出图、harness 基类 |
 | `domains/` | 领域包，按工具链命名，一个领域一个目录；`generic/` 兜底、`petab/` 参数估计；`prompts/<能力>.md` 与 `skills/*/SKILL.md` 由 `run new` 快照进 run、随执行层提示的「领域约定」段注入（执行层的隔离参数关掉了 CLI 原生 skill 加载） |
-| `tasks/` | 任务包，一个任务一个目录：`manifest.yaml`（`format_version` 必填）`env/`（python-version + requirements.lock）`harness/` `code/` `data/` `run_0/`，可选 `design.md`（协调层写给执行层的产物契约，`ai4sci task design` 读）；`.venv/` 由 `ai4sci task env build` 建，不进 git |
+| `tasks/` | 任务包，一个任务一个目录：`manifest.yaml`（`format_version` 必填）`env/`（python-version + requirements.lock）`harness/` `code/` `data/` `run_0/`，可选 `design.md`（协调层写给执行层的产物契约，`ai4sci task design` 读）；框架起 harness 时保证给 `AI4SCI_PYTHON` `AI4SCI_BUDGET_S` `AI4SCI_INNER_K`（后者来自 `budget.inner_k`），harness 给它们写默认值过不了 `task validate`；`.venv/` 由 `ai4sci task env build` 建，`run_0/` 由 `ai4sci task baseline` 跑，都不进 git |
 | `docs/` | 面向接任务的人的指南 |
 | `runs/` | 运行产物，不进 git；每个 run 自带 `.venv/` |
 | `tests/` | 框架测试；单测跟着模块走 |

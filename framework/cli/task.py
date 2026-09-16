@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
+import subprocess
 import sys
 from pathlib import Path
+
+import yaml
 
 from framework.cli._common import (
     EXIT_INVALID,
@@ -121,6 +125,48 @@ def cmd_design(args: argparse.Namespace) -> int:
     return EXIT_INVALID if outcome.problems else EXIT_OK
 
 
+def cmd_baseline(args: argparse.Namespace) -> int:
+    """跑 harness/make_run0.sh 出基线：框架给它和内环同一组保证的环境变量。
+
+    为什么不让人直接 `bash harness/make_run0.sh`：launcher 从 AI4SCI_BUDGET_S / AI4SCI_INNER_K
+    读这两个数，人手工起就得自己想着导出，忘了就是一次"看着像跑了"的基线。按钮把两处的
+    环境收成一处（contracts.env.harness_env），基线和内环跑的是同一份约定。
+    """
+    task_dir = Path(args.task_dir).resolve()
+    if not task_dir.is_dir():
+        print(f"任务目录不存在：{task_dir}", file=sys.stderr)
+        return EXIT_USAGE
+    script = task_dir / "harness" / "make_run0.sh"
+    if not script.is_file():
+        print(f"缺 {script.relative_to(task_dir)}：先 ai4sci task design 写出 harness",
+              file=sys.stderr)
+        return EXIT_INVALID
+    python = env.venv_python(task_dir / env.VENV_DIRNAME)
+    if not python.is_file():
+        print(f"任务环境不存在：{python}（先 ai4sci task env build {task_dir}）", file=sys.stderr)
+        return EXIT_INVALID
+    manifest = yaml.safe_load((task_dir / packs.MANIFEST_NAME).read_text(encoding="utf-8"))
+    budget = manifest.get("budget") if isinstance(manifest, dict) else None
+    if not isinstance(budget, dict) or not isinstance(budget.get("wall_clock_s"), (int, float)):
+        print(f"{packs.MANIFEST_NAME} 缺 budget.wall_clock_s，先 ai4sci task validate",
+              file=sys.stderr)
+        return EXIT_INVALID
+    inner_k = budget.get("inner_k", 1)
+    if not isinstance(inner_k, int) or inner_k < 1:
+        print(f"{packs.MANIFEST_NAME} 的 budget.inner_k 要是正整数，实际 {inner_k!r}",
+              file=sys.stderr)
+        return EXIT_INVALID
+    harness_env = env.harness_env(python, float(budget["wall_clock_s"]), inner_k)
+    # stdout / stderr 直通：这是人在看的一步，基线跑出来的 σ 那一行要让人当场看到
+    proc = subprocess.run(["bash", str(script)], cwd=task_dir,
+                          env={**os.environ, **harness_env}, check=False)
+    if proc.returncode != 0:
+        print(f"make_run0.sh 退出码 {proc.returncode}，run_0 不可信", file=sys.stderr)
+        return EXIT_INVALID
+    print(f"ok {task_dir.name}\tinner_k={inner_k}\tnext=ai4sci task validate {task_dir}")
+    return EXIT_OK
+
+
 def add_parser(groups: argparse._SubParsersAction) -> None:
     task = groups.add_parser("task", help="任务包相关")
     actions = task.add_subparsers(dest="action", required=True)
@@ -155,3 +201,10 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     )
     add_runs_root(designing)
     designing.set_defaults(func=cmd_design)
+
+    baseline = actions.add_parser(
+        "baseline",
+        help="跑 harness/make_run0.sh 出基线，环境变量与内环同一组（解释器、预算、inner_k）",
+    )
+    baseline.add_argument("task_dir", help="任务包目录，要先 task env build")
+    baseline.set_defaults(func=cmd_baseline)

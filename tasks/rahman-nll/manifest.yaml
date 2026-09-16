@@ -55,6 +55,7 @@ budget:
   # 从 50 抬到 75，条件是每次优化仍然是 2 秒）。
   wall_clock_s: 75
   max_iterations: 30
+  inner_k: 25            # 评分脚本内部跑几次取均值（launcher 的 INNER_K 常数与它一致；新任务从 AI4SCI_INNER_K 读）
   repeat_k: 5           # 外层重复 5 次估 σ：σ 只有 0.1 量级，3 个样本估不稳，5 次也才多花 3 分钟
   accept_sigma: 2.0
   min_delta: 0.15       # 研究者 2026-09-16 从 0.3 松到 0.15（理由见顶部注释）：门实际由 2σ≈0.152 决定

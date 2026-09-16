@@ -28,6 +28,7 @@ metrics:
 budget:
   wall_clock_s: 60      # 3 个内部 seed 各 20 秒（launcher 里 INNER_K=3）；单次评估亚毫秒，20 秒约 180 个起点
   max_iterations: 30
+  inner_k: 3            # 评分脚本内部跑几次取均值（launcher 的 INNER_K 常数与它一致；新任务从 AI4SCI_INNER_K 读）
   repeat_k: 3           # 三个 seed：多起点的随机性就是这道题的噪声来源
   accept_sigma: 2.0
   min_delta: 1.0        # σ 来自随机起点，可能很大也可能为 0；同一局部最优的数值抖动在 1 以内，不算改进

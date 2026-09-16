@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import math
@@ -24,7 +25,7 @@ from typing import Any
 import jsonschema
 import yaml
 
-from framework.contracts.env import read_env
+from framework.contracts.env import GUARANTEED_ENV, read_env
 
 SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
 MANIFEST_NAME = "manifest.yaml"
@@ -42,6 +43,9 @@ SUPPORTED_FORMAT_VERSIONS = (1,)
 # harness 脚本里的裸 python 命令：任务必须跑在自己的 venv 里，
 # 只准经 $AI4SCI_PYTHON 起解释器（packs.md §2）。
 _BARE_PYTHON_RE = re.compile(r"(?<![\w/.$\"'-])python3?(?:\.\d+)?(?=\s|$|[;)|&])")
+# launcher.sh 里给保证变量写默认值：${AI4SCI_INNER_K:-3} / ${AI4SCI_BUDGET_S-30} 这类展开。
+# make_run0.sh 不查：它是人手工起的入口，给 AI4SCI_PYTHON 一个指向任务自己 .venv 的默认值是约定
+_ENV_DEFAULT_RE = re.compile(r"\$\{(" + "|".join(GUARANTEED_ENV) + r")(?::?-|:?=)")
 
 _SCHEMA_CACHE: dict[str, dict[str, Any]] = {}
 
@@ -227,6 +231,30 @@ def _bare_python_lines(script: Path) -> list[int]:
     return hits
 
 
+def _env_default_lines(script: Path) -> list[tuple[int, str]]:
+    """harness 的 Python 里给保证变量写默认值的位置：`environ.get(NAME, x)` / `getenv(NAME, x)`。
+
+    只认这两种直接写法，且只认 GUARANTEED_ENV 里的名字：这是裁判文件的安检，不是通用静态警察，
+    范围收到"框架保证会给、拿不到必须停"的那几个变量。读不出 AST 的文件不在这里报——语法错
+    lint 会报。
+    """
+    try:
+        tree = ast.parse(script.read_text(encoding="utf-8"), filename=str(script))
+    except SyntaxError:
+        return []
+    hits: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or len(node.args) < 2:
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr not in ("get", "getenv"):
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and first.value in GUARANTEED_ENV:
+            hits.append((node.lineno, first.value))
+    return hits
+
+
 def _check_harness(task_dir: Path) -> list[str]:
     """harness 三件套齐全，且 SHA256SUMS 与磁盘一致——它是「评测没被改」的唯一证据。"""
     hdir = task_dir / "harness"
@@ -243,6 +271,20 @@ def _check_harness(task_dir: Path) -> list[str]:
             problems.append(
                 f"harness/{script.name}:{lineno}: 裸调 python，任务必须跑在自己的 venv 里，"
                 f"期望经 \"$AI4SCI_PYTHON\" 起解释器"
+            )
+    launcher = hdir / "launcher.sh"
+    if launcher.is_file():
+        for lineno, line in enumerate(launcher.read_text(encoding="utf-8").splitlines(), 1):
+            if (m := _ENV_DEFAULT_RE.search(line)) and not line.lstrip().startswith("#"):
+                problems.append(
+                    f"harness/launcher.sh:{lineno}: 给 {m.group(1)} 写了默认值；"
+                    "框架保证给出这个变量，拿不到必须停（用 ${VAR:?}），不许自己兜底"
+                )
+    for script in sorted(hdir.glob("*.py")):
+        for lineno, name in _env_default_lines(script):
+            problems.append(
+                f"harness/{script.name}:{lineno}: 给 {name} 写了默认值；"
+                "框架保证给出这个变量，拿不到必须退非零，不许自己兜底"
             )
 
     sums_path = hdir / "SHA256SUMS"

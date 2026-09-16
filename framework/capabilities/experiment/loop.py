@@ -269,7 +269,11 @@ def _prompt_values(
     ctx: RunContext, state: dict[str, Any], rows: list[ledger.LedgerRow], iter_n: int
 ) -> dict[str, object]:
     """填给 prompt.md 的占位符；模板缺一个就抛，不会静默留下 `$xxx`。"""
-    hint = failures.HINTS.get(rows[-1].status, "") if rows else ""
+    hint = ""
+    if rows:
+        hint = failures.HINTS.get(rows[-1].status, "")
+        if rows[-1].note == gate.NO_EFFECT_NOTE:
+            hint = failures.NO_EFFECT_HINT
     return {
         "iter": iter_n, "question": ctx.question, "metric_name": ctx.metric_name,
         "direction": ctx.direction, "direction_zh": prompting.DIRECTION_ZH[ctx.direction],

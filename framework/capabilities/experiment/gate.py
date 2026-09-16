@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from framework.run.context import RunContext
 
+# 分数与 best 完全相同：几乎只有"改动没生效"一种解释（rahman-1 第 2 轮：逐起点调优化器时换撒点
+# 方式等于没换）。判决还是 discard，但备注要说清，下一轮的提示据此给修复方向（外层 #45）
+NO_EFFECT_NOTE = "持平 delta=0：分数与 best 完全相同，改动很可能没有生效"
+
 
 def gate(ctx: RunContext) -> float:
     """统计门的高度：`max(accept_sigma×σ, min_delta)`。
@@ -34,4 +38,6 @@ def compare(ctx: RunContext, best_metric: float, metric: float) -> tuple[str, st
         return "keep", f"改进 delta={delta:.6g} > gate={height:.6g}"
     if delta > 0:
         return "discard", f"within noise: delta={delta:.6g} <= gate={height:.6g}"
-    return "discard", f"变差或持平 delta={delta:.6g}"
+    if delta == 0:
+        return "discard", NO_EFFECT_NOTE
+    return "discard", f"变差 delta={delta:.6g}"

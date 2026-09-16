@@ -17,6 +17,7 @@ import math
 from pathlib import Path
 
 import pytest
+import yaml
 
 from compute import Job
 from compute._procs import group_alive
@@ -25,13 +26,14 @@ from framework.capabilities.experiment import (
     InflightPending,
     ResumeMismatch,
     StopReason,
+    gate,
     resume_loop,
     run_loop,
 )
 from framework.memory import ledger
 from framework.run import gitwork
 from framework.run.checkpoint import read_checkpoint, write_checkpoint
-from framework.run.context import TaskInvalid, default_runs_root
+from framework.run.context import TaskInvalid, default_runs_root, load_context
 from framework.run.lifecycle import extend_run, new_run
 from tests.fixtures import packs_factory as pf
 from tests.fixtures.scripted_backend import ScriptedRunner, ScriptExhausted, write_train
@@ -748,3 +750,43 @@ def test_extend_after_unrecoverable_forgives_the_failures_before_it(tmp_path):
     stop = run_loop(run_dir, runner, LocalCompute(), max_iters=1)
     assert runner.calls == 4 and stop.reason == "batch_exhausted"
     assert rows_of(run_dir)[-1].status == "keep"
+
+
+# ── 保证的环境变量与「改动没生效」（外层 #43 #44 #45）────────────────────
+ENV_RECORDING_TRAIN = {"code/train.py": (
+    "import json\nimport os\nfrom pathlib import Path\n"
+    "TASK_DIR = Path(__file__).resolve().parent.parent\n"
+    "(TASK_DIR / 'predictions.json').write_text(json.dumps({'y_pred': [0.1]}))\n"
+    "(TASK_DIR / 'env-seen.json').write_text(json.dumps("
+    "{k: v for k, v in os.environ.items() if k.startswith('AI4SCI_')}))\n"
+)}
+
+
+def test_harness_gets_budget_and_inner_k_from_the_framework(tmp_path):
+    run_dir, _ = start_run(tmp_path, inner_k=4)
+    run_loop(run_dir, ScriptedRunner([ENV_RECORDING_TRAIN]), LocalCompute(), max_iters=1)
+    seen = json.loads((run_dir / "experiment" / "runs" / "run_1" / "env-seen.json")
+                      .read_text(encoding="utf-8"))
+    assert seen["AI4SCI_INNER_K"] == "4" and seen["AI4SCI_BUDGET_S"] == "2"
+    assert seen["AI4SCI_SEED"] == "42" and seen["AI4SCI_PYTHON"].endswith("/.venv/bin/python")
+
+
+def test_inner_k_defaults_to_one_and_rejects_zero(tmp_path):
+    run_dir, _ = start_run(tmp_path)
+    assert load_context(run_dir).inner_k == 1
+    manifest = yaml.safe_load((run_dir / "manifest.yaml").read_text(encoding="utf-8"))
+    manifest["budget"]["inner_k"] = 0
+    (run_dir / "manifest.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    with pytest.raises(AssertionError, match="inner_k"):
+        load_context(run_dir)
+
+
+def test_identical_metric_is_flagged_as_no_effect_and_hinted_next_round(tmp_path):
+    """rahman-1 第 2 轮：换撒点方式后分数与基线一模一样，判 discard 但要说清"改动没生效"。"""
+    run_dir, _ = start_run(tmp_path)
+    runner = ScriptedRunner([train_for_mse(0.030), train_for_mse(0.018)])
+    run_loop(run_dir, runner, LocalCompute(), max_iters=2)
+    rows = rows_of(run_dir)
+    assert rows[0].status == "discard" and rows[0].note == gate.NO_EFFECT_NOTE
+    assert "改动没有影响结果" in runner.prompts[1]
+    assert rows[1].status == "keep"

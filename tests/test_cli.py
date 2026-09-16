@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -363,3 +364,37 @@ def test_task_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatc
     assert code == EXIT_INVALID
     assert captured.out.startswith("design draft\tsession=2\t")
     assert "裸调 python" in captured.err and "--feedback @" in captured.out
+
+
+# ── task baseline：跑 make_run0.sh，环境变量与内环同一组 ─────────────────
+MAKE_RUN0_RECORDING = (
+    "#!/usr/bin/env bash\nset -euo pipefail\n"
+    ': "${AI4SCI_INNER_K:?}"\n: "${AI4SCI_BUDGET_S:?}"\n'
+    'TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"\n'
+    'printf \'{"inner_k": "%s", "budget": "%s", "python": "%s"}\' '
+    '"$AI4SCI_INNER_K" "$AI4SCI_BUDGET_S" "$AI4SCI_PYTHON" > "$TASK_DIR/baseline-env.json"\n'
+)
+
+
+def test_task_baseline_runs_make_run0_with_the_guaranteed_env(tmp_path):
+    manifest = pf.default_manifest()
+    manifest["budget"]["inner_k"] = 7
+    pack = pf.make_pack(tmp_path, manifest=manifest)
+    (pack.task_dir / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
+    assert run_cli("task", "env", "build", str(pack.task_dir)).returncode == EXIT_OK
+    proc = run_cli("task", "baseline", str(pack.task_dir))
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert proc.stdout.strip().startswith("ok toy\tinner_k=7\tnext=ai4sci task validate")
+    seen = json.loads((pack.task_dir / "baseline-env.json").read_text(encoding="utf-8"))
+    assert seen["inner_k"] == "7"
+    assert seen["budget"] == f"{manifest['budget']['wall_clock_s']:g}"
+    assert seen["python"] == str(pack.task_dir / ".venv" / "bin" / "python")
+
+
+def test_task_baseline_without_venv_or_script_exits_one(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    proc = run_cli("task", "baseline", str(pack.task_dir))
+    assert proc.returncode == EXIT_INVALID and "make_run0.sh" in proc.stderr
+    (pack.task_dir / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
+    proc = run_cli("task", "baseline", str(pack.task_dir))
+    assert proc.returncode == EXIT_INVALID and "task env build" in proc.stderr

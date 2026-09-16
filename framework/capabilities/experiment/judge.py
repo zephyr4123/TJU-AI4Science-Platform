@@ -19,7 +19,7 @@ from typing import Any
 from backends import RunResult
 from compute import Compute, Job
 from framework.capabilities.experiment import failures, gate
-from framework.contracts.env import PYTHON_ENV
+from framework.contracts import env
 from framework.contracts.packs import BUDGET_OVERRUN_RATIO
 from framework.contracts.results import read_results
 from framework.executor.session import executor_report
@@ -61,9 +61,11 @@ def judge_run(
     run_n = layout.iter_run(ctx.run_dir, iter_n)
     before = failures.readonly_hashes(ctx.work)
     compute.put(ctx.work, run_n)
-    # harness 只经 $AI4SCI_PYTHON 起解释器：任务跑在 run 自己的 venv 里，不是平台的（packs.md §2）
+    # harness 只经 $AI4SCI_PYTHON 起解释器（任务跑在 run 自己的 venv 里），预算与内部重复次数也由
+    # 这里保证给出：launcher 不该再把它们写成常数（packs.md §2）
     job = compute.submit(run_n, LAUNCH_CMD,
-                         {"AI4SCI_SEED": str(ctx.seed), PYTHON_ENV: str(ctx.python)},
+                         {env.SEED_ENV: str(ctx.seed),
+                          **env.harness_env(ctx.python, ctx.wall_clock_s, ctx.inner_k)},
                          timeout_s=ctx.wall_clock_s * BUDGET_OVERRUN_RATIO)
     # 句柄立刻落盘：submit 与 wait 之间被杀时，续跑靠它接回或收尸（A-5）
     (run_n / "job.json").write_text(job.to_json(), encoding="utf-8")
