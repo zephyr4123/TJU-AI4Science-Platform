@@ -1,11 +1,12 @@
 # 本地与 CI 共用的入口：CI 跑的就是 `make check`，发版流水线跑的就是 `make package`。
 # 技术栈：Python，venv 隔离（红线：依赖不装全局）。依赖钉在 requirements.lock，改依赖走 `make lock`。
-.PHONY: check changelog lint test venv lock package release
+# 页面是 ui/web 的 Node 项目，依赖钉在 package-lock.json，只装在 ui/web/node_modules。
+.PHONY: check changelog lint test venv lock package release ui ui-check
 
 VENV := .venv
 PY   := $(VENV)/bin/python
 
-check: changelog lint test         ## 全部门禁
+check: changelog lint test ui-check ## 全部门禁（页面的门禁也在里面）
 
 changelog:                         ## CHANGELOG.md 格式校验
 	.github/scripts/changelog.sh check
@@ -34,3 +35,16 @@ package:                           ## make package VERSION=0.1.0 → dist/<name>
 
 release:                           ## make release VERSION=0.2.0 → 轮转 CHANGELOG、提交、打 tag（不 push）
 	.github/scripts/release.sh $(VERSION)
+
+# ── 页面（ui/web，React + Tailwind）：依赖装在 ui/web/node_modules，不进全局 ──
+UI := ui/web
+
+ui: $(UI)/node_modules/.stamp          ## 构建页面到 ui/web/dist，ai4sci serve 缺省端它
+	cd $(UI) && npm run build
+
+ui-check: $(UI)/node_modules/.stamp    ## 页面门禁：类型、lint、单测、构建
+	cd $(UI) && npm run check
+
+$(UI)/node_modules/.stamp: $(UI)/package.json $(UI)/package-lock.json
+	cd $(UI) && npm ci --no-audit --no-fund
+	touch $@
