@@ -27,29 +27,33 @@ for seed in "${SEEDS[@]}"; do
   cp results.json "run_0/repeats/results-${seed}.json"
 done
 
-# σ 用样本标准差(n-1),纯标准库算。
+# σ 用样本标准差(n-1),纯标准库算;manifest 里的每个指标(nll_mean/nll_min/nll_max)各算一条。
 "$AI4SCI_PYTHON" - <<'PY'
 import json
 import statistics
 from pathlib import Path
 
 run0 = Path("run_0")
-seeds, values = [], []
+seeds = []
+metric_values = {"nll_mean": [], "nll_min": [], "nll_max": []}
 for path in sorted(run0.glob("repeats/results-*.json")):
     doc = json.loads(path.read_text(encoding="utf-8"))
     seeds.append(doc["seed"])
-    values.append(doc["metrics"]["nll"])
+    for name in metric_values:
+        metric_values[name].append(doc["metrics"][name])
 
 order = sorted(range(len(seeds)), key=lambda i: seeds[i])
 seeds = [seeds[i] for i in order]
-values = [values[i] for i in order]
-sigma = statistics.stdev(values) if len(values) > 1 else 0.0
-(run0 / "sigma.json").write_text(
-    json.dumps({"nll": {"sigma": sigma, "seeds": seeds, "values": values}}),
-    encoding="utf-8",
-)
-print(f"sigma.json: nll sigma={sigma:.6g} seeds={seeds}")
+
+sigma = {}
+for name, values in metric_values.items():
+    values = [values[i] for i in order]
+    stdev = statistics.stdev(values) if len(values) > 1 else 0.0
+    sigma[name] = {"sigma": stdev, "seeds": seeds, "values": values}
+    print(f"sigma.json: {name} sigma={stdev:.6g} seeds={seeds}")
+
+(run0 / "sigma.json").write_text(json.dumps(sigma), encoding="utf-8")
 PY
 
-rm -f params.json results.json
+rm -f params.json params_*.json results.json
 echo "run_0 就绪"
