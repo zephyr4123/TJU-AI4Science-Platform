@@ -374,3 +374,32 @@ def test_real_task_pack_runs_end_to_end_if_present(tmp_path):
     assert doc["seed"] == 42
     assert doc["metrics"]["val_mse"] > 0
     assert doc["elapsed_s"] <= 30 * 1.5  # manifest 的 wall_clock_s × 1.5
+
+
+# ── seal_harness 与设计阶段的 validate ─────────────────────────────────────
+def test_seal_harness_sets_exec_bits_and_lists_every_file(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    hdir = pack.task_dir / "harness"
+    (hdir / "make_run0.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    (hdir / "launcher.sh").chmod(0o644)
+    names = packs.seal_harness(pack.task_dir)
+    assert names == ["evaluate.py", "launcher.sh", "make_run0.sh"]
+    assert os.access(hdir / "launcher.sh", os.X_OK) and os.access(hdir / "make_run0.sh", os.X_OK)
+    assert not os.access(hdir / "evaluate.py", os.X_OK)  # 只给脚本加执行位
+    listed = [ln.split("  ")[1] for ln in (hdir / "SHA256SUMS").read_text().splitlines()]
+    assert listed == names
+    assert packs.validate_task(pack.task_dir, pack.domains_root) == []
+
+
+def test_seal_harness_without_harness_dir_returns_nothing(tmp_path):
+    (tmp_path / "toy").mkdir()
+    assert packs.seal_harness(tmp_path / "toy") == []
+    assert not (tmp_path / "toy" / "harness").exists()
+
+
+def test_validate_can_skip_run0_for_the_design_stage(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    shutil.rmtree(pack.task_dir / "run_0")
+    assert packs.validate_task(pack.task_dir, pack.domains_root, require_run0=False) == []
+    full = packs.validate_task(pack.task_dir, pack.domains_root)
+    assert full and all("run_0/" in p for p in full)

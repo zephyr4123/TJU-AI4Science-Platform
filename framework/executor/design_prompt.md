@@ -1,0 +1,167 @@
+# 任务：给一个任务包写 harness 与基线代码
+
+你在一个科研自动化平台的**任务包目录**里工作。目录里已经有 `manifest.yaml`（任务声明）、`data/`（问题定义与输入数据，可能为空）、`env/`（依赖清单，平台按它建 venv）、`design.md`（协调层写的产物契约与基线策略）。你要写四个文件：
+
+- `harness/launcher.sh`：唯一执行入口，清产物 → 跑 code/ → 跑 evaluate.py
+- `harness/evaluate.py`：裁判，读产物、用 `data/` 重算指标、写 results.json
+- `harness/make_run0.sh`：跑出基线 + 重复 + σ → `run_0/`
+- `code/<入口>.py`：基线；以后由另一个 agent 逐轮改它
+
+## 硬规矩
+
+1. **只写 `harness/` 与 `code/` 下的文件。** 不碰 `data/`、`env/`、`manifest.yaml`、`design.md`。不写 `harness/SHA256SUMS`（框架生成）。
+2. 你这个会话没有 Bash，不能运行代码。写完之后由框架改权限、算校验和、跑 lint、跑校验，报错会喂回给你。每一行想清楚再写，宁可简单。
+3. 脚本里起 Python 只准写 `"$$AI4SCI_PYTHON"`，绝不能写裸 `python` / `python3`：任务跑在自己的 venv 里，这个变量由框架或 make_run0.sh 给。
+4. `evaluate.py` 是裁判：**指标必须由它用 `data/` 重算**，不许读 `code/` 自己报的分数；`code/` 只产出产物文件。
+5. 拒收产物（文件缺失、形状不对、NaN、越界）时：打一句话到 stderr，`raise SystemExit(非零)`，**不写 results.json，不抛 traceback**。
+6. 注释用中文，写"为什么"，不复述代码在做什么。文件短、单入口、可调参数集中放顶上并注明含义。不写没人用的函数。
+7. 行宽不超过 $lint_line_length 列，`harness/` 下的 Python 要过 ruff（规则集 $lint_select）：import 按 isort 排序、没有未用的 import、不许裸 except。`code/` 不查 lint。
+
+## 平台契约（所有任务一样）
+
+- `results.json` 写在任务根目录，形状固定，`metrics` 必须包含 manifest 声明的**每一个**指标：
+
+  ```json
+  {"metrics": {"<指标名>": <有限数>}, "elapsed_s": <float>, "seed": <int>, "status": "ok"}
+  ```
+
+- 环境变量：`AI4SCI_SEED`（种子，缺省 42；同一 seed 必须复现同一结果）、`AI4SCI_BUDGET_S`（一次跑的墙钟预算，与 manifest 的 `wall_clock_s` 一致；`code/` 只花它的 80%，留时间评分，按墙钟自截断，不按常数反推工作量）、`AI4SCI_START_EPOCH`（launcher 起跑时设，evaluate.py 用它算 `elapsed_s`）、`AI4SCI_PYTHON`（解释器）。
+- `make_run0.sh`：基线一次（seed 42）+ manifest `budget.repeat_k` 次重复（seed 42、43、44 …）+ `run_0/sigma.json`，σ 是样本标准差，**每个指标一条**：`{"<指标名>": {"sigma": <float>, "seeds": [...], "values": [...]}}`。
+- evaluate.py 退出码：0 正常；2 产物缺失或读不出；3 形状 / 长度对不上；4 NaN / Inf / 越界；5 计时缺失。
+
+## manifest.yaml（只读，照它的指标名与预算写）
+
+```yaml
+$manifest
+```
+
+## 产物契约与基线策略（协调层写的 design.md，照它做）
+
+$brief
+
+## 工具链（在任务的 venv 里实测过的 API；没写的不要猜）
+
+$skills
+
+## 参考骨架（形状照抄，内容按本任务改）
+
+### harness/launcher.sh
+
+```bash
+#!/usr/bin/env bash
+# 唯一执行入口：先清干净上一轮的产物，再跑基线、再评分——"results.json 存在"永远等于"这一轮真跑出了成绩"。
+set -euo pipefail
+: "$${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON：先 ai4sci task env build <task_dir>，或由框架提交}"
+TASK_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$$TASK_DIR"
+rm -f <产物文件> results.json
+AI4SCI_START_EPOCH="$$("$$AI4SCI_PYTHON" -c 'import time; print(time.time())')"
+export AI4SCI_START_EPOCH
+"$$AI4SCI_PYTHON" code/<入口>.py
+"$$AI4SCI_PYTHON" harness/evaluate.py
+```
+
+### harness/make_run0.sh
+
+```bash
+#!/usr/bin/env bash
+# 复现 run_0/：基线一次 + repeat_k 次重复 + σ。run_0 是改进率的分母，也是统计门的基线。
+set -euo pipefail
+TASK_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$$TASK_DIR"
+export AI4SCI_PYTHON="$${AI4SCI_PYTHON:-$$TASK_DIR/.venv/bin/python}"
+if [ ! -x "$$AI4SCI_PYTHON" ]; then
+  echo "make_run0: 任务环境不存在：$$AI4SCI_PYTHON（先跑 ai4sci task env build $$TASK_DIR）" >&2
+  exit 1
+fi
+SEEDS=(42 43 44)   # 与 manifest.budget.repeat_k 对应；改一处就要改另一处
+BASE_SEED=42
+rm -rf run_0
+mkdir -p run_0/repeats
+AI4SCI_SEED="$$BASE_SEED" harness/launcher.sh
+cp results.json run_0/results.json
+for seed in "$${SEEDS[@]}"; do
+  AI4SCI_SEED="$$seed" harness/launcher.sh
+  cp results.json "run_0/repeats/results-$${seed}.json"
+done
+# σ 用样本标准差（n-1），纯标准库算，每个指标一条
+"$$AI4SCI_PYTHON" - <<'PY'
+import json
+import statistics
+from pathlib import Path
+
+run0 = Path("run_0")
+docs = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(run0.glob("repeats/results-*.json"))]
+docs.sort(key=lambda d: d["seed"])
+seeds = [d["seed"] for d in docs]
+sigma = {}
+for name in docs[0]["metrics"]:
+    values = [d["metrics"][name] for d in docs]
+    sigma[name] = {"sigma": statistics.stdev(values) if len(values) > 1 else 0.0,
+                   "seeds": seeds, "values": values}
+(run0 / "sigma.json").write_text(json.dumps(sigma), encoding="utf-8")
+print("sigma.json:", {k: round(v["sigma"], 6) for k, v in sigma.items()})
+PY
+rm -f <产物文件> results.json
+echo "run_0 就绪"
+```
+
+### harness/evaluate.py（骨架）
+
+```python
+"""评测层：只吃产物文件，算分，写 results.json。非零退出一律不写 results.json。"""
+
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+TASK_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_SEED = 42
+
+
+def _fail(code: int, message: str) -> None:
+    print(f"evaluate: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def _load(path: Path, code: int) -> dict:
+    if not path.is_file():
+        _fail(code, f"文件缺失：{path}")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        _fail(code, f"{path} 不是合法 JSON：{exc}")
+    raise AssertionError("不可达")
+
+
+def _elapsed_s() -> float:
+    start = os.environ.get("AI4SCI_START_EPOCH")
+    if start is None:
+        _fail(5, "拿不到 AI4SCI_START_EPOCH，不填 0 假装量过")
+    return time.time() - float(start)
+
+
+def main() -> None:
+    artifact = _load(TASK_DIR / "<产物文件>", 2)
+    # …按 design.md 查形状（3）、查有限与边界（4），用 data/ 重算指标…
+    metrics = {"<指标名>": 0.0}
+    results = {"metrics": metrics, "elapsed_s": _elapsed_s(),
+               "seed": int(os.environ.get("AI4SCI_SEED", DEFAULT_SEED)), "status": "ok"}
+    (TASK_DIR / "results.json").write_text(json.dumps(results), encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+## 现状
+
+$current
+
+$feedback
+
+## 收尾
+
+写完后用三行自述结束：写了哪几个文件；你不确定的地方（某个 API 的行为、某个边界）；建议框架校验时重点看什么。

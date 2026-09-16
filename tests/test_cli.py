@@ -312,3 +312,54 @@ def test_cap_analysis_runs_the_capability_with_the_named_backend(tmp_path, monke
     run_cli("cap", "verify", "r1", "--runs-root", str(run_dir.parent))
     proc = run_cli("status", "r1", "--runs-root", str(run_dir.parent))
     assert "verify\tPASS" in proc.stdout
+
+
+# ── task design：接任务的按钮 ──────────────────────────────────────────────
+def test_task_design_missing_dir_exits_two(tmp_path):
+    proc = run_cli("task", "design", str(tmp_path / "nope"))
+    assert proc.returncode == EXIT_USAGE
+
+
+def test_task_design_missing_feedback_file_exits_two(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    proc = run_cli("task", "design", str(pack.task_dir), "--feedback", "@/nonexistent/f.md",
+                   "--runs-root", str(tmp_path / "runs"))
+    assert proc.returncode == EXIT_USAGE
+    assert "--feedback" in proc.stderr
+
+
+def test_task_design_without_brief_exits_one_before_any_session(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    proc = run_cli("task", "design", str(pack.task_dir), "--runs-root", str(tmp_path / "runs"))
+    assert proc.returncode == EXIT_INVALID
+    assert "design.md" in proc.stderr
+    assert not (tmp_path / "runs" / "design-toy").exists()
+
+
+def test_task_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch, capsys):
+    """进程内跑：剧本后端没法按名字从子进程里取，把取后端的那一步换掉即可。"""
+    import shutil
+
+    from framework.cli import main
+    from tests.test_executor_design import BRIEF, GOOD_DRAFT
+
+    pack = pf.make_pack(tmp_path)
+    for name in ("harness", "run_0", "code"):
+        shutil.rmtree(pack.task_dir / name)
+    (pack.task_dir / "design.md").write_text(BRIEF, encoding="utf-8")
+    runner = ScriptedRunner([GOOD_DRAFT, {"harness/launcher.sh": pf.BARE_PYTHON_LAUNCHER_SH}])
+    monkeypatch.setattr("framework.cli._common.get_backend", lambda name: runner)
+
+    code = main(["task", "design", str(pack.task_dir), "--runs-root", str(tmp_path / "runs")])
+    out = capsys.readouterr().out
+    assert code == EXIT_OK
+    assert out.startswith(
+        "design ok\tsession=1\tchanged=4\tsealed=evaluate.py,launcher.sh,make_run0.sh")
+    assert "next=人签 harness/evaluate.py" in out
+
+    code = main(["task", "design", str(pack.task_dir), "--feedback", "改坏它",
+                 "--runs-root", str(tmp_path / "runs")])
+    captured = capsys.readouterr()
+    assert code == EXIT_INVALID
+    assert captured.out.startswith("design draft\tsession=2\t")
+    assert "裸调 python" in captured.err and "--feedback @" in captured.out

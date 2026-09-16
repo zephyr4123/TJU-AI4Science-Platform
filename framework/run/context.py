@@ -92,13 +92,13 @@ def read_domain_extra(run_dir: Path) -> str:
     if prompt.is_file():
         parts.append(prompt.read_text(encoding="utf-8").strip())
     for skill in sorted(layout.domain_skills(run_dir).glob("*.md")):
-        body = _strip_frontmatter(skill.read_text(encoding="utf-8")).strip()
+        body = strip_frontmatter(skill.read_text(encoding="utf-8")).strip()
         if body:
             parts.append(f"### skill: {skill.stem}\n\n{body}")
     return "\n\n".join(parts)
 
 
-def _strip_frontmatter(text: str) -> str:
+def strip_frontmatter(text: str) -> str:
     """去掉开头的 `---` … `---` 块；没有 frontmatter 原样返回。"""
     if not text.startswith("---"):
         return text

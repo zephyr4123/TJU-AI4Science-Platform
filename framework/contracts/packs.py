@@ -452,10 +452,15 @@ def _check_sigma(run0: Path, metric_names: list[str], repeat_seeds: list[int]) -
     return problems
 
 
-def validate_task(task_dir: Path, domains_root: Path) -> list[str]:
+def validate_task(
+    task_dir: Path, domains_root: Path, *, require_run0: bool = True
+) -> list[str]:
     """校验一个任务包，返回问题清单；空清单表示通过。
 
     每条问题都要能定位：文件（必要时带行号）、字段、期望 vs 实际。
+
+    `require_run0=False` 是设计步骤的读取点：执行层刚写完草稿、人还没签 `evaluate.py`，
+    基线不该跑（签字前不跑基线），这时只查 run_0 之外的一切。开跑（`run new`）永远查全。
     """
     task_dir = Path(task_dir)
     if not task_dir.is_dir():
@@ -467,5 +472,30 @@ def validate_task(task_dir: Path, domains_root: Path) -> list[str]:
     problems += _check_env(task_dir)
     problems += _check_harness(task_dir)
     problems += _check_code(task_dir)
-    problems += _check_run0(manifest, task_dir)
+    if require_run0:
+        problems += _check_run0(manifest, task_dir)
     return problems
+
+
+def seal_harness(task_dir: Path) -> list[str]:
+    """给 harness/ 上锁：`*.sh` 加执行位，除 SHA256SUMS 外每个文件登记进 SHA256SUMS。
+
+    返回登记的文件名。
+
+    执行层的隔离会话没有 Bash，做不了这两步（第一个真任务时靠协调层手敲，漏过 chmod）；
+    由框架做也正好把"校验和是谁算的"这个信任点收回框架：登记的是框架看到的文件，不是谁
+    自报的。harness/ 不存在就返回空清单，让 validate 去报"目录缺失"，这里不替它说话。
+    """
+    hdir = Path(task_dir) / "harness"
+    if not hdir.is_dir():
+        return []
+    names: list[str] = []
+    for path in sorted(hdir.iterdir()):
+        if not path.is_file() or path.name == "SHA256SUMS":
+            continue
+        if path.suffix == ".sh":
+            path.chmod(path.stat().st_mode | 0o111)
+        names.append(path.name)
+    lines = [f"{_sha256(hdir / name)}  {name}" for name in names]
+    (hdir / "SHA256SUMS").write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    return names

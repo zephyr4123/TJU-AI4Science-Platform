@@ -9,6 +9,7 @@
 ## [Unreleased]
 
 ### 新增
+- 接任务的按钮 `ai4sci task design <dir>`（外层 #41）：读 manifest、协调层写的 `design.md`（产物契约与基线策略）、领域包 skill 正文，起执行层（只放行 `harness/` `code/`）写草稿；回来后框架 `packs.seal_harness`（`*.sh` 加执行位、写 SHA256SUMS）、对 `harness/` 跑 ruff（`--isolated`，规则集与行宽是常数、同时渲染进提示第 7 条）、`validate_task(require_run0=False)`；stdout 一行结论（`next=` 说停点），问题一行一条在 stderr、退 1；`--feedback`（或 `@<文件>`）把问题或人的意见喂回，第二个会话看到现状文件照着改；日志 `runs/design-<id>/executor/session-N/`（提示原文、事件流、stderr）。越界、会话死掉、什么都没写、ruff 不在都是 `DesignFailed`。协调层 README 固定流之二改为「先问三句 → manifest → data/env → design.md → 按钮 → 签字 → make_run0 → validate」，`coordinator/prompts/design-harness.md` 并入 `framework/executor/design_prompt.md`；`tasks/boehm-nll/design.md` 补上作样本
 - 任务自带环境（外层 #39，spec R-11）：任务包新增 `env/`（`python-version` + 钉死版本的 `requirements.lock`），`framework/contracts/env.py` 读它、判它、用 uv 建 venv（`uv venv --python X.Y` + `uv pip sync`，uv 进平台 requirements.lock；uv 不在或解释器拉不下来抛 `EnvBuildError`，不退回平台 venv）；`ai4sci task env build <dir>` 建 `tasks/<id>/.venv` 给 `make_run0.sh` 用，`ai4sci run new` 按 `work/env/` 建 `runs/<id>/.venv`（建不出来就删掉半截 run 再报错）；内环提交 harness 时设 `AI4SCI_PYTHON`，`harness/*.sh` 里裸调 `python` / `python3` 由 `task validate` 判不合法；manifest 加必填 `format_version`（只认 `packs.SUPPORTED_FORMAT_VERSIONS`）与可选 `source`（`ai4sci status` 打印）；`mlp-regression` 迁到新契约（run_0 重跑，σ 不变）。A-12 在 CI 里验：夹具 train.py 记下的 `sys.executable` 落在 run 的 `.venv` 下
 - 领域包 skill 走 prompt 注入（外层 #39，spec R-12，Q-2 翻案）：`run new` 把领域包的 `prompts/experiment.md` 与全部 `skills/*/SKILL.md` 快照进 `runs/<id>/prompts/`，`run.context.read_domain_extra` 拼成「领域约定」段（skill 去掉 frontmatter），实验与分析两个能力的提示都追加；第一个真领域包 `domains/petab/`（profile、实验追加段、`skills/petab/SKILL.md` 全部 API 在 pypesto 0.7.0 / petab 0.9.0 / libroadrunner 2.10.0 上实测）
 - `docs/add-a-task.md`「十分钟接一个任务」：目录、manifest、env、harness 三条硬规矩、三条命令、常见报错对照
@@ -23,6 +24,9 @@
 - 执行层会话没走完（被杀 / 超时 / CLI 崩）记为 `executor_failed` 一轮：改动丢弃、回到 best、下一轮带提示、连续三次判不可修复；此前会因拿不到 result 事件把整个内环炸掉（真跑第 10 轮 kill -9 暴露）
 - 实验笔记与续命（外层 #28 #26）：`experiment/notebook.md` 一个 run 一本，runner 每轮追加执行层自述（stream-json 最终 result 文本，截 600 字）+ `git diff --stat` + 裁决，下一轮整本进 prompt，执行层收尾按"假设 / 改动 / 预期"三行自述。真跑第 2 轮与第 5 轮做了同一个改动暴露的缺陷：新会话是为了上下文不膨胀，不是为了失忆。`ai4sci run extend <id> --patience / --max-iterations / --max-cost-usd --reason`：改快照里的 budget、清 stop_reason 与 stop.json、journal.md 记一行，协调层给已停的 run 续命不用手改文件
 - 玩具任务 `tasks/mlp-regression/`（R-3，外层 #12 #21）：纯 Python 单隐层 MLP 拟合含噪一维函数，单标量 `val_mse` minimize，一次 0.25 s；harness 只吃 predictions.json 算分，预测缺失 / 长度不对 / NaN 一律退非 0 且不写 results.json；`run_0/` 含基线、三个种子的重复与 σ（0.0036，基线 0.0231），`harness/make_run0.sh` 可复现
+
+### 修复
+- `pyproject` 的 package-data 漏了 `capabilities/analysis/prompt.md`，打包安装后分析能力找不到模板；顺带登记 `executor/design_prompt.md`
 
 ### 变更
 - `framework/` 按概念拆子包（外层 #30），纯搬家不改行为：`cli/`（一个子命令一个模块，`__init__` 装配 parser，`__main__.py` 接住 `python -m framework.cli`）、`contracts/`（`schemas/*.json` + `packs.py` + 从 `failures` 搬出的 `results.py`）、`run/`（`layout` 路径拼接 / `checkpoint` / `context` 只读上下文 / `lifecycle` 建 run 与续命 / `gitwork`）、`memory/`（`ledger` `notebook`）、`executor/`（`prompting` 组模板 + `session` 起会话并留档日志，模板路径改由能力传入）、`capabilities/experiment/`（`loop` 主循环 / `judge` 裁决与结算 / `gate` 统计门 / `failures` 六类分类 / `prompt.md`）。依赖只许自上而下 `cli → capabilities → executor → memory → run → contracts`，端口 `backends/` `compute/` 不许 import framework，能力之间互不 import——这三条由新增的 `tests/test_layering.py` 用 ast 逐条查（含反向 import 的自证用例）；`pyproject` 的 package-data 跟着 schema 与 prompt.md 的新位置改

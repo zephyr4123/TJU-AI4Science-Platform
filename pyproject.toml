@@ -30,6 +30,8 @@ include = ["framework*", "backends*", "compute*", "tools*"]
 [tool.setuptools.package-data]
 "framework.contracts" = ["schemas/*.json"]
 "framework.capabilities.experiment" = ["prompt.md"]
+"framework.capabilities.analysis" = ["prompt.md"]
+"framework.executor" = ["design_prompt.md"]
 
 [tool.ruff]
 line-length = 100

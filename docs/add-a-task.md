@@ -15,6 +15,7 @@
 ```
 tasks/<name>/
 ├── manifest.yaml        任务声明：问题、指标、预算、验收
+├── design.md            可选：给执行层的产物契约与基线策略（ai4sci task design 读它）
 ├── env/                 任务自带环境
 │   ├── python-version   一行，如 3.14
 │   └── requirements.lock  逐行 name==version；零依赖就留空文件
@@ -138,4 +139,4 @@ tasks/<name>/harness/make_run0.sh                 # 基线 + repeat_k 次重复 
 
 ## 谁做什么
 
-真实任务通常不是一个人手写全部文件：协调层（人 + agent）填 `manifest.yaml`；执行层 agent 在只放行 `harness/` `code/` `env/` 的会话里写基线与评测；人签 `evaluate.py` 的判分标准。分工与理由见外层纲领 `docs/architecture/packs.md` §2。第一个真任务 `tasks/boehm-nll/` 就是这么接进来的。
+真实任务通常不是一个人手写全部文件：协调层（人 + agent）填 `manifest.yaml`、把产物契约与基线策略写进 `tasks/<name>/design.md`；然后 `ai4sci task design tasks/<name>` 起执行层 agent 在只放行 `harness/` `code/` 的会话里写基线与评测草稿，框架替你加执行位、写 SHA256SUMS、跑 lint 与校验，停下来等你签 `evaluate.py`；签完再跑第 4 节的后两条命令。分工与理由见外层纲领 `docs/architecture/packs.md` §2，协调层的操作步骤见 `coordinator/README.md` 固定流之二。第一个真任务 `tasks/boehm-nll/` 就是这么接进来的，它的 `design.md` 是样本。
