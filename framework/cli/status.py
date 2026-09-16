@@ -13,6 +13,7 @@ from framework.contracts.report import read_report
 from framework.memory import ledger
 from framework.run import layout
 from framework.run.checkpoint import read_checkpoint
+from framework.run.context import load_manifest
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -22,6 +23,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         return run_dir
     state = read_checkpoint(run_dir)
     print(f"run_id\t{state['run_id']}")
+    print(f"source\t{load_manifest(run_dir).get('source') or '-'}")  # manifest.source 的读取点
     print(f"last_iter\t{state['last_iter']}")
     print(f"best_iter\t{state['best_iter']}")
     print(f"best_metric\t{state['best_metric']}")

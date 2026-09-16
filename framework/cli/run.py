@@ -18,7 +18,7 @@ from framework.cli._common import (
     runs_root,
     setup_logging,
 )
-from framework.run.lifecycle import TaskInvalid, extend_run, new_run
+from framework.run.lifecycle import EnvBuildError, TaskInvalid, extend_run, new_run
 
 
 def cmd_new(args: argparse.Namespace) -> int:
@@ -29,8 +29,8 @@ def cmd_new(args: argparse.Namespace) -> int:
     run_id = args.run_id or f"{task_dir.resolve().name}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
     try:
         run_dir = new_run(task_dir, runs_root(args), run_id)
-    except TaskInvalid as exc:
-        # 校验不过就停在门口，绝不建一个注定跑不出结果的 run（P-7）
+    except (TaskInvalid, EnvBuildError) as exc:
+        # 校验不过、环境建不出来都停在门口，绝不留一个注定跑不出结果的 run（P-7）
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
     except FileExistsError as exc:

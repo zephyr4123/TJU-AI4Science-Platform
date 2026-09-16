@@ -2,6 +2,7 @@
 # 跑完、零依赖、结果可复现的靶子；科学上没有价值，别拿它的分数说事。
 # 字段以 framework/schemas/manifest.schema.json 为准（本轮没有读取点的字段不进 schema，
 # 所以这里没有 conditions）。
+format_version: 1
 id: mlp-regression
 domain: generic
 title: 一维函数回归的固定预算调参

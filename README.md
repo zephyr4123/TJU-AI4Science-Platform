@@ -17,13 +17,14 @@ platform/
 │   ├── executor/      组 prompt、起执行层会话、留档日志
 │   ├── memory/        账本、实验笔记
 │   ├── run/           run 的布局、checkpoint、上下文、生命周期、work/ 的 git、结果索引
-│   └── contracts/     schema、任务包校验、产物读取、能力描述符、analysis.md 与 report.json 契约
+│   └── contracts/     schema、任务包校验、任务环境（env/ 与 uv 建 venv）、产物读取、能力描述符、analysis.md 与 report.json 契约
 ├── backends/      执行层适配器：claude_code.py …
 ├── compute/       算力适配器：local.py …
 ├── tools/         确定性脚本
-├── domains/       领域包（generic/ 兜底）
-├── tasks/         任务包（mlp-regression/ …）
-├── runs/          运行产物，不进 git
+├── domains/       领域包，按工具链命名（generic/ 兜底、petab/ 参数估计）；prompts/ 与 skills/ 随 run 快照进执行层提示
+├── tasks/         任务包（mlp-regression/ 玩具、boehm-nll/ 第一个真任务）；每个自带 env/
+├── docs/          add-a-task.md：十分钟接一个任务
+├── runs/          运行产物，不进 git；每个 run 自带 .venv/
 ├── tests/         框架测试
 ├── Makefile       check / venv / lock / package / release
 └── CHANGELOG.md
@@ -34,8 +35,9 @@ platform/
 ## 怎么跑
 
 ```bash
-make venv                                   # 建 .venv，按 requirements.lock 装依赖
+make venv                                   # 建 .venv，按 requirements.lock 装依赖（含 uv）
 make check                                  # 门禁：CHANGELOG 校验 + ruff + pytest
+.venv/bin/ai4sci task env build tasks/mlp-regression   # 按任务的 env/ 建 tasks/mlp-regression/.venv
 .venv/bin/ai4sci task validate tasks/mlp-regression
 AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会花钱，CI 不跑
 ```
@@ -51,6 +53,8 @@ AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会�
 ```
 
 执行层用哪个模型、超时多久走环境变量：`AI4SCI_EXECUTOR_MODEL=sonnet`、`AI4SCI_EXECUTOR_TIMEOUT_S=600`。
+
+任务跑在自己的环境里：`run new` 按任务包的 `env/` 建 `runs/<id>/.venv`，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新任务看 [`docs/add-a-task.md`](docs/add-a-task.md)。
 
 ## 版本与发布
 

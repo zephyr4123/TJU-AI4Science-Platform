@@ -17,11 +17,14 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 from typing import Any
 
 import jsonschema
 import yaml
+
+from framework.contracts.env import read_env
 
 SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
 MANIFEST_NAME = "manifest.yaml"
@@ -34,6 +37,11 @@ DEFAULT_DOMAIN = "generic"
 HARNESS_REQUIRED = ("launcher.sh", "evaluate.py", "SHA256SUMS")
 # 超预算多少倍算跑飞（workflow.md §2：超时 1.5 倍必杀）。
 BUDGET_OVERRUN_RATIO = 1.5
+# 框架认得的任务包契约版本；改契约时加新版本、写迁移，不直接把旧版本判死（红线 6）。
+SUPPORTED_FORMAT_VERSIONS = (1,)
+# harness 脚本里的裸 python 命令：任务必须跑在自己的 venv 里，
+# 只准经 $AI4SCI_PYTHON 起解释器（packs.md §2）。
+_BARE_PYTHON_RE = re.compile(r"(?<![\w/.$\"'-])python3?(?:\.\d+)?(?=\s|$|[;)|&])")
 
 _SCHEMA_CACHE: dict[str, dict[str, Any]] = {}
 
@@ -152,6 +160,12 @@ def _check_manifest(task_dir: Path) -> tuple[dict[str, Any] | None, list[str]]:
 
     problems = _schema_problems(raw, "manifest.schema.json", label)
 
+    version = raw.get("format_version")
+    if isinstance(version, int) and version not in SUPPORTED_FORMAT_VERSIONS:
+        problems.append(
+            f"{label}: 字段 format_version: 本框架只认 {SUPPORTED_FORMAT_VERSIONS}，实际 {version}"
+        )
+
     task_id = raw.get("id")
     if isinstance(task_id, str) and task_id != task_dir.name:
         problems.append(
@@ -196,6 +210,23 @@ def _check_domain(manifest: dict[str, Any] | None, task_dir: Path, domains_root:
     return []
 
 
+def _check_env(task_dir: Path) -> list[str]:
+    """env/ 的读取点在 contracts.env；这里只把它的问题清单并进来。"""
+    _, problems = read_env(task_dir)
+    return problems
+
+
+def _bare_python_lines(script: Path) -> list[int]:
+    """脚本里裸调 python / python3 的行号；注释行不算。"""
+    hits = []
+    for lineno, line in enumerate(script.read_text(encoding="utf-8").splitlines(), start=1):
+        if line.lstrip().startswith("#"):
+            continue
+        if _BARE_PYTHON_RE.search(line):
+            hits.append(lineno)
+    return hits
+
+
 def _check_harness(task_dir: Path) -> list[str]:
     """harness 三件套齐全，且 SHA256SUMS 与磁盘一致——它是「评测没被改」的唯一证据。"""
     hdir = task_dir / "harness"
@@ -207,6 +238,12 @@ def _check_harness(task_dir: Path) -> list[str]:
         for name in HARNESS_REQUIRED
         if not (hdir / name).is_file()
     ]
+    for script in sorted(hdir.glob("*.sh")):
+        for lineno in _bare_python_lines(script):
+            problems.append(
+                f"harness/{script.name}:{lineno}: 裸调 python，任务必须跑在自己的 venv 里，"
+                f"期望经 \"$AI4SCI_PYTHON\" 起解释器"
+            )
 
     sums_path = hdir / "SHA256SUMS"
     if not sums_path.is_file():
@@ -427,6 +464,7 @@ def validate_task(task_dir: Path, domains_root: Path) -> list[str]:
     manifest, problems = _check_manifest(task_dir)
     problems += _check_domain(manifest, task_dir, Path(domains_root))
     problems += _check_budget(manifest, task_dir)
+    problems += _check_env(task_dir)
     problems += _check_harness(task_dir)
     problems += _check_code(task_dir)
     problems += _check_run0(manifest, task_dir)

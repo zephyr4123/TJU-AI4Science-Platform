@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,9 +19,12 @@ set -euo pipefail
 TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$TASK_DIR"
 rm -f predictions.json results.json
-python3 code/train.py
-python3 harness/evaluate.py
+"$AI4SCI_PYTHON" code/train.py
+"$AI4SCI_PYTHON" harness/evaluate.py
 """
+
+# 裸调 python3 的 launcher：契约判它不合法（任务必须跑在自己的 venv 里）
+BARE_PYTHON_LAUNCHER_SH = LAUNCHER_SH.replace('"$AI4SCI_PYTHON"', "python3")
 
 EVALUATE_PY = '''"""夹具 harness：只吃 predictions.json，缺了就退非零且不写 results.json。"""
 import json
@@ -41,13 +45,19 @@ mse = sum(v * v for v in values) / len(values)
 print(f"val_mse={mse}")
 '''
 
-TRAIN_PY = '''"""夹具基线：写出 predictions.json，不算分。"""
+TRAIN_PY = '''"""夹具基线：写出 predictions.json，不算分；顺带记下跑在哪个解释器里（A-12）。"""
 import json
+import sys
 from pathlib import Path
 
 TASK_DIR = Path(__file__).resolve().parent.parent
-(TASK_DIR / "predictions.json").write_text(json.dumps({"y_pred": [0.1, 0.2]}), encoding="utf-8")
+(TASK_DIR / "predictions.json").write_text(
+    json.dumps({"y_pred": [0.1, 0.2], "python": sys.executable}), encoding="utf-8"
+)
 '''
+
+# 夹具任务的环境：解释器版本取当前进程的，uv 就地能找到、不用下载；零依赖
+PYTHON_VERSION = f"{sys.version_info[0]}.{sys.version_info[1]}"
 
 # 只 print 一行"成绩"、什么都不产出的假成功脚本，用来验证 harness 拦得住它。
 FAKE_SUCCESS_TRAIN_PY = 'print("val_mse 0.0001")\n'
@@ -66,6 +76,7 @@ class Pack:
 
 def default_manifest(task_id: str = "toy") -> dict[str, Any]:
     return {
+        "format_version": 1,
         "id": task_id,
         "domain": "generic",
         "title": "夹具任务",
@@ -128,9 +139,18 @@ def make_pack(
     (task_dir / "manifest.yaml").write_text(text, encoding="utf-8")
 
     (task_dir / "code" / "train.py").write_text(TRAIN_PY, encoding="utf-8")
+    write_env(task_dir)
     write_harness(task_dir)
     write_run0(task_dir, seeds=seeds, values=values, elapsed_s=elapsed_s)
     return Pack(root=root, tasks_root=tasks_root, task_dir=task_dir, domains_root=domains_root)
+
+
+def write_env(task_dir: Path, python_version: str = PYTHON_VERSION,
+              requirements: str = "") -> None:
+    edir = task_dir / "env"
+    edir.mkdir(exist_ok=True)
+    (edir / "python-version").write_text(python_version + "\n", encoding="utf-8")
+    (edir / "requirements.lock").write_text(requirements, encoding="utf-8")
 
 
 def write_harness(task_dir: Path) -> None:

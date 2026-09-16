@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
   "pyyaml>=6.0",
   "jsonschema>=4.23",
+  "uv>=0.12",           # 建任务级 venv：找 / 拉解释器、按 lock 同步（contracts/env.py）
 ]
 
 [project.optional-dependencies]

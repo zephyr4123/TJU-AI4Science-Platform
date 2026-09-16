@@ -74,6 +74,28 @@ def test_validate_default_domains_root(tmp_path):
     assert proc.returncode == EXIT_OK, proc.stderr
 
 
+def test_task_env_build_creates_the_task_venv(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    proc = run_cli("task", "env", "build", str(pack.task_dir))
+    assert proc.returncode == EXIT_OK, proc.stderr
+    python = pack.task_dir / ".venv" / "bin" / "python"
+    assert proc.stdout.strip() == f"ok {python}"
+    assert python.is_file()
+
+
+def test_task_env_build_on_bad_spec_exits_one(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    pf.write_env(pack.task_dir, requirements="numpy>=2\n")
+    proc = run_cli("task", "env", "build", str(pack.task_dir))
+    assert proc.returncode == EXIT_INVALID
+    assert "requirements.lock:1" in proc.stderr
+
+
+def test_task_env_build_missing_dir_exits_two(tmp_path):
+    proc = run_cli("task", "env", "build", str(tmp_path / "nope"))
+    assert proc.returncode == EXIT_USAGE
+
+
 def test_task_list(tmp_path):
     pack = pf.make_pack(tmp_path)
     proc = run_cli("task", "list", "--root", str(pack.root))
@@ -148,9 +170,20 @@ def test_status_prints_best_and_ledger_tail(tmp_path):
     assert proc.returncode == EXIT_OK, proc.stderr
     fields = dict(line.split("\t", 1) for line in proc.stdout.splitlines() if "\t" in line)
     assert fields["run_id"] == "r1"
+    assert fields["source"] == "-", "夹具 manifest 没写 source，打 '-' 不留空"
     assert fields["best_metric"] == "0.5"
     assert fields["stop_reason"] == "-"
     assert fields["ledger_rows"] == "0"
+
+
+def test_status_prints_the_manifest_source(tmp_path):
+    manifest = pf.default_manifest()
+    manifest["source"] = "docs/cases/boehm-stat5-petab"
+    pack = pf.make_pack(tmp_path, manifest=manifest)
+    run_cli("run", "new", str(pack.task_dir), "--run-id", "r1",
+            "--runs-root", str(tmp_path / "runs"))
+    proc = run_cli("status", "r1", "--runs-root", str(tmp_path / "runs"))
+    assert "source\tdocs/cases/boehm-stat5-petab" in proc.stdout.splitlines()
 
 
 def test_status_reconciles_the_ledger_and_exits_one_when_git_lost_a_row(tmp_path):

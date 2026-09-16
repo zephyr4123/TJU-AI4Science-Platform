@@ -52,6 +52,7 @@ class RunContext:
     patience: int
     max_cost_usd: float | None
     seed: int
+    python: Path
     domain_extra: str
 
 
@@ -77,6 +78,32 @@ def executor_timeout_s() -> float:
     value = DEFAULT_EXECUTOR_TIMEOUT_S if raw is None else float(raw)
     assert value > 0, f"{EXECUTOR_TIMEOUT_ENV} 必须是正数，得到 {value!r}"
     return value
+
+
+def read_domain_extra(run_dir: Path) -> str:
+    """执行层提示末尾的「领域约定」：领域包的能力追加段 + 全部 skill 正文，都从 run 内快照读。
+
+    没有快照就是空串，调用方（prompting.build_prompt）见空串不追加。skill 文件与 Claude Code
+    原生 SKILL.md 同格式，这里只取正文、去掉 frontmatter——那段元数据是给 CLI 索引用的，
+    塞进 prompt 只会占地方。
+    """
+    parts: list[str] = []
+    prompt = layout.domain_prompt(run_dir)
+    if prompt.is_file():
+        parts.append(prompt.read_text(encoding="utf-8").strip())
+    for skill in sorted(layout.domain_skills(run_dir).glob("*.md")):
+        body = _strip_frontmatter(skill.read_text(encoding="utf-8")).strip()
+        if body:
+            parts.append(f"### skill: {skill.stem}\n\n{body}")
+    return "\n\n".join(parts)
+
+
+def _strip_frontmatter(text: str) -> str:
+    """去掉开头的 `---` … `---` 块；没有 frontmatter 原样返回。"""
+    if not text.startswith("---"):
+        return text
+    end = text.find("\n---", 3)
+    return text if end == -1 else text[end + 4 :]
 
 
 def load_manifest(run_dir: Path) -> dict[str, Any]:
@@ -116,7 +143,11 @@ def load_context(run_dir: Path) -> RunContext:
             f"（accept_sigma={budget['accept_sigma']}）：请在 manifest 的 budget.min_delta 里"
             "显式给出最小改进量，或者把 run_0 重跑出真实的 σ"
         )
-    domain_prompt = layout.domain_prompt(run_dir)
+    python = layout.venv_python(run_dir)
+    assert python.is_file(), (
+        f"run 的任务环境不存在：{python}"
+        "（run new 时应已建好；runs/ 被搬动或 .venv 被删就重建 run）"
+    )
     return RunContext(
         run_dir=run_dir, work=work, experiment=layout.experiment(run_dir),
         ledger_path=layout.ledger(run_dir), question=manifest["question"],
@@ -124,6 +155,5 @@ def load_context(run_dir: Path) -> RunContext:
         accept_sigma=float(budget["accept_sigma"]), min_delta=min_delta,
         wall_clock_s=float(budget["wall_clock_s"]),
         max_iterations=int(budget["max_iterations"]), patience=patience, max_cost_usd=max_cost,
-        seed=int(seed),
-        domain_extra=domain_prompt.read_text(encoding="utf-8") if domain_prompt.is_file() else "",
+        seed=int(seed), python=python, domain_extra=read_domain_extra(run_dir),
     )

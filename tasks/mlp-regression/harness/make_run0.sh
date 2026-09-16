@@ -6,6 +6,13 @@ set -euo pipefail
 TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$TASK_DIR"
 
+# 任务自带环境：缺省用 ai4sci task env build 建出来的 .venv，没有就明确报错，不碰平台 venv
+export AI4SCI_PYTHON="${AI4SCI_PYTHON:-$TASK_DIR/.venv/bin/python}"
+if [ ! -x "$AI4SCI_PYTHON" ]; then
+  echo "make_run0: 任务环境不存在：$AI4SCI_PYTHON（先跑 ai4sci task env build $TASK_DIR）" >&2
+  exit 1
+fi
+
 SEEDS=(42 43 44)   # 与 manifest.budget.repeat_k=3 对应；改一处就要改另一处
 BASE_SEED=42
 
@@ -21,7 +28,7 @@ for seed in "${SEEDS[@]}"; do
 done
 
 # σ 用样本标准差（n-1），纯标准库算，任务包零依赖这条对 harness 同样成立。
-python3 - <<'PY'
+"$AI4SCI_PYTHON" - <<'PY'
 import json
 import statistics
 from pathlib import Path

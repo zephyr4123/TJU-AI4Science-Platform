@@ -10,11 +10,12 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from framework.contracts import packs
+from framework.contracts import env, packs
 from tests.fixtures import packs_factory as pf
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -105,6 +106,72 @@ def test_unknown_manifest_field_is_rejected(tmp_path):
     manifest["conditions"] = [{"name": "uniform"}]
     report = problems_of(pf.make_pack(tmp_path, manifest=manifest))
     assert "conditions" in report
+
+
+def test_format_version_is_required(tmp_path):
+    manifest = pf.default_manifest()
+    del manifest["format_version"]
+    report = problems_of(pf.make_pack(tmp_path, manifest=manifest))
+    assert "format_version" in report and "required" in report
+
+
+def test_unsupported_format_version_is_rejected_with_the_supported_list(tmp_path):
+    manifest = pf.default_manifest()
+    manifest["format_version"] = 2
+    report = problems_of(pf.make_pack(tmp_path, manifest=manifest))
+    assert "字段 format_version" in report and "(1,)" in report and "实际 2" in report
+
+
+def test_source_is_optional_free_text(tmp_path):
+    manifest = pf.default_manifest()
+    manifest["source"] = "docs/cases/boehm-stat5-petab"
+    assert packs.validate_task(*_dirs(pf.make_pack(tmp_path, manifest=manifest))) == []
+
+
+def _dirs(pack: pf.Pack) -> tuple[Path, Path]:
+    return pack.task_dir, pack.domains_root
+
+
+# --------------------------------------------------------------------------
+# env/ 与 launcher：任务必须跑在自己的环境里
+# --------------------------------------------------------------------------
+def test_missing_env_dir_is_a_problem(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    shutil.rmtree(pack.task_dir / "env")
+    report = problems_of(pack)
+    assert "env/" in report and "目录缺失" in report
+
+
+def test_launcher_calling_bare_python_is_rejected_with_line_numbers(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    (pack.task_dir / "harness" / "launcher.sh").write_text(pf.BARE_PYTHON_LAUNCHER_SH, "utf-8")
+    pf.refresh_sums(pack.task_dir)
+    report = problems_of(pack)
+    assert "harness/launcher.sh:6" in report and "harness/launcher.sh:7" in report
+    assert "裸调 python" in report and "$AI4SCI_PYTHON" in report
+
+
+@pytest.mark.parametrize("line", [
+    '"$AI4SCI_PYTHON" code/train.py',
+    "$AI4SCI_PYTHON -m foo",
+    "# python3 code/train.py   注释不算",
+    "echo python3-is-just-a-word",
+    "./bin/python3 x.py",
+])
+def test_bare_python_check_ignores_these(line, tmp_path):
+    pack = pf.make_pack(tmp_path)
+    script = pack.task_dir / "harness" / "make_run0.sh"
+    script.write_text(f"#!/usr/bin/env bash\n{line}\n", encoding="utf-8")
+    assert not [p for p in packs.validate_task(*_dirs(pack)) if "裸调" in p]
+
+
+@pytest.mark.parametrize("line", ["python3 x.py", "python x.py", "python3.14 -c pass",
+                                  "cd harness && python3 x.py", "$(python3 -c 'print(1)')"])
+def test_bare_python_check_catches_these(line, tmp_path):
+    pack = pf.make_pack(tmp_path)
+    script = pack.task_dir / "harness" / "make_run0.sh"
+    script.write_text(f"#!/usr/bin/env bash\n{line}\n", encoding="utf-8")
+    assert [p for p in packs.validate_task(*_dirs(pack)) if "make_run0.sh:2" in p and "裸调" in p]
 
 
 def test_broken_yaml_becomes_a_problem_not_a_traceback(tmp_path):
@@ -263,6 +330,7 @@ def test_fake_success_is_caught_by_harness(tmp_path):
         text=True,
         timeout=60,
         check=False,
+        env={**os.environ, env.PYTHON_ENV: sys.executable},  # 直接起 launcher 时解释器由调用方给
     )
     assert proc.returncode != 0, proc.stdout
     assert not (pack.task_dir / "results.json").exists()
@@ -289,15 +357,17 @@ def test_real_task_pack_runs_end_to_end_if_present(tmp_path):
     if not source.is_dir():
         pytest.skip("仓里没有 tasks/mlp-regression，框架测试不依赖它")
     task_dir = tmp_path / "mlp-regression"
-    shutil.copytree(source, task_dir)
-    env = {k: v for k, v in os.environ.items() if not k.startswith("AI4SCI_")}
+    shutil.copytree(source, task_dir, ignore=shutil.ignore_patterns(env.VENV_DIRNAME))
+    # 任务自带环境：按它的 env/ 建一个 venv，launcher 只经 $AI4SCI_PYTHON 起解释器
+    python = env.build_venv(task_dir, task_dir / env.VENV_DIRNAME)
+    clean = {k: v for k, v in os.environ.items() if not k.startswith("AI4SCI_")}
     proc = subprocess.run(
         ["bash", str(task_dir / "harness" / "launcher.sh")],
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
-        env={**env, "AI4SCI_SEED": "42"},
+        env={**clean, "AI4SCI_SEED": "42", env.PYTHON_ENV: str(python)},
     )
     assert proc.returncode == 0, proc.stderr
     doc = json.loads((task_dir / "results.json").read_text(encoding="utf-8"))

@@ -19,23 +19,29 @@ from typing import Any
 
 import yaml
 
-from framework.contracts import packs
+from framework.contracts import env, packs
 from framework.run import gitwork, layout
 from framework.run.checkpoint import read_checkpoint, write_checkpoint
 from framework.run.context import TaskInvalid, load_manifest, primary_metric
 
-__all__ = ["TaskInvalid", "new_run", "extend_run"]
+__all__ = ["TaskInvalid", "EnvBuildError", "new_run", "extend_run"]
+EnvBuildError = env.EnvBuildError
 
 LOGGER = logging.getLogger("ai4sci.run")
 
-# 拷贝任务包时不带过去的目录：.git 是别的仓的状态，执行层日志目录是上一次跑的残留
-IGNORED_DIRS = (".git", layout.EXECUTOR_SCRATCH, "__pycache__")
+# 拷贝任务包时不带过去的目录：.git 是别的仓的状态，执行层日志目录是上一次跑的残留，
+# 任务目录下的 .venv 是给 make_run0.sh 用的——run 有自己的一份，按同一份 lock 重建
+IGNORED_DIRS = (".git", layout.EXECUTOR_SCRATCH, "__pycache__", env.VENV_DIRNAME)
 
 
 def new_run(
     task_dir: Path, runs_root: Path, run_id: str, *, domains_root: Path | None = None
 ) -> Path:
-    """建 runs/<run_id>/：先过契约校验，再拷 work/ 并 git init，checkpoint 记基线。"""
+    """建 runs/<run_id>/：校验 → 拷 work/ → 快照领域包 → 建任务环境 → git init → 记基线。
+
+    环境建不出来就把半截的 run 目录删掉再抛：一个没有环境的 run 跑不了任何一轮，留着只会让
+    `loop run` 在更晚的地方以更难懂的方式失败。
+    """
     task_dir = Path(task_dir).resolve()
     domains_root = Path(domains_root) if domains_root else task_dir.parent.parent / "domains"
     problems = packs.validate_task(task_dir, domains_root)
@@ -52,7 +58,12 @@ def new_run(
     layout.journal(run_dir).touch()  # 协调层写的东西，框架只建空文件
 
     manifest = load_manifest(run_dir)
-    _snapshot_domain_prompt(domains_root / manifest.get("domain", packs.DEFAULT_DOMAIN), run_dir)
+    _snapshot_domain(domains_root / manifest.get("domain", packs.DEFAULT_DOMAIN), run_dir)
+    try:
+        env.build_venv(work, layout.venv(run_dir))
+    except env.EnvBuildError:
+        shutil.rmtree(run_dir)
+        raise
     baseline = json.loads((work / "run_0" / "results.json").read_text(encoding="utf-8"))
     best_metric = baseline["metrics"][primary_metric(manifest)["name"]]
     best_commit = gitwork.init_repo(work, f"任务包基线：{manifest['id']}")
@@ -64,13 +75,21 @@ def new_run(
     return run_dir
 
 
-def _snapshot_domain_prompt(domain_dir: Path, run_dir: Path) -> None:
-    """领域包的实验追加段随 run 快照一份；没有就不留（缺了不追加，也不回退到别的模板）。"""
+def _snapshot_domain(domain_dir: Path, run_dir: Path) -> None:
+    """领域包的实验追加段与全部 skill 随 run 快照一份；没有就不留，也不回退到别的领域。
+
+    skill 走 prompt 而不是执行层 CLI 的原生 skill 目录：执行层的隔离参数把原生加载关掉了
+    （纲领 packs.md §3，Q-2）。快照进 run 是为了 run 跑起来后不回头看领域包。
+    """
     src = domain_dir / "prompts" / "experiment.md"
     if src.is_file():
         dst = layout.domain_prompt(run_dir)
         dst.parent.mkdir(exist_ok=True)
         shutil.copy2(src, dst)
+    for skill in sorted((domain_dir / "skills").glob("*/SKILL.md")):
+        dst = layout.domain_skills(run_dir) / f"{skill.parent.name}.md"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(skill, dst)
 
 
 def extend_run(

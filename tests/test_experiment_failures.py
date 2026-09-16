@@ -167,8 +167,8 @@ TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$TASK_DIR"
 rm -f predictions.json results.json
 echo '{"y_true": [0.0]}' > data/val.json
-python3 code/train.py
-python3 harness/evaluate.py
+"$AI4SCI_PYTHON" code/train.py
+"$AI4SCI_PYTHON" harness/evaluate.py
 """
 
 

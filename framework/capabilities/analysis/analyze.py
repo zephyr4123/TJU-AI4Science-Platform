@@ -22,7 +22,7 @@ from framework.executor import prompting, session
 from framework.memory import ledger, notebook
 from framework.run import artifacts, gitwork, layout
 from framework.run.checkpoint import read_checkpoint
-from framework.run.context import load_manifest, primary_metric
+from framework.run.context import load_manifest, primary_metric, read_domain_extra
 from framework.run.lifecycle import rotate_capability_dir
 
 LOGGER = logging.getLogger("ai4sci.analysis")
@@ -40,7 +40,8 @@ def analyze(run_dir: Path, ports: Ports) -> str:
     archived = rotate_capability_dir(run_dir, NAME)
     out_dir = layout.capability_dir(run_dir, NAME)
     out_dir.mkdir()
-    prompt = prompting.build_prompt(PROMPT_TEMPLATE, _prompt_values(run_dir, rows))
+    prompt = prompting.build_prompt(PROMPT_TEMPLATE, _prompt_values(run_dir, rows),
+                                    read_domain_extra(run_dir))
     result = session.run_session(
         ports.runner, prompt, cwd=run_dir, allowed_paths=[out_dir],
         log_dir=out_dir / "executor",

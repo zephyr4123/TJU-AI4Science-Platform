@@ -5,7 +5,8 @@
 名字要靠 grep，漏一处就变成"写在 A 读在 B"的静默失配。纲领 workflow.md §1 的磁盘布局在
 这里落成代码：
 
-    runs/<run_id>/ manifest.yaml checkpoint.json journal.md prompts/
+    runs/<run_id>/ manifest.yaml checkpoint.json journal.md prompts/{experiment-domain.md, skills/}
+                   .venv/（按 work/env/ 建的任务环境，harness 经 $AI4SCI_PYTHON 用它）
                    work/（任务包拷贝，自己的 git 仓）
                    experiment/{ledger.tsv, notebook.md, inflight.json, stop.json,
                                runs/run_N/, executor/iter-N/}
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from framework.contracts import env
 from framework.contracts.packs import MANIFEST_NAME
 
 CHECKPOINT_NAME = "checkpoint.json"
@@ -97,6 +99,20 @@ def executor_scratch(work_dir: Path) -> Path:
 def domain_prompt(run_dir: Path) -> Path:
     """领域包实验追加段的 run 内快照；不存在就是"这个领域没有追加段"。"""
     return Path(run_dir) / "prompts" / "experiment-domain.md"
+
+
+def domain_skills(run_dir: Path) -> Path:
+    """领域包 skills/*/SKILL.md 的 run 内快照目录，一个 skill 一个 `<name>.md`。"""
+    return Path(run_dir) / "prompts" / "skills"
+
+
+def venv(run_dir: Path) -> Path:
+    """这个 run 自己的任务环境；run new 时按 work/env/ 建，跑起来后不回头看任务包的 .venv。"""
+    return Path(run_dir) / env.VENV_DIRNAME
+
+
+def venv_python(run_dir: Path) -> Path:
+    return env.venv_python(venv(run_dir))
 
 
 def capability_dir(run_dir: Path, name: str) -> Path:

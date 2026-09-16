@@ -17,8 +17,9 @@ from compute import ExitStatus, Job
 from compute._procs import group_alive, kill_tree
 
 # 快照不带过去的目录：`.git` 是 work/ 的状态载体（run_N 是只读快照，不该有仓）；
-# `.ai4sci` 是执行层事件流日志、`__pycache__` 是字节码，带过去只会让每轮快照越滚越大。
-IGNORED = (".git", ".ai4sci", "__pycache__")
+# `.ai4sci` 是执行层事件流日志、`__pycache__` 是字节码，带过去只会让每轮快照越滚越大；
+# `.venv` 是环境不是产物，venv 也不可搬迁，harness 经 $AI4SCI_PYTHON 用 run 自己那份。
+IGNORED = (".git", ".ai4sci", "__pycache__", ".venv")
 JOB_DIRNAME = ".job"
 _POLL_S = 0.05
 
