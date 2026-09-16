@@ -23,7 +23,8 @@ PREAMBLE = """# 你在服务里
 在服务里有三条补充：
 
 - 命令一律写 `.venv/bin/ai4sci ...`，在仓根跑；任务包在 `tasks/`，run 在 `runs/`。
-- 发布键（`ai4sci task publish`）是人按的，你把 manifest 与 design.md 念给人听，人说"对"才按。
+- 两颗键是人按的：`ai4sci sign task` 发布需求、`ai4sci sign run` 验收结果。你把要签的东西念给人听，
+  人自己按。
 - 每次回复先说结论、用人话；数字放一行。你看到的命令输出不要原样贴给人。
 """
 

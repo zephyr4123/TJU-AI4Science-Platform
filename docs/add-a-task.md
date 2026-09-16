@@ -16,7 +16,7 @@
 tasks/<name>/
 ├── manifest.yaml        任务声明：问题、指标、预算、验收
 ├── design.md            产物契约与「怎么算好」；发布签它，ai4sci cap design 照它写
-├── publish.json         发布记录：ai4sci task publish 写，后面的按钮都查它
+├── publish.json         发布记录：ai4sci sign task 写，后面的按钮都查它
 ├── env/                 任务自带环境
 │   ├── python-version   一行，如 3.14
 │   └── requirements.lock  逐行 name==version；零依赖就留空文件
@@ -76,7 +76,7 @@ env/requirements.lock   numpy==2.5.3
 
 ## 3. harness/
 
-三条硬规矩，`ai4sci task validate` 都会查：
+三条硬规矩，`ai4sci show task` 都会查：
 
 1. **Python 只经 `"$AI4SCI_PYTHON"` 起。** 框架跑你的 harness 时把任务 venv 的解释器放进这个变量；脚本里出现裸 `python` / `python3` 直接判不合法。框架同时保证给 `AI4SCI_BUDGET_S`（一次跑的墙钟预算，等于 `wall_clock_s`）和 `AI4SCI_INNER_K`（评分内部重复次数，等于 `budget.inner_k`）：launcher 用 `"${AI4SCI_INNER_K:?}"` 这种写法拿，拿不到就停；**给这几个变量写默认值判不合法**（`os.environ.get("AI4SCI_INNER_K", 5)` 这种会算出一份看着合法的假成绩）。`AI4SCI_SEED` 缺省 42 是唯一允许的默认值。
 2. **`evaluate.py` 只读产物文件**，算完写 `results.json`，形状固定：
@@ -94,7 +94,7 @@ env/requirements.lock   numpy==2.5.3
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-: "${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON：先 ai4sci task env build <task_dir>}"
+: "${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON：经 ai4sci cap baseline 起，不要手工跑}"
 : "${AI4SCI_BUDGET_S:?}"      # 框架与 ai4sci cap baseline 都会给
 : "${AI4SCI_INNER_K:?}"
 TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -111,10 +111,9 @@ export AI4SCI_START_EPOCH
 ## 4. 四条命令
 
 ```bash
-.venv/bin/ai4sci task env build tasks/<name>     # 建 tasks/<name>/.venv
-.venv/bin/ai4sci task publish tasks/<name> --by <你>   # 发布：签 manifest.yaml 与 design.md，写 publish.json
+.venv/bin/ai4sci sign task tasks/<name> --by <你>   # 发布：签 manifest.yaml 与 design.md，写 publish.json
 .venv/bin/ai4sci cap baseline tasks/<name>       # 跑 make_run0.sh：基线 + repeat_k 次重复 + σ → run_0/，跑完预检
-.venv/bin/ai4sci task validate tasks/<name>       # 退 0 才算接进来了
+.venv/bin/ai4sci show task tasks/<name>           # 退 0 才算接进来了
 ```
 
 没发布，`cap baseline` 与 `run new` 都不开；发布后改了 manifest 或 design.md 要重新发布。预检退 1 说"无解"是门太高或题太浅（manifest 主指标可写 `attainable` 尽头值），改题或松门，别硬跑。
@@ -124,9 +123,9 @@ export AI4SCI_START_EPOCH
 ## 5. 跑起来
 
 ```bash
-.venv/bin/ai4sci run new tasks/<name> --run-id demo
-.venv/bin/ai4sci loop run demo --max-iters 5
-.venv/bin/ai4sci status demo
+.venv/bin/ai4sci cap start tasks/<name> --run-id demo
+.venv/bin/ai4sci cap experiment demo --max-iters 5
+.venv/bin/ai4sci show run demo
 ```
 
 `run new` 会按你的 `env/` 给这个 run 单独建一份环境（`runs/demo/.venv`），跑起来后不再回头看任务目录。
@@ -147,4 +146,4 @@ export AI4SCI_START_EPOCH
 
 ## 谁做什么
 
-真实任务通常不是一个人手写全部文件：协调层（人 + agent）填 `manifest.yaml`、把产物契约与基线策略写进 `tasks/<name>/design.md`；人看过这两个文件后 `ai4sci task publish` 发布；然后 `ai4sci cap design tasks/<name>` 起执行层 agent 在只放行 `harness/` `code/` 的会话里写基线与评测草稿，框架替你加执行位、写 SHA256SUMS、跑 lint 与校验；协调 agent 把 `evaluate.py` 和 design.md 的「怎么算好」逐条对过，再跑第 4 节的后两条命令。分工与理由见外层纲领 `docs/architecture/packs.md` §2，协调层的操作步骤见 `coordinator/README.md` 固定流之二。第一个真任务 `tasks/boehm-nll/` 就是这么接进来的，它的 `design.md` 是样本。
+真实任务通常不是一个人手写全部文件：协调层（人 + agent）填 `manifest.yaml`、把产物契约与基线策略写进 `tasks/<name>/design.md`；人看过这两个文件后 `ai4sci sign task` 发布；然后 `ai4sci cap design tasks/<name>` 起执行层 agent 在只放行 `harness/` `code/` 的会话里写基线与评测草稿，框架替你加执行位、写 SHA256SUMS、跑 lint 与校验；协调 agent 把 `evaluate.py` 和 design.md 的「怎么算好」逐条对过，再跑第 4 节的后两条命令。分工与理由见外层纲领 `docs/architecture/packs.md` §2，协调层的操作步骤见 `coordinator/README.md` 固定流之二。第一个真任务 `tasks/boehm-nll/` 就是这么接进来的，它的 `design.md` 是样本。

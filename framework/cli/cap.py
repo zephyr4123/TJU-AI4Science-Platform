@@ -1,4 +1,4 @@
-"""`ai4sci cap list | <name> <run_id 或 task_dir>`：按名字跑一个能力的通用驱动（纲领 P-10、P-12）。
+"""`ai4sci cap <name> <run_id 或 task_dir>`：按名字跑一个能力的通用驱动（纲领 P-10、P-12）。
 
 在 cli 层。每个能力的子命令是从它的描述符**生成**的：位置参数按 level 定（run 级是 run_id，
 task 级是任务包目录），`--backend` 只在 needs_executor 时有，`--compute` 只在 needs_compute
@@ -9,7 +9,6 @@ task 级是任务包目录），`--backend` 只在 needs_executor 时有，`--co
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -26,19 +25,6 @@ from framework.cli._common import (
 from framework.contracts.capability import PARAM_TYPES, CapabilityFailed
 from framework.contracts.publish import NotPublished
 from framework.run.context import TaskInvalid
-
-LIST_ACTION = "list"
-
-
-def cmd_list(args: argparse.Namespace) -> int:
-    descriptors = [module.DESCRIPTOR for module in discover().values()]
-    if args.json:
-        print(json.dumps([d.to_dict() for d in descriptors], ensure_ascii=False, indent=2))
-        return EXIT_OK
-    for d in descriptors:
-        print(f"{d.name}\t{d.level}\texecutor={'yes' if d.needs_executor else 'no'}"
-              f"\tcompute={'yes' if d.needs_compute else 'no'}\t{d.summary}")
-    return EXIT_OK
 
 
 def cmd_cap(args: argparse.Namespace) -> int:
@@ -68,13 +54,9 @@ def cmd_cap(args: argparse.Namespace) -> int:
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
-    cap = groups.add_parser("cap", help="按名字跑一个能力，跑完即退")
+    cap = groups.add_parser("cap", help="按名字跑一个能力，跑完即退（清单：ai4sci show caps）")
     actions = cap.add_subparsers(dest="name", required=True)
-    lister = actions.add_parser(LIST_ACTION, help="列出全部能力与它们的描述符")
-    lister.add_argument("--json", action="store_true", help="打 JSON（给 UI 后端与脚本）")
-    lister.set_defaults(func=cmd_list)
     for name, module in discover().items():
-        assert name != LIST_ACTION, f"能力名 {name!r} 与 cap 的 list 动作撞名"
         descriptor = module.DESCRIPTOR
         sub = actions.add_parser(name, help=descriptor.summary)
         if descriptor.level == "task":
@@ -87,9 +69,12 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
             sub.add_argument("--compute", default="local", help="算力后端名")
         for param in descriptor.params:
             # argparse 把 help 当 % 格式串：描述符里写"1%"是给人看的，这里得转义
-            sub.add_argument(f"--{param.name.replace('_', '-')}", dest=param.name,
-                             type=PARAM_TYPES[param.type], default=param.default,
-                             help=param.help.replace("%", "%%"))
+            flag, help_text = f"--{param.name.replace('_', '-')}", param.help.replace("%", "%%")
+            if param.type == "bool":
+                sub.add_argument(flag, dest=param.name, action="store_true", help=help_text)
+            else:
+                sub.add_argument(flag, dest=param.name, type=PARAM_TYPES[param.type],
+                                 default=param.default, help=help_text)
         if descriptor.level != "task":
             add_runs_root(sub)
         sub.set_defaults(func=cmd_cap, module=module)

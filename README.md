@@ -30,31 +30,30 @@ platform/
 └── CHANGELOG.md
 ```
 
-依赖只许自上而下：`cli → capabilities → executor → memory → run → contracts`；`backends/` 与 `compute/` 是端口，framework 用它们、它们不认识 framework。这条规矩由 `tests/test_layering.py` 用 ast 逐条查。
+命令行上就四类东西：`cap` 能力、`sign` 键、`show` 查询、`chat` / `serve` 入口。依赖只许自上而下：`cli → capabilities → chat → executor → memory → run → contracts`；`backends/` 与 `compute/` 是端口，framework 用它们、它们不认识 framework。这条规矩由 `tests/test_layering.py` 用 ast 逐条查。
 
 ## 怎么跑
 
 ```bash
 make venv                                   # 建 .venv，按 requirements.lock 装依赖（含 uv）
 make check                                  # 门禁：CHANGELOG 校验 + ruff + pytest
-.venv/bin/ai4sci task env build tasks/mlp-regression   # 按任务的 env/ 建 tasks/mlp-regression/.venv
-.venv/bin/ai4sci task validate tasks/mlp-regression
+.venv/bin/ai4sci show task tasks/mlp-regression        # 校验任务包合不合契约
 AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会花钱，CI 不跑
 ```
 
 一条 auto-research 流，四条命令由协调层手工串（框架不连跑，见 `coordinator/README.md`）：
 
 ```bash
-.venv/bin/ai4sci run new tasks/mlp-regression --run-id demo   # 建 run
-.venv/bin/ai4sci loop run demo --max-iters 5                  # 实验内环，执行层 Claude Code 改 code/
+.venv/bin/ai4sci cap start tasks/mlp-regression --run-id demo # 开一次实验：建 run
+.venv/bin/ai4sci cap experiment demo --max-iters 5            # 实验内环，执行层 Claude Code 改 code/
 .venv/bin/ai4sci cap analysis demo                            # 执行层写 analysis/analysis.md
 .venv/bin/ai4sci cap verify demo                              # 零模型验证，退出码就是 PASS / FAIL
-.venv/bin/ai4sci cap list --json                              # 全部能力的描述符
+.venv/bin/ai4sci show caps --json                             # 全部能力的描述符；show workflows 列工作流
 ```
 
 执行层用哪个模型、超时多久走环境变量：`AI4SCI_EXECUTOR_MODEL=sonnet`、`AI4SCI_EXECUTOR_TIMEOUT_S=600`。
 
-任务跑在自己的环境里：`run new` 按任务包的 `env/` 建 `runs/<id>/.venv`，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新任务看 [`docs/add-a-task.md`](docs/add-a-task.md)。
+任务跑在自己的环境里：`cap start` 按任务包的 `env/` 建 `runs/<id>/.venv`，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新任务看 [`docs/add-a-task.md`](docs/add-a-task.md)。
 
 ## 版本与发布
 

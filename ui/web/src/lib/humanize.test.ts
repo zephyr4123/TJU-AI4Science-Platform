@@ -62,6 +62,9 @@ describe('run 的句子', () => {
 describe('工具行', () => {
   it('命令翻成动作', () => {
     expect(toolSentence('Bash', { command: '.venv/bin/ai4sci cap baseline tasks/x' })).toBe('跑了基线')
+    expect(toolSentence('Bash', { command: 'ai4sci cap experiment r1 --resume' })).toBe('接着跑上次没走完的实验')
+    expect(toolSentence('Bash', { command: 'ai4sci show task tasks/x' })).toBe('校验了任务包')
+    expect(toolSentence('Bash', { command: 'ai4sci show tasks' })).toBe('看了一眼有哪些任务包')
     expect(toolSentence('Bash', { command: 'ls -1 tasks/' })).toBe('看了目录')
     expect(toolSentence('Bash', { command: 'python3 -c 1' })).toBe('跑了一条命令')
     expect(toolSentence('Read', { file_path: '/a/b/tasks/x/manifest.yaml' })).toBe('读了 x/manifest.yaml')

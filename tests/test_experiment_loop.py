@@ -421,7 +421,7 @@ def test_run_refuses_to_start_while_a_round_is_in_flight(tmp_path):
     runner = ScriptedRunner([NOOP])
     with pytest.raises(InflightPending) as exc:
         run_loop(run_dir, runner, LocalCompute(), max_iters=1)
-    assert "第 1 轮没走完" in str(exc.value) and "loop resume r1" in str(exc.value)
+    assert "第 1 轮没走完" in str(exc.value) and "cap experiment r1 --resume" in str(exc.value)
     assert runner.calls == 0, "还没收尸就不该叫执行层"
 
 

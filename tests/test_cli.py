@@ -41,19 +41,19 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_validate_ok_exits_zero(tmp_path):
+def test_show_task_ok_exits_zero(tmp_path):
     pack = pf.make_pack(tmp_path)
-    proc = run_cli("task", "validate", str(pack.task_dir), "--domains", str(pack.domains_root))
+    proc = run_cli("show", "task", str(pack.task_dir), "--domains", str(pack.domains_root))
     assert proc.returncode == EXIT_OK, proc.stderr
     assert proc.stdout.strip() == "ok toy"
 
 
-def test_validate_problems_exit_one_and_print_one_per_line(tmp_path):
+def test_show_task_problems_exit_one_and_print_one_per_line(tmp_path):
     manifest = pf.default_manifest()
     manifest["metrics"][0]["direction"] = "沿着感觉走"
     del manifest["metrics"][0]["primary"]
     pack = pf.make_pack(tmp_path, manifest=manifest)
-    proc = run_cli("task", "validate", str(pack.task_dir), "--domains", str(pack.domains_root))
+    proc = run_cli("show", "task", str(pack.task_dir), "--domains", str(pack.domains_root))
     assert proc.returncode == EXIT_INVALID
     assert proc.stdout == ""
     lines = [ln for ln in proc.stderr.splitlines() if ln.strip()]
@@ -62,65 +62,43 @@ def test_validate_problems_exit_one_and_print_one_per_line(tmp_path):
     assert any("primary" in ln for ln in lines)
 
 
-def test_validate_missing_dir_exits_two(tmp_path):
-    proc = run_cli("task", "validate", str(tmp_path / "不存在"))
+def test_show_task_missing_dir_exits_two(tmp_path):
+    proc = run_cli("show", "task", str(tmp_path / "不存在"))
     assert proc.returncode == EXIT_USAGE
     assert "不存在" in proc.stderr
 
 
-def test_validate_default_domains_root(tmp_path):
+def test_show_task_default_domains_root(tmp_path):
     """不给 --domains 时按 <task_dir>/../../domains 找，夹具正是这个形状。"""
     pack = pf.make_pack(tmp_path)
-    proc = run_cli("task", "validate", str(pack.task_dir))
+    proc = run_cli("show", "task", str(pack.task_dir))
     assert proc.returncode == EXIT_OK, proc.stderr
 
 
-def test_task_env_build_creates_the_task_venv(tmp_path):
+def test_show_tasks(tmp_path):
     pack = pf.make_pack(tmp_path)
-    proc = run_cli("task", "env", "build", str(pack.task_dir))
-    assert proc.returncode == EXIT_OK, proc.stderr
-    python = pack.task_dir / ".venv" / "bin" / "python"
-    assert proc.stdout.strip() == f"ok {python}"
-    assert python.is_file()
-
-
-def test_task_env_build_on_bad_spec_exits_one(tmp_path):
-    pack = pf.make_pack(tmp_path)
-    pf.write_env(pack.task_dir, requirements="numpy>=2\n")
-    proc = run_cli("task", "env", "build", str(pack.task_dir))
-    assert proc.returncode == EXIT_INVALID
-    assert "requirements.lock:1" in proc.stderr
-
-
-def test_task_env_build_missing_dir_exits_two(tmp_path):
-    proc = run_cli("task", "env", "build", str(tmp_path / "nope"))
-    assert proc.returncode == EXIT_USAGE
-
-
-def test_task_list(tmp_path):
-    pack = pf.make_pack(tmp_path)
-    proc = run_cli("task", "list", "--root", str(pack.root))
+    proc = run_cli("show", "tasks", "--root", str(pack.root))
     assert proc.returncode == EXIT_OK, proc.stderr
     assert proc.stdout.strip() == f"toy\t{pack.task_dir}"
 
 
-def test_task_list_duplicate_id_exits_two(tmp_path):
+def test_show_tasks_duplicate_id_exits_two(tmp_path):
     pack = pf.make_pack(tmp_path)
     pf.make_pack(tmp_path, task_id="toy", dir_name="toy-copy")
-    proc = run_cli("task", "list", "--root", str(pack.root))
+    proc = run_cli("show", "tasks", "--root", str(pack.root))
     assert proc.returncode == EXIT_USAGE
     assert "id 重复" in proc.stderr
 
 
-def test_task_list_missing_root_exits_two(tmp_path):
-    proc = run_cli("task", "list", "--root", str(tmp_path / "没有这个目录"))
+def test_show_tasks_missing_root_exits_two(tmp_path):
+    proc = run_cli("show", "tasks", "--root", str(tmp_path / "没有这个目录"))
     assert proc.returncode == EXIT_USAGE
 
 
 def test_real_task_pack_validates_via_cli():
     if not (REPO_ROOT / "tasks" / "mlp-regression").is_dir():
         pytest.skip("仓里没有 tasks/mlp-regression，框架测试不依赖它")
-    proc = run_cli("task", "validate", str(REPO_ROOT / "tasks" / "mlp-regression"))
+    proc = run_cli("show", "task", str(REPO_ROOT / "tasks" / "mlp-regression"))
     assert proc.returncode == EXIT_OK, proc.stderr
     assert proc.stdout.strip() == "ok mlp-regression"
 
@@ -128,12 +106,12 @@ def test_real_task_pack_validates_via_cli():
 # ── run / loop / status：实验内环的驱动面 ──────────────────────────────
 def new_run_via_cli(tmp_path, run_id: str = "r1"):
     pack = pf.make_pack(tmp_path)
-    proc = run_cli("run", "new", str(pack.task_dir), "--run-id", run_id,
+    proc = run_cli("cap", "start", str(pack.task_dir), "--run-id", run_id,
                    "--runs-root", str(tmp_path / "runs"))
     return pack, proc
 
 
-def test_run_new_creates_the_run_dir(tmp_path):
+def test_start_creates_the_run_dir(tmp_path):
     _, proc = new_run_via_cli(tmp_path)
     assert proc.returncode == EXIT_OK, proc.stderr
     assert proc.stdout.startswith("ok r1\t")
@@ -144,30 +122,30 @@ def test_run_new_creates_the_run_dir(tmp_path):
     assert (run_dir / "journal.md").is_file()
 
 
-def test_run_new_on_broken_pack_exits_one(tmp_path):
+def test_start_on_broken_pack_exits_one(tmp_path):
     pack = pf.make_pack(tmp_path)
     (pack.task_dir / "harness" / "evaluate.py").write_text("# 改了但没更新 SHA256SUMS\n")
-    proc = run_cli("run", "new", str(pack.task_dir), "--runs-root", str(tmp_path / "runs"))
+    proc = run_cli("cap", "start", str(pack.task_dir), "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_INVALID
     assert "sha256" in proc.stderr.lower()
     assert not (tmp_path / "runs").exists() or not any((tmp_path / "runs").iterdir())
 
 
-def test_run_new_twice_same_id_exits_two(tmp_path):
+def test_start_twice_same_id_exits_one(tmp_path):
     new_run_via_cli(tmp_path)
     pack, proc = new_run_via_cli(tmp_path)
-    assert proc.returncode == EXIT_USAGE
+    assert proc.returncode == EXIT_INVALID  # 能力失败统一退 1，原话在 stderr
     assert "不覆盖" in proc.stderr
 
 
-def test_run_new_missing_task_dir_exits_two(tmp_path):
-    proc = run_cli("run", "new", str(tmp_path / "没有"), "--runs-root", str(tmp_path / "runs"))
+def test_start_missing_task_dir_exits_two(tmp_path):
+    proc = run_cli("cap", "start", str(tmp_path / "没有"), "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_USAGE
 
 
-def test_status_prints_best_and_ledger_tail(tmp_path):
+def test_show_run_prints_best_and_ledger_tail(tmp_path):
     new_run_via_cli(tmp_path)
-    proc = run_cli("status", "r1", "--runs-root", str(tmp_path / "runs"))
+    proc = run_cli("show", "run", "r1", "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_OK, proc.stderr
     fields = dict(line.split("\t", 1) for line in proc.stdout.splitlines() if "\t" in line)
     assert fields["run_id"] == "r1"
@@ -177,83 +155,95 @@ def test_status_prints_best_and_ledger_tail(tmp_path):
     assert fields["ledger_rows"] == "0"
 
 
-def test_status_prints_the_manifest_source(tmp_path):
+def test_show_run_prints_the_manifest_source(tmp_path):
     manifest = pf.default_manifest()
     manifest["source"] = "docs/cases/boehm-stat5-petab"
     pack = pf.make_pack(tmp_path, manifest=manifest)
-    run_cli("run", "new", str(pack.task_dir), "--run-id", "r1",
+    run_cli("cap", "start", str(pack.task_dir), "--run-id", "r1",
             "--runs-root", str(tmp_path / "runs"))
-    proc = run_cli("status", "r1", "--runs-root", str(tmp_path / "runs"))
+    proc = run_cli("show", "run", "r1", "--runs-root", str(tmp_path / "runs"))
     assert "source\tdocs/cases/boehm-stat5-petab" in proc.stdout.splitlines()
 
 
-def test_status_reconciles_the_ledger_and_exits_one_when_git_lost_a_row(tmp_path):
+def test_show_run_reconciles_the_ledger_and_exits_one_when_git_lost_a_row(tmp_path):
     """status 顺手对账：被弃的那一轮的 attempts ref 被删掉，账本就跟 git 对不上了。"""
     run_dir, _ = start_run(tmp_path)  # run_id 是 r1，runs 根是 tmp_path/runs
     run_loop(run_dir, ScriptedRunner([train_for_mse(0.5)]), LocalCompute(), max_iters=1)
     refs = gitwork.attempt_refs(run_dir / "work")
     assert refs, "改坏的那一轮该留在 refs/attempts/ 下"
-    ok = run_cli("status", "r1", "--runs-root", str(tmp_path / "runs"))
+    ok = run_cli("show", "run", "r1", "--runs-root", str(tmp_path / "runs"))
     assert ok.returncode == EXIT_OK, ok.stderr
 
     gitwork.git(run_dir / "work", "update-ref", "-d", next(iter(refs)))
-    proc = run_cli("status", "r1", "--runs-root", str(tmp_path / "runs"))
+    proc = run_cli("show", "run", "r1", "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_INVALID
     assert "refs/attempts" in proc.stderr
     assert "ledger_rows\t1" in proc.stdout, "对账失败也要先把状态打完"
 
 
-def test_status_unknown_run_exits_two(tmp_path):
-    proc = run_cli("status", "没这个 run", "--runs-root", str(tmp_path / "runs"))
+def test_show_run_unknown_run_exits_two(tmp_path):
+    proc = run_cli("show", "run", "没这个 run", "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_USAGE
 
 
-def test_loop_run_unknown_run_exits_two(tmp_path):
-    proc = run_cli("loop", "run", "没这个 run", "--runs-root", str(tmp_path / "runs"))
+def test_experiment_unknown_run_exits_two(tmp_path):
+    proc = run_cli("cap", "experiment", "没这个 run", "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_USAGE
 
 
-def test_loop_run_unknown_compute_exits_two(tmp_path):
+def test_experiment_unknown_compute_exits_two(tmp_path):
     new_run_via_cli(tmp_path)
-    proc = run_cli("loop", "run", "r1", "--compute", "slurm",
+    proc = run_cli("cap", "experiment", "r1", "--compute", "slurm",
                    "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_USAGE
     assert "local" in proc.stderr  # 报错要列出可用的名字，不静默回退
 
 
-def test_loop_resume_unknown_backend_exits_two(tmp_path):
+def test_experiment_resume_unknown_backend_exits_two(tmp_path):
     new_run_via_cli(tmp_path)
-    proc = run_cli("loop", "resume", "r1", "--backend", "codex",
+    proc = run_cli("cap", "experiment", "r1", "--resume", "--backend", "codex",
                    "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_USAGE
     assert "claude_code" in proc.stderr
 
 
-def test_run_extend_needs_at_least_one_budget_field_and_reports_changes(tmp_path):
-    new_run_via_cli(tmp_path)
-    proc = run_cli("run", "extend", "r1", "--runs-root", str(tmp_path / "runs"))
-    assert proc.returncode == EXIT_USAGE and "至少给一项" in proc.stderr
-    proc = run_cli("run", "extend", "r1", "--patience", "9", "--reason", "测试",
-                   "--runs-root", str(tmp_path / "runs"))
-    assert proc.returncode == EXIT_OK, proc.stderr
-    assert proc.stdout.startswith("ok r1\t") and "patience:" in proc.stdout and "→ 9" in proc.stdout
-    proc = run_cli("run", "extend", "nope", "--patience", "9",
-                   "--runs-root", str(tmp_path / "runs"))
-    assert proc.returncode == EXIT_USAGE
+def test_experiment_extends_the_budget_before_looping(tmp_path, monkeypatch, capsys):
+    """续命是实验能力的参数：给了预算就改快照、清停止标记、journal 记一行，再接着跑。"""
+    from framework.capabilities import experiment
+    from framework.cli import main
+    from framework.run.checkpoint import read_checkpoint, write_checkpoint
+
+    run_dir, _ = start_run(tmp_path)
+    write_checkpoint(run_dir, {**read_checkpoint(run_dir), "stop_reason": "patience"})
+    seen = {}
+
+    def fake_loop(run_dir, runner, compute, max_iters=None):
+        seen["stop_reason"] = read_checkpoint(run_dir).get("stop_reason")
+        return experiment.StopReason(reason="batch_exhausted", iter=0, best_metric=0.5)
+
+    monkeypatch.setattr(experiment, "run_loop", fake_loop)
+    code = main(["cap", "experiment", "r1", "--patience", "9", "--reason", "测试",
+                 "--runs-root", str(tmp_path / "runs")])
+    assert code == EXIT_OK and seen["stop_reason"] is None
+    assert "patience: 99 → 9" in (run_dir / "journal.md").read_text(encoding="utf-8")
+    assert capsys.readouterr().out.startswith("stop batch_exhausted")
+    code = main(["cap", "experiment", "r1", "--reason", "没配预算",
+                 "--runs-root", str(tmp_path / "runs")])
+    assert code == EXIT_INVALID and "只在续命时" in capsys.readouterr().err
 
 
 # ── cap：按名字跑一个能力 ────────────────────────────────────────────────
-def test_cap_list_prints_every_capability():
-    proc = run_cli("cap", "list")
+def test_show_caps_prints_every_capability():
+    proc = run_cli("show", "caps")
     assert proc.returncode == EXIT_OK, proc.stderr
     names = [line.split("\t")[0] for line in proc.stdout.splitlines()]
     assert names == ["analysis", "baseline", "design", "experiment", "start", "verify"]
 
 
-def test_cap_list_json_is_descriptor_dicts():
+def test_show_caps_json_is_descriptor_dicts():
     import json
 
-    proc = run_cli("cap", "list", "--json")
+    proc = run_cli("show", "caps", "--json")
     assert proc.returncode == EXIT_OK, proc.stderr
     descriptors = json.loads(proc.stdout)
     assert {d["name"] for d in descriptors} == {
@@ -308,41 +298,53 @@ def test_cap_analysis_runs_the_capability_with_the_named_backend(tmp_path, monke
     code = main(["cap", "analysis", "r1", "--runs-root", str(run_dir.parent)])
     assert code == EXIT_OK
     assert capsys.readouterr().out.startswith("analysis ok\tclaims=4")
-    proc = run_cli("status", "r1", "--runs-root", str(run_dir.parent))
+    proc = run_cli("show", "run", "r1", "--runs-root", str(run_dir.parent))
     assert proc.returncode == EXIT_OK, proc.stderr
     assert "analysis\tanalysis/analysis.md" in proc.stdout and "verify\t-" in proc.stdout
     run_cli("cap", "verify", "r1", "--runs-root", str(run_dir.parent))
-    proc = run_cli("status", "r1", "--runs-root", str(run_dir.parent))
+    proc = run_cli("show", "run", "r1", "--runs-root", str(run_dir.parent))
     assert "verify\tPASS" in proc.stdout
 
 
 # ── task publish：需求看板的发布键 ─────────────────────────────────────
-def test_task_publish_writes_the_key_and_run_new_needs_it(tmp_path):
+def test_sign_task_writes_the_key_and_start_needs_it(tmp_path):
     pack = pf.make_pack(tmp_path, published=False)
-    proc = run_cli("run", "new", str(pack.task_dir), "--run-id", "r1",
+    proc = run_cli("cap", "start", str(pack.task_dir), "--run-id", "r1",
                    "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_INVALID and "还没发布" in proc.stderr
     assert not (tmp_path / "runs" / "r1").exists()
 
-    proc = run_cli("task", "publish", str(pack.task_dir), "--by", "小王")
+    proc = run_cli("sign", "task", str(pack.task_dir), "--by", "小王")
     assert proc.returncode == EXIT_OK, proc.stderr
     assert proc.stdout.startswith("ok toy\tby=小王\tat=")
     assert "next=ai4sci cap design" in proc.stdout
-    proc = run_cli("run", "new", str(pack.task_dir), "--run-id", "r1",
+    proc = run_cli("cap", "start", str(pack.task_dir), "--run-id", "r1",
                    "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_OK, proc.stderr
 
 
-def test_task_publish_refuses_a_pack_whose_brief_is_missing(tmp_path):
+def test_sign_task_refuses_a_pack_whose_brief_is_missing(tmp_path):
     pack = pf.make_pack(tmp_path, published=False)
     (pack.task_dir / "design.md").unlink()
-    proc = run_cli("task", "publish", str(pack.task_dir), "--by", "小王")
+    proc = run_cli("sign", "task", str(pack.task_dir), "--by", "小王")
     assert proc.returncode == EXIT_INVALID and "design.md" in proc.stderr
     assert not (pack.task_dir / "publish.json").exists()
 
 
-def test_task_publish_missing_dir_exits_two(tmp_path):
-    assert run_cli("task", "publish", str(tmp_path / "nope")).returncode == EXIT_USAGE
+def test_sign_task_missing_dir_exits_two(tmp_path):
+    assert run_cli("sign", "task", str(tmp_path / "nope")).returncode == EXIT_USAGE
+
+
+def test_sign_run_writes_the_acceptance(tmp_path):
+    from tests.fixtures.runs_factory import make_run
+
+    run_dir = make_run(tmp_path)
+    proc = run_cli("sign", "run", run_dir.name, "--by", "小王", "--runs-root", str(run_dir.parent))
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert proc.stdout.startswith(f"ok {run_dir.name}\tby=小王\tbest_iter=")
+    assert (run_dir / "accept.json").is_file()
+    proc = run_cli("sign", "run", "nope", "--runs-root", str(run_dir.parent))
+    assert proc.returncode == EXIT_USAGE
 
 
 # ── cap design：接任务的按钮（task 级能力，子命令从描述符生成）──────────────
@@ -363,7 +365,7 @@ def test_cap_design_unpublished_exits_one_before_any_session(tmp_path, monkeypat
     pack = pf.make_pack(tmp_path, published=False)
     proc = run_cli("cap", "design", str(pack.task_dir))
     assert proc.returncode == EXIT_INVALID
-    assert "还没发布" in proc.stderr and "task publish" in proc.stderr
+    assert "还没发布" in proc.stderr and "sign task" in proc.stderr
     assert not (tmp_path / "runs" / "design-toy").exists()
 
 
@@ -412,12 +414,11 @@ def test_cap_baseline_runs_make_run0_with_the_guaranteed_env_and_reports_headroo
     manifest["metrics"][0]["attainable"] = 0.3
     pack = pf.make_pack(tmp_path, manifest=manifest)
     (pack.task_dir / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
-    assert run_cli("task", "env", "build", str(pack.task_dir)).returncode == EXIT_OK
-    proc = run_cli("cap", "baseline", str(pack.task_dir))
+    proc = run_cli("cap", "baseline", str(pack.task_dir))  # 环境不在，基线自己建
     assert proc.returncode == EXIT_OK, proc.stderr
     line = proc.stdout.strip()
     assert line.startswith("ok toy\tinner_k=7\tbaseline=0.5\tsigma=0.02\tgate=0.04\t")
-    assert "attainable=0.3\troom=0.2（5.0 个门）" in line and "next=ai4sci task validate" in line
+    assert "attainable=0.3\troom=0.2（5.0 个门）" in line and "next=ai4sci show task" in line
     seen = json.loads((pack.task_dir / "baseline-env.json").read_text(encoding="utf-8"))
     assert seen["inner_k"] == "7"
     assert seen["budget"] == f"{manifest['budget']['wall_clock_s']:g}"
@@ -429,43 +430,43 @@ def test_cap_baseline_stops_when_the_headroom_check_fails(tmp_path):
     manifest["metrics"][0]["attainable"] = 0.49  # 基线 0.5 离尽头 0.01，门 0.04：无解
     pack = pf.make_pack(tmp_path, manifest=manifest)
     (pack.task_dir / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
-    assert run_cli("task", "env", "build", str(pack.task_dir)).returncode == EXIT_OK
     proc = run_cli("cap", "baseline", str(pack.task_dir))
     assert proc.returncode == EXIT_INVALID
     assert "无解" in proc.stderr and "baseline=0.5" in proc.stderr
 
 
-def test_cap_baseline_without_venv_or_script_or_key_exits_one(tmp_path):
+def test_cap_baseline_without_script_builds_env_itself_and_needs_the_key(tmp_path):
     pack = pf.make_pack(tmp_path)
     proc = run_cli("cap", "baseline", str(pack.task_dir))
     assert proc.returncode == EXIT_INVALID and "make_run0.sh" in proc.stderr
     (pack.task_dir / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
     proc = run_cli("cap", "baseline", str(pack.task_dir))
-    assert proc.returncode == EXIT_INVALID and "task env build" in proc.stderr
+    assert proc.returncode == EXIT_OK, proc.stderr  # 环境不在就按 env/ 建，不用人单独按一颗键
+    assert (pack.task_dir / ".venv" / "bin" / "python").is_file()
     (pack.task_dir / "publish.json").unlink()
     proc = run_cli("cap", "baseline", str(pack.task_dir))
     assert proc.returncode == EXIT_INVALID and "还没发布" in proc.stderr
 
 
 # ── flow check：按描述符对吃吐文件 ─────────────────────────────────────────
-def test_flow_check_passes_the_whole_line_and_prints_it():
-    proc = run_cli("flow", "check", "design", "baseline", "experiment", "analysis", "verify")
+def test_show_flow_passes_the_whole_line_and_prints_it():
+    proc = run_cli("show", "flow", "design", "baseline", "experiment", "analysis", "verify")
     assert proc.returncode == EXIT_OK, proc.stderr
     assert proc.stdout.strip() == "ok 5 步：design → baseline → experiment → analysis → verify"
 
 
-def test_flow_check_reports_every_gap_and_json_carries_them():
-    proc = run_cli("flow", "check", "verify")
+def test_show_flow_reports_every_gap_and_json_carries_them():
+    proc = run_cli("show", "flow", "verify")
     assert proc.returncode == EXIT_INVALID
     assert "过桥" in proc.stderr and "analysis/analysis.md" in proc.stderr
-    proc = run_cli("flow", "check", "verify", "--json")
+    proc = run_cli("show", "flow", "verify", "--json")
     assert proc.returncode == EXIT_INVALID
     doc = json.loads(proc.stdout)
     assert doc["steps"] == ["verify"] and len(doc["problems"]) >= 2
 
 
-def test_flow_check_unknown_capability_is_a_usage_error():
-    proc = run_cli("flow", "check", "design", "nope")
+def test_show_flow_unknown_capability_is_a_usage_error():
+    proc = run_cli("show", "flow", "design", "nope")
     assert proc.returncode == EXIT_USAGE and "nope" in proc.stderr
 
 

@@ -83,7 +83,7 @@ export AI4SCI_PYTHON="$${AI4SCI_PYTHON:-$$TASK_DIR/.venv/bin/python}"
 : "$${AI4SCI_BUDGET_S:?未设 AI4SCI_BUDGET_S：经 ai4sci cap baseline 起}"
 : "$${AI4SCI_INNER_K:?未设 AI4SCI_INNER_K：经 ai4sci cap baseline 起}"
 if [ ! -x "$$AI4SCI_PYTHON" ]; then
-  echo "make_run0: 任务环境不存在：$$AI4SCI_PYTHON（先跑 ai4sci task env build $$TASK_DIR）" >&2
+  echo "make_run0: 任务环境不存在：$$AI4SCI_PYTHON（由 ai4sci cap baseline 建）" >&2
   exit 1
 fi
 SEEDS=(42 43 44)   # 与 manifest.budget.repeat_k 对应；改一处就要改另一处

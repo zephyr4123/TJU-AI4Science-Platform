@@ -14,14 +14,14 @@ platform 0.2.0 只有这一份入口指南（spec R-10）；真有第二条 skil
 
 ## 固定流之一：auto-research（现成任务包 → 实验 → 分析 → 验证）
 
-机器可读版在 `workflows/auto-research.yaml`（`ai4sci flow list` 能列）。这是预装的一种拼法，不是必须走的路：能力清单里的按钮你可以自己拼，先 `ai4sci flow check <能力>...` 查通不通。开一次实验现在是能力 `ai4sci cap start <task_dir>`，与 `run new` 等价。
+机器可读版在 `workflows/auto-research.yaml`（`ai4sci show workflows` 能列）。这是预装的一种拼法，不是必须走的路：能力清单（`ai4sci show caps`）里的按钮你可以自己拼，先 `ai4sci show flow <能力>...` 查通不通。
 
-前提：手里有一个过校验的任务包（`ai4sci task validate <dir>`），manifest 里的方向、预算、统计门是你和人拍板后填的，不是框架给的。
+前提：手里有一个过校验的任务包（`ai4sci show task <dir>`），manifest 里的方向、预算、统计门是你和人拍板后填的，不是框架给的。
 
 ```bash
-ai4sci run new tasks/<task> --run-id <id>        # 建 runs/<id>/，快照 manifest，work/ 起 git
-ai4sci loop run <id> --max-iters 5               # 跑内环；停了看 stop 原因，没停就再跑一批
-ai4sci status <id>                               # best、账本尾部、分析 / 验证有没有；顺带账本 × git 对账
+ai4sci cap start tasks/<task> --run-id <id>      # 开一次实验：建 runs/<id>/，快照 manifest，work/ 起 git
+ai4sci cap experiment <id> --max-iters 5         # 跑内环；停了看 stop 原因，没停就再跑一批
+ai4sci show run <id>                             # best、账本尾部、分析 / 验证有没有；顺带账本 × git 对账
 ai4sci cap analysis <id>                         # 执行层读账本、笔记、diff、结果清单，写 analysis/analysis.md
 ai4sci cap verify <id>                           # 零模型：数字回溯、正文对表、账本对账 → verify/report.json
 ```
@@ -30,12 +30,12 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 
 | 步骤 | 看 | 然后 |
 |---|---|---|
-| `loop run` 返回 `batch_exhausted` | 这批配额用完，run 没停 | 想继续就再跑一批 |
-| 返回 `patience` / `unrecoverable` / `max_cost_usd` / `max_iterations` | run 停了，`experiment/stop.json` 有原因 | 读 `experiment/notebook.md` 决定：`ai4sci run extend` 续命、换任务包、还是就此分析 |
-| `loop run` 退 1 说有 in-flight | 上次被杀在半路 | `ai4sci loop resume <id>`；对不上就停下来找人，不要手改 checkpoint |
+| `cap experiment` 返回 `batch_exhausted` | 这批配额用完，run 没停 | 想继续就再跑一批 |
+| 返回 `patience` / `unrecoverable` / `max_cost_usd` / `max_iterations` | run 停了，`experiment/stop.json` 有原因 | 读 `experiment/notebook.md` 决定：续命（`ai4sci cap experiment <id> --patience 9 --reason ...`，改预算、清停止标记后接着跑）、换任务包、还是就此分析 |
+| `cap experiment` 退 1 说有 in-flight | 上次被杀在半路 | `ai4sci cap experiment <id> --resume`；对不上就停下来找人，不要手改 checkpoint |
 | `cap analysis` 退 1 | 执行层越界 / 没写出 / 形状不合约 | 看 stderr 那一句；重跑会把旧 `analysis/` 改名 `analysis_v1` 留档 |
 | `cap verify` 退 1 | 分析里有编的数、正文有表外的数、账本对不上 | 读 `verify/report.json` 的 `details`；数字问题重跑 `cap analysis`，账本问题停下来找人 |
-| `cap verify` 退 0 | 这份分析的数字全部可回溯 | 把结论与 run id 记进 `journal.md`，然后**请人验收**：页面「结果」看板上的验收键，或终端里的 `ai4sci run accept <id> --by <人名>`。**你不替人按**——它签的是这一版 best 与验证结论，best 再变记录就失效 |
+| `cap verify` 退 0 | 这份分析的数字全部可回溯 | 把结论与 run id 记进 `journal.md`，然后**请人验收**：页面「结果」看板上的验收键，或终端里的 `ai4sci sign run <id> --by <人名>`。**你不替人按**——它签的是这一版 best 与验证结论，best 再变记录就失效 |
 
 `runs/<id>/journal.md` 是你的本子：每个决定一行——为什么跑这个能力、看到什么、下一步、指回哪条 issue。框架只建空文件、续命时追一行，其余是你写。
 
@@ -48,13 +48,13 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 **先问四句，不合适当场说清，别让人走到第七步才撞墙**：有一段能跑的代码吗（没有：先一起写出来，或者这还不是实验任务）；一次跑几分钟（一次一天的进不了内环，能不能改成只做推理对账）；出一个数吗、越小还是越大越好（出不了一个数就还没到能调的时候）；**值不值得跑——尽头在哪**（外层 [#42](https://github.com/zephyr4123/TJU-AI4Science/issues/42)：撒一大批起点探一个尽头值，或拿文献值，写进 manifest 主指标的 `attainable`；基线跑完框架会算"基线到尽头有几个门的空间"，不到一个门直接停，那就要改题——比如改成稳定性——或者松门）。
 
 1. **填 `manifest.yaml`**：`format_version: 1`、`id`、`domain`、`source` 指回案例卡、`question`、指标与方向、预算与统计门；评分内部要重复几次取均值就写 `budget.inner_k`（它决定信噪比，也决定 `wall_clock_s` 要覆盖几次固定开销）；探到尽头就写主指标的 `attainable`。数字是决策，理由写在注释里；拿不准的问人。
-2. **准备 `data/` 与 `env/`**：问题定义放 `data/`，来源与许可写进 `data/README.md`；`env/python-version` 一行，`env/requirements.lock` 是完整的 `pip freeze`（`uv pip sync` 要列全）。`ai4sci task env build tasks/<id>` 建出 `.venv/`。
+2. **准备 `data/` 与 `env/`**：问题定义放 `data/`，来源与许可写进 `data/README.md`；`env/python-version` 一行，`env/requirements.lock` 是完整的 `pip freeze`（`uv pip sync` 要列全）。`.venv/` 由跑基线时自动建，不用单独按。
 3. **写 `design.md`**（任务根）：给执行层的产物契约与基线策略——`code/` 写什么文件、什么形状；`evaluate.py` 查什么、怎么用 `data/` 重算指标、退出码；基线用什么策略（研究者给的那个，不要替他调好）。这就是「怎么算好」的人话版，人签字签的是它，不是代码。`tasks/boehm-nll/design.md` 是样本。
-4. **人发布**：`ai4sci task publish tasks/<id> --by <人名>`。这是需求看板上那颗键，**你不替人按**：把 manifest 与 `design.md` 念给人听，人说"对"再按。没发布，后面的按钮一个都不开；发布后改了这两个文件，钥匙失效，得重新发布。
+4. **人发布**：`ai4sci sign task tasks/<id> --by <人名>`。这是需求看板上那颗键，**你不替人按**：把 manifest 与 `design.md` 念给人听，人说"对"再按。没发布，后面的按钮一个都不开；发布后改了这两个文件，钥匙失效，得重新发布。
 5. **按按钮**：`AI4SCI_EXECUTOR_MODEL=sonnet ai4sci cap design tasks/<id>`。框架起执行层写 `harness/` 与 `code/` 草稿（只放行这两个目录），回来自己加执行位、写 SHA256SUMS、跑 ruff、跑 validate（此时不查 run_0），stdout 一行结论（`next=` 说停在哪），有问题一行一条在 stderr、退 1。退 1 就把 stderr 喂回去：`ai4sci cap design tasks/<id> --feedback @<文件>`，执行层会看到现状文件照着改；**不要自己替它改 harness**。日志在 `runs/design-<id>/executor/session-N/`（提示原文、事件流、自述）。
 6. **核对裁判，人不读代码**：把 `harness/evaluate.py` 和 `design.md` 的「怎么算好」逐条对——算的指标、拿什么数据重算、拒收什么、退出码。一致就告诉人"一致"；有出入就说清哪条（"起点数写死了"），喂回第 5 步。这是模型核对模型写的东西，漏了整个跑就在错的尺子上量，所以「怎么算好」原文要一直跟到结果页。
-7. **`ai4sci cap baseline tasks/<id>` → `ai4sci task validate tasks/<id>` 退 0**。基线由框架起，预算与 `budget.inner_k` 和内环用同一组环境变量，不要自己 `bash make_run0.sh`。跑完框架预检：门是 0、或基线到尽头不到一个门，退 1 并说清，别硬跑；退 0 那一行带 `baseline / sigma / gate / room`，念给人听即可，不用等人点头。
-8. **案例卡回填**任务包路径、run_0 与 σ，然后进固定流之一。拼单点之前可以先问一句通不通：`ai4sci flow check design baseline experiment analysis verify`。
+7. **`ai4sci cap baseline tasks/<id>` → `ai4sci show task tasks/<id>` 退 0**。基线由框架起，预算与 `budget.inner_k` 和内环用同一组环境变量，不要自己 `bash make_run0.sh`。跑完框架预检：门是 0、或基线到尽头不到一个门，退 1 并说清，别硬跑；退 0 那一行带 `baseline / sigma / gate / room`，念给人听即可，不用等人点头。
+8. **案例卡回填**任务包路径、run_0 与 σ，然后进固定流之一。拼单点之前可以先问一句通不通：`ai4sci show flow design baseline start experiment analysis verify`。
 
 σ 大不是错：多起点随机性大的基线，统计门就严，改进必须超过基线自己的抖动才算数。要不要放宽 `accept_sigma` 是人的决定，改了写进 manifest 注释。
 
@@ -73,4 +73,4 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 
 ## 还没有的
 
-文献、假设、写作三个能力（纲领 workflow §1）等后续版本。`ai4sci cap list` 列出的就是现在全部的能力：接任务与跑基线是 task 级（动任务包），实验、分析、验证是 run 级。两颗人按的键都有记录：需求的 `publish.json`、结果的 `accept.json`；中间的停点没有状态文件，`next=` 那一行是给你念给人听的。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、按键，看板显示的就是这些文件。套餐（固定流）还是这份 README 里的文字，`flow check` 只查一串能力通不通、不跑。
+文献、假设、写作三个能力（纲领 workflow §1）等后续版本。`ai4sci show caps` 列出的就是现在全部的能力：接任务、跑基线、开一次实验是 task 级（动任务包），实验、分析、验证是 run 级。命令行上就四类东西：`cap` 能力（你按）、`sign` 键（人按）、`show` 查询（只读）、`chat` / `serve` 入口。两颗人按的键都有记录：需求的 `publish.json`、结果的 `accept.json`；中间的停点没有状态文件，`next=` 那一行是给你念给人听的。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、按键，看板显示的就是这些文件。套餐（固定流）还是这份 README 里的文字，`flow check` 只查一串能力通不通、不跑。

@@ -26,8 +26,9 @@ from compute import Compute
 # task：动任务包（接任务、跑基线），产物路径相对任务包目录，入口 run(task_dir, ports, ...)；
 # run：动一个 run，产物路径相对 runs/<run_id>/，入口 run(run_dir, ports, ...)；project 还没有实例
 LEVELS = ("task", "run", "project")
-# 参数只认这三种标量：CLI 与 UI 表单都能直接映射；要更复杂的输入应当是产物文件，不是参数
-PARAM_TYPES: dict[str, type] = {"int": int, "float": float, "str": str}
+# 参数只认这几种标量：CLI 与 UI 表单都能直接映射（bool 在 CLI 上是开关）；要更复杂的输入
+# 应当是产物文件，不是参数
+PARAM_TYPES: dict[str, type] = {"int": int, "float": float, "str": str, "bool": bool}
 
 
 @dataclass(frozen=True)

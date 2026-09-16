@@ -22,7 +22,7 @@
 | 结果 | `GET /runs[/<id>]`、`POST /runs/<id>/accept` | 看 best、账本、分析、验证；按**验收**（`accept.json`，签这一版 best 与验证结论） |
 
 两颗键（发布、验收）是产品形态里仅有的两个人工停点（外层 `docs/vision.md`「两个发布键、一次验收」）。
-界面上的键是"只有人能按"的唯一保证——CLI 里同名的 `ai4sci task publish` / `ai4sci run accept`
+界面上的键是"只有人能按"的唯一保证——CLI 里的 `ai4sci sign task` / `ai4sci sign run`
 是给在终端里当协调层的人用的，协调 agent 的指南写明它不该替人按。
 
 ## 网页怎么跑

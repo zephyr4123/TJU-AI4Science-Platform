@@ -64,7 +64,7 @@ def require_published(task_dir: Path) -> dict[str, Any]:
     """按钮的门：记录在、版本认得、签的文件一个都没改过。否则抛 `NotPublished`。"""
     task_dir = Path(task_dir).resolve()
     path = task_dir / PUBLISH_NAME
-    how = f"ai4sci task publish {task_dir} --by <谁>"
+    how = f"ai4sci sign task {task_dir} --by <谁>"
     if not path.is_file():
         raise NotPublished(
             f"需求还没发布，按钮不开：人看过需求看板（manifest.yaml、design.md）后 {how}")

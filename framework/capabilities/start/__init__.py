@@ -1,6 +1,6 @@
 """开一次实验：从任务包建 run。task 级，`run/lifecycle.new_run` 的薄壳。
 
-它是任务段到 run 段的桥：跑基线之后、实验内环之前。做成能力而不是只留 `ai4sci run new`，
+它是任务段到 run 段的桥：跑基线之后、实验内环之前。做成能力而不是一条单独的 `run new` 命令，
 是为了让能力清单完整：协调 agent 看到的按钮就是全部按钮，工作流文件里每一步都能指到清单上的名字，
 `flow check` 也不用把桥写成常数（`contracts.flow` 认 `start` 这个名字）。
 
@@ -37,6 +37,8 @@ DESCRIPTOR = Capability(
     ),
     params=(
         Param("run_id", "str", "", "run 的名字；缺省 <任务名>-<UTC 时间戳>"),
+        Param("runs_root", "str", "",
+              "runs 根目录；缺省环境变量 AI4SCI_RUNS_ROOT，再缺省 <仓根>/runs"),
     ),
     criteria=(
         "任务包已发布、合契约、预检有改进空间",
@@ -45,11 +47,12 @@ DESCRIPTOR = Capability(
 )
 
 
-def run(task_dir: Path, ports: Ports, *, run_id: str = "") -> str:
+def run(task_dir: Path, ports: Ports, *, run_id: str = "", runs_root: str = "") -> str:
     task_dir = Path(task_dir).resolve()
     run_id = run_id or f"{task_dir.name}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
+    root = Path(runs_root).resolve() if runs_root else default_runs_root()
     try:
-        run_dir = new_run(task_dir, default_runs_root(), run_id)
+        run_dir = new_run(task_dir, root, run_id)
     except (NotPublished, TaskInvalid, EnvBuildError) as exc:
         # 没发布、不合约、预检没过、环境建不出来：都停在门口，不留半截 run（P-7）
         raise CapabilityFailed(str(exc)) from exc

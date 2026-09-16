@@ -2,7 +2,7 @@
 
 一个能力一个子包，跑完即退、互不 import（见 `capabilities/__init__.py`）。对外露的是
 描述符 `DESCRIPTOR`、统一入口 `run`（`ai4sci cap experiment` 走它）、内环自己的两个动作
-`run_loop` / `resume_loop`（`ai4sci loop run|resume` 走它们，resume 有三方对账，不是一个参数
+`run_loop` / `resume_loop`（`ai4sci cap experiment [--resume]` 走它们，resume 有三方对账
 能表达的事），以及三种"停下来"的表达。内部怎么分模块（loop / judge / gate / failures /
 prompt.md）是这个能力自己的事，别的层不该知道。
 """
@@ -19,6 +19,7 @@ from framework.capabilities.experiment.loop import (
     run_loop,
 )
 from framework.contracts.capability import Artifact, Capability, CapabilityFailed, Param, Ports
+from framework.run.lifecycle import extend_run
 
 __all__ = ["DESCRIPTOR", "InflightPending", "ResumeMismatch", "StopReason", "resume_loop",
            "run", "run_loop"]
@@ -40,6 +41,12 @@ DESCRIPTOR = Capability(
     params=(
         Param("max_iters", "int", None,
               "本次增量最多跑几轮；上限仍是 manifest 的 budget.max_iterations"),
+        Param("resume", "bool", False,
+              "上次被杀在半路：先做 checkpoint × 账本 × git 三方对账，收尸后接着跑"),
+        Param("patience", "int", None, "续命：连续不改进几轮才停（改快照里的预算，清停止标记）"),
+        Param("max_iterations", "int", None, "续命：总轮数上限"),
+        Param("max_cost_usd", "float", None, "续命：总花费上限"),
+        Param("reason", "str", "", "续命的原因，记进 journal.md"),
     ),
     needs_executor=True,
     needs_compute=True,
@@ -51,11 +58,23 @@ DESCRIPTOR = Capability(
 )
 
 
-def run(run_dir: Path, ports: Ports, *, max_iters: int | None = None) -> str:
-    """统一入口：等价于 `ai4sci loop run`。续跑走 `resume_loop`，不在这里。"""
+def run(
+    run_dir: Path, ports: Ports, *, max_iters: int | None = None, resume: bool = False,
+    patience: int | None = None, max_iterations: int | None = None,
+    max_cost_usd: float | None = None, reason: str = "",
+) -> str:
+    """统一入口。给了预算参数先续命（`lifecycle.extend_run`：改预算、清停止标记、journal 记一行），
+    `resume` 走三方对账的 `resume_loop`，否则 `run_loop`。"""
     assert ports.runner is not None and ports.compute is not None, "实验能力要执行层与算力两个端口"
+    if patience is not None or max_iterations is not None or max_cost_usd is not None:
+        extend_run(run_dir, patience=patience, max_iterations=max_iterations,
+                   max_cost_usd=max_cost_usd, reason=reason)
+    elif reason:
+        raise CapabilityFailed(
+            "--reason 只在续命时有意义：配 --patience / --max-iterations / --max-cost-usd")
+    go = resume_loop if resume else run_loop
     try:
-        stop = run_loop(run_dir, ports.runner, ports.compute, max_iters)
+        stop = go(run_dir, ports.runner, ports.compute, max_iters)
     except (ResumeMismatch, InflightPending) as exc:
         # 通用驱动只认能力契约里的异常；内环自己的两种"现状不许往下跑"原话照转
         raise CapabilityFailed(str(exc)) from exc

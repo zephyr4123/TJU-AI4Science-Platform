@@ -29,7 +29,7 @@ DESCRIPTOR = Capability(
         Artifact("publish", publish.PUBLISH_NAME, "发布记录：没有不跑"),
         Artifact("harness", "harness/", "make_run0.sh 与它调的 launcher.sh、evaluate.py"),
         Artifact("code", "code/", "基线代码"),
-        Artifact("env", "env/", "任务环境的依据；.venv 由 ai4sci task env build 建"),
+        Artifact("env", "env/", "任务环境的依据：.venv 不在就按它建"),
     ),
     outputs=(
         Artifact("run_0", "run_0/",
@@ -51,12 +51,16 @@ def run(task_dir: Path, ports: Ports) -> str:
             f"缺 harness/make_run0.sh：先 ai4sci cap design {task_dir} 写出 harness")
     python = env.venv_python(task_dir / env.VENV_DIRNAME)
     if not python.is_file():
-        raise CapabilityFailed(f"任务环境不存在：{python}（先 ai4sci task env build {task_dir}）")
+        # 环境是基线的一部分，不是人要记得先按的另一颗键；建不出来就是基线跑不了
+        try:
+            python = env.build_venv(task_dir, task_dir / env.VENV_DIRNAME)
+        except env.EnvBuildError as exc:
+            raise CapabilityFailed(str(exc)) from exc
     manifest = yaml.safe_load((task_dir / packs.MANIFEST_NAME).read_text(encoding="utf-8"))
     budget = manifest.get("budget") if isinstance(manifest, dict) else None
     if not isinstance(budget, dict) or not isinstance(budget.get("wall_clock_s"), (int, float)):
         raise CapabilityFailed(
-            f"{packs.MANIFEST_NAME} 缺 budget.wall_clock_s，先 ai4sci task validate")
+            f"{packs.MANIFEST_NAME} 缺 budget.wall_clock_s，先 ai4sci show task {task_dir}")
     inner_k = budget.get("inner_k", 1)
     if not isinstance(inner_k, int) or inner_k < 1:
         raise CapabilityFailed(
@@ -76,4 +80,4 @@ def run(task_dir: Path, ports: Ports) -> str:
         raise CapabilityFailed("基线跑完了，预检没过：\n" + "\n".join(problems)
                                + f"\n{room.summary()}")
     return (f"ok {task_dir.name}\tinner_k={inner_k}\t{room.summary()}"
-            f"\tnext=ai4sci task validate {task_dir}")
+            f"\tnext=ai4sci show task {task_dir}")
