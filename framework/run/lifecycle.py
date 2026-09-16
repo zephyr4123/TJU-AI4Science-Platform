@@ -116,7 +116,11 @@ def extend_run(
         yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False), encoding="utf-8")
     state = read_checkpoint(run_dir)
     cleared = state.get("stop_reason")
-    write_checkpoint(run_dir, {**state, "stop_reason": None})
+    # resumed_after_iter：不可修复的判定只数这一轮之后的账本行。续命本身就是协调层在说
+    # "之前那几次失败我看过了、不算"（真跑时执行层连不上模型三次被判不可修复，续命后
+    # 内环一起来又从账本尾部数到同样三行、当场再停，等于续命无效）
+    write_checkpoint(run_dir, {**state, "stop_reason": None,
+                               "resumed_after_iter": state["last_iter"]})
     layout.stop(run_dir).unlink(missing_ok=True)
     line = (f"- {datetime.now(UTC).isoformat(timespec='seconds')} 续命：清掉 stop_reason={cleared}"
             f"；{'；'.join(changes) or '预算未改'}；原因：{reason or '未说明'}\n")

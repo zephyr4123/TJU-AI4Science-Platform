@@ -26,6 +26,7 @@
 - 玩具任务 `tasks/mlp-regression/`（R-3，外层 #12 #21）：纯 Python 单隐层 MLP 拟合含噪一维函数，单标量 `val_mse` minimize，一次 0.25 s；harness 只吃 predictions.json 算分，预测缺失 / 长度不对 / NaN 一律退非 0 且不写 results.json；`run_0/` 含基线、三个种子的重复与 σ（0.0036，基线 0.0231），`harness/make_run0.sh` 可复现
 
 ### 修复
+- `ai4sci run extend` 对「不可修复」的停止无效：内环一起来又从账本尾部数到同样三行失败、当场再停。现在续命在 checkpoint 记 `resumed_after_iter`，不可修复的判定只数续命之后的轮次（真跑 rahman-1 执行层连不上模型三次后续不了，外层 #41）
 - `pyproject` 的 package-data 漏了 `capabilities/analysis/prompt.md`，打包安装后分析能力找不到模板；顺带登记 `executor/design_prompt.md`
 
 ### 变更

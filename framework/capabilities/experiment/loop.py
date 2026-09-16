@@ -233,7 +233,9 @@ def _stop_reason(ctx: RunContext, state: dict[str, Any], limit: int) -> StopReas
     done, best = state["last_iter"], state["best_metric"]
     if done >= ctx.max_iterations:
         return StopReason("max_iterations", done, best)
-    recent = rows[-UNRECOVERABLE_REPEATS:]
+    # 续命过的 run 只数续命之后的轮次：之前的失败协调层已经看过并决定继续（lifecycle.extend_run）
+    since = state.get("resumed_after_iter", 0)
+    recent = [r for r in rows if r.iter > since][-UNRECOVERABLE_REPEATS:]
     fails = [r.status for r in recent if r.status in failures.FAILURE_STATUSES]
     if len(fails) == UNRECOVERABLE_REPEATS and len(set(fails)) == 1:
         return StopReason(f"unrecoverable:{fails[0]}", done, best)

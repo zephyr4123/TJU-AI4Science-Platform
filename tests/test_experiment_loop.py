@@ -736,3 +736,15 @@ def test_three_executor_failures_in_a_row_are_unrecoverable(tmp_path):
     runner = ScriptedRunner([train_for_mse(0.018)] * 4, die_at=(1, 2, 3))
     stop = run_loop(run_dir, runner, LocalCompute())
     assert stop.reason == "unrecoverable:executor_failed" and runner.calls == 3
+
+
+def test_extend_after_unrecoverable_forgives_the_failures_before_it(tmp_path):
+    """真跑：执行层连不上模型三次判不可修复，续命后内环一起来又数到同样三行、当场再停。"""
+    run_dir, _ = start_run(tmp_path)
+    runner = ScriptedRunner([train_for_mse(0.018)] * 4, die_at=(1, 2, 3))
+    assert run_loop(run_dir, runner, LocalCompute()).reason == "unrecoverable:executor_failed"
+    extend_run(run_dir, patience=10, reason="外部原因，续跑")
+    assert read_checkpoint(run_dir)["resumed_after_iter"] == 3
+    stop = run_loop(run_dir, runner, LocalCompute(), max_iters=1)
+    assert runner.calls == 4 and stop.reason == "batch_exhausted"
+    assert rows_of(run_dir)[-1].status == "keep"
