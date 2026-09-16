@@ -138,6 +138,33 @@ export function conclusionOf(analysis: string): string {
   return (match ? match[1] : analysis).trim()
 }
 
+// ── 能力清单 ─────────────────────────────────────────────────────────────
+export interface CapCopy {
+  title: string
+  what: string
+  who: '机器' | '助理'
+}
+
+/** 每颗能力给研究者看的说法。清单里新增了能力而这里没写，页面退回描述符的 summary。 */
+export const CAP_COPY: Record<string, CapCopy> = {
+  design: { title: '接任务', who: '助理',
+    what: '按设计说明写裁判脚本和一版最朴素的代码。裁判脚本封起来之后不再改，后面每一轮都用它打分。' },
+  baseline: { title: '跑基线', who: '机器',
+    what: '把最朴素的代码重复跑几次，得到起点成绩和它的晃动幅度。顺手算一遍从起点到尽头有没有改进的空间，没有就停下来告诉你。' },
+  start: { title: '开一次实验', who: '机器',
+    what: '把任务包搬进一个独立的工作区，记下起点。之后每一轮都在这个工作区里改。' },
+  experiment: { title: '一轮一轮改', who: '助理',
+    what: '每轮改一次代码，裁判脚本独立跑分，成绩好过噪声门槛才留下，否则退回上一版。到了轮数、花费或连续没进步的上限就停。' },
+  analysis: { title: '写分析', who: '助理',
+    what: '读账本和每一轮的结果，写一份分析：结论、数据表、证伪与未决三节。' },
+  verify: { title: '验证', who: '机器',
+    what: '把分析里的每个数回溯到某一轮的结果文件，账本和代码历史对账，出 PASS 或 FAIL。' },
+}
+
+export const LEVEL_COPY: Record<string, string> = {
+  task: '在任务包上做', run: '在一次实验里做', project: '在整个项目上做',
+}
+
 // ── 对话里的工具行 ────────────────────────────────────────────────────────
 const CLI_SENTENCE: [RegExp, string][] = [
   [/ai4sci task list/, '看了一眼有哪些任务包'],

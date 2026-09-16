@@ -175,3 +175,18 @@ export interface FlowCheck {
   steps: string[]
   problems: string[]
 }
+
+export interface WorkflowStep {
+  by: '人' | '助理'
+  does: string
+  cap: string | null
+  key: 'publish' | 'accept' | null
+}
+
+export interface Workflow {
+  name: string
+  title: string
+  summary: string
+  steps: WorkflowStep[]
+  problems: string[]
+}

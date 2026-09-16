@@ -1,7 +1,7 @@
 """`ai4sci serve`：起网页的后端（HTTP + SSE）并把页面端出去，常驻直到 Ctrl-C。
 
-cli 层里唯一常驻的命令：它不是"跑一个能力"，是给页面一个门。节点清单与流通不通检查从
-`capabilities.discover` 拿，以函数传给 server（chat 层不认识 capabilities）。
+cli 层里唯一常驻的命令：它不是"跑一个能力"，是给页面一个门。能力清单、工作流清单与流通不通检查从
+`capabilities.discover` 与 `workflows/` 拿，以函数传给 server（chat 层不认识 capabilities）。
 
 页面是 `ui/web` 构建出来的静态文件（`ui/README.md`）：缺省端 `ui/web/dist`，没构建就只开接口。
 TUI 不走这里——它是终端进程，直接当这些接口的客户端。
@@ -24,6 +24,7 @@ from framework.cli._common import (
     runs_root,
     setup_logging,
 )
+from framework.contracts import workflows
 from framework.contracts.flow import check_flow
 
 DEFAULT_UI_DIR = guide.REPO_ROOT / "ui" / "web" / "dist"
@@ -31,6 +32,12 @@ DEFAULT_UI_DIR = guide.REPO_ROOT / "ui" / "web" / "dist"
 
 def _catalog() -> list[dict]:
     return [module.DESCRIPTOR.to_dict() for module in discover().values()]
+
+
+def _workflows() -> list[dict]:
+    catalog = {name: module.DESCRIPTOR for name, module in discover().items()}
+    return workflows.describe(workflows.load_workflows(workflows.workflows_root(guide.REPO_ROOT)),
+                              catalog)
 
 
 def _flow_check(steps: list[str]) -> dict:
@@ -57,7 +64,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     setup_logging()
     try:
         server = ChatServer((args.host, args.port), runs_root=runs_root(args), cwd=cwd,
-                            catalog=_catalog, flow_check=_flow_check, ui_dir=ui_dir)
+                            catalog=_catalog, workflows=_workflows, flow_check=_flow_check,
+                            ui_dir=ui_dir)
     except guide.GuideMissing as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID

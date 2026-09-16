@@ -247,7 +247,7 @@ def test_cap_list_prints_every_capability():
     proc = run_cli("cap", "list")
     assert proc.returncode == EXIT_OK, proc.stderr
     names = [line.split("\t")[0] for line in proc.stdout.splitlines()]
-    assert names == ["analysis", "baseline", "design", "experiment", "verify"]
+    assert names == ["analysis", "baseline", "design", "experiment", "start", "verify"]
 
 
 def test_cap_list_json_is_descriptor_dicts():
@@ -256,8 +256,8 @@ def test_cap_list_json_is_descriptor_dicts():
     proc = run_cli("cap", "list", "--json")
     assert proc.returncode == EXIT_OK, proc.stderr
     descriptors = json.loads(proc.stdout)
-    assert {d["name"] for d in descriptors} == {"analysis", "baseline", "design", "experiment",
-                                                "verify"}
+    assert {d["name"] for d in descriptors} == {
+        "analysis", "baseline", "design", "experiment", "start", "verify"}
     assert all({"inputs", "outputs", "params", "criteria"} <= set(d) for d in descriptors)
 
 

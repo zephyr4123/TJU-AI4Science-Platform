@@ -14,6 +14,9 @@ from framework.chat.server import ChatServer
 from tests.fixtures.scripted_chat import ScriptedChat, reply, with_tool
 
 CATALOG = [{"name": "design", "level": "task"}, {"name": "experiment", "level": "run"}]
+WORKFLOWS = [{"name": "w", "title": "一条", "summary": "…", "assumes": [],
+              "steps": [{"by": "助理", "does": "接", "cap": "design", "key": None}],
+              "problems": []}]
 
 
 def flow_check(steps: list[str]) -> dict:
@@ -42,7 +45,8 @@ def served(tmp_path):
         return chat
 
     server = ChatServer(("127.0.0.1", 0), runs_root=tmp_path / "runs", cwd=tmp_path,
-                        catalog=lambda: CATALOG, flow_check=flow_check, chat_factory=factory,
+                        catalog=lambda: CATALOG, workflows=lambda: WORKFLOWS,
+                        flow_check=flow_check, chat_factory=factory,
                         system_prompt="指南", ui_dir=ui_dir(tmp_path))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -77,6 +81,8 @@ def test_health_and_catalog(served):
     assert call(base, "/health")[2] == '{"ok": true}'
     status, ctype, body = call(base, "/cap")
     assert status == 200 and "application/json" in ctype and json.loads(body) == CATALOG
+    status, _, body = call(base, "/workflows")
+    assert status == 200 and json.loads(body) == WORKFLOWS
 
 
 def test_chat_lifecycle_over_http(served):
@@ -211,7 +217,8 @@ def test_static_page_and_spa_fallback(served):
 
 def test_no_ui_dir_says_how_to_build(tmp_path):
     server = ChatServer(("127.0.0.1", 0), runs_root=tmp_path / "runs", cwd=tmp_path,
-                        catalog=lambda: CATALOG, flow_check=flow_check, system_prompt="指南")
+                        catalog=lambda: CATALOG, workflows=lambda: WORKFLOWS,
+                        flow_check=flow_check, system_prompt="指南")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

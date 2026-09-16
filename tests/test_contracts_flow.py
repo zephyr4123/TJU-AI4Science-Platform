@@ -24,7 +24,7 @@ def test_task_segment_alone_is_fine_and_run_segment_needs_the_bridge():
 
 def test_skipping_baseline_breaks_the_bridge_only_on_run0():
     problems = check_flow(caps("design", "experiment", "analysis", "verify"))
-    assert problems == ["第 2 步 experiment 之前要过桥（run new），桥要 ['run_0/'] 前面没人产出"]
+    assert problems == ["第 2 步 experiment 之前要过桥（start），桥要 ['run_0/'] 前面没人产出"]
 
 
 def test_each_missing_input_is_named_once():

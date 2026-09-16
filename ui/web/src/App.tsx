@@ -1,12 +1,12 @@
-// 两栏：对话为主，右边一张看板（需求 / 进度 / 结果 三个页签）；对话列表收在左侧抽屉。
+// 两栏：对话为主，右边一张看板（需求 / 工作流 / 结果 三个页签）；对话列表收在左侧抽屉。
 // 页面只是 `ai4sci serve` 的客户端：所有数据经 `api/`，这里只管把它们摆在一起。
 
 import { useCallback, useState } from 'react'
 
 import { api } from '@/api/client'
-import { ProgressBoard } from '@/boards/ProgressBoard'
 import { RunBoard } from '@/boards/RunBoard'
 import { TaskBoard } from '@/boards/TaskBoard'
+import { WorkflowBoard } from '@/boards/WorkflowBoard'
 import { ChatView } from '@/chat/ChatView'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -14,7 +14,7 @@ import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 import { ChatDrawer } from '@/sidebar/ChatDrawer'
 
-type Board = 'task' | 'progress' | 'run'
+type Board = 'task' | 'workflow' | 'run'
 
 export default function App() {
   const chats = useResource(api.chats, [])
@@ -74,16 +74,15 @@ export default function App() {
           <Tabs value={board} onValueChange={(v) => setBoard(v as Board)} className="flex h-full w-[30rem] flex-col gap-0">
             <TabsList className="mx-6 mt-5 mb-2 grid w-auto grid-cols-3 bg-transparent p-0">
               <TabsTrigger value="task">需求</TabsTrigger>
-              <TabsTrigger value="progress">进度</TabsTrigger>
+              <TabsTrigger value="workflow">工作流</TabsTrigger>
               <TabsTrigger value="run">结果</TabsTrigger>
             </TabsList>
             <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
               <TabsContent value="task" className="mt-0">
                 <TaskBoard epoch={epoch} selected={taskId} onSelect={setTaskId} />
               </TabsContent>
-              <TabsContent value="progress" className="mt-0">
-                <ProgressBoard epoch={epoch} onOpenTask={(id) => { setTaskId(id); setBoard('task') }}
-                               onOpenRun={(id) => { setRunId(id); setBoard('run') }} />
+              <TabsContent value="workflow" className="mt-0">
+                <WorkflowBoard />
               </TabsContent>
               <TabsContent value="run" className="mt-0">
                 <RunBoard epoch={epoch} selected={runId} onSelect={setRunId} />

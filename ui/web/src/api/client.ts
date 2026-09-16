@@ -2,7 +2,7 @@
 // 组件不直接 fetch——换一种 UI（TUI）时这一层就是要照抄的契约。
 
 import type {
-  Capability, ChatDoc, ChatMeta, FlowCheck, RunDetail, RunSummary, TaskDetail, TaskSummary,
+  Capability, ChatDoc, ChatMeta, FlowCheck, RunDetail, RunSummary, TaskDetail, TaskSummary, Workflow,
 } from './types'
 
 export class ApiError extends Error {
@@ -43,6 +43,7 @@ const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.strin
 export const api = {
   health: () => request<{ ok: boolean }>('/health'),
   capabilities: () => request<Capability[]>('/cap'),
+  workflows: () => request<Workflow[]>('/workflows'),
   flowCheck: (steps: string[]) =>
     request<FlowCheck>(`/flow/check?steps=${encodeURIComponent(steps.join(','))}`),
 

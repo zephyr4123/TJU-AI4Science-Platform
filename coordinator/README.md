@@ -14,6 +14,8 @@ platform 0.2.0 只有这一份入口指南（spec R-10）；真有第二条 skil
 
 ## 固定流之一：auto-research（现成任务包 → 实验 → 分析 → 验证）
 
+机器可读版在 `workflows/auto-research.yaml`（`ai4sci flow list` 能列）。这是预装的一种拼法，不是必须走的路：能力清单里的按钮你可以自己拼，先 `ai4sci flow check <能力>...` 查通不通。开一次实验现在是能力 `ai4sci cap start <task_dir>`，与 `run new` 等价。
+
 前提：手里有一个过校验的任务包（`ai4sci task validate <dir>`），manifest 里的方向、预算、统计门是你和人拍板后填的，不是框架给的。
 
 ```bash
@@ -38,6 +40,8 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 `runs/<id>/journal.md` 是你的本子：每个决定一行——为什么跑这个能力、看到什么、下一步、指回哪条 issue。框架只建空文件、续命时追一行，其余是你写。
 
 ## 固定流之二：接一个真任务
+
+机器可读版在 `workflows/intake.yaml`。
 
 前提：外层 `docs/cases/<slug>/` 有案例卡（或研究者当面给的材料），`domains/<d>/` 有领域包（没有就先建，见纲领 packs §3）。第一个真任务 boehm-nll（外层 [#40](https://github.com/zephyr4123/TJU-AI4Science/issues/40)）是手工走的；接任务与跑基线现在都是按钮（外层 [#41](https://github.com/zephyr4123/TJU-AI4Science/issues/41) [#49](https://github.com/zephyr4123/TJU-AI4Science/issues/49)），流程往下走的钥匙是人按的发布（外层 [#48](https://github.com/zephyr4123/TJU-AI4Science/issues/48)）。
 

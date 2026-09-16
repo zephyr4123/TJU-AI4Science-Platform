@@ -1,11 +1,13 @@
 """网页的后端：HTTP 端点包住 conversation.py 与 boards.py，事件用 SSE 推，页面本身也从这里端出去。
 
 标准库 ThreadingHTTPServer：十来个端点不值得引一个 web 框架。零模型：模型在适配器的子进程里。
-节点清单（`/cap`）与流通不通检查（`/flow/check`）由调用方以函数传入——这一层不认识
-capabilities，依赖方向不能反过来。页面是这些端点的客户端，换一种 UI 也是同一套（`ui/README.md`）。
+能力清单（`/cap`）、工作流清单（`/workflows`）与流通不通检查（`/flow/check`）由调用方以函数
+传入——这一层不认识 capabilities，依赖方向不能反过来。页面是这些端点的客户端，换一种 UI 也是
+同一套（`ui/README.md`）。
 
     GET  /health                   {"ok": true}
-    GET  /cap                      能力描述符清单（编排看板的节点定义）
+    GET  /cap                      能力描述符清单：平台的全部按钮
+    GET  /workflows                预装的工作流清单（`workflows/*.yaml`），每条带 problems
     GET  /flow/check?steps=a,b     {"steps", "problems"}：这串能力通不通，不跑
     GET  /chats                    全部对话的 meta + title（第一句话）
     POST /chats                    {"backend"?} → 新对话的 meta
@@ -42,7 +44,7 @@ LOGGER = logging.getLogger("ai4sci.serve")
 DEFAULT_BACKEND = "claude_code"
 MAX_BODY = 1 << 20
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
-API_ROOTS = ("health", "cap", "flow", "chats", "tasks", "runs")
+API_ROOTS = ("health", "cap", "workflows", "flow", "chats", "tasks", "runs")
 INDEX_NAME = "index.html"
 
 
@@ -53,6 +55,7 @@ class ChatServer(ThreadingHTTPServer):
 
     def __init__(self, address: tuple[str, int], *, runs_root: Path, cwd: Path,
                  catalog: Callable[[], list[dict[str, Any]]],
+                 workflows: Callable[[], list[dict[str, Any]]],
                  flow_check: Callable[[list[str]], dict[str, Any]],
                  chat_factory: Callable[[str], Chat] = get_chat,
                  system_prompt: str | None = None, ui_dir: Path | None = None) -> None:
@@ -60,6 +63,7 @@ class ChatServer(ThreadingHTTPServer):
         self.runs_root = Path(runs_root)
         self.cwd = Path(cwd).resolve()
         self.catalog = catalog
+        self.workflows = workflows
         self.flow_check = flow_check
         self.chat_factory = chat_factory
         # 页面构建目录；None 就是没构建，根路径回一句怎么构建，接口照常
@@ -84,6 +88,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         if parts == ["cap"]:
             return self._json(self.server.catalog())
+        if parts == ["workflows"]:
+            return self._json(self.server.workflows())
         if parts == ["flow", "check"]:
             raw = parse_qs(url.query).get("steps", [""])[0]
             steps = [s for s in raw.split(",") if s]

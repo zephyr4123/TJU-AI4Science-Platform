@@ -18,7 +18,7 @@
 |---|---|---|
 | 对话 | `POST /chats`、`POST /chats/<id>/messages`（SSE）、`GET /chats[/<id>]` | 和协调 agent 说话；agent 按的每个按钮以 `tool_use` / `tool_result` 事件流回来 |
 | 需求 | `GET /tasks[/<id>]`、`POST /tasks/<id>/publish` | 看 manifest、设计说明、预检；按**发布**。发布是钥匙（`publish.json`），后面的按钮没它不开 |
-| 进度 | `GET /tasks`、`GET /runs` | 每个课题走到哪了：接任务 → 跑基线 → 做实验 → 写分析 → 验证，做完打勾、下一步一句话（`GET /cap`、`GET /flow/check` 留给 CLI 与以后的画布，页面第二版不用） |
+| 工作流 | `GET /workflows`、`GET /cap` | 平台是一盒能力，工作流是预装的拼法：列出现在有几条工作流（每步谁做、做什么）、几颗能力（吃什么吐什么、机器还是助理做）。不写死顺序 |
 | 结果 | `GET /runs[/<id>]`、`POST /runs/<id>/accept` | 看 best、账本、分析、验证；按**验收**（`accept.json`，签这一版 best 与验证结论） |
 
 两颗键（发布、验收）是产品形态里仅有的两个人工停点（外层 `docs/vision.md`「两个发布键、一次验收」）。
@@ -45,10 +45,10 @@ ai4sci serve       # 起后端并端出页面：http://127.0.0.1:8765
 web/src/
   api/        契约：types.ts（响应体的类型）、client.ts（每个端点一个函数）、sse.ts（事件流）
   chat/       对话：trace.ts（事件流折成条目，纯函数、有单测）、ChatView（含欢迎屏）/ TurnView / Composer
-  boards/     三页：TaskBoard（需求 + 发布键）、ProgressBoard（进度）、RunBoard（结果 + 验收键）
+  boards/     三页：TaskBoard（需求 + 发布键）、WorkflowBoard（工作流 + 能力清单）、RunBoard（结果 + 验收键）
   sidebar/    对话列表抽屉
   components/ 一页纸的零件 bits.tsx、Markdown.tsx、shadcn 生成的 ui/、reactbits 的 Waves / BlurText / ClickSpark
-  lib/        humanize.ts（术语翻人话，有单测）、progress.ts（五步进度，有单测）、format、取数 hook、署名记忆
+  lib/        humanize.ts（术语翻人话、能力的人话说法，有单测）、format、取数 hook、署名记忆
 ```
 
 依赖方向：`App → boards / chat / sidebar → components → api`；`api/` 不 import 任何组件。
