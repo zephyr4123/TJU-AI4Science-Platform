@@ -3,7 +3,8 @@
 每条子命令一个模块，本文件只做两件事：把它们的 parser 装配起来、导出 `main`。
 四层里的最上面一层，可以 import 下面任何一层；反过来没有任何一层认识 CLI。
 
-每条子命令只干一件事、跑完就退，用退出码表态，不常驻、不等人（P-10）：
+每条子命令只干一件事、跑完就退，用退出码表态，不常驻、不等人（P-10）；
+唯一例外是 `serve`，它是网页的门，常驻：
 
     0  通过
     1  没通过（问题一行一条打到 stderr）
@@ -14,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 
-from framework.cli import cap, flow, loop, run, status, task
+from framework.cli import cap, chat, flow, loop, run, serve, status, task
 
 __all__ = ["build_parser", "main"]
 
@@ -28,6 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
     loop.add_parser(groups)
     cap.add_parser(groups)
     flow.add_parser(groups)
+    chat.add_parser(groups)
+    serve.add_parser(groups)
     status.add_parser(groups)
     return parser
 

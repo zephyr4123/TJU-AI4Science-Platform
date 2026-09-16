@@ -18,7 +18,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # 从底到顶：下标越大越靠上层，只许 import 下标不大于自己的层（同层与包内随意）。
-LAYERS = ("contracts", "run", "memory", "executor", "capabilities", "cli")
+LAYERS = ("contracts", "run", "memory", "executor", "chat", "capabilities", "cli")
 # 端口：framework 任何一层都可以 import 它们，它们不许 import framework。
 PORTS = ("backends", "compute", "tools")
 

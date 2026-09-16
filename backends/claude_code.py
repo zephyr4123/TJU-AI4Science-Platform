@@ -19,17 +19,21 @@ import signal
 import subprocess
 import threading
 import time
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import RunResult
+from backends import ChatEvent, RunResult
 from backends._snapshot import diff, snapshot
 
-# 不读 user/project/local 任何设置源：执行层会话因此不继承本机的
-# CLAUDE.md、hook、plugin、自定义 agent（P-11）
-ISOLATION_ARGS = ("--no-session-persistence", "--setting-sources", "", "--strict-mcp-config",
-                  "--disable-slash-commands")
+# 不读 user/project/local 任何设置源：会话因此不继承本机的 CLAUDE.md、hook、plugin、
+# 自定义 agent（P-11）。执行层再加 --no-session-persistence（一次性会话，不留）；协调层
+# 不加：多轮靠 --resume 续接，靠的就是 CLI 自己的会话持久化
+ISOLATION_ARGS = ("--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands")
+EXECUTOR_ISOLATION_ARGS = ("--no-session-persistence", *ISOLATION_ARGS)
 _TAIL_CHARS = 4000
+# tool_result 进事件的正文上限：页面与 CLI 打印只要开头，全文在 raw 里落盘
+_RESULT_CHARS = 4000
 
 
 def _env_num(name: str, default: float, cast: type) -> float:
@@ -100,7 +104,7 @@ class ClaudeCodeRunner:
         rules.append(f"Read({_abs_glob(cwd)})")  # 读整个工作目录：harness 与 data 要看得见
         rules += self.bash_rules
         argv = [self.cli, "-p", prompt, "--output-format", "stream-json", "--verbose",
-                "--permission-mode", "dontAsk", *ISOLATION_ARGS,
+                "--permission-mode", "dontAsk", *EXECUTOR_ISOLATION_ARGS,
                 "--allowedTools", *rules,
                 "--max-turns", str(int(_env_num("AI4SCI_EXECUTOR_MAX_TURNS", 30, int))),
                 "--max-budget-usd", str(_env_num("AI4SCI_EXECUTOR_MAX_BUDGET_USD", 2.0, float))]
@@ -195,5 +199,148 @@ def final_metrics(
     return cost, duration_s
 
 
+class ClaudeCodeChat:
+    """协调层适配器：同一个 CLI，多轮靠 `--resume <session id>`，指南靠 `--append-system-prompt`。
+
+    实测（2026-09-16，haiku）：第一轮 init 事件给 session_id，第二轮 `--resume` 带上它，
+    模型记得第一轮的内容，result 事件的 session_id 与第一轮相同；两轮共 $0.02。
+    事件边跑边出：stdout 逐行读、逐行翻译，stderr 另起线程排空（同 Runner 的教训）。
+    """
+
+    def __init__(self, cli: str = "claude") -> None:
+        self.cli = cli
+
+    def build_argv(
+        self, message: str, cwd: Path, *, session_id: str | None, system_prompt: str,
+        allowed_paths: list[Path], bash_rules: tuple[str, ...],
+    ) -> list[str]:
+        rules: list[str] = []
+        for path in allowed_paths:
+            rules += [f"Edit({_abs_glob(path)})", f"Write({_abs_glob(path)})"]
+        rules.append(f"Read({_abs_glob(cwd)})")
+        rules += bash_rules
+        argv = [self.cli, "-p", message, "--output-format", "stream-json", "--verbose",
+                "--permission-mode", "dontAsk", *ISOLATION_ARGS,
+                "--allowedTools", *rules,
+                "--max-turns", str(int(_env_num("AI4SCI_COORDINATOR_MAX_TURNS", 50, int))),
+                "--max-budget-usd",
+                str(_env_num("AI4SCI_COORDINATOR_MAX_BUDGET_USD", 2.0, float))]
+        if system_prompt:
+            argv += ["--append-system-prompt", system_prompt]
+        if session_id:
+            argv += ["--resume", session_id]
+        model = os.environ.get("AI4SCI_COORDINATOR_MODEL")
+        if model:
+            argv += ["--model", model]
+        return argv
+
+    def turn(
+        self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
+        system_prompt: str, allowed_paths: list[Path], bash_rules: tuple[str, ...],
+    ) -> Iterator[ChatEvent]:
+        argv = self.build_argv(message, cwd, session_id=session_id, system_prompt=system_prompt,
+                               allowed_paths=allowed_paths, bash_rules=bash_rules)
+        err: list[str] = []
+        started = time.monotonic()
+        proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, start_new_session=True)
+        drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
+        drain.start()
+        # 超时由定时器杀树：主线程在逐行读 stdout，不能同时 wait(timeout)
+        timed_out = threading.Event()
+
+        def _kill() -> None:
+            timed_out.set()
+            kill_tree(proc.pid)
+
+        timer = threading.Timer(timeout_s, _kill)
+        timer.start()
+        seen_result = False
+        try:
+            for line in proc.stdout:
+                event = _translate(line)
+                if event is None:
+                    continue
+                seen_result = seen_result or event.kind == "done"
+                yield event
+        finally:
+            timer.cancel()
+            proc.wait()
+            drain.join(timeout=5)
+        if timed_out.is_set():
+            yield ChatEvent("error", text=f"这一轮超过 {timeout_s:g} 秒，进程树已杀",
+                            is_error=True, exit_code=proc.returncode,
+                            duration_s=time.monotonic() - started,
+                            raw={"stderr_tail": "".join(err)[-_TAIL_CHARS:]})
+        elif not seen_result:
+            yield ChatEvent("error", is_error=True, exit_code=proc.returncode,
+                            duration_s=time.monotonic() - started,
+                            text=(f"CLI 退出码 {proc.returncode}，没有 result 事件："
+                                  f"{''.join(err)[-_TAIL_CHARS:].strip() or '无 stderr'}"),
+                            raw={"stderr_tail": "".join(err)[-_TAIL_CHARS:]})
+
+
+def _translate(line: str) -> ChatEvent | None:
+    """一行 stream-json → 一个（或零个）ChatEvent。非 JSON 行与不关心的事件返回 None。
+
+    形状按实测：`system/init` 带 session_id；`assistant.message.content[]` 里 text / tool_use /
+    thinking；`user.message.content[]` 里 tool_result（content 是字符串或块列表）；
+    `system/permission_denied`；`result` 带 total_cost_usd / duration_ms / result 文本。
+    """
+    if not line.strip():
+        return None
+    try:
+        raw = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    kind = raw.get("type")
+    sid = raw.get("session_id")
+    if kind == "system":
+        if raw.get("subtype") == "init":
+            return ChatEvent("init", session_id=sid, raw=raw)
+        if raw.get("subtype") == "permission_denied":
+            return ChatEvent("denied", tool=str(raw.get("tool_name", "")),
+                             text=str(raw.get("message", "")), is_error=True,
+                             session_id=sid, raw=raw)
+        return None
+    if kind == "assistant":
+        blocks = raw.get("message", {}).get("content", [])
+        texts = [b["text"] for b in blocks if b.get("type") == "text" and b.get("text")]
+        tools = [b for b in blocks if b.get("type") == "tool_use"]
+        if tools:
+            block = tools[0]
+            return ChatEvent("tool_use", tool=str(block.get("name", "")),
+                             tool_input=dict(block.get("input") or {}), session_id=sid, raw=raw)
+        if texts:
+            return ChatEvent("text", text="\n".join(texts), session_id=sid, raw=raw)
+        return None
+    if kind == "user":
+        blocks = raw.get("message", {}).get("content", [])
+        results = [b for b in blocks if isinstance(b, dict) and b.get("type") == "tool_result"]
+        if not results:
+            return None
+        block = results[0]
+        content = block.get("content", "")
+        if isinstance(content, list):
+            content = "\n".join(str(c.get("text", "")) for c in content if isinstance(c, dict))
+        return ChatEvent("tool_result", text=str(content)[:_RESULT_CHARS],
+                         is_error=bool(block.get("is_error")), session_id=sid, raw=raw)
+    if kind == "result":
+        cost = raw.get("total_cost_usd")
+        duration = raw.get("duration_ms")
+        text = raw.get("result")
+        return ChatEvent("done", text=text.strip() if isinstance(text, str) else "",
+                         is_error=bool(raw.get("is_error")), session_id=sid,
+                         cost_usd=float(cost) if cost is not None else math.nan,
+                         duration_s=float(duration) / 1000.0 if duration is not None else 0.0,
+                         exit_code=0, raw=raw)
+    return None
+
+
 def make_runner() -> ClaudeCodeRunner:
     return ClaudeCodeRunner()
+
+
+def make_chat() -> ClaudeCodeChat:
+    return ClaudeCodeChat()

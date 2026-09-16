@@ -1,0 +1,180 @@
+"""一段对话在磁盘上的样子，以及"发一轮"这个动作。
+
+    runs/chats/<chat_id>/ meta.json           后端名、后端 session id、cwd、轮数、累计花费
+                         transcript.md        人一句 agent 一句，给人翻
+                         inflight.json        正在跑的那一轮；在就拒绝再发
+                         turn-N/message.md    这一轮人说的
+                         turn-N/events.jsonl  这一轮 CLI 的原生事件流，一行一个
+
+会话内容存在 CLI 自己的目录里（`--resume` 靠它），我们只记 session id；但事件流自己留一份：
+它是"agent 那一轮到底按了什么"的唯一证据（P-3）。
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import math
+import os
+import secrets
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from backends import Chat, ChatEvent
+
+LOGGER = logging.getLogger("ai4sci.chat")
+CHATS_DIRNAME = "chats"
+META_NAME = "meta.json"
+TRANSCRIPT_NAME = "transcript.md"
+INFLIGHT_NAME = "inflight.json"
+TIMEOUT_ENV = "AI4SCI_COORDINATOR_TIMEOUT_S"
+DEFAULT_TIMEOUT_S = 900.0
+
+
+class ConversationNotFound(FileNotFoundError):
+    pass
+
+
+class ConversationBusy(RuntimeError):
+    """这段对话正有一轮在跑。CLI 与 HTTP 都要把它变成"稍等"，不排队、不并发。"""
+
+
+def coordinator_timeout_s() -> float:
+    """协调 agent 一轮的墙钟上限：它会按按钮等基线跑完，所以缺省和执行层一样给 15 分钟。"""
+    raw = os.environ.get(TIMEOUT_ENV)
+    value = DEFAULT_TIMEOUT_S if raw is None else float(raw)
+    assert value > 0, f"{TIMEOUT_ENV} 必须是正数，得到 {value!r}"
+    return value
+
+
+@dataclass
+class Conversation:
+    chat_id: str
+    backend: str
+    cwd: str
+    created_at: str
+    session_id: str | None = None
+    turns: int = 0
+    cost_usd: float = 0.0
+
+    @property
+    def dir(self) -> Path:
+        return Path(self._dir)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def save(self) -> None:
+        (self.dir / META_NAME).write_text(
+            json.dumps(self.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def chats_root(runs_root: Path) -> Path:
+    return Path(runs_root) / CHATS_DIRNAME
+
+
+def new_conversation(runs_root: Path, backend: str, cwd: Path,
+                     chat_id: str | None = None) -> Conversation:
+    """建 `runs/chats/<id>/`。id 缺省 `chat-<UTC 时间戳>-<4 位随机>`：同一秒开两段也不撞。"""
+    stamp = datetime.now(UTC)
+    chat_id = chat_id or f"chat-{stamp:%Y%m%dT%H%M%SZ}-{secrets.token_hex(2)}"
+    directory = chats_root(runs_root) / chat_id
+    if directory.exists():
+        raise FileExistsError(f"对话已存在，不覆盖：{directory}")
+    directory.mkdir(parents=True)
+    conv = Conversation(chat_id=chat_id, backend=backend, cwd=str(Path(cwd).resolve()),
+                        created_at=stamp.isoformat(timespec="seconds"))
+    conv._dir = directory
+    (directory / TRANSCRIPT_NAME).write_text(f"# 对话 {chat_id}\n", encoding="utf-8")
+    conv.save()
+    LOGGER.info("chat_new chat_id=%s backend=%s cwd=%s", chat_id, backend, conv.cwd)
+    return conv
+
+
+def load_conversation(runs_root: Path, chat_id: str) -> Conversation:
+    directory = chats_root(runs_root) / chat_id
+    meta = directory / META_NAME
+    if not meta.is_file():
+        raise ConversationNotFound(f"对话不存在或没有 {META_NAME}：{directory}")
+    conv = Conversation(**json.loads(meta.read_text(encoding="utf-8")))
+    conv._dir = directory
+    return conv
+
+
+def list_conversations(runs_root: Path) -> list[Conversation]:
+    root = chats_root(runs_root)
+    if not root.is_dir():
+        return []
+    return [load_conversation(runs_root, p.name) for p in sorted(root.iterdir())
+            if (p / META_NAME).is_file()]
+
+
+def send(
+    conv: Conversation, chat: Chat, message: str, *, system_prompt: str,
+    allowed_paths: list[Path], bash_rules: tuple[str, ...], timeout_s: float | None = None,
+) -> Iterator[ChatEvent]:
+    """发一轮：写 message.md → 逐个事件落盘并往外吐 → done/error 时更新 meta 与 transcript。
+
+    生成器：调用方边迭代边拿事件（CLI 逐行打、HTTP 逐条 SSE）。中途调用方不迭代到底，
+    finally 也会摘掉 inflight 标记，但 meta 不会记这一轮——那是"没走完"的真实状态。
+    """
+    message = message.strip()
+    if not message:
+        raise ValueError("消息是空的")
+    inflight = conv.dir / INFLIGHT_NAME
+    if inflight.exists():
+        raise ConversationBusy(f"这段对话正有一轮在跑（{inflight}），等它结束再发")
+    # 轮次编号取盘上下一个空号，不取 meta.turns + 1：半途放弃的一轮目录留着当证据，
+    # 不计入 turns，下一轮也不能撞上它
+    turn_n = _next_turn(conv.dir)
+    turn_dir = conv.dir / f"turn-{turn_n}"
+    turn_dir.mkdir()
+    (turn_dir / "message.md").write_text(message + "\n", encoding="utf-8")
+    inflight.write_text(json.dumps({"turn": turn_n,
+                                    "started_at": datetime.now(UTC).isoformat(timespec="seconds")}),
+                        encoding="utf-8")
+    events_path = turn_dir / "events.jsonl"
+    timeout = coordinator_timeout_s() if timeout_s is None else timeout_s
+    LOGGER.info("chat_turn_start chat_id=%s turn=%d resume=%s", conv.chat_id, turn_n,
+                conv.session_id or "-")
+    try:
+        with events_path.open("a", encoding="utf-8") as fh:
+            for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
+                                   system_prompt=system_prompt, allowed_paths=allowed_paths,
+                                   bash_rules=bash_rules):
+                fh.write(json.dumps(event.raw or _bare(event), ensure_ascii=False) + "\n")
+                fh.flush()
+                if event.session_id and event.session_id != conv.session_id:
+                    conv.session_id = event.session_id
+                    conv.save()
+                if event.kind in ("done", "error"):
+                    _close_turn(conv, turn_n, message, event)
+                yield event
+    finally:
+        inflight.unlink(missing_ok=True)
+
+
+def _next_turn(directory: Path) -> int:
+    taken = [int(p.name.split("-", 1)[1]) for p in directory.glob("turn-*")
+             if p.is_dir() and p.name.split("-", 1)[1].isdigit()]
+    return max(taken, default=0) + 1
+
+
+def _bare(event: ChatEvent) -> dict[str, Any]:
+    """适配器自己造的事件（超时、协议坏了）没有原生 raw，落盘就记它的字段。"""
+    return {"type": f"ai4sci_{event.kind}", "text": event.text, "exit_code": event.exit_code}
+
+
+def _close_turn(conv: Conversation, turn_n: int, message: str, event: ChatEvent) -> None:
+    conv.turns += 1
+    if not math.isnan(event.cost_usd):
+        conv.cost_usd += event.cost_usd
+    conv.save()
+    reply = event.text if event.kind == "done" else f"（这一轮没走完：{event.text}）"
+    with (conv.dir / TRANSCRIPT_NAME).open("a", encoding="utf-8") as fh:
+        fh.write(f"\n## 第 {turn_n} 轮\n\n**人**：{message}\n\n**agent**：{reply}\n")
+    LOGGER.info("chat_turn_end chat_id=%s turn=%d kind=%s cost_usd=%s session=%s",
+                conv.chat_id, turn_n, event.kind, event.cost_usd, conv.session_id or "-")

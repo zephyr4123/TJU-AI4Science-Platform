@@ -1,6 +1,6 @@
 # coordinator/ · 协调层入口指南
 
-协调层 = 人（PI）+ 协调 agent。这份指南给**当协调层的那个 coding agent 会话**读（Claude Code 读项目 CLAUDE.md 时把它引进来，Codex 读 AGENTS.md），讲怎么当科研助理、怎么驱动框架。**执行层会话不许加载这里的任何东西**（纲领 P-11）：执行层的 skill 跟领域包走，在 `domains/<id>/skills/`。
+协调层 = 人（PI）+ 协调 agent。这份指南给**当协调层的那个 coding agent 会话**读：人在终端里当协调层时 Claude Code 读项目 CLAUDE.md 把它引进来（Codex 读 AGENTS.md）；`ai4sci chat` / `ai4sci serve` 起的服务会话隔离了所有设置源，由 `framework/chat/guide.py` 把它连同一段前言塞进 system prompt（外层 [#51](https://github.com/zephyr4123/TJU-AI4Science/issues/51)）。讲怎么当科研助理、怎么驱动框架。**执行层会话不许加载这里的任何东西**（纲领 P-11）：执行层的 skill 跟领域包走，在 `domains/<id>/skills/`。
 
 platform 0.2.0 只有这一份入口指南（spec R-10）；真有第二条 skill 再建 `skills/`（外层 issue #19）。
 

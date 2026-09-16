@@ -1,0 +1,9 @@
+{"type":"system","subtype":"init","cwd":"/tmp/probe","session_id":"d1fc75c5-dec5-427a-88f9-e9f810e42c89","tools":["Bash","Read"],"model":"claude-haiku-4-5-20251001","permissionMode":"dontAsk","uuid":"u1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"x"}]},"session_id":"d1fc75c5-dec5-427a-88f9-e9f810e42c89","uuid":"u2"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls","description":"看目录"}}]},"session_id":"d1fc75c5-dec5-427a-88f9-e9f810e42c89","uuid":"u3"}
+{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_1","type":"tool_result","content":"turn1.err\nturn1.jsonl","is_error":false}]},"session_id":"d1fc75c5-dec5-427a-88f9-e9f810e42c89","uuid":"u4","tool_use_result":{"stdout":"turn1.err\nturn1.jsonl"}}
+{"type":"system","subtype":"permission_denied","tool_name":"Bash","tool_use_id":"toolu_2","message":"Bash(rm -rf x) 不在白名单","session_id":"d1fc75c5-dec5-427a-88f9-e9f810e42c89","uuid":"u5"}
+{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_2","type":"tool_result","content":[{"type":"text","text":"Permission denied"}],"is_error":true}]},"session_id":"d1fc75c5-dec5-427a-88f9-e9f810e42c89","uuid":"u6"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"记住了 17。目录里只有两个文件。"}]},"session_id":"d1fc75c5-dec5-427a-88f9-e9f810e42c89","uuid":"u7"}
+not json at all
+{"type":"result","subtype":"success","is_error":false,"duration_ms":4321,"num_turns":3,"result":"记住了 17。目录里只有两个文件。","session_id":"d1fc75c5-dec5-427a-88f9-e9f810e42c89","total_cost_usd":0.0187643,"uuid":"u8"}

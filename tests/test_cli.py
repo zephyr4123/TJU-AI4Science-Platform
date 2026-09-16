@@ -467,3 +467,42 @@ def test_flow_check_reports_every_gap_and_json_carries_them():
 def test_flow_check_unknown_capability_is_a_usage_error():
     proc = run_cli("flow", "check", "design", "nope")
     assert proc.returncode == EXIT_USAGE and "nope" in proc.stderr
+
+
+# ── chat：终端里和协调 agent 聊 ─────────────────────────────────────────────
+def test_chat_new_send_list_with_a_scripted_backend(tmp_path, monkeypatch, capsys):
+    from framework.cli import main
+    from tests.fixtures.scripted_chat import ScriptedChat, with_tool
+
+    chat = ScriptedChat([with_tool("有三个任务包：a、b、c。", "Bash",
+                                   {"command": ".venv/bin/ai4sci task list"}, "a\nb\nc")])
+    monkeypatch.setattr("framework.cli.chat.get_chat", lambda name: chat)
+    monkeypatch.setattr("framework.chat.guide.GUIDE_PATH", tmp_path / "README.md")
+    (tmp_path / "README.md").write_text("# 指南\n按按钮。", encoding="utf-8")
+    runs = str(tmp_path / "runs")
+
+    assert main(["chat", "new", "--cwd", str(tmp_path), "--runs-root", runs]) == EXIT_OK
+    chat_id = capsys.readouterr().out.split("\t")[0].split(" ")[1]
+    assert chat_id.startswith("chat-")
+
+    assert main(["chat", "send", chat_id, "有哪些任务包？", "--runs-root", runs]) == EXIT_OK
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith("[init] session=") and out[1].startswith("[tool] Bash ")
+    assert out[2].startswith("[result] a") and out[3] == "有三个任务包：a、b、c。"
+    assert out[4].startswith("done\tcost_usd=0.0100")
+    assert chat.calls[0]["system_prompt"].startswith("# 你在服务里") and \
+        "按按钮" in chat.calls[0]["system_prompt"]
+    assert chat.calls[0]["allowed_paths"] == [tmp_path / "tasks", tmp_path / "runs"]
+
+    assert main(["chat", "list", "--runs-root", runs]) == EXIT_OK
+    assert capsys.readouterr().out.startswith(f"{chat_id}\tturns=1\tcost_usd=0.0100")
+
+
+def test_chat_send_unknown_id_and_missing_file_exit_two(tmp_path):
+    runs = str(tmp_path / "runs")
+    assert run_cli("chat", "send", "nope", "hi", "--runs-root", runs).returncode == EXIT_USAGE
+    proc = run_cli("chat", "new", "--cwd", str(tmp_path), "--runs-root", runs)
+    chat_id = proc.stdout.split("\t")[0].split(" ")[1]
+    proc = run_cli("chat", "send", chat_id, "@/nonexistent.md", "--runs-root", runs)
+    assert proc.returncode == EXIT_USAGE and "消息文件" in proc.stderr
+    assert run_cli("chat", "new", "--backend", "nope", "--runs-root", runs).returncode == EXIT_USAGE

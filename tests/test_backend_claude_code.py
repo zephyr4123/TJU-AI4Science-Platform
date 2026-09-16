@@ -269,3 +269,83 @@ def test_run_drains_stderr_instead_of_deadlocking(tmp_path: Path):
     assert result.cost_usd == 0.01
     assert result.stdout_tail.endswith("W" * 100)
     assert list((cwd / ".ai4sci").glob("executor-*.stderr.log"))
+
+
+# --- 协调层：Chat 端口与适配器 ---------------------------------------------
+from backends import Chat, ChatEvent, get_chat  # noqa: E402
+from backends.claude_code import ISOLATION_ARGS, ClaudeCodeChat, _translate  # noqa: E402
+
+CHAT_FIXTURE = Path(__file__).parent / "fixtures" / "claude_chat_sample.jsonl"
+SID = "d1fc75c5-dec5-427a-88f9-e9f810e42c89"
+
+
+def test_get_chat_returns_chat_shaped_object():
+    assert isinstance(get_chat("claude_code"), Chat)
+    with pytest.raises(BackendNotFound):
+        get_chat("nope")
+
+
+def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("AI4SCI_COORDINATOR_MODEL", raising=False)
+    chat = ClaudeCodeChat()
+    common = dict(system_prompt="指南", allowed_paths=[tmp_path / "tasks"],
+                  bash_rules=("Bash(.venv/bin/ai4sci *)",))
+    first = chat.build_argv("你好", tmp_path, session_id=None, **common)
+    second = chat.build_argv("继续", tmp_path, session_id=SID, **common)
+    assert "--resume" not in first
+    assert second[second.index("--resume") + 1] == SID
+    for argv in (first, second):
+        assert "--no-session-persistence" not in argv, "多轮靠 CLI 的会话持久化，不能关"
+        assert all(flag in argv for flag in ISOLATION_ARGS if flag)
+        assert argv[argv.index("--append-system-prompt") + 1] == "指南"
+        assert "--permission-mode" in argv and "dontAsk" in argv
+        assert "--dangerously-skip-permissions" not in argv
+        rules = argv[argv.index("--allowedTools") + 1: argv.index("--max-turns")]
+        assert "Bash(.venv/bin/ai4sci *)" in rules
+        assert any(r.startswith("Write(//") and r.endswith("/tasks/**)") for r in rules)
+    monkeypatch.setenv("AI4SCI_COORDINATOR_MODEL", "sonnet")
+    assert "sonnet" in chat.build_argv("x", tmp_path, session_id=None, **common)
+
+
+def test_translate_turns_the_sample_stream_into_chat_events():
+    events = [e for e in map(_translate, CHAT_FIXTURE.read_text(encoding="utf-8").splitlines())
+              if e is not None]
+    kinds = [e.kind for e in events]
+    assert kinds == ["init", "tool_use", "tool_result", "denied", "tool_result", "text", "done"]
+    assert events[0].session_id == SID
+    assert events[1].tool == "Bash" and events[1].tool_input["command"] == "ls"
+    assert events[2].text == "turn1.err\nturn1.jsonl" and events[2].is_error is False
+    assert events[3].is_error and "白名单" in events[3].text
+    assert events[4].text == "Permission denied" and events[4].is_error is True
+    assert events[5].text.startswith("记住了 17")
+    done = events[-1]
+    assert done.text.startswith("记住了 17") and done.cost_usd == pytest.approx(0.0187643)
+    assert done.duration_s == pytest.approx(4.321) and done.exit_code == 0
+    assert all(e.raw for e in events), "每个事件都带原生 raw，落盘用"
+
+
+def test_translate_ignores_noise_and_thinking():
+    assert _translate("not json\n") is None
+    assert _translate("   \n") is None
+    assert _translate('{"type":"rate_limit_event"}') is None
+    assert _translate('{"type":"assistant","message":{"content":[{"type":"thinking"}]}}') is None
+
+
+def test_chat_event_rejects_unknown_kind():
+    with pytest.raises(AssertionError):
+        ChatEvent("banana")
+
+
+@pytest.mark.skipif(os.environ.get("AI4SCI_LIVE") != "1", reason="真 CLI，AI4SCI_LIVE=1 才跑")
+def test_live_chat_two_turns_remember_across_resume(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("AI4SCI_COORDINATOR_MODEL", "claude-haiku-4-5-20251001")
+    chat = ClaudeCodeChat()
+    common = dict(system_prompt="你是测试助手，回答极短。", allowed_paths=[], bash_rules=())
+    first = list(chat.turn("记住这个数字：17。只回“好”。", tmp_path, 120, session_id=None,
+                           **common))
+    sid = first[0].session_id
+    assert first[0].kind == "init" and sid and first[-1].kind == "done"
+    second = list(chat.turn("刚才的数字是多少？只回数字。", tmp_path, 120, session_id=sid,
+                            **common))
+    assert second[-1].kind == "done" and "17" in second[-1].text
+    assert second[-1].session_id == sid
