@@ -66,7 +66,7 @@ assert problem.objective(x_free) == best.fval
 
 - `optimize.minimize(..., startpoint_method=...)` 这个关键字已弃用，要设 `problem.startpoint_method`。
 - `best` 还带 `x0`（起点）、`n_fval`、`exitflag`、`message`，用来判断收敛。
-- 参考耗时（本机 CPU）：4 起点 0.5 s，8 起点 0.9 s，30 起点 3.1 s；时间与起点数基本线性。
+- 参考耗时（本机 CPU）：4 起点 0.5 s，8 起点 0.9 s，30 起点 3.1 s。**别拿这些数反推起点数**：单个起点耗时在 0.1 到 0.3 s 之间浮动（撒在盒子边缘的起点让 ODE 更僵硬），按常数外推到一百多个起点会撞墙钟被杀（boehm-2 第 1 轮）。要用满预算就按墙钟自截断：起点分批跑，每批结束看 `time.monotonic()` 离预算还剩多少，不够一批就停，把已跑完的最优写出。
 
 ## 边界
 
