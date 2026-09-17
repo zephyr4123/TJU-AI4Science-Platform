@@ -9,6 +9,7 @@
 ## [Unreleased]
 
 ### 变更
+- 文档即接口（外层 [#54](https://github.com/zephyr4123/TJU-AI4Science/issues/54)，纲领 P-13）：`capabilities.discover()` 扫完子包再查整份清单——同级别里没有两颗能力声明同一个输出路径、每个输入路径要么是种子要么是同级某颗能力的输出，名字写错在加载时就被拒。`checkpoint.json` 归为 run 种子（`contracts.flow.RUN_SEEDS`；建它的是 `start`，experiment 只改它），experiment 的描述符不再把它记成输出
 - 能力归到科研阶段下（外层 [#53](https://github.com/zephyr4123/TJU-AI4Science/issues/53)）：描述符契约加 `STAGES` 七个（文献、假设、设计、实验、分析、写作、验证）与三个必填字段 `stage` / `title` / `what`，人话标题与说明从页面的 `humanize.ts` 搬进描述符，页面与以后的 TUI 读同一份；阶段是标签不定先后，目录不动。`show caps` 按七个阶段列、空阶段标「还没有这一步的能力」，每颗带 `used_by`（从工作流文件反查，能力上不写）；`show workflows` / `show flow` / `GET /workflows` / `GET /flow/check` 带 `covers`（覆盖哪几个阶段，按步骤顺序算）与 `remarks`（有实验或分析却没有验证提醒一句，不拦）；新端点 `GET /stages`。工作流页的能力清单改按阶段分组，工作流卡片加「覆盖 …」一句
 - 命令行收成四类（外层 [#52](https://github.com/zephyr4123/TJU-AI4Science/issues/52)）：`cap` 能力（agent 按）、`sign` 键（人按：`sign task` 发布 = 原 `task publish`，`sign run` 验收 = 原 `run accept`）、`show` 查询（只读：`show tasks` = `task list`、`show task` = `task validate`、`show run` = `status`、`show caps` = `cap list`、`show workflows` = `flow list`、`show flow` = `flow check`）、`chat` / `serve` 入口。并掉的：`loop run|resume` 就是 `cap experiment [--resume]`；`run extend` 成了 `cap experiment` 的参数（`--patience` / `--max-iterations` / `--max-cost-usd` / `--reason`，先续命再跑）；`run new` 是能力 `cap start`；`task env build` 不再单独按，`cap baseline` 缺环境就自己建。`Param` 类型加 `bool`（CLI 上是开关）。0.x 不承诺兼容，老命令直接没了
 
