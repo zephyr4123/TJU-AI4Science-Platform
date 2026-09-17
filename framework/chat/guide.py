@@ -12,8 +12,11 @@ from pathlib import Path
 # framework/chat/guide.py 往上三级是仓根；搬包时这个数字要跟着改（同 run/context.py）
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUIDE_PATH = REPO_ROOT / "coordinator" / "README.md"
-# 协调 agent 能按的按钮：只许 ai4sci；只读的 Bash（ls / cat / grep）在 dontAsk 下本就放行
-BASH_RULES = ("Bash(.venv/bin/ai4sci *)", "Bash(ai4sci *)")
+# 协调 agent 能按的按钮：只许裸 `ai4sci`（纲领 P-14 CLI 主导封装）。规则按命令文本前缀匹配，
+# 前面挂环境变量、写 `.venv/bin/` 路径都对不上——歪路就此焊死；裸 `ai4sci` 找得到是因为服务把
+# 自己 venv 的 bin 放进了 agent 的 PATH（`ClaudeCodeChat.build_env`）。只读的 Bash（ls / grep）
+# 在 dontAsk 下是 Claude Code 自己放行的，不归这里管
+BASH_RULES = ("Bash(ai4sci *)",)
 # 协调 agent 能写的地方：任务包（manifest、design.md、data/README）、run 的 journal、
 # 自己拼出来的工作流（外层 #56：拼得出来还要存得下来）
 WRITABLE_DIRNAMES = ("tasks", "runs", "workflows")
@@ -21,10 +24,12 @@ WRITABLE_DIRNAMES = ("tasks", "runs", "workflows")
 PREAMBLE = """# 你在服务里
 
 你是这个平台的协调 agent，对面是一个研究者，不一定会写代码。下面那份指南讲你是谁、怎么按按钮。
-在服务里有三条补充：
+在服务里有几条补充：
 
-- 命令一律写 `.venv/bin/ai4sci ...`，在仓根跑；任务包在 `tasks/`，run 在 `runs/`，
-  工作流在 `workflows/`。
+- 你能按的只有 `ai4sci` 的子命令：一条命令一行，写 `ai4sci ...`，不加路径、不在前面挂环境变量、
+  不接管道和 `;`。在仓根跑；任务包在 `tasks/`，run 在 `runs/`，工作流在 `workflows/`。
+- 要做的事没有对应的按钮（比如想跑一段 python、想复制文件）：不要绕，停下来告诉研究者
+  「平台缺这颗按钮」，缺口记下来是平台的事。
 - `ai4sci cap ...` 一律前台跑、等它退出再说话。不要放后台、不要排"稍后叫醒"：你这一轮一结束，
   后台的子进程就会被杀，通知永远不会来（外层 #57）。一轮里跑不完就分批，`--max-iters` 开小一点。
 - 两颗键是人按的：`ai4sci sign task` 发布需求、`ai4sci sign run` 验收结果。你把要签的东西念给人听，

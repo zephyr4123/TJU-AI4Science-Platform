@@ -29,6 +29,29 @@ def test_agent_may_write_tasks_runs_and_workflows_only(tmp_path):
                                              tmp_path / "workflows"]
 
 
+def test_bash_rules_only_allow_bare_ai4sci():
+    """纲领 P-14：白名单只有裸 `ai4sci`。规则按前缀匹配，路径写法与环境变量前缀都对不上。"""
+    assert guide.BASH_RULES == ("Bash(ai4sci *)",)
+    assert "不加路径、不在前面挂环境变量" in guide.PREAMBLE and "平台缺这颗按钮" in guide.PREAMBLE
+
+
+def test_shipped_guide_never_shows_the_agent_a_raw_command():
+    """纲领 P-14 的机器判据：指南里给 agent 抄的每条命令都以 `ai4sci ` 开头——不带路径、不挂
+    环境变量、不接管道。指南教一种白名单跑不了的写法，agent 照抄就撞墙（实验 #59 第 3 轮）。"""
+    import re
+
+    text = guide.system_prompt()
+    assert ".venv/bin/ai4sci" not in text
+    assert not re.search(r"AI4SCI_[A-Z_]+=\S+\s+ai4sci", text)
+    commands = [line.strip() for block in re.findall(r"```bash\n(.*?)```", text, re.S)
+                for line in block.splitlines() if line.strip() and not line.startswith("#")]
+    assert commands, "指南里总该有几条命令"
+    for line in commands:
+        head = line.split("#", 1)[0].rstrip()
+        assert head.startswith("ai4sci "), line
+        assert not re.search(r"[|;&]", head), line
+
+
 def test_shipped_guide_teaches_how_to_save_a_custom_workflow():
     text = guide.system_prompt()
     assert "## 拼一条自己的流" in text and "workflows/<name>.yaml" in text

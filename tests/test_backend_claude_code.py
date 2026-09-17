@@ -294,6 +294,17 @@ def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
     assert env["KEEP_ME"] == "1"  # 继承本进程环境（AI4SCI_EXECUTOR_MODEL 等要传给协调 agent）
 
 
+def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatch):
+    """纲领 P-14：agent 敲裸 `ai4sci`，服务把自己 venv 的 bin 追加到 PATH 末尾（不遮系统命令）。"""
+    import sys
+
+    monkeypatch.setenv("PATH", "/usr/bin")
+    env = ClaudeCodeChat().build_env(1.0)
+    assert env["PATH"] == f"/usr/bin{os.pathsep}{Path(sys.executable).resolve().parent}"
+    monkeypatch.delenv("PATH")
+    assert ClaudeCodeChat().build_env(1.0)["PATH"] == str(Path(sys.executable).resolve().parent)
+
+
 def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("AI4SCI_COORDINATOR_MODEL", raising=False)
     chat = ClaudeCodeChat()

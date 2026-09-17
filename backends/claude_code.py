@@ -17,6 +17,7 @@ import math
 import os
 import signal
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -217,9 +218,16 @@ class ClaudeCodeChat:
 
     @staticmethod
     def build_env(timeout_s: float) -> dict[str, str]:
-        """子进程环境：继承本进程，外加关后台、Bash 超时对齐本轮超时。"""
+        """子进程环境：继承本进程，外加 venv 的 bin 进 PATH、关后台、Bash 超时对齐本轮超时。
+
+        协调 agent 敲的是裸 `ai4sci`（纲领 P-14：它面前只有这一个入口，不写路径不挂前缀），
+        所以起它的服务得让这个名字找得到：把自己解释器所在的 bin 目录**追加**到 PATH 末尾。
+        追加不是前置：不让 venv 里的 python / ruff 遮住系统的，agent 用不到它们。"""
         millis = str(int(timeout_s * 1000))
-        return {**os.environ, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+        bin_dir = str(Path(sys.executable).resolve().parent)
+        inherited = os.environ.get("PATH", "")
+        path = f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir
+        return {**os.environ, "PATH": path, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
                 "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis}
 
     def build_argv(
