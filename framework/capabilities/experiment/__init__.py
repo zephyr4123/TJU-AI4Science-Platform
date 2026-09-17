@@ -39,7 +39,6 @@ DESCRIPTOR = Capability(
         Artifact("ledger", "experiment/ledger.tsv", "账本：每轮一行，与 git 对账"),
         Artifact("notebook", "experiment/notebook.md", "实验笔记：每轮自述、改动、裁决"),
         Artifact("runs", "experiment/runs/", "每轮快照 run_N/ 与 harness 的 results.json"),
-        Artifact("checkpoint", "checkpoint.json", "best 与停止原因"),
     ),
     params=(
         Param("max_iters", "int", None,

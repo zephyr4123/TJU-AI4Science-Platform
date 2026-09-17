@@ -9,6 +9,11 @@
 
 签名与描述符对不上在这里就断言炸掉，而不是等 CLI 起来才发现某个参数没人读（P-8）。
 `discover()` 是 CLI 与 UI 后端拿能力的唯一入口，测试也走它。
+
+能力之间的接口是文件名（纲领 P-13「文档即接口」）：一个文件只有一个生产者，谁要用就报名字。
+所以扫完全部子包再查两条全局约束：没有两颗能力声明同一个输出路径；每个输入路径要么是种子
+（发布那一刻任务包里已有的、或 start 建 run 时就有的），要么是某颗同级能力的输出。名字写错
+在加载这一刻就被拒，不等跑到一半才发现"没人产出 summary.md"。
 """
 
 from __future__ import annotations
@@ -19,8 +24,11 @@ import pkgutil
 from types import ModuleType
 
 from framework.contracts.capability import Capability
+from framework.contracts.flow import RUN_SEEDS, TASK_SEEDS
 
 ENTRYPOINT = "run"
+# 每个级别里"一开始就有"的名字：输入不必有生产者的那几样
+SEEDS_BY_LEVEL = {"task": TASK_SEEDS, "run": RUN_SEEDS}
 # 前两个参数按 level 定：第一个参数的名字就说明了这个能力动的是什么目录
 LEADING_PARAMS_BY_LEVEL = {"task": ("task_dir", "ports"), "run": ("run_dir", "ports")}
 
@@ -34,7 +42,30 @@ def discover() -> dict[str, ModuleType]:
         module = importlib.import_module(f"{__name__}.{info.name}")
         check_capability_module(info.name, module)
         found[info.name] = module
+    check_catalog([module.DESCRIPTOR for module in found.values()])
     return found
+
+
+def check_catalog(descriptors: list[Capability]) -> None:
+    """整份清单的两条约束：输出路径唯一（同级别内）、输入路径有出处（种子或同级能力的输出）。
+
+    `start` 是任务段到 run 段的桥，它声明的输出 `runs/<run_id>/` 是一个位置不是接口，没人把它当
+    输入；桥的条件由 `contracts.flow` 按名字单独查，这里不管它。"""
+    producers: dict[tuple[str, str], str] = {}
+    for cap in descriptors:
+        for artifact in cap.outputs:
+            key = (cap.level, artifact.path)
+            assert key not in producers, (
+                f"能力 {cap.name} 与 {producers[key]} 都声明输出 {artifact.path!r}"
+                f"（{cap.level} 级）：一个文件只有一个生产者，产物放在 <能力名>/ 下就不会撞")
+            producers[key] = cap.name
+    for cap in descriptors:
+        available = set(SEEDS_BY_LEVEL[cap.level]) | {
+            path for (level, path) in producers if level == cap.level}
+        for artifact in cap.inputs:
+            assert artifact.path in available, (
+                f"能力 {cap.name} 要 {artifact.path!r}，{cap.level} 级里没人产出、也不是种子"
+                f"（种子：{SEEDS_BY_LEVEL[cap.level]}；有人产出的：{sorted(available)}）")
 
 
 def check_capability_module(package_name: str, module: ModuleType) -> Capability:

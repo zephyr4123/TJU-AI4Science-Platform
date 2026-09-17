@@ -11,7 +11,7 @@ from types import ModuleType
 
 import pytest
 
-from framework.capabilities import check_capability_module, discover
+from framework.capabilities import check_capability_module, check_catalog, discover
 from framework.contracts.capability import STAGES, Artifact, Capability, Param, Ports
 
 OUT = (Artifact("x", "x/", "产物"),)
@@ -101,6 +101,30 @@ def test_every_shipped_capability_sits_in_a_stage_with_human_copy():
     for module in discover().values():
         assert module.DESCRIPTOR.title and module.DESCRIPTOR.what
         assert module.DESCRIPTOR.to_dict()["stage"] in STAGES  # UI 与 show caps 读的就是这个键
+
+
+def test_catalog_rejects_a_second_producer_and_a_dangling_input():
+    a = C("a", "run", outputs=(Artifact("o", "a/out.json", "d"),))
+    also_a = C("b", "run", outputs=(Artifact("o", "a/out.json", "d"),))
+    with pytest.raises(AssertionError, match="都声明输出 'a/out.json'"):
+        check_catalog([a, also_a])
+    reader = C("c", "run", inputs=(Artifact("i", "summary.md", "d"),))
+    with pytest.raises(AssertionError, match="要 'summary.md'，run 级里没人产出"):
+        check_catalog([a, reader])
+    # 种子不需要生产者；同级能力的输出算有出处
+    ok = C("c", "run", inputs=(Artifact("i", "work/", "d"), Artifact("j", "a/out.json", "d")))
+    check_catalog([a, ok])
+    # 出处只在同一级别里找：task 级的输出喂不了 run 级的输入
+    task_side = C("t", "task", outputs=(Artifact("o", "a/out.json", "d"),))
+    with pytest.raises(AssertionError, match="run 级里没人产出"):
+        check_catalog([task_side, reader])
+
+
+def test_shipped_catalog_has_one_producer_per_path_and_no_dangling_input():
+    descriptors = [module.DESCRIPTOR for module in discover().values()]  # discover 自己已经查过
+    outputs = [(d.level, a.path) for d in descriptors for a in d.outputs]
+    assert len(outputs) == len(set(outputs))
+    assert "checkpoint.json" not in {a.path for d in descriptors for a in d.outputs}  # run 的种子
 
 
 def test_param_rejects_unknown_type_and_bad_name():

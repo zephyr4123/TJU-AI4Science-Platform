@@ -20,8 +20,9 @@ from framework.contracts.capability import Capability
 TASK_SEEDS = (packs.MANIFEST_NAME, packs.BRIEF_NAME, publish.PUBLISH_NAME, "data/", "env/")
 # `start` 从任务包搬进 work/ 之前要看到的（run/lifecycle.new_run 走 validate_task 查全）
 BRIDGE_NEEDS = ("harness/", "code/", "run_0/")
-# `start` 建好的 run 里一开始就有的（run/layout.py）
-RUN_SEEDS = (packs.MANIFEST_NAME, "work/")
+# `start` 建好的 run 里一开始就有的（run/lifecycle.new_run）：manifest 快照、work/ 副本、checkpoint
+# （run 的状态：建它的是 start，experiment 只改它；一个文件一个生产者，所以它是种子，不是输出）
+RUN_SEEDS = (packs.MANIFEST_NAME, "work/", "checkpoint.json")
 BRIDGE_NAME = "start"
 
 
