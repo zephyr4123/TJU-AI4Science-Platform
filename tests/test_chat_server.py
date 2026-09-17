@@ -79,6 +79,9 @@ def sse_events(text: str) -> list[dict]:
 def test_health_and_catalog(served):
     base, _ = served
     assert call(base, "/health")[2] == '{"ok": true}'
+    status, _, body = call(base, "/stages")
+    assert status == 200
+    assert json.loads(body) == ["文献", "假设", "设计", "实验", "分析", "写作", "验证"]
     status, ctype, body = call(base, "/cap")
     assert status == 200 and "application/json" in ctype and json.loads(body) == CATALOG
     status, _, body = call(base, "/workflows")

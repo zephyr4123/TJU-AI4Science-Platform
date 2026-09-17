@@ -233,14 +233,20 @@ def test_experiment_extends_the_budget_before_looping(tmp_path, monkeypatch, cap
 
 
 # ── cap：按名字跑一个能力 ────────────────────────────────────────────────
-def test_show_caps_prints_every_capability():
+def test_show_caps_lists_by_stage_with_empty_stages_visible():
     proc = run_cli("show", "caps")
     assert proc.returncode == EXIT_OK, proc.stderr
-    names = [line.split("\t")[0] for line in proc.stdout.splitlines()]
-    assert names == ["analysis", "baseline", "design", "experiment", "start", "verify"]
+    rows = [line.split("\t") for line in proc.stdout.splitlines()]
+    assert [r[0] for r in rows] == ["文献", "假设", "设计", "设计", "实验", "实验", "分析", "写作",
+                                    "验证"]
+    assert [r[1] for r in rows] == ["-", "-", "baseline", "design", "experiment", "start",
+                                    "analysis", "-", "verify"]
+    assert rows[0][2] == "还没有这一步的能力"
+    design = next(r for r in rows if r[1] == "design")
+    assert design[2] == "接任务" and "used_by=intake" in design
 
 
-def test_show_caps_json_is_descriptor_dicts():
+def test_show_caps_json_is_descriptor_dicts_with_used_by():
     import json
 
     proc = run_cli("show", "caps", "--json")
@@ -248,7 +254,22 @@ def test_show_caps_json_is_descriptor_dicts():
     descriptors = json.loads(proc.stdout)
     assert {d["name"] for d in descriptors} == {
         "analysis", "baseline", "design", "experiment", "start", "verify"}
-    assert all({"inputs", "outputs", "params", "criteria"} <= set(d) for d in descriptors)
+    assert all({"inputs", "outputs", "params", "criteria", "stage", "title", "what", "used_by"}
+               <= set(d) for d in descriptors)
+    by_name = {d["name"]: d for d in descriptors}
+    assert by_name["verify"]["used_by"] == ["auto-research"]
+    assert by_name["verify"]["stage"] == "验证"
+
+
+def test_show_workflows_and_flow_say_which_stages_they_cover():
+    proc = run_cli("show", "workflows")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert lines[0].startswith("auto-research\t") and "覆盖 实验 → 分析 → 验证" in lines[0]
+    assert lines[1].startswith("intake\t") and "覆盖 设计" in lines[1]
+    proc = run_cli("show", "flow", "design", "baseline", "start", "experiment", "analysis")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert "覆盖 设计 → 实验 → 分析" in proc.stdout and "没有验证" in proc.stdout  # 提醒不退非零
 
 
 def test_cap_unknown_capability_is_a_usage_error(tmp_path):
@@ -452,7 +473,8 @@ def test_cap_baseline_without_script_builds_env_itself_and_needs_the_key(tmp_pat
 def test_show_flow_passes_the_whole_line_and_prints_it():
     proc = run_cli("show", "flow", "design", "baseline", "experiment", "analysis", "verify")
     assert proc.returncode == EXIT_OK, proc.stderr
-    assert proc.stdout.strip() == "ok 5 步：design → baseline → experiment → analysis → verify"
+    assert proc.stdout.strip() == ("ok 5 步：design → baseline → experiment → analysis → verify"
+                                   "\t覆盖 设计 → 实验 → 分析 → 验证")
 
 
 def test_show_flow_reports_every_gap_and_json_carries_them():

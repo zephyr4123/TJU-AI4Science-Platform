@@ -6,9 +6,10 @@
 同一套（`ui/README.md`）。
 
     GET  /health                   {"ok": true}
-    GET  /cap                      能力描述符清单：平台的全部按钮
-    GET  /workflows                预装的工作流清单（`workflows/*.yaml`），每条带 problems
-    GET  /flow/check?steps=a,b     {"steps", "problems"}：这串能力通不通，不跑
+    GET  /stages                   七个科研阶段，按清单顺序（能力描述符的 stage 取值）
+    GET  /cap                      能力描述符清单：平台的全部按钮，每颗带 stage 与 used_by
+    GET  /workflows                工作流清单（`workflows/*.yaml`）：covers / remarks / problems
+    GET  /flow/check?steps=a,b     {"steps", "covers", "remarks", "problems"}：这串能力通不通，不跑
     GET  /chats                    全部对话的 meta + title（第一句话）
     POST /chats                    {"backend"?} → 新对话的 meta
     GET  /chats/<id>               meta + transcript + history（一轮一条 message / reply）
@@ -38,13 +39,14 @@ from urllib.parse import parse_qs, urlsplit
 from backends import BackendNotFound, Chat, ChatEvent, get_chat
 from framework.chat import boards, conversation, guide
 from framework.contracts import packs, publish
+from framework.contracts.capability import STAGES
 from framework.run import accept, layout
 
 LOGGER = logging.getLogger("ai4sci.serve")
 DEFAULT_BACKEND = "claude_code"
 MAX_BODY = 1 << 20
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
-API_ROOTS = ("health", "cap", "workflows", "flow", "chats", "tasks", "runs")
+API_ROOTS = ("health", "stages", "cap", "workflows", "flow", "chats", "tasks", "runs")
 INDEX_NAME = "index.html"
 
 
@@ -86,6 +88,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._static(url.path)
         if parts == ["health"]:
             return self._json({"ok": True})
+        if parts == ["stages"]:
+            return self._json(list(STAGES))
         if parts == ["cap"]:
             return self._json(self.server.catalog())
         if parts == ["workflows"]:

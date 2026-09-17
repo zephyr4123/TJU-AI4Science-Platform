@@ -15,7 +15,8 @@ from framework.capabilities import discover
 from framework.chat.guide import REPO_ROOT
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, add_runs_root, open_run_dir
 from framework.contracts import packs, workflows
-from framework.contracts.flow import check_flow
+from framework.contracts.capability import STAGES
+from framework.contracts.flow import check_flow, stage_remarks, stages_of
 from framework.contracts.report import read_report
 from framework.memory import ledger
 from framework.run import layout
@@ -95,14 +96,28 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_caps(args: argparse.Namespace) -> int:
-    """能力清单：平台的全部按钮。"""
+    """能力清单：平台的全部按钮，按七个科研阶段列，空着的阶段也列出来。每颗带"用在哪几条流"，
+    那是从工作流文件反查的，能力自己不知道。"""
     descriptors = [module.DESCRIPTOR for module in discover().values()]
+    try:
+        uses = workflows.used_by(workflows.load_workflows(workflows.workflows_root(REPO_ROOT)))
+    except workflows.WorkflowInvalid as exc:
+        # 坏掉的工作流文件不静默跳过：清单里"用在哪"会是错的
+        print(str(exc), file=sys.stderr)
+        return EXIT_INVALID
     if args.json:
-        print(json.dumps([d.to_dict() for d in descriptors], ensure_ascii=False, indent=2))
+        print(json.dumps([{**d.to_dict(), "used_by": uses.get(d.name, [])} for d in descriptors],
+                         ensure_ascii=False, indent=2))
         return EXIT_OK
-    for d in descriptors:
-        print(f"{d.name}\t{d.level}\texecutor={'yes' if d.needs_executor else 'no'}"
-              f"\tcompute={'yes' if d.needs_compute else 'no'}\t{d.summary}")
+    for stage in STAGES:
+        caps = [d for d in descriptors if d.stage == stage]
+        if not caps:
+            print(f"{stage}\t-\t还没有这一步的能力")
+        for d in caps:
+            print(f"{stage}\t{d.name}\t{d.title}\t{d.level}"
+                  f"\texecutor={'yes' if d.needs_executor else 'no'}"
+                  f"\tcompute={'yes' if d.needs_compute else 'no'}"
+                  f"\tused_by={','.join(uses.get(d.name, [])) or '-'}\t{d.summary}")
     return EXIT_OK
 
 
@@ -111,7 +126,7 @@ def _catalog():
 
 
 def cmd_workflows(args: argparse.Namespace) -> int:
-    """预装的工作流：每条一行，能力步骤对不上吃吐文件的退 1。"""
+    """预装的工作流：每条一行带覆盖的阶段，能力步骤对不上吃吐文件的退 1；提醒只打不退。"""
     try:
         found = workflows.describe(
             workflows.load_workflows(workflows.workflows_root(REPO_ROOT)), _catalog())
@@ -124,7 +139,10 @@ def cmd_workflows(args: argparse.Namespace) -> int:
         for wf in found:
             steps = " → ".join(s["cap"] or f"[{s['key']}]" if (s["cap"] or s["key"]) else s["by"]
                                for s in wf["steps"])
-            print(f"{wf['name']}\t{wf['title']}\t{steps}")
+            covers = " → ".join(wf["covers"]) or "-"
+            print(f"{wf['name']}\t{wf['title']}\t覆盖 {covers}\t{steps}")
+            for remark in wf["remarks"]:
+                print(f"  · {remark}")
             for problem in wf["problems"]:
                 print(f"  ! {problem}", file=sys.stderr)
     return EXIT_INVALID if any(wf["problems"] for wf in found) else EXIT_OK
@@ -137,16 +155,21 @@ def cmd_flow(args: argparse.Namespace) -> int:
     if unknown:
         print(f"没有这些能力：{unknown}（有的：{sorted(catalog)}）", file=sys.stderr)
         return EXIT_USAGE
-    problems = check_flow([catalog[name] for name in args.steps])
+    steps = [catalog[name] for name in args.steps]
+    covers = stages_of(steps)
+    remarks = stage_remarks(covers)
+    problems = check_flow(steps)
     if args.json:
-        print(json.dumps({"steps": list(args.steps), "problems": problems},
-                         ensure_ascii=False, indent=2))
+        print(json.dumps({"steps": list(args.steps), "covers": covers, "remarks": remarks,
+                          "problems": problems}, ensure_ascii=False, indent=2))
         return EXIT_INVALID if problems else EXIT_OK
     if problems:
         for problem in problems:
             print(problem, file=sys.stderr)
         return EXIT_INVALID
-    print(f"ok {len(args.steps)} 步：{' → '.join(args.steps)}")
+    print(f"ok {len(args.steps)} 步：{' → '.join(args.steps)}\t覆盖 {' → '.join(covers)}")
+    for remark in remarks:
+        print(f"  · {remark}")
     return EXIT_OK
 
 
@@ -171,11 +194,11 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     add_runs_root(run)
     run.set_defaults(func=cmd_run)
 
-    caps = what.add_parser("caps", help="能力清单：全部按钮与它们的描述符")
+    caps = what.add_parser("caps", help="能力清单：按七个科研阶段列全部按钮，带用在哪几条流")
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     caps.set_defaults(func=cmd_caps)
 
-    wfs = what.add_parser("workflows", help="预装的工作流（workflows/*.yaml），顺便核对通不通")
+    wfs = what.add_parser("workflows", help="预装的工作流（workflows/*.yaml）：覆盖的阶段、通不通")
     wfs.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     wfs.set_defaults(func=cmd_workflows)
 

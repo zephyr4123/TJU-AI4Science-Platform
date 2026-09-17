@@ -25,28 +25,38 @@ from framework.cli._common import (
     setup_logging,
 )
 from framework.contracts import workflows
-from framework.contracts.flow import check_flow
+from framework.contracts.flow import check_flow, stage_remarks, stages_of
 
 DEFAULT_UI_DIR = guide.REPO_ROOT / "ui" / "web" / "dist"
 
 
+def _load_workflows() -> list[workflows.Workflow]:
+    return workflows.load_workflows(workflows.workflows_root(guide.REPO_ROOT))
+
+
 def _catalog() -> list[dict]:
-    return [module.DESCRIPTOR.to_dict() for module in discover().values()]
+    """与 `ai4sci show caps --json` 同一个形状：描述符加反查出来的 used_by。"""
+    uses = workflows.used_by(_load_workflows())
+    return [{**module.DESCRIPTOR.to_dict(), "used_by": uses.get(name, [])}
+            for name, module in discover().items()]
 
 
 def _workflows() -> list[dict]:
     catalog = {name: module.DESCRIPTOR for name, module in discover().items()}
-    return workflows.describe(workflows.load_workflows(workflows.workflows_root(guide.REPO_ROOT)),
-                              catalog)
+    return workflows.describe(_load_workflows(), catalog)
 
 
 def _flow_check(steps: list[str]) -> dict:
-    """与 `ai4sci flow check --json` 同一个形状；名字对不上也当问题报，页面不该为此拿 500。"""
+    """与 `ai4sci show flow --json` 同一个形状；名字对不上也当问题报，页面不该为此拿 500。"""
     found = discover()
     unknown = [name for name in steps if name not in found]
     if unknown:
-        return {"steps": steps, "problems": [f"没有这些能力：{unknown}（有的：{sorted(found)}）"]}
-    return {"steps": steps, "problems": check_flow([found[name].DESCRIPTOR for name in steps])}
+        return {"steps": steps, "covers": [], "remarks": [],
+                "problems": [f"没有这些能力：{unknown}（有的：{sorted(found)}）"]}
+    descriptors = [found[name].DESCRIPTOR for name in steps]
+    covers = stages_of(descriptors)
+    return {"steps": steps, "covers": covers, "remarks": stage_remarks(covers),
+            "problems": check_flow(descriptors)}
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
