@@ -48,7 +48,7 @@ AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会�
 .venv/bin/ai4sci cap experiment demo --max-iters 5            # 实验内环，执行层 Claude Code 改 code/
 .venv/bin/ai4sci cap analysis demo                            # 执行层写 analysis/analysis.md
 .venv/bin/ai4sci cap verify demo                              # 零模型验证，退出码就是 PASS / FAIL
-.venv/bin/ai4sci show caps --json                             # 全部能力的描述符；show workflows 列工作流
+.venv/bin/ai4sci show caps                                    # 按七个科研阶段列全部能力（--json 带描述符与 used_by）；show workflows 列工作流与覆盖的阶段
 ```
 
 执行层用哪个模型、超时多久走环境变量：`AI4SCI_EXECUTOR_MODEL=sonnet`、`AI4SCI_EXECUTOR_TIMEOUT_S=600`。
