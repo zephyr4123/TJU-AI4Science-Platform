@@ -214,6 +214,37 @@ def test_cap_detach_returns_a_job_id_and_the_job_finishes_on_its_own(tmp_path, m
     assert job.chat_id == "chat-nope" and job.wake.startswith("failed: 对话不存在")
 
 
+def test_finished_job_drops_its_job_id_before_waking_the_chat(tmp_path, monkeypatch):
+    """叫醒起的 agent 继承作业进程的环境：作业号留着，它按的每个 --detach 都会被拒。"""
+    import argparse
+    import os
+
+    from framework.cli import cap as cap_cli
+    from framework.run import jobs
+
+    seen: dict[str, object] = {}
+
+    def fake_wake(root, job):
+        seen["job_id_env"] = os.environ.get("AI4SCI_JOB_ID")  # 叫醒那一刻环境里还有没有作业号
+        return "done"
+
+    monkeypatch.setattr(cap_cli.notify, "wake", fake_wake)
+    (tmp_path / "runs").mkdir()
+    job = jobs.Job(job_id="job-t", cap="init", level="task", target="x", argv=[], pid=1,
+                   started_at="t", chat_id="chat-1")
+    jobs._save(tmp_path / "runs", job)
+    monkeypatch.setenv("AI4SCI_JOB_ID", "job-t")
+    monkeypatch.setenv("AI4SCI_RUNS_ROOT", str(tmp_path / "runs"))
+    lock = tmp_path / "freeze.txt"
+    lock.write_text("numpy==2.0.0\n", encoding="utf-8")
+    module = cap_cli.discover()["init"]
+    args = argparse.Namespace(module=module, task_dir=str(tmp_path / "t"), detach=False,
+                              domain="generic", materials="", python="3.12", lock=str(lock),
+                              argv=[], runs_root=None)
+    assert cap_cli.cmd_cap(args) == EXIT_OK
+    assert seen == {"job_id_env": None} and jobs.load(tmp_path / "runs", "job-t").wake == "done"
+
+
 def test_start_missing_task_dir_exits_two(tmp_path):
     proc = run_cli("cap", "start", str(tmp_path / "没有"), "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_USAGE

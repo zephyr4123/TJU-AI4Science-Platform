@@ -62,6 +62,9 @@ def cmd_cap(args: argparse.Namespace) -> int:
         flow_state.record_press(target, descriptor.name)  # 记它落在流的第几步；没照流就不记
     if job_id:
         job = jobs.finish(runs_root(args), job_id, exit_code=code, result=line)
+        # 作业到此为止：叫醒起的 agent 会继承这个进程的环境，带着作业号它按的 --detach 全被拒
+        # （端到端第一次真跑就撞上：醒来的 agent 只好前台跑分析）
+        os.environ.pop(jobs.JOB_ID_ENV, None)
         if job.chat_id:
             # 作业是某段对话里按的：跑完以框架的身份叫醒那段对话，结果记回作业
             jobs.mark_wake(runs_root(args), job_id, notify.wake(runs_root(args), job))
