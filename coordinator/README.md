@@ -19,17 +19,20 @@ platform 0.2.0 只有这一份入口指南（spec R-10）；真有第二条 skil
 前提：手里有一个过校验的任务包（`ai4sci show task <dir>`），manifest 里的方向、预算、统计门是你和人拍板后填的，不是框架给的。
 
 ```bash
-ai4sci cap start tasks/<task> --run-id <id>      # 开一次实验：建 runs/<id>/，快照 manifest，work/ 起 git
-ai4sci cap experiment <id> --max-iters 5         # 跑内环；停了看 stop 原因，没停就再跑一批
-ai4sci show run <id>                             # best、账本尾部、分析 / 验证有没有；顺带账本 × git 对账
-ai4sci cap analysis <id>                         # 执行层读账本、笔记、diff、结果清单，写 analysis/analysis.md
+ai4sci cap start tasks/<task> --run-id <id> --workflow auto-research   # 开一次实验：建 runs/<id>/，快照 manifest 与这条流，work/ 起 git
+ai4sci cap experiment <id> --max-iters 5 --detach   # 跑内环：立刻拿到作业号，跑完框架来叫你；停了看 stop 原因，没停就再跑一批
+ai4sci show run <id>                             # best、账本尾部、分析 / 验证有没有、作业、走到流的第几步；顺带账本 × git 对账
+ai4sci cap analysis <id> --detach                # 执行层读账本、笔记、diff、结果清单，写 analysis/analysis.md
 ai4sci cap verify <id>                           # 零模型：数字回溯、正文对表、账本对账 → verify/report.json
 ```
+
+`--workflow` 让 run 记住照的是哪条流：之后每按一颗按钮框架记它落在第几步，`show run` 末尾那行 `workflow … step=… waiting=…` 说走到哪、在等谁（等作业、等人按键、等人、轮到你）。`--detach` 把长按钮起成作业：命令立刻返回 `job <作业号>`，你这一轮到此为止；作业跑完，框架以「框架」的身份开新一轮把结论行给你，你再看 `show run` 向研究者汇报。研究者中途问进度就 `ai4sci show job <作业号>`。
 
 每一步看什么：
 
 | 步骤 | 看 | 然后 |
 |---|---|---|
+| `cap ... --detach` 返回 `job <作业号>` | 作业在后台跑，这一轮结束 | 什么都不用做；跑完框架会开新一轮告诉你。研究者问就 `show job <作业号>` |
 | `cap experiment` 返回 `batch_exhausted` | 这批配额用完，run 没停 | 想继续就再跑一批 |
 | 返回 `patience` / `unrecoverable` / `max_cost_usd` / `max_iterations` | run 停了，`experiment/stop.json` 有原因 | 读 `experiment/notebook.md` 决定：续命（`ai4sci cap experiment <id> --patience 9 --reason ...`，改预算、清停止标记后接着跑）、换任务包、还是就此分析 |
 | `cap experiment` 退 1 说有 in-flight | 上次被杀在半路 | `ai4sci cap experiment <id> --resume`；对不上就停下来找人，不要手改 checkpoint |
@@ -97,9 +100,9 @@ steps:
 - 不要连跑：不要写脚本把四条命令串成一个"全自动"，那是把决策塞回框架。
 - 不要替执行层改 `work/code/`，不要手改 `ledger.tsv` / `checkpoint.json`：账本与 git 的对账会把你抓出来。
 - 不要给执行层加载这个目录。
-- 不要把 `ai4sci cap` 放后台跑、不要排"稍后叫醒"：一轮结束后台子进程就被杀，第 N 轮会死在半路（账本记 `interrupted`，下一轮得 `--resume`）。前台等它退出，跑不完就分批。
+- 不要自己把 `ai4sci cap` 放后台跑、不要排"稍后叫醒"：一轮结束后台子进程就被杀，第 N 轮会死在半路（账本记 `interrupted`，下一轮得 `--resume`）。长的用 `--detach` 交给框架当作业，跑完它来叫你；也不要在一轮里干等一个作业。
 - 不要绕开按钮：不裸跑 python、不 mkdir / cp 手搬文件、不在命令前挂环境变量、不拼管道。要做的事没有按钮，停下来告诉研究者「平台缺这颗按钮」——缺口是平台的事，不是你绕的理由。
 
 ## 还没有的
 
-做科研分七个阶段：文献、假设、设计、实验、分析、写作、验证（纲领 workflow §1）。每颗能力归一个阶段，`ai4sci show caps` 就按阶段列：设计下面是起任务包、接任务、跑基线，实验下面是开一次实验、一轮一轮改，分析、验证各一颗；文献、假设、写作三个阶段还没有能力，清单里标着空。阶段只是标签，不定先后。起任务包、接任务、跑基线、开一次实验是 task 级（动任务包），实验、分析、验证是 run 级。还没有的按钮：撒一批起点探尽头值。命令行上就四类东西：`cap` 能力（你按）、`sign` 键（人按）、`show` 查询（只读）、`chat` / `serve` 入口。两颗人按的键都有记录：需求的 `publish.json`、结果的 `accept.json`；中间的停点没有状态文件，`next=` 那一行是给你念给人听的。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、按键，看板显示的就是这些文件。`show flow` 只查一串能力通不通、不跑；它顺便说这串覆盖了哪几个阶段，有实验或分析却没有验证会提醒一句（提醒不拦：你可以照跑，但结果不能算可信）。自己拼的流怎么存，见上面「拼一条自己的流」。
+做科研分七个阶段：文献、假设、设计、实验、分析、写作、验证（纲领 workflow §1）。每颗能力归一个阶段，`ai4sci show caps` 就按阶段列：设计下面是起任务包、接任务、跑基线，实验下面是开一次实验、一轮一轮改，分析、验证各一颗；文献、假设、写作三个阶段还没有能力，清单里标着空。阶段只是标签，不定先后。起任务包、接任务、跑基线、开一次实验是 task 级（动任务包），实验、分析、验证是 run 级。还没有的按钮：撒一批起点探尽头值。命令行上就四类东西：`cap` 能力（你按）、`sign` 键（人按）、`show` 查询（只读）、`chat` / `serve` 入口。两颗人按的键都有记录：需求的 `publish.json`、结果的 `accept.json`；run 照着流走时 `flow.json` 记走到第几步、`runs/jobs/` 记每个后台作业，`show run` 把它们连同"在等谁"一起打出来；`next=` 那一行是给你念给人听的。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、按键，看板显示的就是这些文件。`show flow` 只查一串能力通不通、不跑；它顺便说这串覆盖了哪几个阶段，有实验或分析却没有验证会提醒一句（提醒不拦：你可以照跑，但结果不能算可信）。自己拼的流怎么存，见上面「拼一条自己的流」。

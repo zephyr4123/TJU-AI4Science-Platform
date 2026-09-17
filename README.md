@@ -44,8 +44,8 @@ AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会�
 一条 auto-research 流，四条命令由协调层手工串（框架不连跑，见 `coordinator/README.md`）：
 
 ```bash
-.venv/bin/ai4sci cap start tasks/mlp-regression --run-id demo # 开一次实验：建 run
-.venv/bin/ai4sci cap experiment demo --max-iters 5            # 实验内环，执行层 Claude Code 改 code/
+.venv/bin/ai4sci cap start tasks/mlp-regression --run-id demo --workflow auto-research  # 开一次实验：建 run，记住照哪条流
+.venv/bin/ai4sci cap experiment demo --max-iters 5 --detach   # 实验内环起成后台作业，立刻返回作业号；show job 看进度
 .venv/bin/ai4sci cap analysis demo                            # 执行层写 analysis/analysis.md
 .venv/bin/ai4sci cap verify demo                              # 零模型验证，退出码就是 PASS / FAIL
 .venv/bin/ai4sci show caps                                    # 按七个科研阶段列全部能力（--json 带描述符与 used_by）；show workflows 列工作流与覆盖的阶段

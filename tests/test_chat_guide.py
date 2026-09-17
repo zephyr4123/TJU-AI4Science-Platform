@@ -12,7 +12,7 @@ def test_system_prompt_is_preamble_plus_guide(tmp_path):
     path.write_text("# 指南正文\n", encoding="utf-8")
     text = guide.system_prompt(path)
     assert text.startswith("# 你在服务里") and text.rstrip().endswith("# 指南正文")
-    assert "工作流在 `workflows/`" in text and "前台跑" in text  # 外层 #56 #57 的两句补充
+    assert "工作流在 `workflows/`" in text and "--detach" in text  # 外层 #56 #63 的两句补充
 
 
 def test_missing_or_empty_guide_is_an_error(tmp_path):
@@ -55,7 +55,7 @@ def test_shipped_guide_never_shows_the_agent_a_raw_command():
 def test_shipped_guide_teaches_how_to_save_a_custom_workflow():
     text = guide.system_prompt()
     assert "## 拼一条自己的流" in text and "workflows/<name>.yaml" in text
-    assert "不要把 `ai4sci cap` 放后台" in text
+    assert "不要自己把 `ai4sci cap` 放后台" in text
 
 
 def test_the_guides_example_workflow_actually_loads_and_connects(tmp_path):
