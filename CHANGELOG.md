@@ -9,6 +9,7 @@
 ## [Unreleased]
 
 ### 变更
+- `docs/PRODUCT.md` 设计原则加两条（外层 [#58](https://github.com/zephyr4123/TJU-AI4Science/issues/58)，拍板记录，页面未改）：看板随工作流变、不写死流程；两块看板以可写目录划界，需求对齐在主页面
 - 自定义工坊第一步（外层 [#56](https://github.com/zephyr4123/TJU-AI4Science/issues/56)）：协调 agent 可写目录加 `workflows/`（`chat/guide.py`），指南加「拼一条自己的流」一节（文件格式、先 `show flow` 后存、存完 `show workflows` 校验；样例文件有测试保证真能过）。实验 #55 里 agent 拼出了流却存不下来，现在能了
 - 长按钮不进后台（外层 [#57](https://github.com/zephyr4123/TJU-AI4Science/issues/57)）：`ClaudeCodeChat` 起会话时 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`，`BASH_DEFAULT_TIMEOUT_MS` / `BASH_MAX_TIMEOUT_MS` 抬到与本轮超时一样长；指南前言与「不要做的」写明 `ai4sci cap` 前台等、跑不完分批。实验 #55 里 `claude -p` 把超过 2 分钟的 `cap experiment` 自动挪到后台，一轮结束子进程被杀，第 4 轮死在半路
 - 文档即接口（外层 [#54](https://github.com/zephyr4123/TJU-AI4Science/issues/54)，纲领 P-13）：`capabilities.discover()` 扫完子包再查整份清单——同级别里没有两颗能力声明同一个输出路径、每个输入路径要么是种子要么是同级某颗能力的输出，名字写错在加载时就被拒。`checkpoint.json` 归为 run 种子（`contracts.flow.RUN_SEEDS`；建它的是 `start`，experiment 只改它），experiment 的描述符不再把它记成输出
