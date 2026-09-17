@@ -205,10 +205,22 @@ class ClaudeCodeChat:
     实测（2026-09-16，haiku）：第一轮 init 事件给 session_id，第二轮 `--resume` 带上它，
     模型记得第一轮的内容，result 事件的 session_id 与第一轮相同；两轮共 $0.02。
     事件边跑边出：stdout 逐行读、逐行翻译，stderr 另起线程排空（同 Runner 的教训）。
+
+    长按钮不许进后台（外层 #57）：`claude -p` 里 Bash 超过 CLI 自己的缺省超时（2 分钟）会被
+    自动挪到后台，一轮结束后台子进程约 5 秒后被杀——实测 `cap experiment --max-iters 3` 第 4 轮
+    死在半路。所以起会话时 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` 关掉全部后台机制，并把
+    Bash 超时抬到与本轮超时一样长：唯一会杀它的只有我们自己的定时器，杀了会报"这一轮超过 N 秒"。
     """
 
     def __init__(self, cli: str = "claude") -> None:
         self.cli = cli
+
+    @staticmethod
+    def build_env(timeout_s: float) -> dict[str, str]:
+        """子进程环境：继承本进程，外加关后台、Bash 超时对齐本轮超时。"""
+        millis = str(int(timeout_s * 1000))
+        return {**os.environ, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+                "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis}
 
     def build_argv(
         self, message: str, cwd: Path, *, session_id: str | None, system_prompt: str,
@@ -244,7 +256,8 @@ class ClaudeCodeChat:
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True)
+                                text=True, start_new_session=True,
+                                env=self.build_env(timeout_s))
         drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
         drain.start()
         # 超时由定时器杀树：主线程在逐行读 stdout，不能同时 wait(timeout)

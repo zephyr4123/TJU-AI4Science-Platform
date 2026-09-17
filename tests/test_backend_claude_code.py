@@ -285,6 +285,15 @@ def test_get_chat_returns_chat_shaped_object():
         get_chat("nope")
 
 
+def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
+    """外层 #57：长按钮不许被 CLI 挪到后台，Bash 超时抬到本轮超时，杀它的只能是我们的定时器。"""
+    monkeypatch.setenv("KEEP_ME", "1")
+    env = ClaudeCodeChat().build_env(900.0)
+    assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
+    assert env["BASH_DEFAULT_TIMEOUT_MS"] == env["BASH_MAX_TIMEOUT_MS"] == "900000"
+    assert env["KEEP_ME"] == "1"  # 继承本进程环境（AI4SCI_EXECUTOR_MODEL 等要传给协调 agent 的 Bash）
+
+
 def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("AI4SCI_COORDINATOR_MODEL", raising=False)
     chat = ClaudeCodeChat()
