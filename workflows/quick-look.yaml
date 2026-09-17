@@ -13,6 +13,7 @@ steps:
   - by: 助理
     does: 跑 3 轮：每轮改一次代码，裁判脚本独立跑分，成绩好过噪声门槛才留下，否则退回。
     cap: experiment
+    with: {max_iters: 3}
   - by: 助理
     does: 写分析：读账本和每轮的结果，写一份结论、数据表、证伪与未决三节齐全的分析。先不验证。
     cap: analysis

@@ -235,6 +235,8 @@ export interface WorkflowStep {
   does: string
   cap: string | null
   key: 'publish' | 'accept' | null
+  /** 能力步骤按按钮时带的参数（`with: {max_iters: 3}`），键是描述符里的参数名 */
+  with: Record<string, unknown>
 }
 
 export interface Workflow {

@@ -24,7 +24,7 @@ from typing import Any
 
 import yaml
 
-from framework.contracts.capability import Capability
+from framework.contracts.capability import PARAM_TYPES, Capability
 from framework.contracts.flow import check_flow, stage_remarks, stages_of
 
 WORKFLOWS_DIRNAME = "workflows"
@@ -42,9 +42,12 @@ class Step:
     does: str
     cap: str | None = None
     key: str | None = None
+    # 能力步骤的参数（`with: {max_iters: 3}`），键是描述符里的 Param 名：agent 照着按，页面照着画
+    with_: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"by": self.by, "does": self.does, "cap": self.cap, "key": self.key}
+        return {"by": self.by, "does": self.does, "cap": self.cap, "key": self.key,
+                "with": dict(self.with_)}
 
 
 @dataclass(frozen=True)
@@ -123,7 +126,12 @@ def _step(filename: str, index: int, raw: Any) -> Step:
         raise WorkflowInvalid(f"{label} 是能力 {cap}，by 要是「助理」（能力是给 agent 按的按钮）")
     if key and by != "人":
         raise WorkflowInvalid(f"{label} 是键 {key}，by 要是「人」（键只有人能按）")
-    return Step(by=by, does=" ".join(does.split()), cap=cap, key=key)
+    params = raw.get("with") or {}
+    if not isinstance(params, dict) or not all(isinstance(k, str) and k for k in params):
+        raise WorkflowInvalid(f"{label} 的 with 要是「参数名: 值」的映射")
+    if params and not cap:
+        raise WorkflowInvalid(f"{label} 不是能力步骤，不该有 with")
+    return Step(by=by, does=" ".join(does.split()), cap=cap, key=key, with_=dict(params))
 
 
 def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> list[str]:
@@ -131,9 +139,28 @@ def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> lis
     unknown = [cap for cap in workflow.caps if cap not in catalog]
     if unknown:
         return [f"没有这些能力：{unknown}（有的：{sorted(catalog)}）"]
+    problems = [p for i, step in enumerate(workflow.steps, start=1) if step.cap
+                for p in _with_problems(f"第 {i} 步 {step.cap}", step.with_, catalog[step.cap])]
     if not workflow.caps:
-        return []
-    return check_flow([catalog[cap] for cap in workflow.caps], have=workflow.assumes)
+        return problems
+    return problems + check_flow([catalog[cap] for cap in workflow.caps], have=workflow.assumes)
+
+
+def _with_problems(label: str, params: dict[str, Any], cap: Capability) -> list[str]:
+    """步骤参数按描述符核对：名字要在 Param 表里，值要是那个类型（int 可以当 float）。"""
+    known = {p.name: p for p in cap.params}
+    out: list[str] = []
+    for name, value in params.items():
+        param = known.get(name)
+        if param is None:
+            out.append(f"{label} 的 with 有描述符里没有的参数 {name!r}（有的：{sorted(known)}）")
+            continue
+        expected = PARAM_TYPES[param.type]
+        ok = (isinstance(value, expected) and not (expected is not bool and isinstance(value, bool))
+              or (expected is float and isinstance(value, int) and not isinstance(value, bool)))
+        if not ok:
+            out.append(f"{label} 的 with.{name} 要是 {param.type}，实际 {value!r}")
+    return out
 
 
 def describe(workflows: Sequence[Workflow], catalog: dict[str, Capability]) -> list[dict[str, Any]]:

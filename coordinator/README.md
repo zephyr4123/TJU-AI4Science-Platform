@@ -79,6 +79,7 @@ steps:
   - by: 助理
     does: 跑 2 轮，成绩好过噪声门槛才留
     cap: experiment
+    with: {max_iters: 2}                     # 可选：这一步按按钮时带的参数，名字要是 show caps 里那颗能力的参数
   - by: 助理
     does: 写分析，先不验证
     cap: analysis

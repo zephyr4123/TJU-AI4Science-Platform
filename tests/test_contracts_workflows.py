@@ -42,6 +42,8 @@ def test_shipped_workflows_load_and_connect():
     auto = next(wf for wf in found if wf.name == "auto-research")
     assert auto.caps == ["start", "experiment", "analysis", "verify"]
     assert auto.assumes == ("harness/", "code/", "run_0/")  # 从基线之后开始，前提写在文件里
+    quick = next(wf for wf in found if wf.name == "quick-look")
+    assert quick.steps[1].with_ == {"max_iters": 3}  # 「跑 3 轮」不只是句人话，按钮参数也在
 
 
 def test_shipped_workflows_cover_stages_and_are_looked_up_from_capabilities():
@@ -59,13 +61,32 @@ def test_shipped_workflows_cover_stages_and_are_looked_up_from_capabilities():
         "init": ["intake"], "design": ["intake"], "baseline": ["intake"]}
 
 
+def test_step_with_params_are_checked_against_the_descriptor(tmp_path):
+    """外层 #63：`with:` 的键要是那颗能力的 Param、值要是那个类型；非能力步骤不许有。"""
+    good = GOOD.replace("    cap: design\n", "    cap: design\n    with: {feedback: '@f.md'}\n")
+    (tmp_path / "w.yaml").write_text(good, encoding="utf-8")
+    [wf] = workflows.load_workflows(tmp_path)
+    assert wf.steps[1].with_ == {"feedback": "@f.md"} and wf.to_dict()["steps"][1]["with"]
+    assert workflows.workflow_problems(wf, catalog()) == []
+    bad = GOOD.replace("    cap: design\n", "    cap: design\n    with: {nope: 1, feedback: 3}\n")
+    (tmp_path / "w.yaml").write_text(bad, encoding="utf-8")
+    [wf] = workflows.load_workflows(tmp_path)
+    problems = workflows.workflow_problems(wf, catalog())
+    assert len(problems) == 2 and "没有的参数 'nope'" in problems[0] and "要是 str" in problems[1]
+    for wrong in ("    does: 说清楚\n    with: {x: 1}\n", "    cap: design\n    with: [1]\n"):
+        (tmp_path / "w.yaml").write_text(GOOD.replace(wrong.splitlines()[0] + "\n", wrong),
+                                         encoding="utf-8")
+        with pytest.raises(workflows.WorkflowInvalid, match="with"):
+            workflows.load_workflows(tmp_path)
+
+
 def test_load_and_describe(tmp_path):
     (tmp_path / "w.yaml").write_text(GOOD, encoding="utf-8")
     found = workflows.load_workflows(tmp_path)
     assert len(found) == 1 and found[0].summary == "两行的 摘要"
     described = workflows.describe(found, catalog())
     assert described[0]["steps"][1] == {"by": "助理", "does": "接任务", "cap": "design",
-                                        "key": None}
+                                        "key": None, "with": {}}
     assert described[0]["problems"] == []
     assert described[0]["covers"] == ["设计"] and described[0]["remarks"] == []
     assert workflows.load_workflows(tmp_path / "nowhere") == []
