@@ -35,6 +35,18 @@ def test_new_load_list_round_trip(tmp_path):
         conv_mod.new_conversation(tmp_path / "runs", "scripted", tmp_path, chat_id=conv.chat_id)
 
 
+def test_framework_origin_turn_is_labelled_and_chat_id_reaches_the_adapter(tmp_path):
+    """外层 #63：框架叫醒的一轮标「框架」；适配器拿到 chat_id 好传给 agent 按的按钮。"""
+    conv, chat = start(tmp_path, reply("醒了"), reply("好"))
+    drain(conv, chat, "作业跑完了", origin="框架")
+    assert chat.calls[0]["chat_id"] == conv.chat_id
+    assert "**框架**：作业跑完了" in (conv.dir / "transcript.md").read_text(encoding="utf-8")
+    drain(conv, chat, "谢谢")
+    assert [t["origin"] for t in conv_mod.read_turns(conv)] == ["框架", "人"]
+    with pytest.raises(ValueError, match="origin"):
+        drain(conv, chat, "x", origin="机器人")
+
+
 def test_two_turns_resume_by_session_id_and_land_on_disk(tmp_path):
     listing = with_tool("有三个任务包", "Bash", {"command": "ai4sci task list"}, "a\nb\nc")
     conv, chat = start(tmp_path, reply("你好，研究者"), listing)

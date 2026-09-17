@@ -111,8 +111,8 @@ def test_chat_lifecycle_over_http(served):
     status, _, body = call(base, f"/chats/{chat_id}")
     doc = json.loads(body)
     assert status == 200 and doc["turns"] == 2 and doc["history"] == [
-        {"turn": 1, "message": "你好", "reply": "你好"},
-        {"turn": 2, "message": "有几个？", "reply": "三个"}]
+        {"turn": 1, "origin": "人", "message": "你好", "reply": "你好"},
+        {"turn": 2, "origin": "人", "message": "有几个？", "reply": "三个"}]
     assert "## 第 2 轮" in doc["transcript"]
     status, _, body = call(base, "/chats")
     assert status == 200 and [(c["chat_id"], c["title"]) for c in json.loads(body)] == [

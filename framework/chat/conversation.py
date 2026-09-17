@@ -35,8 +35,10 @@ TIMEOUT_ENV = "AI4SCI_COORDINATOR_TIMEOUT_S"
 DEFAULT_TIMEOUT_S = 900.0
 # transcript.md 里一轮的样子；写在 `_close_turn`，读在 `read_turns`，两处必须同步改
 TURN_HEADING = "## 第 {n} 轮"
-TURN_RE = re.compile(r"^## 第 (\d+) 轮\n\n\*\*人\*\*：(.*?)\n\n\*\*agent\*\*：(.*?)"
+TURN_RE = re.compile(r"^## 第 (\d+) 轮\n\n\*\*(人|框架)\*\*：(.*?)\n\n\*\*agent\*\*：(.*?)"
                      r"(?=\n## 第 \d+ 轮\n|\Z)", re.S | re.M)
+# 一轮是谁开的口：人在说话，或者框架来叫醒（作业跑完，外层 #63）。页面与 transcript 都要标清
+ORIGINS = ("人", "框架")
 
 
 class ConversationNotFound(FileNotFoundError):
@@ -129,22 +131,26 @@ def title(conv: Conversation) -> str | None:
 def read_turns(conv: Conversation) -> list[dict[str, Any]]:
     """把 transcript.md 读回成一轮一条 {turn, message, reply}：页面要的是结构，不是 markdown。"""
     text = (conv.dir / TRANSCRIPT_NAME).read_text(encoding="utf-8")
-    return [{"turn": int(n), "message": message.strip(), "reply": reply.strip()}
-            for n, message, reply in TURN_RE.findall(text)]
+    return [{"turn": int(n), "origin": origin, "message": message.strip(), "reply": reply.strip()}
+            for n, origin, message, reply in TURN_RE.findall(text)]
 
 
 def send(
     conv: Conversation, chat: Chat, message: str, *, system_prompt: str,
     allowed_paths: list[Path], bash_rules: tuple[str, ...], timeout_s: float | None = None,
+    origin: str = "人",
 ) -> Iterator[ChatEvent]:
     """发一轮：写 message.md → 逐个事件落盘并往外吐 → done/error 时更新 meta 与 transcript。
 
     生成器：调用方边迭代边拿事件（CLI 逐行打、HTTP 逐条 SSE）。中途调用方不迭代到底，
     finally 也会摘掉 inflight 标记，但 meta 不会记这一轮——那是"没走完"的真实状态。
+    `origin` 是谁开的口：缺省是人；框架叫醒 agent 时是「框架」，transcript 与 history 照实标。
     """
     message = message.strip()
     if not message:
         raise ValueError("消息是空的")
+    if origin not in ORIGINS:
+        raise ValueError(f"origin 只认 {ORIGINS}，得到 {origin!r}")
     inflight = conv.dir / INFLIGHT_NAME
     if inflight.exists():
         raise ConversationBusy(f"这段对话正有一轮在跑（{inflight}），等它结束再发")
@@ -165,14 +171,14 @@ def send(
         with events_path.open("a", encoding="utf-8") as fh:
             for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
                                    system_prompt=system_prompt, allowed_paths=allowed_paths,
-                                   bash_rules=bash_rules):
+                                   bash_rules=bash_rules, chat_id=conv.chat_id):
                 fh.write(json.dumps(event.raw or _bare(event), ensure_ascii=False) + "\n")
                 fh.flush()
                 if event.session_id and event.session_id != conv.session_id:
                     conv.session_id = event.session_id
                     conv.save()
                 if event.kind in ("done", "error"):
-                    _close_turn(conv, turn_n, message, event)
+                    _close_turn(conv, turn_n, message, event, origin)
                 yield event
     finally:
         inflight.unlink(missing_ok=True)
@@ -189,13 +195,15 @@ def _bare(event: ChatEvent) -> dict[str, Any]:
     return {"type": f"ai4sci_{event.kind}", "text": event.text, "exit_code": event.exit_code}
 
 
-def _close_turn(conv: Conversation, turn_n: int, message: str, event: ChatEvent) -> None:
+def _close_turn(conv: Conversation, turn_n: int, message: str, event: ChatEvent,
+                origin: str) -> None:
     conv.turns += 1
     if not math.isnan(event.cost_usd):
         conv.cost_usd += event.cost_usd
     conv.save()
     reply = event.text if event.kind == "done" else f"（这一轮没走完：{event.text}）"
     with (conv.dir / TRANSCRIPT_NAME).open("a", encoding="utf-8") as fh:
-        fh.write(f"\n{TURN_HEADING.format(n=turn_n)}\n\n**人**：{message}\n\n**agent**：{reply}\n")
+        fh.write(f"\n{TURN_HEADING.format(n=turn_n)}\n\n**{origin}**：{message}\n\n"
+                 f"**agent**：{reply}\n")
     LOGGER.info("chat_turn_end chat_id=%s turn=%d kind=%s cost_usd=%s session=%s",
                 conv.chat_id, turn_n, event.kind, event.cost_usd, conv.session_id or "-")

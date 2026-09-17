@@ -6,8 +6,8 @@ task 级是任务包目录），`--backend` 只在 needs_executor 时有，`--co
 跑完即退，用退出码表态；能力之间怎么串是协调层的事，这里没有顺序。
 
 `--detach` 是每颗按钮都有的开关（外层 #63）：把去掉它的同一条命令起成独立进程当作业，立刻打印
-作业号退出；子进程跑完把结论行回写进作业记录。这里是作业唯一的起点与终点，能力自己不知道
-自己是不是作业。
+作业号退出；子进程跑完把结论行回写进作业记录，作业属于某段对话的就去叫醒它（chat.notify）。
+这里是作业唯一的起点与终点，能力自己不知道自己是不是作业。
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from framework.capabilities import discover
+from framework.chat import notify
 from framework.cli._common import (
     EXIT_INVALID,
     EXIT_OK,
@@ -60,7 +61,10 @@ def cmd_cap(args: argparse.Namespace) -> int:
     if code == EXIT_OK and descriptor.level == "run":
         flow_state.record_press(target, descriptor.name)  # 记它落在流的第几步；没照流就不记
     if job_id:
-        jobs.finish(runs_root(args), job_id, exit_code=code, result=line)
+        job = jobs.finish(runs_root(args), job_id, exit_code=code, result=line)
+        if job.chat_id:
+            # 作业是某段对话里按的：跑完以框架的身份叫醒那段对话，结果记回作业
+            jobs.mark_wake(runs_root(args), job_id, notify.wake(runs_root(args), job))
     return code
 
 

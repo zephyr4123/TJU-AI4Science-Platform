@@ -201,6 +201,17 @@ def test_cap_detach_returns_a_job_id_and_the_job_finishes_on_its_own(tmp_path, m
     listing = run_cli("show", "jobs")
     assert listing.returncode == EXIT_OK and listing.stdout.startswith(job_id)
     assert run_cli("show", "job", "nope").returncode == EXIT_USAGE
+    # 对话里按的：子进程跑完去叫醒；这里对话不存在，叫醒的失败要记回作业，不能无声
+    monkeypatch.setenv("AI4SCI_CHAT_ID", "chat-nope")
+    proc = run_cli("cap", "init", str(tmp_path / "tasks" / "t2"), "--python", "3.12",
+                   "--lock", str(lock), "--detach")
+    job_id = proc.stdout.split("\t")[0].split(" ", 1)[1]
+    for _ in range(300):
+        job = jobs.load(tmp_path / "runs", job_id)
+        if job.wake is not None:
+            break
+        time.sleep(0.2)
+    assert job.chat_id == "chat-nope" and job.wake.startswith("failed: 对话不存在")
 
 
 def test_start_missing_task_dir_exits_two(tmp_path):

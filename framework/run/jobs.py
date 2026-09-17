@@ -51,6 +51,8 @@ class Job:
     result: str = ""
     chat_id: str | None = None
     log: str = ""
+    # 跑完叫醒那段对话的结果（chat 层写的一句话）；没有对话的作业是 None
+    wake: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {**asdict(self), "effective_status": effective_status(self)}
@@ -100,6 +102,14 @@ def finish(runs_root: Path, job_id: str, *, exit_code: int, result: str) -> Job:
     job.finished_at = datetime.now(UTC).isoformat(timespec="seconds")
     _save(runs_root, job)
     LOGGER.info("job_finish job_id=%s status=%s exit_code=%d", job_id, job.status, exit_code)
+    return job
+
+
+def mark_wake(runs_root: Path, job_id: str, status: str) -> Job:
+    """叫醒的结果记回作业：done / busy / failed / error 都留下，别让"没叫醒"无声消失。"""
+    job = load(runs_root, job_id)
+    job.wake = status
+    _save(runs_root, job)
     return job
 
 

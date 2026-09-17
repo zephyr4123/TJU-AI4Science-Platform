@@ -31,6 +31,9 @@ from backends._snapshot import diff, snapshot
 # 自定义 agent（P-11）。执行层再加 --no-session-persistence（一次性会话，不留）；协调层
 # 不加：多轮靠 --resume 续接，靠的就是 CLI 自己的会话持久化
 ISOLATION_ARGS = ("--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands")
+# 与 framework/run/jobs.py 的 CHAT_ID_ENV 同名：适配器不 import framework（端口方向），
+# 名字抄一份，测试对账
+CHAT_ID_ENV = "AI4SCI_CHAT_ID"
 EXECUTOR_ISOLATION_ARGS = ("--no-session-persistence", *ISOLATION_ARGS)
 _TAIL_CHARS = 4000
 # tool_result 进事件的正文上限：页面与 CLI 打印只要开头，全文在 raw 里落盘
@@ -217,7 +220,7 @@ class ClaudeCodeChat:
         self.cli = cli
 
     @staticmethod
-    def build_env(timeout_s: float) -> dict[str, str]:
+    def build_env(timeout_s: float, chat_id: str | None = None) -> dict[str, str]:
         """子进程环境：继承本进程，外加 venv 的 bin 进 PATH、关后台、Bash 超时对齐本轮超时。
 
         协调 agent 敲的是裸 `ai4sci`（纲领 P-14：它面前只有这一个入口，不写路径不挂前缀），
@@ -229,8 +232,13 @@ class ClaudeCodeChat:
         bin_dir = str(Path(sys.executable).parent)
         inherited = os.environ.get("PATH", "")
         path = f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir
-        return {**os.environ, "PATH": path, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
-                "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis}
+        env = {**os.environ, "PATH": path, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+               "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis}
+        # agent 按的按钮从这里知道自己属于哪段对话：`--detach` 的作业记下它，跑完叫醒（外层 #63）
+        env.pop(CHAT_ID_ENV, None)
+        if chat_id:
+            env[CHAT_ID_ENV] = chat_id
+        return env
 
     def build_argv(
         self, message: str, cwd: Path, *, session_id: str | None, system_prompt: str,
@@ -259,6 +267,7 @@ class ClaudeCodeChat:
     def turn(
         self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
         system_prompt: str, allowed_paths: list[Path], bash_rules: tuple[str, ...],
+        chat_id: str | None = None,
     ) -> Iterator[ChatEvent]:
         argv = self.build_argv(message, cwd, session_id=session_id, system_prompt=system_prompt,
                                allowed_paths=allowed_paths, bash_rules=bash_rules)
@@ -267,7 +276,7 @@ class ClaudeCodeChat:
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, start_new_session=True,
-                                env=self.build_env(timeout_s))
+                                env=self.build_env(timeout_s, chat_id))
         drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
         drain.start()
         # 超时由定时器杀树：主线程在逐行读 stdout，不能同时 wait(timeout)

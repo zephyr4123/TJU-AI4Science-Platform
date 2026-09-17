@@ -92,7 +92,8 @@ class Chat(Protocol):
 
     `session_id=None` 开新会话，否则续接；每一轮至少吐一个 `init`（带 session id）和
     一个 `done` 或 `error`。`system_prompt` 是协调层指南；`allowed_paths` 与 `bash_rules`
-    的语义同 `Runner`：尽量收紧，各家 CLI 的权限模型对不齐。
+    的语义同 `Runner`：尽量收紧，各家 CLI 的权限模型对不齐。`chat_id` 是这段对话的名字：
+    适配器要让 agent 按的按钮拿得到它（环境变量 `AI4SCI_CHAT_ID`），后台作业跑完才知道叫醒谁。
     """
 
     def turn(
@@ -105,6 +106,7 @@ class Chat(Protocol):
         system_prompt: str,
         allowed_paths: list[Path],
         bash_rules: tuple[str, ...],
+        chat_id: str | None = None,
     ) -> Iterator[ChatEvent]: ...
 
 

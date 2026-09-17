@@ -160,6 +160,8 @@ export interface ChatMeta {
 
 export interface TurnRecord {
   turn: number
+  /** 谁开的口：人，或框架（作业跑完来叫醒 agent） */
+  origin: '人' | '框架'
   message: string
   reply: string
 }

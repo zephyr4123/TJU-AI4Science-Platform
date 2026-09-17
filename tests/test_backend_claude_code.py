@@ -310,6 +310,16 @@ def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatc
     assert ClaudeCodeChat().build_env(1.0)["PATH"] == str(Path(sys.executable).parent)
 
 
+def test_chat_env_carries_the_chat_id_to_the_buttons_the_agent_presses(monkeypatch):
+    """外层 #63：agent 按的 `--detach` 从环境里知道自己属于哪段对话；没给就不留上一段的。"""
+    from framework.run.jobs import CHAT_ID_ENV
+
+    assert CHAT_ID_ENV == "AI4SCI_CHAT_ID"  # 适配器抄的那份名字与 framework 的对账
+    assert ClaudeCodeChat().build_env(1.0, "chat-1")[CHAT_ID_ENV] == "chat-1"
+    monkeypatch.setenv(CHAT_ID_ENV, "chat-stale")
+    assert CHAT_ID_ENV not in ClaudeCodeChat().build_env(1.0)
+
+
 def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("AI4SCI_COORDINATOR_MODEL", raising=False)
     chat = ClaudeCodeChat()

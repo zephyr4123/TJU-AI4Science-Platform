@@ -52,9 +52,10 @@ class ScriptedChat:
 
     def turn(self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
              system_prompt: str, allowed_paths: list[Path],
-             bash_rules: tuple[str, ...]) -> Iterator[ChatEvent]:
+             bash_rules: tuple[str, ...], chat_id: str | None = None) -> Iterator[ChatEvent]:
         assert self.turns, "剧本用完了还在调 turn()"
         self.calls.append({"message": message, "cwd": Path(cwd), "timeout_s": timeout_s,
                            "session_id": session_id, "system_prompt": system_prompt,
-                           "allowed_paths": list(allowed_paths), "bash_rules": tuple(bash_rules)})
+                           "allowed_paths": list(allowed_paths), "bash_rules": tuple(bash_rules),
+                           "chat_id": chat_id})
         yield from self.turns.pop(0)
