@@ -96,8 +96,8 @@ def test_descriptor_needs_a_known_stage_and_human_copy():
 
 def test_every_shipped_capability_sits_in_a_stage_with_human_copy():
     stages = {name: module.DESCRIPTOR.stage for name, module in discover().items()}
-    assert stages == {"design": "设计", "baseline": "设计", "start": "实验", "experiment": "实验",
-                      "analysis": "分析", "verify": "验证"}
+    assert stages == {"init": "设计", "design": "设计", "baseline": "设计", "start": "实验",
+                      "experiment": "实验", "analysis": "分析", "verify": "验证"}
     for module in discover().values():
         assert module.DESCRIPTOR.title and module.DESCRIPTOR.what
         assert module.DESCRIPTOR.to_dict()["stage"] in STAGES  # UI 与 show caps 读的就是这个键

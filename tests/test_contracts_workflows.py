@@ -37,7 +37,7 @@ def test_shipped_workflows_load_and_connect():
     for wf in found:
         assert workflows.workflow_problems(wf, catalog()) == [], wf.name
     intake = next(wf for wf in found if wf.name == "intake")
-    assert intake.caps == ["design", "baseline"]
+    assert intake.caps == ["init", "design", "baseline"]  # 起任务包是第一颗按钮（外层 #60）
     assert [s.key for s in intake.steps if s.key] == ["publish"]
     auto = next(wf for wf in found if wf.name == "auto-research")
     assert auto.caps == ["start", "experiment", "analysis", "verify"]
@@ -56,7 +56,7 @@ def test_shipped_workflows_cover_stages_and_are_looked_up_from_capabilities():
     assert workflows.used_by(found) == {
         "start": ["auto-research", "quick-look"], "experiment": ["auto-research", "quick-look"],
         "analysis": ["auto-research", "quick-look"], "verify": ["auto-research"],
-        "design": ["intake"], "baseline": ["intake"]}
+        "init": ["intake"], "design": ["intake"], "baseline": ["intake"]}
 
 
 def test_load_and_describe(tmp_path):

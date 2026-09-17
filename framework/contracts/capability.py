@@ -78,6 +78,8 @@ class Capability:
     needs_executor: bool = False
     needs_compute: bool = False
     criteria: tuple[str, ...] = ()
+    # 目标目录由这颗能力自己建（起任务包）；其余能力要求目标已存在，CLI 据此决定查不查
+    creates_target: bool = False
     stage: str = field(kw_only=True)
     title: str = field(kw_only=True)
     what: str = field(kw_only=True)

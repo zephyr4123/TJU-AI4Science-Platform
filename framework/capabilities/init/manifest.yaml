@@ -1,0 +1,28 @@
+# 任务包的需求。这里的数是人和协调 agent 一起拍板的决策，不是框架给的：数字旁边写理由，拿不准的问研究者。
+# 填完 `ai4sci show task tasks/<id>` 校验形状；发布（`ai4sci sign task`）签的就是这份和 design.md，
+# 发布后再改要重新发布。
+format_version: 1
+id: {{id}}
+domain: {{domain}}           # 领域包名，domains/ 下的目录
+source: {{source}}           # 材料从哪来：研究者给的文件夹、案例卡、论文或仓库地址
+title: {{todo}}：一句话说这个任务是什么
+question: >
+  {{todo}}：研究问题。对什么模型或数据、改什么、要让哪个数往哪个方向走；
+  研究者现在的做法得到多少、为什么不满意。
+metrics:
+  - name: main_metric         # {{todo}}：主指标名（英文标识符），harness/evaluate.py 写进 results.json 的就是它
+    direction: minimize       # minimize 或 maximize
+    primary: true
+    # attainable: 尽头值，研究者或文献给的"最好能到多少"；没有就不写这一行，预检会标 attainable=-
+budget:
+  wall_clock_s: 60            # 每轮实验的墙钟秒数，含评分内部的全部重复；一轮跑多久研究者说了算
+  max_iterations: 20          # 内环最多跑几轮
+  repeat_k: 3                 # 基线重复几次算 σ：多起点随机性大的题要多几次
+  accept_sigma: 2.0           # 改进要超过 σ 的几倍才算数
+  min_delta: 0.0              # σ 塌成 0 时的兜底：至少改进多少才算数
+  inner_k: 1                  # 评分脚本内部重复几次取均值：决定信噪比，也决定 wall_clock_s 要盖住几次固定开销
+requirements:
+  - id: R1
+    type: numeric
+    must_pass: true
+    description: {{todo}}：主指标优于 run_0 基线，且差值超过 accept_sigma 倍的 σ（或 min_delta）

@@ -138,6 +138,21 @@ def test_start_twice_same_id_exits_one(tmp_path):
     assert "不覆盖" in proc.stderr
 
 
+def test_cap_init_creates_the_task_dir_instead_of_requiring_it(tmp_path):
+    """init 是唯一一颗目标目录还不存在的能力：CLI 按描述符的 creates_target 跳过目录检查。"""
+    lock = tmp_path / "freeze.txt"
+    lock.write_text("numpy==2.0.0\n", encoding="utf-8")
+    (tmp_path / "tasks").mkdir()
+    proc = run_cli("cap", "init", str(tmp_path / "tasks" / "t1"), "--python", "3.12",
+                   "--lock", str(lock))
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert proc.stdout.startswith("ok t1\tdomain=generic\tdata=1 个文件")
+    assert (tmp_path / "tasks" / "t1" / "manifest.yaml").is_file()
+    again = run_cli("cap", "init", str(tmp_path / "tasks" / "t1"), "--python", "3.12",
+                    "--lock", str(lock))
+    assert again.returncode == EXIT_INVALID and "已存在" in again.stderr
+
+
 def test_start_missing_task_dir_exits_two(tmp_path):
     proc = run_cli("cap", "start", str(tmp_path / "没有"), "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_USAGE
@@ -237,9 +252,9 @@ def test_show_caps_lists_by_stage_with_empty_stages_visible():
     proc = run_cli("show", "caps")
     assert proc.returncode == EXIT_OK, proc.stderr
     rows = [line.split("\t") for line in proc.stdout.splitlines()]
-    assert [r[0] for r in rows] == ["文献", "假设", "设计", "设计", "实验", "实验", "分析", "写作",
-                                    "验证"]
-    assert [r[1] for r in rows] == ["-", "-", "baseline", "design", "experiment", "start",
+    assert [r[0] for r in rows] == ["文献", "假设", "设计", "设计", "设计", "实验", "实验", "分析",
+                                    "写作", "验证"]
+    assert [r[1] for r in rows] == ["-", "-", "baseline", "design", "init", "experiment", "start",
                                     "analysis", "-", "verify"]
     assert rows[0][2] == "还没有这一步的能力"
     design = next(r for r in rows if r[1] == "design")
@@ -253,9 +268,10 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
     assert proc.returncode == EXIT_OK, proc.stderr
     descriptors = json.loads(proc.stdout)
     assert {d["name"] for d in descriptors} == {
-        "analysis", "baseline", "design", "experiment", "start", "verify"}
-    assert all({"inputs", "outputs", "params", "criteria", "stage", "title", "what", "used_by"}
-               <= set(d) for d in descriptors)
+        "analysis", "baseline", "design", "experiment", "init", "start", "verify"}
+    assert all({"inputs", "outputs", "params", "criteria", "stage", "title", "what", "used_by",
+                "creates_target"} <= set(d) for d in descriptors)
+    assert [d["name"] for d in descriptors if d["creates_target"]] == ["init"]
     by_name = {d["name"]: d for d in descriptors}
     assert by_name["verify"]["used_by"] == ["auto-research"]
     assert by_name["verify"]["stage"] == "验证"

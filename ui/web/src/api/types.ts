@@ -177,6 +177,8 @@ export interface Capability {
   needs_executor: boolean
   needs_compute: boolean
   criteria: string[]
+  /** 目标目录由它新建（起任务包）；其余能力要求目标已存在 */
+  creates_target: boolean
   /** 用在哪几条工作流里：后端从工作流文件反查的，能力自己不写 */
   used_by: string[]
 }

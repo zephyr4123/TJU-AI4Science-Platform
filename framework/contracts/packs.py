@@ -33,6 +33,8 @@ MANIFEST_NAME = "manifest.yaml"
 # 协调层写给执行层的产物契约与基线策略（"怎么算好"的人话版），放任务根：它和 manifest 一起
 # 就是需求看板上的东西，发布签的就是这两个文件（contracts/publish.py）
 BRIEF_NAME = "design.md"
+# `cap init` 的模板里没定的值都写它；发布前看到它就不给签，模板不能被当成需求签走
+PLACEHOLDER = "待填"
 TASKS_DIRNAME = "tasks"
 DOMAINS_DIRNAME = "domains"
 # 领域根的覆盖入口：测试与搬了目录的部署用；缺省是任务包同一个仓里的 domains/
@@ -136,6 +138,11 @@ def intake_problems(task_dir: Path) -> list[str]:
             f"{task_dir.name}/{BRIEF_NAME}: 缺失或为空，需求看板要先写清产物契约与"
             "「怎么算好」（code/ 写什么文件、evaluate.py 查什么与怎么重算指标、基线策略）"
         )
+    for name in (MANIFEST_NAME, BRIEF_NAME):
+        path = task_dir / name
+        if path.is_file() and PLACEHOLDER in path.read_text(encoding="utf-8"):
+            problems.append(
+                f"{task_dir.name}/{name}: 还有「{PLACEHOLDER}」没填，模板不能当需求发布")
     return problems
 
 

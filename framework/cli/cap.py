@@ -31,7 +31,7 @@ def cmd_cap(args: argparse.Namespace) -> int:
     descriptor = args.module.DESCRIPTOR
     if descriptor.level == "task":
         target = Path(args.task_dir)
-        if not target.is_dir():
+        if not descriptor.creates_target and not target.is_dir():
             print(f"任务目录不存在：{target}", file=sys.stderr)
             return EXIT_USAGE
     else:
@@ -60,7 +60,8 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
         descriptor = module.DESCRIPTOR
         sub = actions.add_parser(name, help=descriptor.summary)
         if descriptor.level == "task":
-            sub.add_argument("task_dir", help="任务包目录")
+            sub.add_argument("task_dir", help="要新建的任务包目录" if descriptor.creates_target
+                             else "任务包目录")
         else:
             sub.add_argument("run_id")
         if descriptor.needs_executor:
