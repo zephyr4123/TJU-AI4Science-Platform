@@ -84,7 +84,7 @@ export interface Job {
 }
 
 /** run 照的那条流与走到第几步（`cap start --workflow`）；`waiting` 是现算的：
- *  `job:<id>` 等作业、`key:publish|accept` 等人按键、`human` 等人、`assistant` 轮到助理、`done` 走完。 */
+ *  `job:<id>` 等作业、`key:publish|accept` 等人发布或验收、`human` 等人、`assistant` 轮到助理、`done` 走完。 */
 export interface FlowState {
   workflow: string
   title: string
@@ -237,7 +237,7 @@ export interface WorkflowStep {
   does: string
   cap: string | null
   key: 'publish' | 'accept' | null
-  /** 能力步骤按按钮时带的参数（`with: {max_iters: 3}`），键是描述符里的参数名 */
+  /** 能力步骤运行时带的参数（`with: {max_iters: 3}`），键是描述符里的参数名 */
   with: Record<string, unknown>
 }
 

@@ -14,7 +14,7 @@ platform 0.2.0 只有这一份入口指南（spec R-10）；真有第二条 skil
 
 ## 固定流之一：auto-research（现成任务包 → 实验 → 分析 → 验证）
 
-机器可读版在 `workflows/auto-research.yaml`（`ai4sci show workflows` 能列）。这是预装的一种拼法，不是必须走的路：能力清单（`ai4sci show caps`）里的按钮你可以自己拼，先 `ai4sci show flow <能力>...` 查通不通。
+机器可读版在 `workflows/auto-research.yaml`（`ai4sci show workflows` 能列）。这是预装的一种拼法，不是必须走的路：能力清单（`ai4sci show caps`）里的能力你可以自己拼，先 `ai4sci show flow <能力>...` 查通不通。
 
 前提：手里有一个过校验的任务包（`ai4sci show task <dir>`），manifest 里的方向、预算、统计门是你和人拍板后填的，不是框架给的。
 
@@ -26,13 +26,13 @@ ai4sci cap analysis <id> --detach                # 执行层读账本、笔记�
 ai4sci cap verify <id>                           # 零模型：数字回溯、正文对表、账本对账 → verify/report.json
 ```
 
-`--workflow` 让 run 记住照的是哪条流：之后每按一颗按钮框架记它落在第几步，`show run` 末尾那行 `workflow … step=… waiting=…` 说走到哪、在等谁（等作业、等人按键、等人、轮到你）。`--detach` 把长按钮起成作业：命令立刻返回 `job <作业号>`，你这一轮到此为止；作业跑完，框架以「框架」的身份开新一轮把结论行给你，你再看 `show run` 向研究者汇报。研究者中途问进度就 `ai4sci show job <作业号>`。
+`--workflow` 让 run 记住照的是哪条流：之后每运行一颗能力，框架记它落在流的第几步，`show run` 末尾那行 `workflow … step=… waiting=…` 说走到哪、在等谁（等作业、等人发布或验收、等人、轮到你）。`--detach` 把长命令起成作业：命令立刻返回 `job <作业号>`，你这一轮到此为止；作业跑完，框架以「框架」的身份开新一轮把结论行给你，你再看 `show run` 向研究者汇报。研究者中途问进度就 `ai4sci show job <作业号>`。
 
 每一步看什么：
 
 | 步骤 | 看 | 然后 |
 |---|---|---|
-| `cap ... --detach` 返回 `job <作业号>` | 作业在后台跑，这一轮结束 | 什么都不用做；跑完框架会开新一轮告诉你。研究者问就 `show job <作业号>` |
+| `cap ... --detach` 返回 `job <作业号>` | 作业在后台跑，这一轮结束 | 什么都不用做；跑完框架会开新一轮告诉你。研究者问进度就 `show job <作业号>` |
 | `cap experiment` 返回 `batch_exhausted` | 这批配额用完，run 没停 | 想继续就再跑一批 |
 | 返回 `patience` / `unrecoverable` / `max_cost_usd` / `max_iterations` | run 停了，`experiment/stop.json` 有原因 | 读 `experiment/notebook.md` 决定：续命（`ai4sci cap experiment <id> --patience 9 --reason ...`，改预算、清停止标记后接着跑）、换任务包、还是就此分析 |
 | `cap experiment` 退 1 说有 in-flight | 上次被杀在半路 | `ai4sci cap experiment <id> --resume`；对不上就停下来找人，不要手改 checkpoint |
@@ -53,8 +53,8 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 1. **起任务包**：`ai4sci cap init tasks/<id> --domain <领域包> --materials <研究者的文件夹> --python <版本> --lock <pip freeze 文件>`。它建目录、把材料整棵搬进 `data/`、写好 `env/`，`manifest.yaml` 与 `design.md` 放的是带说明的模板。`<id>` 小写英文加连字符，就是任务名。
 2. **填 `manifest.yaml`**：模板里每个数旁边写着它是什么，把「待填」全换掉——`source`、`title`、`question`、指标名与方向、预算与统计门；评分内部要重复几次取均值就写 `budget.inner_k`（它决定信噪比，也决定 `wall_clock_s` 要覆盖几次固定开销）；有尽头值就写主指标的 `attainable`。数字是决策，理由写在注释里；拿不准的问人。`data/README.md` 写来源与许可。
 3. **写 `design.md`**（任务根）：模板给了四节标题与每节该写什么，换掉「待填」——`code/` 写什么文件、什么形状；`evaluate.py` 查什么、怎么用 `data/` 重算指标、退出码；基线用什么策略（研究者给的那个，不要替他调好）。这就是「怎么算好」的人话版，人签字签的是它，不是代码。`tasks/boehm-nll/design.md` 是写好的样本。填完 `ai4sci show task tasks/<id>`，这时只该剩 `harness/` `code/` `run_0/` 三个还没有的目录。
-4. **人发布**：`ai4sci sign task tasks/<id> --by <人名>`。这是需求看板上那颗键，**你不替人按**：把 manifest 与 `design.md` 念给人听，人说"对"再按。还有「待填」签不了；没发布，后面的按钮一个都不开；发布后改了这两个文件，钥匙失效，得重新发布。
-5. **按按钮**：`ai4sci cap design tasks/<id>`（执行层用哪个模型是起服务的人配的，你不用管）。框架起执行层写 `harness/` 与 `code/` 草稿（只放行这两个目录），回来自己加执行位、写 SHA256SUMS、跑 ruff、跑 validate（此时不查 run_0），stdout 一行结论（`next=` 说停在哪），有问题一行一条在 stderr、退 1。退 1 就把 stderr 喂回去：`ai4sci cap design tasks/<id> --feedback @<文件>`，执行层会看到现状文件照着改；**不要自己替它改 harness**。日志在 `runs/design-<id>/executor/session-N/`（提示原文、事件流、自述）。
+4. **人发布**：`ai4sci sign task tasks/<id> --by <人名>`。这是需求看板上那颗键，**你不替人按**：把 manifest 与 `design.md` 念给人听，人说"对"再按。还有「待填」签不了；没发布，后面的能力一个都跑不了；发布后改了这两个文件，钥匙失效，得重新发布。
+5. **接任务**：`ai4sci cap design tasks/<id>`（执行层用哪个模型是起服务的人配的，你不用管）。框架起执行层写 `harness/` 与 `code/` 草稿（只放行这两个目录），回来自己加执行位、写 SHA256SUMS、跑 ruff、跑 validate（此时不查 run_0），stdout 一行结论（`next=` 说停在哪），有问题一行一条在 stderr、退 1。退 1 就把 stderr 喂回去：`ai4sci cap design tasks/<id> --feedback @<文件>`，执行层会看到现状文件照着改；**不要自己替它改 harness**。日志在 `runs/design-<id>/executor/session-N/`（提示原文、事件流、自述）。
 6. **核对裁判，人不读代码**：把 `harness/evaluate.py` 和 `design.md` 的「怎么算好」逐条对——算的指标、拿什么数据重算、拒收什么、退出码。一致就告诉人"一致"；有出入就说清哪条（"起点数写死了"），喂回第 5 步。这是模型核对模型写的东西，漏了整个跑就在错的尺子上量，所以「怎么算好」原文要一直跟到结果页。
 7. **`ai4sci cap baseline tasks/<id>` → `ai4sci show task tasks/<id>` 退 0**。基线由框架起，预算与 `budget.inner_k` 和内环用同一组环境变量，不要自己 `bash make_run0.sh`。跑完框架预检：门是 0、或基线到尽头不到一个门，退 1 并说清，别硬跑；退 0 那一行带 `baseline / sigma / gate / room`，念给人听即可，不用等人点头。
 8. **案例卡回填**任务包路径、run_0 与 σ，然后进固定流之一。拼单点之前可以先问一句通不通：`ai4sci show flow design baseline start experiment analysis verify`。
@@ -63,7 +63,7 @@ ai4sci cap verify <id>                           # 零模型：数字回溯、�
 
 ## 拼一条自己的流
 
-两条固定流只是预装的拼法。研究者要的流不在里面时，你自己拼：`ai4sci show caps` 看有哪些按钮、每颗吃什么吐什么；`ai4sci show flow <能力>...` 查这样摆通不通，它顺便说覆盖了哪几个阶段、有实验或分析却没验证会提醒一句（提醒不拦，但要转告研究者「这份数字没人回溯」）。
+两条固定流只是预装的拼法。研究者要的流不在里面时，你自己拼：`ai4sci show caps` 看有哪些能力、每颗吃什么吐什么；`ai4sci show flow <能力>...` 查这样摆通不通，它顺便说覆盖了哪几个阶段、有实验或分析却没验证会提醒一句（提醒不拦，但要转告研究者「这份数字没人回溯」）。
 
 拼通了、研究者说要留着下次用，就存成文件 `workflows/<name>.yaml`（`name` 等于文件名去掉 `.yaml`，小写英文加连字符）：
 
@@ -79,7 +79,7 @@ steps:
   - by: 助理
     does: 跑 2 轮，成绩好过噪声门槛才留
     cap: experiment
-    with: {max_iters: 2}                     # 可选：这一步按按钮时带的参数，名字要是 show caps 里那颗能力的参数
+    with: {max_iters: 2}                     # 可选：这一步运行能力时带的参数，名字要是 show caps 里那颗能力的参数
   - by: 助理
     does: 写分析，先不验证
     cap: analysis
@@ -102,7 +102,7 @@ steps:
 - 不要替执行层改 `work/code/`，不要手改 `ledger.tsv` / `checkpoint.json`：账本与 git 的对账会把你抓出来。
 - 不要给执行层加载这个目录。
 - 不要自己把 `ai4sci cap` 放后台跑、不要排"稍后叫醒"：一轮结束后台子进程就被杀，第 N 轮会死在半路（账本记 `interrupted`，下一轮得 `--resume`）。长的用 `--detach` 交给框架当作业，跑完它来叫你；也不要在一轮里干等一个作业。
-- 不要绕开按钮：不裸跑 python、不 mkdir / cp 手搬文件、不在命令前挂环境变量、不拼管道。要做的事没有按钮，停下来告诉研究者「平台缺这颗按钮」——缺口是平台的事，不是你绕的理由。
+- 不要绕开命令：不裸跑 python、不 mkdir / cp 手搬文件、不在命令前挂环境变量、不拼管道。要做的事没有对应命令，停下来告诉研究者「平台还没有这个功能」——缺口是平台的事，不是你绕的理由。
 
 ## 还没有的
 

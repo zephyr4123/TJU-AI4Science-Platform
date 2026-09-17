@@ -28,7 +28,7 @@ export default function App() {
   const [creating, setCreating] = useState(false)
   const [view, setView] = useState<View>('main')
   const [boardOpen, setBoardOpen] = useState(true)
-  // 每完成一轮对话加一：助理可能按了按钮，看板据此重读
+  // 每完成一轮对话加一：助理可能运行了什么，看板据此重读
   const [epoch, setEpoch] = useState(0)
 
   // 没点过就落在最近的一段对话上（目录名带 UTC 时间戳，字典序最大的最新）

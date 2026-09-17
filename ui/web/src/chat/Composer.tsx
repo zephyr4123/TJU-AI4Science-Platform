@@ -57,7 +57,7 @@ export function Composer({ disabled, busy, onSend }: Props) {
         </Button>
       </div>
       <p className="mx-auto mt-1.5 max-w-3xl px-1 text-xs text-muted-foreground">
-        Enter 发送，Shift + Enter 换行。助理按了什么按钮，回答上方折着。
+        Enter 发送，Shift + Enter 换行。助理做了什么，回答上方折着。
       </p>
     </div>
   )

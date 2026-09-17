@@ -30,9 +30,11 @@ def test_agent_may_write_tasks_runs_and_workflows_only(tmp_path):
 
 
 def test_bash_rules_only_allow_bare_ai4sci():
-    """纲领 P-14：白名单只有裸 `ai4sci`。规则按前缀匹配，路径写法与环境变量前缀都对不上。"""
-    assert guide.BASH_RULES == ("Bash(ai4sci *)",)
-    assert "不加路径、不在前面挂环境变量" in guide.PREAMBLE and "平台缺这颗按钮" in guide.PREAMBLE
+    """纲领 P-14：指南只教裸 `ai4sci`；带路径的老写法也放行（老会话照自己以前的写法来，别设坎）。"""
+    assert guide.BASH_RULES == ("Bash(ai4sci *)", "Bash(.venv/bin/ai4sci *)")
+    assert "不加路径、不在前面挂环境变量" in guide.PREAMBLE
+    assert "现在一律写 `ai4sci`" in guide.PREAMBLE
+    assert "平台还没有这个功能" in guide.PREAMBLE and "按按钮" not in guide.PREAMBLE
 
 
 def test_shipped_guide_never_shows_the_agent_a_raw_command():
@@ -41,7 +43,8 @@ def test_shipped_guide_never_shows_the_agent_a_raw_command():
     import re
 
     text = guide.system_prompt()
-    assert ".venv/bin/ai4sci" not in text
+    # 带路径的写法只许出现在前言那句「以前写过的现在一律写 ai4sci」里，指南正文与命令块里不许有
+    assert ".venv/bin/ai4sci" not in guide.GUIDE_PATH.read_text(encoding="utf-8")
     assert not re.search(r"AI4SCI_[A-Z_]+=\S+\s+ai4sci", text)
     commands = [line.strip() for block in re.findall(r"```bash\n(.*?)```", text, re.S)
                 for line in block.splitlines() if line.strip() and not line.startswith("#")]

@@ -34,6 +34,7 @@ describe('run 的脊柱', () => {
   it('验收键按过就算完成，便条不会替键推进', () => {
     const before = deriveRunSteps(flow(4, 'key:accept', auto), { accept: null })
     expect(before[4].state).toBe('wait-key')
+    expect(waitingSentence(before)).toBe('第 5 步等你验收')
     const after = deriveRunSteps(flow(4, 'key:accept', auto),
       { accept: { accepted_at: 't', by: '李', best_iter: 1, best_metric: 1, best_commit: 'c', verify: 'PASS', stale: false } })
     expect(after[4].state).toBe('done')

@@ -20,7 +20,7 @@ interface Props {
   boardOpen: boolean
   onToggleBoard: () => void
   onNew: () => void
-  /** 一轮结束：助理可能按了按钮、改了任务包或 run，看板要重读 */
+  /** 一轮结束：助理可能运行了命令、改了任务包或 run，看板要重读 */
   onTurnDone: () => void
   drawer: ReactNode
 }
@@ -38,7 +38,7 @@ export function ChatView({ chatId, boardOpen, onToggleBoard, onNew, onTurnDone, 
   const doc = useResource(() => (chatId ? api.chat(chatId) : Promise.resolve(null)), [chatId])
   const [live, setLive] = useState<LiveTurn | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
-  // 本次打开页面期间跑过的轮次，按轮号留着它的按钮轨迹；刷新后只剩落盘的问答
+  // 本次打开页面期间跑过的轮次，按轮号留着它做过什么；刷新后只剩落盘的问答
   const [kept, setKept] = useState<Kept>({})
   const bottom = useRef<HTMLDivElement>(null)
 

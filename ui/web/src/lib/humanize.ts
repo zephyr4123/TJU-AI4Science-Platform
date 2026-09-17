@@ -145,7 +145,9 @@ export const LEVEL_COPY: Record<string, string> = {
 }
 
 // ── 对话里的工具行 ────────────────────────────────────────────────────────
+// 每条命令一句直白的话：查了什么、运行了什么、写了什么。带 --detach 的加一句「放到后台跑」。
 const CLI_SENTENCE: [RegExp, string][] = [
+  [/ai4sci cap init/, '起了任务包'],
   [/ai4sci cap design/, '接了任务：写裁判脚本和基线草稿'],
   [/ai4sci cap baseline/, '跑了基线'],
   [/ai4sci cap start/, '开了一次实验'],
@@ -153,14 +155,15 @@ const CLI_SENTENCE: [RegExp, string][] = [
   [/ai4sci cap experiment/, '跑了几轮实验'],
   [/ai4sci cap analysis/, '写了分析'],
   [/ai4sci cap verify/, '验证了分析里的数字'],
-  [/ai4sci sign task/, '按了发布键（这颗键应该由人按）'],
-  [/ai4sci sign run/, '按了验收键（这颗键应该由人按）'],
-  [/ai4sci show tasks/, '看了一眼有哪些任务包'],
-  [/ai4sci show task\b/, '校验了任务包'],
-  [/ai4sci show run/, '看了实验状态'],
-  [/ai4sci show caps/, '看了一眼有哪些能力'],
-  [/ai4sci show workflows/, '看了一眼有哪些工作流'],
-  [/ai4sci show flow/, '检查了一串能力通不通'],
+  [/ai4sci sign task/, '替人发布了需求（这件事应该由人做）'],
+  [/ai4sci sign run/, '替人验收了结果（这件事应该由人做）'],
+  [/ai4sci show tasks/, '查了有哪些任务包'],
+  [/ai4sci show task\b/, '检查了任务包'],
+  [/ai4sci show runs?\b/, '查了实验进度'],
+  [/ai4sci show jobs?\b/, '查了后台作业'],
+  [/ai4sci show caps/, '查了有哪些能力'],
+  [/ai4sci show workflows/, '查了有哪些工作流'],
+  [/ai4sci show flow/, '检查了这样拼通不通'],
   [/^\s*(ls|find|tree)\b/, '看了目录'],
   [/^\s*(cat|head|tail|sed -n)\b/, '读了文件'],
   [/^\s*(grep|rg)\b/, '搜了文件内容'],
@@ -171,8 +174,9 @@ export function toolSentence(tool: string, input: Record<string, unknown>): stri
   const str = (key: string) => (typeof input[key] === 'string' ? (input[key] as string) : null)
   if (tool === 'Bash') {
     const command = str('command') ?? ''
-    for (const [pattern, sentence] of CLI_SENTENCE) if (pattern.test(command)) return sentence
-    return '跑了一条命令'
+    const tail = /--detach\b/.test(command) ? '，放到后台跑' : ''
+    for (const [pattern, sentence] of CLI_SENTENCE) if (pattern.test(command)) return sentence + tail
+    return '运行了一条命令'
   }
   const path = str('file_path') ?? str('path')
   const name = path ? path.split('/').filter(Boolean).slice(-2).join('/') : null
@@ -186,4 +190,12 @@ export function toolSentence(tool: string, input: Record<string, unknown>): stri
 
 function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/** 被拒的命令，原因翻成一句话；不是认识的拒绝原因就原样给。 */
+export function denialSentence(text: string): string {
+  if (/Permission to use \w+ has been denied/.test(text)) {
+    return '这条命令不在放行范围里。助理只能运行 ai4sci 开头的命令，读写也只限任务包、实验和工作流目录。'
+  }
+  return text
 }

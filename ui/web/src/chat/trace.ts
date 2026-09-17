@@ -1,5 +1,5 @@
 // 一轮里的事件流怎么折成给人看的条目：文本合并成段、tool_use 与它的 tool_result 配成一对。
-// 纯函数，不碰 React；页面上「agent 这一轮按了什么」全由这里决定。
+// 纯函数，不碰 React；页面上「agent 这一轮做了什么」全由这里决定。
 
 import type { ChatEvent } from '@/api/types'
 
@@ -18,7 +18,7 @@ export interface TurnOutcome {
 export function reduceTrace(items: readonly TraceItem[], event: ChatEvent): TraceItem[] {
   switch (event.kind) {
     case 'delta': {
-      // 逐字攒进正在说的那一段；上一段已经说完（或中间按过按钮）就另起一段
+      // 逐字攒进正在说的那一段；上一段已经说完（或中间运行过命令）就另起一段
       const last = items[items.length - 1]
       if (last && last.kind === 'text' && last.streaming) {
         return [...items.slice(0, -1), { kind: 'text', text: last.text + event.text, streaming: true }]
@@ -56,7 +56,7 @@ export function outcome(event: ChatEvent): TurnOutcome {
   return { costUsd: event.cost_usd, durationS: event.duration_s, failed: event.kind === 'error' }
 }
 
-/** 把结果挂到最近一个还没有结果的工具调用上。没有待结果的调用（被拒绝的按钮会同时来一条 denied
+/** 把结果挂到最近一个还没有结果的工具调用上。没有待结果的调用（被拒的命令会同时来一条 denied
  *  和一条 tool_result）就追加到最近那个工具行上，别当成助理说的话显示出来；一个工具行都没有才当文本。 */
 function settle(
   items: readonly TraceItem[],
