@@ -515,7 +515,8 @@ def test_chat_new_send_list_with_a_scripted_backend(tmp_path, monkeypatch, capsy
     assert out[4].startswith("done\tcost_usd=0.0100")
     assert chat.calls[0]["system_prompt"].startswith("# 你在服务里") and \
         "按按钮" in chat.calls[0]["system_prompt"]
-    assert chat.calls[0]["allowed_paths"] == [tmp_path / "tasks", tmp_path / "runs"]
+    assert chat.calls[0]["allowed_paths"] == [tmp_path / "tasks", tmp_path / "runs",
+                                              tmp_path / "workflows"]
 
     assert main(["chat", "list", "--runs-root", runs]) == EXIT_OK
     assert capsys.readouterr().out.startswith(f"{chat_id}\tturns=1\tcost_usd=0.0100")

@@ -291,7 +291,7 @@ def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
     env = ClaudeCodeChat().build_env(900.0)
     assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
     assert env["BASH_DEFAULT_TIMEOUT_MS"] == env["BASH_MAX_TIMEOUT_MS"] == "900000"
-    assert env["KEEP_ME"] == "1"  # 继承本进程环境（AI4SCI_EXECUTOR_MODEL 等要传给协调 agent 的 Bash）
+    assert env["KEEP_ME"] == "1"  # 继承本进程环境（AI4SCI_EXECUTOR_MODEL 等要传给协调 agent）
 
 
 def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path, monkeypatch):
