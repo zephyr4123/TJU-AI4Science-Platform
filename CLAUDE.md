@@ -6,7 +6,7 @@
 
 | 目录 | 放什么 |
 |---|---|
-| `coordinator/` | 协调层入口指南：怎么当科研助理、怎么驱动框架跑固定流。人在终端当协调层时由 CLI 读进来；服务起的协调会话由 `framework/chat/guide.py` 塞进 system prompt；执行层会话不许加载 |
+| `coordinator/` | 协调层入口指南：怎么当科研助理、怎么驱动框架跑固定流、怎么拼一条自己的流并存进 `workflows/`。人在终端当协调层时由 CLI 读进来；服务起的协调会话由 `framework/chat/guide.py` 塞进 system prompt；执行层会话不许加载 |
 | `framework/` | 框架：能力、runner、契约 schema、验证、裁判、`ai4sci` CLI。零模型调用，不随任务改 |
 | `backends/` | agent 适配器：一个 coding agent CLI 一个文件；两个端口都定义在 `backends/__init__.py`：`Runner`（执行层，一次会话）与 `Chat`（协调层，多轮续接、事件流）。换一家 CLI 就是加一个文件，主人红线：涉及 agent 的一律可替换 |
 | `compute/` | 算力适配器：一个后端一个文件；端口 `Compute` 定义在 `compute/__init__.py` |
@@ -29,7 +29,7 @@
 |---|---|---|
 | `cli/` | 命令行上就四类东西，一类一个模块：`cap` 能力（子命令从描述符生成：位置参数按 level，`--backend` / `--compute` 按需要，每个 Param 一个选项，bool 是开关）、`sign` 键（`task` 发布、`run` 验收，人按）、`show` 查询（`tasks` / `task` / `run` / `caps` 按七个阶段列、空阶段也列 / `workflows` / `flow`，只读，与 serve 的 GET 同一批函数）、`chat` / `serve` 入口（`serve` 唯一常驻，`--ui` 指定页面构建目录）；`__init__` 装配 parser 并导出 `main` | 下面全部 |
 | `capabilities/` | 一个能力一个子包，互不 import，每个导出 `DESCRIPTOR` 与 `run(run_dir, ports, **params)`（task 级是 `run(task_dir, ports, ...)`），`discover()` 扫目录并按 level 断言签名，扫完再断言整份清单：同级别里没有两颗能力声明同一个输出路径、每个输入路径是种子或同级能力的输出（纲领 P-13 文档即接口：文件名就是接口，run 级产物放 `<能力名>/` 下）；task 级：`design/` 接任务（薄壳，干活的在 executor）、`baseline/` 跑基线 + 预检、`start/` 开一次实验（`run/lifecycle.new_run` 的薄壳，任务段到 run 段的桥，`contracts.flow` 认这个名字）；run 级：`experiment/` 实验内环（`loop` / `judge` / `gate` / `failures` / `prompt.md`）、`analysis/` 分析（`analyze` + `prompt.md`）、`verify/` 验证（`checks` 零模型） | executor、memory、run、contracts |
-| `chat/` | 协调 agent 的对话与页面后端：`guide` 把 `coordinator/README.md` 加前言塞进 system prompt、`conversation` 建对话 / 发一轮 / 落盘 `runs/chats/<id>/`（meta、每轮 message 与原生事件流、transcript、忙锁、`read_turns` / `title` 读回结构）、`boards` 三张看板读盘（任务包的阶段与钥匙、预检；run 的 best、账本、分析、验证、验收；NaN 出门前换 None）、`server` 标准库 HTTP + SSE（端点清单在文件头；`/stages` 直接读契约，`/cap` `/workflows` `/flow/check` 由 cli 以函数传入；不是接口前缀的 GET 路径端 `ui_dir` 的静态文件，单页应用回 index.html） | memory、run、contracts |
+| `chat/` | 协调 agent 的对话与页面后端：`guide` 把 `coordinator/README.md` 加前言塞进 system prompt（可写目录 tasks/ runs/ workflows/，Bash 只放行 `ai4sci`）、`conversation` 建对话 / 发一轮 / 落盘 `runs/chats/<id>/`（meta、每轮 message 与原生事件流、transcript、忙锁、`read_turns` / `title` 读回结构）、`boards` 三张看板读盘（任务包的阶段与钥匙、预检；run 的 best、账本、分析、验证、验收；NaN 出门前换 None）、`server` 标准库 HTTP + SSE（端点清单在文件头；`/stages` 直接读契约，`/cap` `/workflows` `/flow/check` 由 cli 以函数传入；不是接口前缀的 GET 路径端 `ui_dir` 的静态文件，单页应用回 index.html） | memory、run、contracts |
 | `executor/` | 组 prompt（`prompting`）、起执行层会话并留档日志（`session`）、接任务的设计步骤（`design` + `design_prompt.md`：执行层写 harness 与基线草稿，框架封 harness、ruff、校验；能力 `capabilities/design` 是它的薄壳） | memory、run、contracts |
 | `memory/` | 账本 `ledger`、实验笔记 `notebook`；项目级记忆以后加在这 | run、contracts |
 | `run/` | 一个 run 的磁盘状态：`layout` 路径、`checkpoint`、`context` 只读上下文、`lifecycle` 建 run / 续命 / 能力目录轮转、`gitwork`、`artifacts` 结果索引、`accept` 验收记录（`accept.json` 签 best 与验证结论，best 变了记录就 stale；与 `contracts.publish` 对称，放这层因为它读 checkpoint） | contracts |
