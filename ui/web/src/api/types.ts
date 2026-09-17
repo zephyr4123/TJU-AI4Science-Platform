@@ -159,9 +159,17 @@ export interface CapabilityParam {
   type?: string
 }
 
+/** 七个科研阶段之一（`GET /stages` 给顺序）；能力描述符的 `stage` 取值。 */
+export type ResearchStage = string
+
 export interface Capability {
   name: string
+  /** 属于哪个科研阶段：标签，不定先后 */
+  stage: ResearchStage
   level: 'task' | 'run' | 'project'
+  /** 给研究者看的名字与一句说明；`summary` 是给工程师与助理看的机制说明 */
+  title: string
+  what: string
   summary: string
   inputs: CapabilityFile[]
   outputs: CapabilityFile[]
@@ -169,10 +177,14 @@ export interface Capability {
   needs_executor: boolean
   needs_compute: boolean
   criteria: string[]
+  /** 用在哪几条工作流里：后端从工作流文件反查的，能力自己不写 */
+  used_by: string[]
 }
 
 export interface FlowCheck {
   steps: string[]
+  covers: ResearchStage[]
+  remarks: string[]
   problems: string[]
 }
 
@@ -188,5 +200,9 @@ export interface Workflow {
   title: string
   summary: string
   steps: WorkflowStep[]
+  /** 覆盖哪几个科研阶段，按步骤顺序：从能力步骤算出来的 */
+  covers: ResearchStage[]
+  /** 提醒，不是问题：比如做了实验没验证 */
+  remarks: string[]
   problems: string[]
 }
