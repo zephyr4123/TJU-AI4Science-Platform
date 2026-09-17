@@ -295,14 +295,19 @@ def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
 
 
 def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatch):
-    """纲领 P-14：agent 敲裸 `ai4sci`，服务把自己 venv 的 bin 追加到 PATH 末尾（不遮系统命令）。"""
+    """纲领 P-14：agent 敲裸 `ai4sci`，服务把自己 venv 的 bin 追加到 PATH 末尾（不遮系统命令）。
+
+    断言的是结果不是表达式：这个 PATH 下 `which ai4sci` 要找得到。第一版拿解释器 resolve() 后的
+    目录当 bin，venv 的 python 是软链，解析出去就是系统 bin，真跑时 agent 报 command not found。"""
+    import shutil
     import sys
 
     monkeypatch.setenv("PATH", "/usr/bin")
     env = ClaudeCodeChat().build_env(1.0)
-    assert env["PATH"] == f"/usr/bin{os.pathsep}{Path(sys.executable).resolve().parent}"
+    assert env["PATH"].startswith(f"/usr/bin{os.pathsep}")  # 追加在后，系统命令在前
+    assert shutil.which("ai4sci", path=env["PATH"]) == str(Path(sys.executable).parent / "ai4sci")
     monkeypatch.delenv("PATH")
-    assert ClaudeCodeChat().build_env(1.0)["PATH"] == str(Path(sys.executable).resolve().parent)
+    assert ClaudeCodeChat().build_env(1.0)["PATH"] == str(Path(sys.executable).parent)
 
 
 def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path, monkeypatch):

@@ -222,9 +222,11 @@ class ClaudeCodeChat:
 
         协调 agent 敲的是裸 `ai4sci`（纲领 P-14：它面前只有这一个入口，不写路径不挂前缀），
         所以起它的服务得让这个名字找得到：把自己解释器所在的 bin 目录**追加**到 PATH 末尾。
-        追加不是前置：不让 venv 里的 python / ruff 遮住系统的，agent 用不到它们。"""
+        追加不是前置：不让 venv 里的 python / ruff 遮住系统的，agent 用不到它们。
+        不 resolve：venv 的 python 是指向系统解释器的软链，解析完就是系统 bin，里面没有 ai4sci
+        （实测 #60 第一次真跑就栽在这）。"""
         millis = str(int(timeout_s * 1000))
-        bin_dir = str(Path(sys.executable).resolve().parent)
+        bin_dir = str(Path(sys.executable).parent)
         inherited = os.environ.get("PATH", "")
         path = f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir
         return {**os.environ, "PATH": path, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
