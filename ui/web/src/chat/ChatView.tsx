@@ -8,7 +8,6 @@ import BlurText from '@/components/BlurText'
 import { ErrorNote, Skeleton } from '@/components/bits'
 import { Button } from '@/components/ui/button'
 import Waves from '@/components/Waves'
-import { chatTitle, usd } from '@/lib/format'
 import { useResource } from '@/lib/useResource'
 
 import { Composer } from './Composer'
@@ -85,14 +84,9 @@ export function ChatView({ chatId, boardOpen, onToggleBoard, onNew, onTurnDone, 
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
-      <header className="flex h-14 shrink-0 items-center gap-2 px-4">
+      <header className="flex h-11 shrink-0 items-center gap-2 px-3">
         {drawer}
-        <h1 className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold tracking-tight">
-          {doc.data ? chatTitle(doc.data) : 'AI4Science 工作台'}
-        </h1>
-        {doc.data && (
-          <span className="t-label tabular whitespace-nowrap">{doc.data.history.length} 轮 · 累计 {usd(doc.data.cost_usd)}</span>
-        )}
+        <span className="flex-1" />
         <Button variant="ghost" size="icon-sm" onClick={onToggleBoard} aria-label={boardOpen ? '收起看板' : '展开看板'}>
           {boardOpen ? <PanelRightClose /> : <PanelRightOpen />}
         </Button>

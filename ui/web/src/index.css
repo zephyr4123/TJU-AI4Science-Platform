@@ -1,17 +1,25 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import "@fontsource-variable/ibm-plex-sans";
+@import "@fontsource-variable/noto-serif-sc";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
 @plugin "@tailwindcss/typography";
 
 /*
-  视觉系统见 docs/DESIGN.md。纯白工作面 + 一个琥珀主色（只给两颗键、当前页签、正向数字）+ 偏冷的灰。
-  只做浅色：白天实验室里读数字。
+  视觉系统见 docs/DESIGN.md（外层 #64）。五个颜色都是信息：纸面、墨、靛（助理在动 / 可点）、
+  铜绿（只给「可信」）、琥珀（只给「等你按键」）。宋体只给结论和步骤标题，其余 Plex。
+  深色跟系统，`data-theme` 可强制。
 */
+
 @theme inline {
-  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans: 'IBM Plex Sans Variable', "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+    "Microsoft YaHei", system-ui, sans-serif;
+  --font-serif: 'Noto Serif SC Variable', "Songti SC", "SimSun", serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -38,12 +46,17 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  /* 语义色：ok = 可信（铜绿），wait = 等人按键（琥珀），bad = 出错 */
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
-  --color-warn: var(--warn);
-  --color-warn-soft: var(--warn-soft);
+  --color-wait: var(--wait);
+  --color-wait-soft: var(--wait-soft);
+  --color-warn: var(--wait);
+  --color-warn-soft: var(--wait-soft);
   --color-bad: var(--bad);
   --color-bad-soft: var(--bad-soft);
+  --color-grid: var(--grid);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -53,41 +66,116 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* 浅色：纸 #F5F6F8、墨 #1C2230、靛 #2F4BC9、铜绿 #1F7A6D、琥珀 #B8741A */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.17 0.01 80);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.17 0.01 80);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.17 0.01 80);
-  --primary: oklch(0.55 0.13 72);
-  --primary-foreground: oklch(0.995 0 0);
-  --secondary: oklch(0.965 0.003 250);
-  --secondary-foreground: oklch(0.25 0.01 80);
-  --muted: oklch(0.965 0.003 250);
-  /* 次要文字对白底 ≥ 4.5:1：L 0.45 */
-  --muted-foreground: oklch(0.45 0.012 260);
-  --accent: oklch(0.96 0.03 80);
-  --accent-foreground: oklch(0.32 0.08 70);
-  --destructive: oklch(0.55 0.2 27);
-  --border: oklch(0.91 0.004 250);
-  --input: oklch(0.88 0.005 250);
-  --ring: oklch(0.72 0.11 75);
-  --radius: 0.5rem;
-  --sidebar: oklch(0.975 0.004 250);
-  --sidebar-foreground: oklch(0.2 0.01 80);
-  --sidebar-primary: oklch(0.55 0.13 72);
-  --sidebar-primary-foreground: oklch(0.995 0 0);
-  --sidebar-accent: oklch(0.935 0.006 250);
-  --sidebar-accent-foreground: oklch(0.17 0.01 80);
-  --sidebar-border: oklch(0.9 0.005 250);
-  --sidebar-ring: oklch(0.72 0.11 75);
-  --ok: oklch(0.48 0.13 150);
-  --ok-soft: oklch(0.95 0.04 150);
-  --warn: oklch(0.55 0.13 70);
-  --warn-soft: oklch(0.96 0.05 80);
-  --bad: oklch(0.52 0.2 27);
-  --bad-soft: oklch(0.96 0.03 27);
+  --background: #F5F6F8;
+  --foreground: #1C2230;
+  --card: #FFFFFF;
+  --card-foreground: #1C2230;
+  --popover: #FFFFFF;
+  --popover-foreground: #1C2230;
+  --primary: #2F4BC9;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EBEDF2;
+  --secondary-foreground: #1C2230;
+  --muted: #EBEDF2;
+  --muted-foreground: #5B6270;
+  --accent: #E8ECFA;
+  --accent-foreground: #24399A;
+  --destructive: #A83A2E;
+  --border: #D9DDE4;
+  --input: #CFD4DD;
+  --ring: #2F4BC9;
+  --radius: 0.625rem;
+  --sidebar: #F5F6F8;
+  --sidebar-foreground: #1C2230;
+  --sidebar-primary: #2F4BC9;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E8ECFA;
+  --sidebar-accent-foreground: #1C2230;
+  --sidebar-border: #D9DDE4;
+  --sidebar-ring: #2F4BC9;
+  --ok: #1F7A6D;
+  --ok-soft: #E3F1EE;
+  --wait: #B8741A;
+  --wait-soft: #FBF0DC;
+  --bad: #A83A2E;
+  --bad-soft: #F8E6E3;
+  --grid: #E1E4EA;
+}
+
+/* 深色：同一套语义反过来。靛、铜绿、琥珀提亮到能压住深底 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #171A20;
+    --foreground: #E6E8EE;
+    --card: #1E222A;
+    --card-foreground: #E6E8EE;
+    --popover: #1E222A;
+    --popover-foreground: #E6E8EE;
+    --primary: #8FA3F5;
+    --primary-foreground: #0F1530;
+    --secondary: #262B34;
+    --secondary-foreground: #E6E8EE;
+    --muted: #262B34;
+    --muted-foreground: #9AA1AE;
+    --accent: #232A45;
+    --accent-foreground: #C9D3FF;
+    --destructive: #E07A6E;
+    --border: #2C313B;
+    --input: #363C48;
+    --ring: #8FA3F5;
+    --sidebar: #171A20;
+    --sidebar-foreground: #E6E8EE;
+    --sidebar-primary: #8FA3F5;
+    --sidebar-primary-foreground: #0F1530;
+    --sidebar-accent: #232A45;
+    --sidebar-accent-foreground: #E6E8EE;
+    --sidebar-border: #2C313B;
+    --sidebar-ring: #8FA3F5;
+    --ok: #5FC2B0;
+    --ok-soft: #173430;
+    --wait: #E2A751;
+    --wait-soft: #3A2C16;
+    --bad: #E07A6E;
+    --bad-soft: #3B1F1B;
+    --grid: #242932;
+  }
+}
+:root[data-theme="dark"] {
+  --background: #171A20;
+  --foreground: #E6E8EE;
+  --card: #1E222A;
+  --card-foreground: #E6E8EE;
+  --popover: #1E222A;
+  --popover-foreground: #E6E8EE;
+  --primary: #8FA3F5;
+  --primary-foreground: #0F1530;
+  --secondary: #262B34;
+  --secondary-foreground: #E6E8EE;
+  --muted: #262B34;
+  --muted-foreground: #9AA1AE;
+  --accent: #232A45;
+  --accent-foreground: #C9D3FF;
+  --destructive: #E07A6E;
+  --border: #2C313B;
+  --input: #363C48;
+  --ring: #8FA3F5;
+  --sidebar: #171A20;
+  --sidebar-foreground: #E6E8EE;
+  --sidebar-primary: #8FA3F5;
+  --sidebar-primary-foreground: #0F1530;
+  --sidebar-accent: #232A45;
+  --sidebar-accent-foreground: #E6E8EE;
+  --sidebar-border: #2C313B;
+  --sidebar-ring: #8FA3F5;
+  --ok: #5FC2B0;
+  --ok-soft: #173430;
+  --wait: #E2A751;
+  --wait-soft: #3A2C16;
+  --bad: #E07A6E;
+  --bad-soft: #3B1F1B;
+  --grid: #242932;
 }
 
 @layer base {
@@ -97,6 +185,7 @@
   html {
     @apply font-sans;
     text-rendering: optimizeLegibility;
+    font-variant-numeric: tabular-nums;
   }
   body {
     @apply bg-background text-foreground;
@@ -110,18 +199,24 @@
   p {
     text-wrap: pretty;
   }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
   .tabular {
     font-variant-numeric: tabular-nums;
   }
 }
 
 @layer components {
-  /* 一页纸的四种字：结论、大数字、正文、标签（docs/DESIGN.md） */
+  /* 四种字：结论（宋体）、步骤标题（宋体）、大数字、正文、标签（docs/DESIGN.md） */
   .t-lede {
-    @apply text-[1.375rem] leading-[1.35] font-semibold tracking-tight text-balance;
+    @apply font-serif text-[1.25rem] leading-[1.45] font-semibold text-balance;
+  }
+  .t-step {
+    @apply font-serif text-[1rem] leading-[1.4] font-semibold;
   }
   .t-big {
-    @apply font-sans text-[2.25rem] leading-none font-semibold tracking-tight tabular-nums;
+    @apply font-sans text-[1.75rem] leading-none font-medium tracking-[-0.01em] tabular-nums;
   }
   .t-body {
     @apply text-[0.9375rem] leading-[1.65] max-w-[68ch];
@@ -129,16 +224,26 @@
   .t-label {
     @apply text-[0.8125rem] leading-[1.4] text-muted-foreground;
   }
+  /* 脊柱那一列的方格纸：只铺在这一列，上下淡出 */
+  .paper-grid {
+    background-color: var(--background);
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-position: -1px -1px;
+  }
   /* 页面里所有 markdown 用同一套排版：设计说明、分析、助理回复 */
   .prose-ai4sci {
-    @apply prose prose-sm max-w-[68ch] prose-headings:font-semibold prose-headings:tracking-tight
+    @apply prose prose-sm max-w-[68ch] text-foreground prose-headings:font-serif prose-headings:font-semibold
+      prose-headings:text-foreground prose-strong:text-foreground
       prose-p:leading-[1.65] prose-p:text-[0.9375rem] prose-li:text-[0.9375rem]
       prose-pre:bg-muted prose-pre:text-foreground prose-pre:text-xs
       prose-code:before:content-none prose-code:after:content-none prose-code:font-normal
-      prose-code:text-[0.8em] prose-a:text-primary prose-table:text-xs prose-th:py-1 prose-td:py-1;
+      prose-code:text-[0.8em] prose-code:text-foreground prose-a:text-primary
+      prose-table:text-xs prose-th:py-1 prose-td:py-1 prose-hr:border-border;
   }
   .prose-ai4sci :where(code):not(:where(pre *)) {
-    @apply rounded bg-muted px-1 py-0.5;
+    @apply rounded bg-accent px-1 py-0.5;
   }
 }
 
