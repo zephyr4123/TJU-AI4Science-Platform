@@ -46,6 +46,16 @@ def _workflows() -> list[dict]:
     return workflows.describe(_load_workflows(), catalog)
 
 
+def _save_workflow(doc: dict) -> dict:
+    """编辑台存流：核对形状与通不通，写进仓根 `workflows/`，回它在清单里的样子。"""
+    catalog = {name: module.DESCRIPTOR for name, module in discover().items()}
+    overwrite = bool(doc.pop("overwrite", False))
+    saved = workflows.save_workflow(workflows.workflows_root(guide.REPO_ROOT), doc, catalog,
+                                    overwrite=overwrite)
+    [described] = workflows.describe([saved], catalog)
+    return described
+
+
 def _flow_check(steps: list[str]) -> dict:
     """与 `ai4sci show flow --json` 同一个形状；名字对不上也当问题报，页面不该为此拿 500。"""
     found = discover()
@@ -75,7 +85,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     try:
         server = ChatServer((args.host, args.port), runs_root=runs_root(args), cwd=cwd,
                             catalog=_catalog, workflows=_workflows, flow_check=_flow_check,
-                            ui_dir=ui_dir)
+                            save_workflow=_save_workflow, ui_dir=ui_dir)
     except guide.GuideMissing as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID

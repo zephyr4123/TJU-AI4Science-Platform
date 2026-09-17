@@ -80,6 +80,30 @@ def test_step_with_params_are_checked_against_the_descriptor(tmp_path):
             workflows.load_workflows(tmp_path)
 
 
+def test_save_workflow_writes_a_loadable_file_and_refuses_bad_or_duplicate(tmp_path):
+    """编辑台存流（外层 #68）：形状与通不通都过了才落盘，存出的文件能被同一套读回来；同名不覆盖。"""
+    doc = {"name": "my-look", "title": "我的流", "summary": "看一眼",
+           "assumes": ["harness/", "code/", "run_0/"],
+           "steps": [{"by": "助理", "does": "开一次实验", "cap": "start"},
+                     {"by": "助理", "does": "跑 2 轮", "cap": "experiment",
+                      "with": {"max_iters": 2}},
+                     {"by": "人", "does": "看一眼"}]}
+    saved = workflows.save_workflow(tmp_path, doc, catalog())
+    assert saved.name == "my-look" and (tmp_path / "my-look.yaml").is_file()
+    [loaded] = workflows.load_workflows(tmp_path)
+    assert loaded == saved and loaded.steps[1].with_ == {"max_iters": 2}
+    with pytest.raises(FileExistsError, match="已经有一条"):
+        workflows.save_workflow(tmp_path, doc, catalog())
+    workflows.save_workflow(tmp_path, {**doc, "title": "改了"}, catalog(), overwrite=True)
+    assert workflows.load_workflows(tmp_path)[0].title == "改了"
+    with pytest.raises(workflows.WorkflowInvalid, match="没有这些能力"):
+        bad = {**doc, "name": "bad", "steps": [{"by": "助理", "does": "x", "cap": "nope"}]}
+        workflows.save_workflow(tmp_path, bad, catalog())
+    with pytest.raises(workflows.WorkflowInvalid, match="小写英文"):
+        workflows.save_workflow(tmp_path, {**doc, "name": "My Flow"}, catalog())
+    assert not (tmp_path / "bad.yaml").exists()
+
+
 def test_load_and_describe(tmp_path):
     (tmp_path / "w.yaml").write_text(GOOD, encoding="utf-8")
     found = workflows.load_workflows(tmp_path)

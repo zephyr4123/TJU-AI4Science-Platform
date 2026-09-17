@@ -241,6 +241,16 @@ export interface WorkflowStep {
   with: Record<string, unknown>
 }
 
+/** 编辑台交给 `POST /workflows` 的一条流：形状同文件，`overwrite` 明说才覆盖同名 */
+export interface WorkflowDraft {
+  name: string
+  title: string
+  summary: string
+  assumes?: string[]
+  steps: { by: '人' | '助理'; does: string; cap?: string; key?: 'publish' | 'accept'; with?: Record<string, unknown> }[]
+  overwrite?: boolean
+}
+
 export interface Workflow {
   name: string
   title: string

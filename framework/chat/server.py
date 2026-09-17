@@ -9,6 +9,7 @@
     GET  /stages                   七个科研阶段，按清单顺序（能力描述符的 stage 取值）
     GET  /cap                      能力描述符清单：平台的全部按钮，每颗带 stage 与 used_by
     GET  /workflows                工作流清单（`workflows/*.yaml`）：covers / remarks / problems
+    POST /workflows                {name, title, summary, steps[, assumes, overwrite]} → 存成文件
     GET  /flow/check?steps=a,b     {"steps", "covers", "remarks", "problems"}：这串能力通不通，不跑
     GET  /chats                    全部对话的 meta + title（第一句话）
     POST /chats                    {"backend"?} → 新对话的 meta
@@ -61,6 +62,7 @@ class ChatServer(ThreadingHTTPServer):
                  catalog: Callable[[], list[dict[str, Any]]],
                  workflows: Callable[[], list[dict[str, Any]]],
                  flow_check: Callable[[list[str]], dict[str, Any]],
+                 save_workflow: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  chat_factory: Callable[[str], Chat] = get_chat,
                  system_prompt: str | None = None, ui_dir: Path | None = None) -> None:
         super().__init__(address, Handler)
@@ -69,6 +71,8 @@ class ChatServer(ThreadingHTTPServer):
         self.catalog = catalog
         self.workflows = workflows
         self.flow_check = flow_check
+        # 编辑台存流：cli 注入（要对着能力清单核对，chat 层不认识 capabilities）；None 是不让存
+        self.save_workflow = save_workflow
         self.chat_factory = chat_factory
         # 页面构建目录；None 就是没构建，根路径回一句怎么构建，接口照常
         self.ui_dir = None if ui_dir is None else Path(ui_dir).resolve()
@@ -150,6 +154,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(HTTPStatus.BAD_REQUEST, str(exc))
             conv = conversation.new_conversation(self.server.runs_root, backend, self.server.cwd)
             return self._json(conv.to_dict(), HTTPStatus.CREATED)
+        if parts == ["workflows"]:
+            if self.server.save_workflow is None:
+                return self._error(HTTPStatus.NOT_IMPLEMENTED, "这个服务没开存流")
+            try:
+                return self._json(self.server.save_workflow(body), HTTPStatus.CREATED)
+            except ValueError as exc:  # WorkflowInvalid 继承 ValueError：形状不对、不通
+                return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
+            except FileExistsError as exc:
+                return self._error(HTTPStatus.CONFLICT, str(exc))
         if len(parts) == 3 and parts[0] == "chats" and parts[2] == "messages":
             conv = self._conversation(parts[1])
             if conv is None:

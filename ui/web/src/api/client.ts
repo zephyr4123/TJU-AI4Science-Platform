@@ -3,8 +3,7 @@
 
 import type {
   Capability, ChatDoc, ChatMeta, FlowCheck, ResearchStage, RunDetail, RunSummary, TaskDetail, TaskSummary,
-  Workflow,
-} from './types'
+  Workflow, WorkflowDraft,} from './types'
 
 export class ApiError extends Error {
   readonly status: number
@@ -46,6 +45,7 @@ export const api = {
   stages: () => request<ResearchStage[]>('/stages'),
   capabilities: () => request<Capability[]>('/cap'),
   workflows: () => request<Workflow[]>('/workflows'),
+  saveWorkflow: (doc: WorkflowDraft) => request<Workflow>('/workflows', post(doc)),
   flowCheck: (steps: string[]) =>
     request<FlowCheck>(`/flow/check?steps=${encodeURIComponent(steps.join(','))}`),
 

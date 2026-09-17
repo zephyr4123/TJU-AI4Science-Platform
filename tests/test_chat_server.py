@@ -44,9 +44,16 @@ def served(tmp_path):
             raise BackendNotFound(f"未知的 agent 后端 {name!r}")
         return chat
 
+    def save_workflow(doc: dict) -> dict:
+        if doc.get("name") == "taken":
+            raise FileExistsError("已经有一条叫 'taken' 的流")
+        if not doc.get("steps"):
+            raise ValueError("x.yaml: steps 要是非空列表")
+        return {**doc, "covers": ["实验"], "remarks": [], "problems": []}
+
     server = ChatServer(("127.0.0.1", 0), runs_root=tmp_path / "runs", cwd=tmp_path,
                         catalog=lambda: CATALOG, workflows=lambda: WORKFLOWS,
-                        flow_check=flow_check, chat_factory=factory,
+                        flow_check=flow_check, save_workflow=save_workflow, chat_factory=factory,
                         system_prompt="指南", ui_dir=ui_dir(tmp_path))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -251,3 +258,14 @@ def test_no_ui_dir_says_how_to_build(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_save_workflow_endpoint_maps_errors_to_status_codes(served):
+    """编辑台存流（外层 #68）：存成 201 回清单里的样子；形状 / 不通 422；同名 409。"""
+    base, _ = served
+    doc = {"name": "w", "title": "t", "summary": "s",
+           "steps": [{"by": "助理", "does": "x", "cap": "design"}]}
+    status, _, body = call(base, "/workflows", doc)
+    assert status == 201 and json.loads(body)["covers"] == ["实验"]
+    assert call(base, "/workflows", {**doc, "steps": []})[0] == 422
+    assert call(base, "/workflows", {**doc, "name": "taken"})[0] == 409

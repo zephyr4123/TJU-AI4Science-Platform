@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,8 @@ from framework.contracts.flow import check_flow, stage_remarks, stages_of
 WORKFLOWS_DIRNAME = "workflows"
 ACTORS = ("人", "助理")
 KEYS = ("publish", "accept")
+# 文件名就是流的名字（P-13）：小写英文加连字符，页面存流时也按这个拒
+NAME_RE = re.compile(r"[a-z][a-z0-9-]*")
 
 
 class WorkflowInvalid(ValueError):
@@ -85,11 +88,20 @@ def load_workflow(path: Path) -> Workflow:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
         raise WorkflowInvalid(f"{path.name}: YAML 语法错误：{exc}") from exc
+    return parse_workflow(path.name, raw)
+
+
+def parse_workflow(filename: str, raw: Any) -> Workflow:
+    """一份工作流的形状检查，读文件与页面存流走同一处；`filename` 只用来报错与核对 name。"""
+    stem = filename[:-5] if filename.endswith(".yaml") else filename
     if not isinstance(raw, dict):
-        raise WorkflowInvalid(f"{path.name}: 顶层要是映射")
+        raise WorkflowInvalid(f"{filename}: 顶层要是映射")
     name = raw.get("name")
-    if name != path.stem:
-        raise WorkflowInvalid(f"{path.name}: name 要等于文件名 {path.stem!r}，实际 {name!r}")
+    if name != stem:
+        raise WorkflowInvalid(f"{filename}: name 要等于文件名 {stem!r}，实际 {name!r}")
+    if not NAME_RE.fullmatch(str(name)):
+        raise WorkflowInvalid(f"{filename}: name 只能是小写英文、数字、连字符，实际 {name!r}")
+    path = Path(filename)
     title, summary = raw.get("title"), raw.get("summary")
     if not isinstance(title, str) or not title.strip():
         raise WorkflowInvalid(f"{path.name}: 缺 title")
@@ -132,6 +144,42 @@ def _step(filename: str, index: int, raw: Any) -> Step:
     if params and not cap:
         raise WorkflowInvalid(f"{label} 不是能力步骤，不该有 with")
     return Step(by=by, does=" ".join(does.split()), cap=cap, key=key, with_=dict(params))
+
+
+def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability], *,
+                  overwrite: bool = False) -> Workflow:
+    """编辑台存一条流：形状与通不通都过了才写 `<root>/<name>.yaml`；已有同名不覆盖，除非明说。
+
+    存的是页面交来的原样映射（只留认识的键），YAML 里中文原样、键序照给。
+    """
+    workflow = parse_workflow(f"{raw.get('name')}.yaml", raw)
+    problems = workflow_problems(workflow, catalog)
+    if problems:
+        raise WorkflowInvalid(f"{workflow.name}.yaml: " + "；".join(problems))
+    path = Path(root) / f"{workflow.name}.yaml"
+    if path.exists() and not overwrite:
+        raise FileExistsError(
+            f"已经有一条叫 {workflow.name!r} 的流：{path}；换个名字，或者明说覆盖")
+    doc: dict[str, Any] = {"name": workflow.name, "title": workflow.title,
+                           "summary": workflow.summary}
+    if workflow.assumes:
+        doc["assumes"] = list(workflow.assumes)
+    doc["steps"] = [_step_doc(step) for step in workflow.steps]
+    Path(root).mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=100),
+                    encoding="utf-8")
+    return workflow
+
+
+def _step_doc(step: Step) -> dict[str, Any]:
+    doc: dict[str, Any] = {"by": step.by, "does": step.does}
+    if step.cap:
+        doc["cap"] = step.cap
+    if step.key:
+        doc["key"] = step.key
+    if step.with_:
+        doc["with"] = dict(step.with_)
+    return doc
 
 
 def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> list[str]:

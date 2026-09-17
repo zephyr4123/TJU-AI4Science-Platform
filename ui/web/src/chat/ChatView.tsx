@@ -132,7 +132,7 @@ function Welcome({ onNew }: { onNew: () => void }) {
                   direction="top" className="text-[2rem] leading-[1.25] font-semibold tracking-tight text-balance" />
         <p className="t-body mt-5 text-muted-foreground">
           在对话里说清课题、数据和「怎么算好」，助理会整理成一份需求。你看过、署名发布，它才能接任务、跑基线、开实验。
-          跑完的结果在右边「结果」页验收。
+          右边那条流告诉你走到哪、在等谁，结果也在那儿验收。
         </p>
         <div className="mt-8">
           <Button size="lg" onClick={onNew}>开始一段对话</Button>

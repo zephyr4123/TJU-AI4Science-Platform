@@ -1,10 +1,9 @@
 // 壳：顶栏（名字、当前对话、花费、主页面 / 编辑台胶囊）+ 两块看板（外层 #58 #64）。
 // 主页面改「实例」：对话为主，右边是流程脊柱——当前 run 照的那条流，没有 run 就是需求对齐（#67）；
-// 编辑台改「库」：工作流墙、能力货架、拼流台（#68）。页面只是 `ai4sci serve` 的客户端。
+// 编辑台改「库」：工作流墙、七段货架、拼流台，存成 workflows/<name>.yaml（#68）。页面只是 `ai4sci serve` 的客户端。
 import { useCallback, useState } from 'react'
 
 import { api } from '@/api/client'
-import { WorkflowBoard } from '@/boards/WorkflowBoard'
 import { ChatView } from '@/chat/ChatView'
 import { PillNav } from '@/components/reactbits/PillNav'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -13,6 +12,7 @@ import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 import { ChatDrawer } from '@/sidebar/ChatDrawer'
 import { Spine } from '@/spine/Spine'
+import { Studio } from '@/studio/Studio'
 
 type View = 'main' | 'studio'
 
@@ -92,11 +92,7 @@ export default function App() {
             </aside>
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-[64rem] px-8 py-8">
-              <WorkflowBoard />
-            </div>
-          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto"><Studio /></div>
         )}
       </div>
     </TooltipProvider>
