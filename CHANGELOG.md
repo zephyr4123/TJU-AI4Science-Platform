@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-17
+
 ### 变更
 - CLI 主导封装（外层 [#60](https://github.com/zephyr4123/TJU-AI4Science/issues/60)，纲领 P-14）：协调 agent 的 Bash 白名单收成 `Bash(ai4sci *)` 一条，`ClaudeCodeChat.build_env` 把本 venv 的 bin 追加进 PATH 让裸 `ai4sci` 找得到；指南前言写明一条命令一行、不加路径、不挂环境变量、不接管道，没有按钮就停下来说「平台缺这颗按钮」；指南第 5 步去掉 `AI4SCI_EXECUTOR_MODEL=sonnet` 前缀（执行层模型是起服务的人配的），接任务步骤改成先 `cap init` 再填模板，「撒一批起点探尽头」这句服务里做不到的指令删掉、改成问研究者或文献、没有就空着；`test_chat_guide` 加 lint：指南代码块里每条命令以 `ai4sci ` 开头。实验 #59 里 agent 照指南敲带前缀的命令被白名单拒、裸跑 python 探尽头被拒、只能逐文件 Read + Write 搬数据
 - `docs/PRODUCT.md` 设计原则加两条（外层 [#58](https://github.com/zephyr4123/TJU-AI4Science/issues/58)，拍板记录，页面未改）：看板随工作流变、不写死流程；两块看板以可写目录划界，需求对齐在主页面
@@ -60,5 +62,6 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/releases/tag/v0.1.0
