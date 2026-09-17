@@ -16,7 +16,7 @@ const row = (partial: Partial<LedgerRow>): LedgerRow => ({
 const run = (partial: Partial<RunSummary>): RunSummary => ({
   run_id: 'r', task: 't', title: 't', metric: { name: 'nll', direction: 'minimize' },
   baseline: 21.6, best_metric: 21.34, best_iter: 6, last_iter: 8, stop_reason: null,
-  updated_at: null, cost_usd: 1.25, running: false, job: null, analysis: true,
+  updated_at: null, cost_usd: 1.25, running: false, job: null, flow: null, analysis: true,
   verify: { status: 'PASS' }, accept: null, ...partial,
 })
 

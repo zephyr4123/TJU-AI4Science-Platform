@@ -22,6 +22,7 @@ import yaml
 from framework.run import layout
 
 RUNS_ROOT_ENV = "AI4SCI_RUNS_ROOT"
+WORKFLOWS_ROOT_ENV = "AI4SCI_WORKFLOWS_ROOT"
 EXECUTOR_TIMEOUT_ENV = "AI4SCI_EXECUTOR_TIMEOUT_S"
 DEFAULT_EXECUTOR_TIMEOUT_S = 900.0
 DEFAULT_PATIENCE = 5  # manifest 不写 budget.patience 时的缺省（读取点在 load_context）
@@ -71,6 +72,14 @@ def default_runs_root() -> Path:
     root = Path(raw) if raw else Path(__file__).resolve().parents[2] / "runs"
     root.mkdir(parents=True, exist_ok=True)
     assert root.is_dir(), f"{RUNS_ROOT_ENV} 指向的不是目录：{root}"
+    return root
+
+
+def default_workflows_root() -> Path:
+    """预装工作流的目录：AI4SCI_WORKFLOWS_ROOT 优先，否则 <仓根>/workflows（同上的 parents[2]）。"""
+    raw = os.environ.get(WORKFLOWS_ROOT_ENV)
+    root = Path(raw) if raw else Path(__file__).resolve().parents[2] / "workflows"
+    assert root.is_dir(), f"{WORKFLOWS_ROOT_ENV} 指向的不是目录：{root}"
     return root
 
 

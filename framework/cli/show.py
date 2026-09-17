@@ -26,7 +26,7 @@ from framework.contracts.capability import STAGES
 from framework.contracts.flow import check_flow, stage_remarks, stages_of
 from framework.contracts.report import read_report
 from framework.memory import ledger
-from framework.run import jobs, layout
+from framework.run import flow_state, jobs, layout
 from framework.run.checkpoint import read_checkpoint
 from framework.run.context import load_manifest
 
@@ -95,6 +95,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_INVALID
     for job in jobs.jobs_for(runs_root(args), state["run_id"]):
         print(f"job\t{job.job_id}\t{jobs.effective_status(job)}\t{job.cap}\t{job.result}")
+    flow = flow_state.status(run_dir, runs_root(args))
+    if flow is not None:
+        following = flow["next"]
+        print(f"workflow\t{flow['workflow']}\tstep={flow['step']}/{flow['total']}"
+              f"\twaiting={flow['waiting']}"
+              f"\tnext={'-' if following is None else following['by'] + '：' + following['does']}")
     # 账本 × git 的对账放在这里跑：不对账的状态只是"它自己说它没事"（P-3）
     problems = ledger.reconcile(ledger_path, layout.work(run_dir))
     if problems:

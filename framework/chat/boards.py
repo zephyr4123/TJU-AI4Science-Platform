@@ -18,7 +18,7 @@ import yaml
 from framework.contracts import headroom, packs, publish
 from framework.contracts.report import read_report
 from framework.memory import ledger
-from framework.run import accept, jobs, layout
+from framework.run import accept, flow_state, jobs, layout
 from framework.run.checkpoint import read_checkpoint
 from framework.run.context import load_manifest, primary_metric
 
@@ -134,6 +134,7 @@ def run_summary(run_dir: Path) -> dict[str, Any]:
         "cost_usd": ledger.total_cost(layout.ledger(run_dir)),
         "running": layout.inflight(run_dir).is_file(),
         "job": _job_dict(jobs.running_for(run_dir.parent, state["run_id"])),
+        "flow": flow_state.status(run_dir, run_dir.parent),
         "analysis": layout.analysis_doc(run_dir).is_file(),
         "verify": verify_state(run_dir),
         "accept": accept.read_acceptance(run_dir),

@@ -83,6 +83,19 @@ export interface Job {
   log: string
 }
 
+/** run 照的那条流与走到第几步（`cap start --workflow`）；`waiting` 是现算的：
+ *  `job:<id>` 等作业、`key:publish|accept` 等人按键、`human` 等人、`assistant` 轮到助理、`done` 走完。 */
+export interface FlowState {
+  workflow: string
+  title: string
+  step: number
+  total: number
+  steps: WorkflowStep[]
+  next: WorkflowStep | null
+  waiting: string
+  updated_at: string | null
+}
+
 export interface RunSummary {
   run_id: string
   task: string | null
@@ -98,6 +111,8 @@ export interface RunSummary {
   running: boolean
   /** 正在跑的后台作业；没有就是 null */
   job: Job | null
+  /** 照的流与步序；没照流就是 null */
+  flow: FlowState | null
   analysis: boolean
   verify: VerifyState | null
   accept: Acceptance | null

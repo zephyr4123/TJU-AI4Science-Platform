@@ -30,7 +30,7 @@ from framework.cli._common import (
 )
 from framework.contracts.capability import PARAM_TYPES, Capability, CapabilityFailed, Ports
 from framework.contracts.publish import NotPublished
-from framework.run import jobs
+from framework.run import flow_state, jobs
 from framework.run.context import TaskInvalid
 
 
@@ -57,6 +57,8 @@ def cmd_cap(args: argparse.Namespace) -> int:
     setup_logging()
     code, line = _run(args, descriptor, target, ports)
     print(line, file=sys.stdout if code == EXIT_OK else sys.stderr)
+    if code == EXIT_OK and descriptor.level == "run":
+        flow_state.record_press(target, descriptor.name)  # 记它落在流的第几步；没照流就不记
     if job_id:
         jobs.finish(runs_root(args), job_id, exit_code=code, result=line)
     return code

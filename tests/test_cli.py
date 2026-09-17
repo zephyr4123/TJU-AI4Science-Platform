@@ -122,6 +122,26 @@ def test_start_creates_the_run_dir(tmp_path):
     assert (run_dir / "journal.md").is_file()
 
 
+def test_start_with_workflow_snapshots_it_and_show_run_reads_the_note(tmp_path, monkeypatch):
+    """外层 #63：`--workflow` 快照那条流，step 记到 start；跑一颗 run 级能力后步序推进；
+    名字不对在开 run 之前就拒。"""
+    monkeypatch.setenv("AI4SCI_WORKFLOWS_ROOT", str(REPO_ROOT / "workflows"))
+    pack = pf.make_pack(tmp_path)
+    bad = run_cli("cap", "start", str(pack.task_dir), "--run-id", "r0", "--workflow", "nope",
+                  "--runs-root", str(tmp_path / "runs"))
+    assert bad.returncode == EXIT_INVALID and "没有叫 'nope' 的工作流" in bad.stderr
+    assert not (tmp_path / "runs" / "r0").exists()
+    proc = run_cli("cap", "start", str(pack.task_dir), "--run-id", "r1",
+                   "--workflow", "quick-look", "--runs-root", str(tmp_path / "runs"))
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert "\tworkflow=quick-look\tstep=1\t" in proc.stdout
+    run_dir = tmp_path / "runs" / "r1"
+    assert (run_dir / "workflow" / "quick-look.yaml").is_file() and (run_dir / "flow.json").is_file()
+    shown = run_cli("show", "run", "r1", "--runs-root", str(tmp_path / "runs"))
+    assert shown.returncode == EXIT_OK, shown.stderr
+    assert "workflow\tquick-look\tstep=1/4\twaiting=assistant\tnext=助理：跑 3 轮" in shown.stdout
+
+
 def test_start_on_broken_pack_exits_one(tmp_path):
     pack = pf.make_pack(tmp_path)
     (pack.task_dir / "harness" / "evaluate.py").write_text("# 改了但没更新 SHA256SUMS\n")

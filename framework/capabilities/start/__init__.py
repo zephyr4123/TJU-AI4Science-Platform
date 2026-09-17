@@ -15,7 +15,8 @@ from pathlib import Path
 
 from framework.contracts import packs, publish
 from framework.contracts.capability import Artifact, Capability, CapabilityFailed, Param, Ports
-from framework.run.context import default_runs_root
+from framework.run import flow_state
+from framework.run.context import default_runs_root, default_workflows_root
 from framework.run.lifecycle import EnvBuildError, NotPublished, TaskInvalid, new_run
 
 NAME = "start"
@@ -36,12 +37,15 @@ DESCRIPTOR = Capability(
     ),
     outputs=(
         Artifact("run", "runs/<run_id>/",
-                 "独立工作区：manifest 快照、work/（任务包的副本，起 git）、checkpoint.json"),
+                 "独立工作区：manifest 快照、work/（任务包的副本，起 git）、checkpoint.json；"
+                 "给了 --workflow 就多 flow.json 与 workflow/ 里那条流的快照"),
     ),
     params=(
         Param("run_id", "str", "", "run 的名字；缺省 <任务名>-<UTC 时间戳>"),
         Param("runs_root", "str", "",
               "runs 根目录；缺省环境变量 AI4SCI_RUNS_ROOT，再缺省 <仓根>/runs"),
+        Param("workflow", "str", "",
+              "照哪条预装的流（show workflows 里的名字）：快照进 run，之后每按一颗按钮记它落在第几步"),
     ),
     criteria=(
         "任务包已发布、合契约、预检有改进空间",
@@ -50,10 +54,12 @@ DESCRIPTOR = Capability(
 )
 
 
-def run(task_dir: Path, ports: Ports, *, run_id: str = "", runs_root: str = "") -> str:
+def run(task_dir: Path, ports: Ports, *, run_id: str = "", runs_root: str = "",
+        workflow: str = "") -> str:
     task_dir = Path(task_dir).resolve()
     run_id = run_id or f"{task_dir.name}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
     root = Path(runs_root).resolve() if runs_root else default_runs_root()
+    workflow_path = _workflow_file(workflow) if workflow else None  # 名字不对在开 run 之前就拒
     try:
         run_dir = new_run(task_dir, root, run_id)
     except (NotPublished, TaskInvalid, EnvBuildError) as exc:
@@ -61,4 +67,17 @@ def run(task_dir: Path, ports: Ports, *, run_id: str = "", runs_root: str = "") 
         raise CapabilityFailed(str(exc)) from exc
     except FileExistsError as exc:
         raise CapabilityFailed(str(exc)) from exc
-    return f"ok {run_id}\t{run_dir}\tnext=ai4sci cap experiment {run_id}"
+    tail = ""
+    if workflow_path is not None:
+        state = flow_state.attach(run_dir, workflow_path)
+        tail = f"\tworkflow={workflow}\tstep={state['step']}"
+    return f"ok {run_id}\t{run_dir}{tail}\tnext=ai4sci cap experiment {run_id}"
+
+
+def _workflow_file(name: str) -> Path:
+    root = default_workflows_root()
+    path = root / f"{name}.yaml"
+    if not path.is_file():
+        available = ", ".join(sorted(p.stem for p in root.glob("*.yaml"))) or "-"
+        raise CapabilityFailed(f"没有叫 {name!r} 的工作流（{root} 下有：{available}）")
+    return path
