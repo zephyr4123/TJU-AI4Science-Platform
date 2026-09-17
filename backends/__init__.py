@@ -59,8 +59,11 @@ class Runner(Protocol):
     ) -> RunResult: ...
 
 
-# 事件种类：适配器把各家 CLI 的原生事件翻成这几种，上层（落盘、CLI 打印、网页 SSE）只认这几种
-CHAT_EVENT_KINDS = ("init", "text", "tool_use", "tool_result", "denied", "done", "error")
+# 事件种类：适配器把各家 CLI 的原生事件翻成这几种，上层（落盘、CLI 打印、网页 SSE）只认这几种。
+# `delta` 是助理正在说的一小段字（外层 #65）：每家适配器都必须逐字吐，最后仍要有一条完整的 `text`
+# ——上层拿 text 替换攒起来的 delta，落盘只留 text 不留 delta。不逐字吐的适配器，页面上一整段
+# 突然蹦出来，那是体验事故不是实现细节
+CHAT_EVENT_KINDS = ("init", "delta", "text", "tool_use", "tool_result", "denied", "done", "error")
 
 
 @dataclass
@@ -69,6 +72,7 @@ class ChatEvent:
 
     `done` 带这一轮的成本、耗时、后端 session id 与最终回复；`error` 是这一轮没走完
     （超时、进程死了、协议坏了），`text` 里是原因。成本拿不到填 NaN 不填 0（同 RunResult）。
+    `delta` 的 `text` 是刚到的那几个字，不是累计；同一段话结束时会来一条完整的 `text`。
     """
 
     kind: str

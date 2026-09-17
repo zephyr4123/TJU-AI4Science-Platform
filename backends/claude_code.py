@@ -250,6 +250,7 @@ class ClaudeCodeChat:
         rules.append(f"Read({_abs_glob(cwd)})")
         rules += bash_rules
         argv = [self.cli, "-p", message, "--output-format", "stream-json", "--verbose",
+                "--include-partial-messages",  # 逐字吐（端口的 delta 事件，外层 #65）
                 "--permission-mode", "dontAsk", *ISOLATION_ARGS,
                 "--allowedTools", *rules,
                 "--max-turns", str(int(_env_num("AI4SCI_COORDINATOR_MAX_TURNS", 50, int))),
@@ -318,7 +319,9 @@ def _translate(line: str) -> ChatEvent | None:
 
     形状按实测：`system/init` 带 session_id；`assistant.message.content[]` 里 text / tool_use /
     thinking；`user.message.content[]` 里 tool_result（content 是字符串或块列表）；
-    `system/permission_denied`；`result` 带 total_cost_usd / duration_ms / result 文本。
+    `system/permission_denied`；`result` 带 total_cost_usd / duration_ms / result 文本；
+    开了 `--include-partial-messages` 后 `stream_event.event` 是 API 的原生流事件，只翻
+    `content_block_delta` 里的 `text_delta`（thinking_delta / signature_delta 不是给人看的）。
     """
     if not line.strip():
         return None
@@ -335,6 +338,13 @@ def _translate(line: str) -> ChatEvent | None:
             return ChatEvent("denied", tool=str(raw.get("tool_name", "")),
                              text=str(raw.get("message", "")), is_error=True,
                              session_id=sid, raw=raw)
+        return None
+    if kind == "stream_event":
+        event = raw.get("event") or {}
+        delta = event.get("delta") or {}
+        if event.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
+            piece = delta.get("text")
+            return ChatEvent("delta", text=piece, session_id=sid, raw=raw) if piece else None
         return None
     if kind == "assistant":
         blocks = raw.get("message", {}).get("content", [])

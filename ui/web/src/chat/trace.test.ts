@@ -62,3 +62,20 @@ describe('describeTool', () => {
     expect(describeTool('WebSearch', { query: 'q' })).toBe('WebSearch')
   })
 })
+
+describe('delta 逐字攒段', () => {
+  const ev = (kind: ChatEvent['kind'], text: string): ChatEvent =>
+    ({ kind, text, tool: '', tool_input: {}, is_error: false, session_id: null, cost_usd: null,
+       duration_s: 0, exit_code: null })
+
+  it('片段攒进正在说的那段，完整 text 到了整段替换、不拼两遍', () => {
+    let items = reduceTrace([], ev('delta', '基线'))
+    items = reduceTrace(items, ev('delta', '跑完了'))
+    expect(items).toEqual([{ kind: 'text', text: '基线跑完了', streaming: true }])
+    items = reduceTrace(items, ev('text', '基线跑完了。'))
+    expect(items).toEqual([{ kind: 'text', text: '基线跑完了。' }])
+    items = reduceTrace(items, ev('delta', '下一步'))
+    expect(items).toHaveLength(2)
+    expect(items[1]).toEqual({ kind: 'text', text: '下一步', streaming: true })
+  })
+})

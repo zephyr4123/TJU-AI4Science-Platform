@@ -26,6 +26,18 @@ def reply(text: str, *, cost: float = 0.01, session: str = SESSION) -> list[Chat
                                         "total_cost_usd": cost, "duration_ms": 1500})]
 
 
+def streamed(text: str, *, pieces: int = 3) -> list[ChatEvent]:
+    """逐字吐的一轮：init → 几条 delta → 完整 text → done（端口契约：delta 之后必有 text）。"""
+    events = reply(text)
+    step = max(1, -(-len(text) // pieces))
+    deltas = [ChatEvent("delta", text=text[i:i + step], session_id=SESSION,
+                        raw={"type": "stream_event", "event": {"type": "content_block_delta",
+                             "delta": {"type": "text_delta", "text": text[i:i + step]}}})
+              for i in range(0, len(text), step)]
+    events[1:1] = deltas
+    return events
+
+
 def with_tool(text: str, tool: str, tool_input: dict, result: str) -> list[ChatEvent]:
     """按了一个按钮的一轮：init → tool_use → tool_result → 文本 → done。"""
     events = reply(text)

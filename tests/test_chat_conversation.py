@@ -7,7 +7,14 @@ import json
 import pytest
 
 from framework.chat import conversation as conv_mod
-from tests.fixtures.scripted_chat import SESSION, ScriptedChat, failure, reply, with_tool
+from tests.fixtures.scripted_chat import (
+    SESSION,
+    ScriptedChat,
+    failure,
+    reply,
+    streamed,
+    with_tool,
+)
 
 GUIDE = "# 指南\n你是协调 agent。"
 
@@ -33,6 +40,17 @@ def test_new_load_list_round_trip(tmp_path):
         conv_mod.load_conversation(tmp_path / "runs", "nope")
     with pytest.raises(FileExistsError):
         conv_mod.new_conversation(tmp_path / "runs", "scripted", tmp_path, chat_id=conv.chat_id)
+
+
+def test_deltas_stream_through_but_only_the_full_text_lands_on_disk(tmp_path):
+    """外层 #65：逐字片段往外吐（CLI / SSE 靠它），events.jsonl 只留完整事件，transcript 不变。"""
+    conv, chat = start(tmp_path, streamed("你好，研究者", pieces=3))
+    events = drain(conv, chat, "你好")
+    assert [e.kind for e in events] == ["init", "delta", "delta", "delta", "text", "done"]
+    assert "".join(e.text for e in events if e.kind == "delta") == "你好，研究者"
+    lines = (conv.dir / "turn-1" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["type"] for line in lines] == ["system", "assistant", "result"]
+    assert conv_mod.read_turns(conv)[0]["reply"] == "你好，研究者"
 
 
 def test_framework_origin_turn_is_labelled_and_chat_id_reaches_the_adapter(tmp_path):

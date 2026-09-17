@@ -66,7 +66,14 @@ function Thinking() {
 function TraceRow({ item }: { item: TraceItem }) {
   if (item.kind === 'error') return <li><ErrorNote text={item.text} /></li>
   if (item.kind === 'text') {
-    return <li className="px-1 py-1"><Markdown text={item.text} className="text-muted-foreground" /></li>
+    return (
+      <li className="px-1 py-1">
+        <Markdown text={item.text} className="text-muted-foreground" />
+        {item.streaming && (
+          <span aria-hidden className="ml-0.5 inline-block h-[1em] w-0.5 animate-pulse bg-primary align-[-2px]" />
+        )}
+      </li>
+    )
   }
   const pending = item.result === null
   const status = item.denied ? '被拒绝了' : pending ? '进行中…' : item.isError ? '出错了' : ''

@@ -172,7 +172,9 @@ export interface ChatDoc extends ChatMeta {
   history: TurnRecord[]
 }
 
-export type EventKind = 'init' | 'text' | 'tool_use' | 'tool_result' | 'denied' | 'done' | 'error'
+/** `delta` 是助理正在说的几个字（不是累计），同一段说完会来一条完整的 `text` */
+export type EventKind =
+  | 'init' | 'delta' | 'text' | 'tool_use' | 'tool_result' | 'denied' | 'done' | 'error'
 
 export interface ChatEvent {
   kind: EventKind

@@ -172,8 +172,9 @@ def send(
             for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
                                    system_prompt=system_prompt, allowed_paths=allowed_paths,
                                    bash_rules=bash_rules, chat_id=conv.chat_id):
-                fh.write(json.dumps(event.raw or _bare(event), ensure_ascii=False) + "\n")
-                fh.flush()
+                if event.kind != "delta":  # 逐字片段只往外吐不落盘：证据是完整的 text，不是碎片
+                    fh.write(json.dumps(event.raw or _bare(event), ensure_ascii=False) + "\n")
+                    fh.flush()
                 if event.session_id and event.session_id != conv.session_id:
                     conv.session_id = event.session_id
                     conv.save()

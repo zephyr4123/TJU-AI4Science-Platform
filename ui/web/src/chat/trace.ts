@@ -4,7 +4,7 @@
 import type { ChatEvent } from '@/api/types'
 
 export type TraceItem =
-  | { kind: 'text'; text: string }
+  | { kind: 'text'; text: string; streaming?: boolean }
   | { kind: 'tool'; tool: string; input: Record<string, unknown>; result: string | null;
       isError: boolean; denied: boolean }
   | { kind: 'error'; text: string }
@@ -17,8 +17,20 @@ export interface TurnOutcome {
 
 export function reduceTrace(items: readonly TraceItem[], event: ChatEvent): TraceItem[] {
   switch (event.kind) {
+    case 'delta': {
+      // 逐字攒进正在说的那一段；上一段已经说完（或中间按过按钮）就另起一段
+      const last = items[items.length - 1]
+      if (last && last.kind === 'text' && last.streaming) {
+        return [...items.slice(0, -1), { kind: 'text', text: last.text + event.text, streaming: true }]
+      }
+      return [...items, { kind: 'text', text: event.text, streaming: true }]
+    }
     case 'text': {
       const last = items[items.length - 1]
+      if (last && last.kind === 'text' && last.streaming) {
+        // 完整的一段到了：用它替换攒出来的碎片，别拼两遍
+        return [...items.slice(0, -1), { kind: 'text', text: event.text }]
+      }
       if (last && last.kind === 'text') {
         return [...items.slice(0, -1), { kind: 'text', text: `${last.text}\n\n${event.text}` }]
       }

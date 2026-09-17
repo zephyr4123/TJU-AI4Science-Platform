@@ -1,7 +1,7 @@
 """`ai4sci chat new|send|list`：在终端里和协调 agent 聊，网页没来之前的入口，也是排障入口。
 
-在 cli 层，调 `framework.chat`。`send` 把事件逐行打到 stdout：文本原样，工具一行一个，
-最后一行 `done` 或 `error`；退出码照旧 0 / 1 / 2。
+在 cli 层，调 `framework.chat`。`send` 把事件逐行打到 stdout：助理的话逐字打（delta），
+工具一行一个，最后一行 `done` 或 `error`；退出码照旧 0 / 1 / 2。
 """
 
 from __future__ import annotations
@@ -60,13 +60,21 @@ def cmd_send(args: argparse.Namespace) -> int:
         return EXIT_INVALID
     setup_logging()
     last: ChatEvent | None = None
+    streaming = False  # 正在逐字打一段话：完整的 text 来了只补个换行，不再打一遍
     try:
         for event in conversation.send(
             conv, get_chat(conv.backend), text, system_prompt=system_prompt,
             allowed_paths=guide.allowed_paths(Path(conv.cwd)), bash_rules=guide.BASH_RULES,
         ):
             last = event
-            print(render(event), flush=True)
+            if event.kind == "delta":
+                print(event.text, end="", flush=True)
+                streaming = True
+            elif event.kind == "text" and streaming:
+                print(flush=True)
+                streaming = False
+            else:
+                print(render(event), flush=True)
     except (conversation.ConversationBusy, ValueError, BackendNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID

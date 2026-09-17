@@ -310,6 +310,29 @@ def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatc
     assert ClaudeCodeChat().build_env(1.0)["PATH"] == str(Path(sys.executable).parent)
 
 
+def test_translate_turns_text_deltas_into_delta_events_and_ignores_thinking():
+    """外层 #65：stream_event 里只有 text_delta 是给人看的；thinking / signature 不翻。"""
+    from backends.claude_code import _translate
+
+    piece = _translate(json.dumps({"type": "stream_event", "session_id": "s", "event": {
+        "type": "content_block_delta", "index": 0,
+        "delta": {"type": "text_delta", "text": "光合"}}}))
+    assert piece is not None and piece.kind == "delta" and piece.text == "光合"
+    assert piece.session_id == "s"
+    for delta in ({"type": "thinking_delta", "thinking": "…"}, {"type": "signature_delta"},
+                  {"type": "text_delta", "text": ""}):
+        assert _translate(json.dumps({"type": "stream_event", "event": {
+            "type": "content_block_delta", "delta": delta}})) is None
+    stop = {"type": "stream_event", "event": {"type": "message_stop"}}
+    assert _translate(json.dumps(stop)) is None
+
+
+def test_chat_argv_asks_for_partial_messages(tmp_path: Path):
+    argv = ClaudeCodeChat().build_argv("hi", tmp_path, session_id=None, system_prompt="",
+                                       allowed_paths=[], bash_rules=())
+    assert "--include-partial-messages" in argv
+
+
 def test_chat_env_carries_the_chat_id_to_the_buttons_the_agent_presses(monkeypatch):
     """外层 #63：agent 按的 `--detach` 从环境里知道自己属于哪段对话；没给就不留上一段的。"""
     from framework.run.jobs import CHAT_ID_ENV
@@ -384,3 +407,8 @@ def test_live_chat_two_turns_remember_across_resume(tmp_path: Path, monkeypatch)
                             **common))
     assert second[-1].kind == "done" and "17" in second[-1].text
     assert second[-1].session_id == sid
+    # 端口契约：助理的话逐字先到，完整的 text 后到（外层 #65）
+    kinds = [e.kind for e in second]
+    assert "delta" in kinds and kinds.index("delta") < kinds.index("text")
+    assert "".join(e.text for e in second if e.kind == "delta").strip() == \
+        next(e.text for e in second if e.kind == "text").strip()

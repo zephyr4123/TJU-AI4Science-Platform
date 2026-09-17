@@ -629,6 +629,14 @@ def test_chat_new_send_list_with_a_scripted_backend(tmp_path, monkeypatch, capsy
     assert main(["chat", "list", "--runs-root", runs]) == EXIT_OK
     assert capsys.readouterr().out.startswith(f"{chat_id}\tturns=1\tcost_usd=0.0100")
 
+    # 逐字吐的一轮：片段接在一行里打，完整 text 到了只补换行，不重复打一遍（外层 #65）
+    from tests.fixtures.scripted_chat import streamed
+
+    chat.turns.append(streamed("基线跑完了，均值 21.49。", pieces=4))
+    assert main(["chat", "send", chat_id, "怎么样了？", "--runs-root", runs]) == EXIT_OK
+    out = capsys.readouterr().out.splitlines()
+    assert out[1] == "基线跑完了，均值 21.49。" and out[2].startswith("done\t")
+
 
 def test_chat_send_unknown_id_and_missing_file_exit_two(tmp_path):
     runs = str(tmp_path / "runs")
