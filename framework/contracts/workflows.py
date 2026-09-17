@@ -25,7 +25,7 @@ from typing import Any
 import yaml
 
 from framework.contracts.capability import Capability
-from framework.contracts.flow import check_flow
+from framework.contracts.flow import check_flow, stage_remarks, stages_of
 
 WORKFLOWS_DIRNAME = "workflows"
 ACTORS = ("人", "助理")
@@ -137,5 +137,20 @@ def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> lis
 
 
 def describe(workflows: Sequence[Workflow], catalog: dict[str, Capability]) -> list[dict[str, Any]]:
-    """给页面与 `flow list` 的响应体：每个工作流带它的问题清单。"""
-    return [{**wf.to_dict(), "problems": workflow_problems(wf, catalog)} for wf in workflows]
+    """给页面与 `show workflows` 的响应体：每个工作流带它覆盖的阶段、提醒与问题清单。
+    覆盖范围是从能力步骤算出来的，文件里不写。"""
+    out: list[dict[str, Any]] = []
+    for wf in workflows:
+        covers = stages_of([catalog[cap] for cap in wf.caps if cap in catalog])
+        out.append({**wf.to_dict(), "covers": covers, "remarks": stage_remarks(covers),
+                    "problems": workflow_problems(wf, catalog)})
+    return out
+
+
+def used_by(workflows: Sequence[Workflow]) -> dict[str, list[str]]:
+    """能力名 → 用到它的工作流名。反查而不是写在能力上：工作流引用能力，能力不认识工作流。"""
+    uses: dict[str, list[str]] = {}
+    for wf in workflows:
+        for cap in dict.fromkeys(wf.caps):
+            uses.setdefault(cap, []).append(wf.name)
+    return uses

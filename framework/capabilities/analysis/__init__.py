@@ -17,6 +17,9 @@ DESCRIPTOR = Capability(
     name="analysis",
     level="run",
     summary="实验分析：执行层读账本、笔记、best diff 与结果清单，写三节固定、数字可回溯的分析",
+    stage="分析",
+    title="写分析",
+    what="读账本和每一轮的结果，写一份分析：结论、数据表、证伪与未决三节。",
     inputs=(
         Artifact("manifest", "manifest.yaml", "研究问题、主指标与方向"),
         Artifact("ledger", "experiment/ledger.tsv", "账本全部行"),

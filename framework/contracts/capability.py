@@ -17,7 +17,7 @@ CLI 的参数从 `params` 生成，所以"CLI 参数与描述符一致"是构造
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from backends import Runner
@@ -26,6 +26,11 @@ from compute import Compute
 # task：动任务包（接任务、跑基线），产物路径相对任务包目录，入口 run(task_dir, ports, ...)；
 # run：动一个 run，产物路径相对 runs/<run_id>/，入口 run(run_dir, ports, ...)；project 还没有实例
 LEVELS = ("task", "run", "project")
+# 做科研的七个阶段（纲领 workflow §1，Q-1）。它是能力上面的一层标签：每颗能力属于一个阶段，
+# 一个阶段下可以挂几颗能力（设计 = design + baseline，实验 = start + experiment）。阶段不定先后、
+# 没有代码、没有运行时——顺序归协调层（P-10），这里只回答"这颗按钮是干哪一段科研的"。
+# 顺序是页面与 `show caps` 列清单的顺序，空着的阶段也列出来，让人看见还缺什么
+STAGES = ("文献", "假设", "设计", "实验", "分析", "写作", "验证")
 # 参数只认这几种标量：CLI 与 UI 表单都能直接映射（bool 在 CLI 上是开关）；要更复杂的输入
 # 应当是产物文件，不是参数
 PARAM_TYPES: dict[str, type] = {"int": int, "float": float, "str": str, "bool": bool}
@@ -58,7 +63,11 @@ class Param:
 
 @dataclass(frozen=True)
 class Capability:
-    """一个能力的描述符。`name` 必须等于子包名，`discover()` 会核对。"""
+    """一个能力的描述符。`name` 必须等于子包名，`discover()` 会核对。
+
+    `summary` 给协调 agent 与工程师看（说机制）；`title` 与 `what` 是给研究者看的人话（说效果），
+    页面、终端界面读同一份，不在某个界面里另抄一份。`stage` 是它属于哪个科研阶段。
+    "谁来做"不另设字段：`needs_executor` 为真就是助理（执行层 agent）做，否则是机器。"""
 
     name: str
     level: str
@@ -69,9 +78,15 @@ class Capability:
     needs_executor: bool = False
     needs_compute: bool = False
     criteria: tuple[str, ...] = ()
+    stage: str = field(kw_only=True)
+    title: str = field(kw_only=True)
+    what: str = field(kw_only=True)
 
     def __post_init__(self) -> None:
         assert self.level in LEVELS, f"能力 {self.name} 的 level 只认 {LEVELS}，得到 {self.level!r}"
+        assert self.stage in STAGES, f"能力 {self.name} 的阶段只认 {STAGES}，得到 {self.stage!r}"
+        assert self.title.strip() and self.what.strip(), (
+            f"能力 {self.name} 要有给研究者看的 title 与 what（人话标题与一句说明）")
         assert self.outputs, (
             f"能力 {self.name} 必须声明至少一个产物：没有产物的能力无法被验证（P-4）")
         names = [p.name for p in self.params]

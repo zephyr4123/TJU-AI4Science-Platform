@@ -30,6 +30,9 @@ DESCRIPTOR = Capability(
     name="verify",
     level="run",
     summary="验证：零模型，分析里的每个数回溯到 results.json，账本与 git 对账，出 PASS / FAIL 报告",
+    stage="验证",
+    title="验证",
+    what="把分析里的每个数回溯到某一轮的结果文件，账本和代码历史对账，出 PASS 或 FAIL。",
     inputs=(
         Artifact("analysis", "analysis/analysis.md", "分析能力的产物"),
         Artifact("runs", "experiment/runs/", "每轮的 results.json：数字的来源"),

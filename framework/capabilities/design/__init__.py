@@ -22,6 +22,9 @@ DESCRIPTOR = Capability(
     name=NAME,
     level="task",
     summary="接任务：执行层照 design.md 写 harness/ 与 code/ 草稿，框架封 harness、ruff、校验",
+    stage="设计",
+    title="接任务",
+    what="按设计说明写裁判脚本和一版最朴素的代码。裁判脚本封起来之后不再改，后面每一轮都用它打分。",
     inputs=(
         Artifact("manifest", packs.MANIFEST_NAME, "任务声明：指标、方向、预算、统计门"),
         Artifact("brief", packs.BRIEF_NAME, "协调层写的产物契约与「怎么算好」"),

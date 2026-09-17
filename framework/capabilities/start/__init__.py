@@ -23,6 +23,9 @@ DESCRIPTOR = Capability(
     name=NAME,
     level="task",
     summary="开一次实验：把任务包搬进 runs/<run_id>/ 的独立工作区，快照领域包、建环境、记下基线",
+    stage="实验",
+    title="开一次实验",
+    what="把任务包搬进一个独立的工作区，记下起点。之后每一轮都在这个工作区里改。",
     inputs=(
         Artifact("manifest", packs.MANIFEST_NAME, "预算与统计门"),
         Artifact("publish", publish.PUBLISH_NAME, "发布记录：没有不开"),

@@ -24,6 +24,9 @@ DESCRIPTOR = Capability(
     name=NAME,
     level="task",
     summary="跑基线：起 make_run0.sh 出 run_0/（基线 + 重复 + σ），环境与内环同一组，跑完机器预检",
+    stage="设计",
+    title="跑基线",
+    what="把最朴素的代码重复跑几次，得到起点成绩和它的晃动幅度。顺手算一遍从起点到尽头有没有改进的空间，没有就停下来告诉你。",
     inputs=(
         Artifact("manifest", packs.MANIFEST_NAME, "预算、inner_k、统计门、可选的尽头值 attainable"),
         Artifact("publish", publish.PUBLISH_NAME, "发布记录：没有不跑"),

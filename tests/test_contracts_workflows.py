@@ -43,6 +43,19 @@ def test_shipped_workflows_load_and_connect():
     assert auto.assumes == ("harness/", "code/", "run_0/")  # 从基线之后开始，前提写在文件里
 
 
+def test_shipped_workflows_cover_stages_and_are_looked_up_from_capabilities():
+    found = workflows.load_workflows(workflows.workflows_root(REPO_ROOT))
+    described = {d["name"]: d for d in workflows.describe(found, catalog())}
+    assert described["intake"]["covers"] == ["设计"] and described["intake"]["remarks"] == []
+    assert described["auto-research"]["covers"] == ["实验", "分析", "验证"]
+    assert described["auto-research"]["remarks"] == []
+    # 反查：能力上不写"我属于哪条流"，是从工作流文件算回来的
+    assert workflows.used_by(found) == {
+        "start": ["auto-research"], "experiment": ["auto-research"],
+        "analysis": ["auto-research"], "verify": ["auto-research"],
+        "design": ["intake"], "baseline": ["intake"]}
+
+
 def test_load_and_describe(tmp_path):
     (tmp_path / "w.yaml").write_text(GOOD, encoding="utf-8")
     found = workflows.load_workflows(tmp_path)
@@ -51,7 +64,19 @@ def test_load_and_describe(tmp_path):
     assert described[0]["steps"][1] == {"by": "助理", "does": "接任务", "cap": "design",
                                         "key": None}
     assert described[0]["problems"] == []
+    assert described[0]["covers"] == ["设计"] and described[0]["remarks"] == []
     assert workflows.load_workflows(tmp_path / "nowhere") == []
+
+
+def test_a_flow_that_experiments_without_verifying_gets_a_remark_not_a_problem(tmp_path):
+    text = (GOOD.replace("cap: design", "cap: experiment")
+            + "  - by: 助理\n    does: 分析\n    cap: analysis\n")
+    (tmp_path / "w.yaml").write_text("assumes: [harness/, code/, run_0/]\n" + text,
+                                     encoding="utf-8")
+    [wf] = workflows.load_workflows(tmp_path)
+    [described] = workflows.describe([wf], catalog())
+    assert described["covers"] == ["实验", "分析"]
+    assert described["problems"] == [] and "没有验证" in described["remarks"][0]
 
 
 def test_bad_shapes_are_named(tmp_path):

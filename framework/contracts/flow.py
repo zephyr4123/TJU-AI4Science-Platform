@@ -59,3 +59,21 @@ def check_flow(steps: Sequence[Capability], *, have: Sequence[str] = ()) -> list
                 problems.append(f"{label} 要 {artifact.path}，前面没人产出")
         available.update(artifact.path for artifact in cap.outputs)
     return problems
+
+
+def stages_of(steps: Sequence[Capability]) -> list[str]:
+    """一串能力覆盖了哪几个科研阶段：按出现顺序，去重。给工作流卡片与 `show flow` 说一句
+    "从哪儿到哪儿"；不是校验，阶段之间没有该有的先后（P-10）。"""
+    covered: list[str] = []
+    for cap in steps:
+        if cap.stage not in covered:
+            covered.append(cap.stage)
+    return covered
+
+
+def stage_remarks(stages: Sequence[str]) -> list[str]:
+    """给人看的提醒，不是问题、不拦流：有实验或分析却没有验证，数字没人回溯，结果不能算可信。
+    自定义工坊里 agent 拼出一条流时机器就能说这一句。"""
+    if ("实验" in stages or "分析" in stages) and "验证" not in stages:
+        return ["有实验或分析、没有验证：数字没人回溯，结果不能算可信"]
+    return []

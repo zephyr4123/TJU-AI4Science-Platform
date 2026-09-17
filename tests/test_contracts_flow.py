@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from framework.capabilities import discover
 from framework.contracts.capability import Artifact, Capability
-from framework.contracts.flow import check_flow
+from framework.contracts.flow import check_flow, stage_remarks, stages_of
 
 
 def caps(*names: str) -> list[Capability]:
@@ -49,11 +49,29 @@ def test_empty_flow_is_a_problem():
     assert check_flow([]) == ["流是空的：至少摆一个能力"]
 
 
+def synthetic(name: str, level: str, inputs=(), outputs=(), *, stage="实验") -> Capability:
+    return Capability(name, level, "s", inputs, outputs or (Artifact("o", f"{name}/", "d"),),
+                      stage=stage, title=name, what="w")
+
+
 def test_synthetic_capabilities_connect_by_path_not_by_name():
-    a = Capability("a", "run", "s", (), (Artifact("o", "a/out.json", "d"),))
-    b = Capability("b", "run", "s", (Artifact("i", "a/out.json", "d"),),
-                   (Artifact("o", "b/", "d"),))
-    bridge = [Capability("t", "task", "s", (), tuple(Artifact(p, p, "d") for p in
-                                                    ("harness/", "code/", "run_0/")))]
+    a = synthetic("a", "run", (), (Artifact("o", "a/out.json", "d"),))
+    b = synthetic("b", "run", (Artifact("i", "a/out.json", "d"),), (Artifact("o", "b/", "d"),))
+    bridge = [synthetic("t", "task", (), tuple(Artifact(p, p, "d") for p in
+                                                ("harness/", "code/", "run_0/")))]
     assert check_flow(bridge + [a, b]) == []
     assert check_flow(bridge + [b, a]) == ["第 2 步 b 要 a/out.json，前面没人产出"]
+
+
+def test_stages_covered_are_in_step_order_without_repeats():
+    assert stages_of(caps("design", "baseline", "start", "experiment", "analysis", "verify")) == [
+        "设计", "实验", "分析", "验证"]
+    assert stages_of(caps("verify", "analysis")) == ["验证", "分析"]  # 不排序：阶段没有该有的先后
+    assert stages_of([]) == []
+
+
+def test_remarks_only_when_numbers_would_go_unverified():
+    assert stage_remarks(["设计"]) == []
+    assert stage_remarks(["实验", "分析", "验证"]) == []
+    assert stage_remarks(["实验"]) and "没有验证" in stage_remarks(["实验"])[0]
+    assert stage_remarks(["分析"]) and "没有验证" in stage_remarks(["分析"])[0]

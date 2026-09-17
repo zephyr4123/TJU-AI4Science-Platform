@@ -12,9 +12,14 @@ from types import ModuleType
 import pytest
 
 from framework.capabilities import check_capability_module, discover
-from framework.contracts.capability import Artifact, Capability, Param, Ports
+from framework.contracts.capability import STAGES, Artifact, Capability, Param, Ports
 
 OUT = (Artifact("x", "x/", "产物"),)
+
+
+def C(name: str, level: str, inputs=(), outputs=OUT, **kw) -> Capability:
+    """测试用的最小描述符：阶段与人话字段给定值，只让每个用例关心自己那一处。"""
+    return Capability(name, level, "s", inputs, outputs, stage="实验", title="t", what="w", **kw)
 
 
 def _module(name: str, descriptor: object, entry: object) -> ModuleType:
@@ -49,16 +54,16 @@ def test_param_names_match_entrypoint_keyword_arguments():
 
 @pytest.mark.parametrize("descriptor, entry, message", [
     (None, lambda run_dir, ports: "", "没有导出"),
-    (Capability("other", "run", "s", (), OUT), lambda run_dir, ports: "", "必须等于子包名"),
-    (Capability("cap", "run", "s", (), OUT), None, "没有导出 run"),
-    (Capability("cap", "run", "s", (), OUT), lambda ports, run_dir: "", "前两个参数"),
-    (Capability("cap", "run", "s", (), OUT, params=(Param("k", "int", 1, "h"),)),
+    (C("other", "run"), lambda run_dir, ports: "", "必须等于子包名"),
+    (C("cap", "run"), None, "没有导出 run"),
+    (C("cap", "run"), lambda ports, run_dir: "", "前两个参数"),
+    (C("cap", "run", params=(Param("k", "int", 1, "h"),)),
      lambda run_dir, ports: "", "对不上"),
-    (Capability("cap", "run", "s", (), OUT), lambda run_dir, ports, *, k=1: "", "对不上"),
-    (Capability("cap", "run", "s", (), OUT), lambda run_dir, ports, extra: "", "只许关键字参数"),
+    (C("cap", "run"), lambda run_dir, ports, *, k=1: "", "对不上"),
+    (C("cap", "run"), lambda run_dir, ports, extra: "", "只许关键字参数"),
     # task 级的第一个参数叫 task_dir：名字说明它动的是哪种目录
-    (Capability("cap", "task", "s", (), OUT), lambda run_dir, ports: "", "前两个参数"),
-    (Capability("cap", "project", "s", (), OUT), lambda project_dir, ports: "", "还没有入口约定"),
+    (C("cap", "task"), lambda run_dir, ports: "", "前两个参数"),
+    (C("cap", "project"), lambda project_dir, ports: "", "还没有入口约定"),
 ])
 def test_check_rejects_modules_that_do_not_match(descriptor, entry, message):
     with pytest.raises(AssertionError, match=message):
@@ -66,18 +71,36 @@ def test_check_rejects_modules_that_do_not_match(descriptor, entry, message):
 
 
 def test_check_accepts_a_matching_module():
-    descriptor = Capability("cap", "run", "s", (), OUT, params=(Param("k", "int", 1, "h"),))
+    descriptor = C("cap", "run", params=(Param("k", "int", 1, "h"),))
     module = _module("cap", descriptor, lambda run_dir, ports, *, k=1: "ok")
     assert check_capability_module("cap", module) is descriptor
 
 
 def test_descriptor_rejects_bad_level_missing_outputs_and_duplicate_params():
     with pytest.raises(AssertionError, match="level"):
-        Capability("cap", "galaxy", "s", (), OUT)
+        C("cap", "galaxy")
     with pytest.raises(AssertionError, match="产物"):
-        Capability("cap", "run", "s", (), ())
+        C("cap", "run", outputs=())
     with pytest.raises(AssertionError, match="重复"):
-        Capability("cap", "run", "s", (), OUT, params=(Param("k", "int", 1, "h"),) * 2)
+        C("cap", "run", params=(Param("k", "int", 1, "h"),) * 2)
+
+
+def test_descriptor_needs_a_known_stage_and_human_copy():
+    with pytest.raises(AssertionError, match="阶段"):
+        Capability("cap", "run", "s", (), OUT, stage="调参", title="t", what="w")
+    with pytest.raises(AssertionError, match="title 与 what"):
+        Capability("cap", "run", "s", (), OUT, stage="实验", title=" ", what="w")
+    with pytest.raises(TypeError):  # 阶段与人话是必填的，不给缺省
+        Capability("cap", "run", "s", (), OUT)  # type: ignore[call-arg]
+
+
+def test_every_shipped_capability_sits_in_a_stage_with_human_copy():
+    stages = {name: module.DESCRIPTOR.stage for name, module in discover().items()}
+    assert stages == {"design": "设计", "baseline": "设计", "start": "实验", "experiment": "实验",
+                      "analysis": "分析", "verify": "验证"}
+    for module in discover().values():
+        assert module.DESCRIPTOR.title and module.DESCRIPTOR.what
+        assert module.DESCRIPTOR.to_dict()["stage"] in STAGES  # UI 与 show caps 读的就是这个键
 
 
 def test_param_rejects_unknown_type_and_bad_name():

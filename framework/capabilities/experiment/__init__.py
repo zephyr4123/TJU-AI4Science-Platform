@@ -28,6 +28,9 @@ DESCRIPTOR = Capability(
     name="experiment",
     level="run",
     summary="实验内环：执行层每轮改 code/，harness 独立跑分，统计门棘轮，账本与 git 对账",
+    stage="实验",
+    title="一轮一轮改",
+    what="每轮改一次代码，裁判脚本独立跑分，成绩好过噪声门槛才留下，否则退回上一版。到了轮数、花费或连续没进步的上限就停。",
     inputs=(
         Artifact("manifest", "manifest.yaml", "任务包 manifest 的快照：指标、方向、预算、统计门"),
         Artifact("work", "work/", "任务包拷贝，独立 git 仓，分支 tip 是 best"),
