@@ -32,7 +32,8 @@ def catalog():
 
 def test_shipped_workflows_load_and_connect():
     found = workflows.load_workflows(workflows.workflows_root(REPO_ROOT))
-    assert [wf.name for wf in found] == ["auto-research", "intake"]
+    # quick-look 是协调 agent 在实验 #55 / #56 里自己拼出来存下的第三条（外层 #56）
+    assert [wf.name for wf in found] == ["auto-research", "intake", "quick-look"]
     for wf in found:
         assert workflows.workflow_problems(wf, catalog()) == [], wf.name
     intake = next(wf for wf in found if wf.name == "intake")
@@ -49,10 +50,12 @@ def test_shipped_workflows_cover_stages_and_are_looked_up_from_capabilities():
     assert described["intake"]["covers"] == ["设计"] and described["intake"]["remarks"] == []
     assert described["auto-research"]["covers"] == ["实验", "分析", "验证"]
     assert described["auto-research"]["remarks"] == []
+    assert described["quick-look"]["covers"] == ["实验", "分析"]
+    assert "没有验证" in described["quick-look"]["remarks"][0]  # 它自己选的不验证，机器提醒一句
     # 反查：能力上不写"我属于哪条流"，是从工作流文件算回来的
     assert workflows.used_by(found) == {
-        "start": ["auto-research"], "experiment": ["auto-research"],
-        "analysis": ["auto-research"], "verify": ["auto-research"],
+        "start": ["auto-research", "quick-look"], "experiment": ["auto-research", "quick-look"],
+        "analysis": ["auto-research", "quick-look"], "verify": ["auto-research"],
         "design": ["intake"], "baseline": ["intake"]}
 
 

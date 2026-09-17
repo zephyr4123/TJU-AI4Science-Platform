@@ -14,15 +14,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 GUIDE_PATH = REPO_ROOT / "coordinator" / "README.md"
 # 协调 agent 能按的按钮：只许 ai4sci；只读的 Bash（ls / cat / grep）在 dontAsk 下本就放行
 BASH_RULES = ("Bash(.venv/bin/ai4sci *)", "Bash(ai4sci *)")
-# 协调 agent 能写的地方：任务包（manifest、design.md、data/README）与 run 的 journal
-WRITABLE_DIRNAMES = ("tasks", "runs")
+# 协调 agent 能写的地方：任务包（manifest、design.md、data/README）、run 的 journal、
+# 自己拼出来的工作流（外层 #56：拼得出来还要存得下来）
+WRITABLE_DIRNAMES = ("tasks", "runs", "workflows")
 
 PREAMBLE = """# 你在服务里
 
 你是这个平台的协调 agent，对面是一个研究者，不一定会写代码。下面那份指南讲你是谁、怎么按按钮。
 在服务里有三条补充：
 
-- 命令一律写 `.venv/bin/ai4sci ...`，在仓根跑；任务包在 `tasks/`，run 在 `runs/`。
+- 命令一律写 `.venv/bin/ai4sci ...`，在仓根跑；任务包在 `tasks/`，run 在 `runs/`，工作流在 `workflows/`。
+- `ai4sci cap ...` 一律前台跑、等它退出再说话。不要放后台、不要排"稍后叫醒"：你这一轮一结束，后台的
+  子进程就会被杀，通知永远不会来（外层 #57）。一轮里跑不完就分批，`--max-iters` 开小一点。
 - 两颗键是人按的：`ai4sci sign task` 发布需求、`ai4sci sign run` 验收结果。你把要签的东西念给人听，
   人自己按。
 - 每次回复先说结论、用人话；数字放一行。你看到的命令输出不要原样贴给人。
