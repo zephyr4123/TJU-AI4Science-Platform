@@ -1,4 +1,4 @@
-import { SendHorizontal } from 'lucide-react'
+import { ArrowUp } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -38,8 +38,8 @@ export function Composer({ disabled, busy, onSend }: Props) {
   }
 
   return (
-    <div className="border-t bg-background px-4 py-3">
-      <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 shadow-xs transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30">
+    <div className="px-4 pt-2 pb-3">
+      <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border bg-card p-2 transition-shadow focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/25">
         <Textarea
           ref={ref}
           value={text}
@@ -53,11 +53,11 @@ export function Composer({ disabled, busy, onSend }: Props) {
         />
         <Button size="icon" onClick={submit} disabled={disabled || busy || !text.trim()}
                 aria-label="发送">
-          <SendHorizontal />
+          <ArrowUp />
         </Button>
       </div>
       <p className="mx-auto mt-1.5 max-w-3xl px-1 text-xs text-muted-foreground">
-        Enter 发送，Shift + Enter 换行。助理按的每个按钮都会显示在回答上方。
+        Enter 发送，Shift + Enter 换行。助理按了什么按钮，回答上方折着。
       </p>
     </div>
   )

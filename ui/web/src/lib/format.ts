@@ -44,3 +44,15 @@ export function improvement(
 export function chatTitle(chat: { title: string | null; created_at: string }): string {
   return chat.title ?? `${when(chat.created_at)} 开始的对话`
 }
+
+/** 一段 Markdown 开头是不是一句短结论：第一段不超过 60 字、不是列表 / 标题 / 表格 / 代码，就把它单拎出来。 */
+export function splitLede(markdown: string): { lede: string | null; rest: string } {
+  const trimmed = markdown.trim()
+  const cut = trimmed.search(/\n\s*\n/)
+  const first = (cut === -1 ? trimmed : trimmed.slice(0, cut)).trim()
+  const rest = cut === -1 ? '' : trimmed.slice(cut).trim()
+  if (first.length === 0 || first.length > 60 || first.includes('\n') || /^([-*#>|`\d]|\d+\.)/.test(first)) {
+    return { lede: null, rest: trimmed }
+  }
+  return { lede: first.replace(/\*\*/g, ''), rest }
+}

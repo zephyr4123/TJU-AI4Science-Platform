@@ -3,7 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { ErrorNote } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { seconds, usd } from '@/lib/format'
+import { seconds, splitLede, usd } from '@/lib/format'
 import { toolSentence } from '@/lib/humanize'
 import { cn } from '@/lib/utils'
 
@@ -22,26 +22,48 @@ export function TurnView({ turn }: { turn: Turn }) {
   const hasReply = turn.reply !== null && turn.reply !== ''
   // 回答已经落盘的轮次，trace 里的最后一段文本就是回答本身，不重复显示
   const trace = hasReply && !turn.live ? withoutTrailingText(turn.trace) : turn.trace
+  const tools = trace.filter((item) => item.kind === 'tool').length
+  const foldable = !turn.live && hasReply && trace.length > 0
+  const rows = (
+    <ol className="space-y-0.5">
+      {trace.map((item, i) => <TraceRow key={i} item={item} />)}
+      {turn.live && <Thinking />}
+    </ol>
+  )
   return (
     <article className="space-y-4" aria-label={`第 ${turn.n} 轮`}>
       <div className="flex justify-end">
-        <p className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-[0.9375rem] leading-relaxed">
+        <p className="max-w-[78%] rounded-[18px_18px_4px_18px] bg-accent px-4 py-2.5 text-[0.9375rem] leading-relaxed whitespace-pre-wrap text-accent-foreground">
           {turn.message}
         </p>
       </div>
-      {(trace.length > 0 || turn.live) && (
-        <ol className="space-y-0.5">
-          {trace.map((item, i) => <TraceRow key={i} item={item} />)}
-          {turn.live && <Thinking />}
-        </ol>
-      )}
-      {hasReply && <Markdown text={turn.reply!} />}
+      {foldable ? (
+        <Collapsible>
+          <CollapsibleTrigger className="group flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground hover:text-foreground">
+            <ChevronRight className="size-3.5 transition-transform duration-150 group-data-[state=open]:rotate-90" />
+            助理按了 {tools} 个按钮
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2 border-l-2 pl-3">{rows}</CollapsibleContent>
+        </Collapsible>
+      ) : (trace.length > 0 || turn.live) && rows}
+      {hasReply && <Reply text={turn.reply!} />}
       {turn.outcome && (
         <p className="t-label tabular">
-          {turn.outcome.failed ? '这一轮没走完' : '这一轮'}{' · '}{usd(turn.outcome.costUsd)}{' · '}{seconds(turn.outcome.durationS)}
+          {turn.outcome.failed ? '这一轮没走完，' : '这一轮'}花了 {usd(turn.outcome.costUsd)}，用了 {seconds(turn.outcome.durationS)}
         </p>
       )}
     </article>
+  )
+}
+
+/** 助理的回答：开头那句结论用宋体立起来（指南要它先说结论），其余照 Markdown 排。 */
+function Reply({ text }: { text: string }) {
+  const { lede, rest } = splitLede(text)
+  return (
+    <div className="space-y-2">
+      {lede && <p className="t-lede">{lede}</p>}
+      {rest && <Markdown text={rest} />}
+    </div>
   )
 }
 

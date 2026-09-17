@@ -11,6 +11,7 @@
 ## [0.2.0] - 2026-09-17
 
 ### 变更
+- 主页面重做（外层 [#67](https://github.com/zephyr4123/TJU-AI4Science/issues/67)）：右栏换成**流程脊柱**——当前 run 照的那条流一步一个模块（`spine/derive.ts` 从便条、作业、两颗键的记录算状态：实心 / 跑着 / 轮到助理 / 等你按键 / 轮到你 / 还没；没照流的老 run 按 auto-research 从文件推），模块内容按能力种类通用渲染（起点、基线→最好、分析摘要、验证结论），跑着的那步用 reactbits ElectricBorder 描边、ShinyText 报状态；没有 run 时脊柱是需求对齐（intake 那条流，状态从任务包阶段与发布记录推）；发布 / 验收两颗键搬到 `keys/`，用 reactbits StarBorder 改装成琥珀键；对话：研究者的话进靛蓝气泡，助理回答开头那句短结论用宋体立起来，按过的按钮折成一行「助理按了 N 个按钮」，轮次花费写成一句话；需求 / 结果两块旧看板删掉
 - 设计系统第三版（外层 [#66](https://github.com/zephyr4123/TJU-AI4Science/issues/66)，母 [#64](https://github.com/zephyr4123/TJU-AI4Science/issues/64)）：五色 tokens（纸 / 墨 / 靛 / 铜绿 / 琥珀，颜色是信息）与深色模式（跟系统，`data-theme` 可强制），思源宋体只给结论与步骤标题、IBM Plex Sans 正文、Plex Mono 命令（Geist 去掉），`.t-step` / `.paper-grid` 两个新样式；壳改成顶栏（名字、当前对话、花费一句话、reactbits PillNav 改装的主页面 / 编辑台胶囊）+ 两块看板：主页面对话 + 右栏（需求 / 结果，#67 换脊柱），编辑台放工作流墙；`docs/DESIGN.md` 重写
 - CLI 主导封装（外层 [#60](https://github.com/zephyr4123/TJU-AI4Science/issues/60)，纲领 P-14）：协调 agent 的 Bash 白名单收成 `Bash(ai4sci *)` 一条，`ClaudeCodeChat.build_env` 把本 venv 的 bin 追加进 PATH 让裸 `ai4sci` 找得到；指南前言写明一条命令一行、不加路径、不挂环境变量、不接管道，没有按钮就停下来说「平台缺这颗按钮」；指南第 5 步去掉 `AI4SCI_EXECUTOR_MODEL=sonnet` 前缀（执行层模型是起服务的人配的），接任务步骤改成先 `cap init` 再填模板，「撒一批起点探尽头」这句服务里做不到的指令删掉、改成问研究者或文献、没有就空着；`test_chat_guide` 加 lint：指南代码块里每条命令以 `ai4sci ` 开头。实验 #59 里 agent 照指南敲带前缀的命令被白名单拒、裸跑 python 探尽头被拒、只能逐文件 Read + Write 搬数据
 - `docs/PRODUCT.md` 设计原则加两条（外层 [#58](https://github.com/zephyr4123/TJU-AI4Science/issues/58)，拍板记录，页面未改）：看板随工作流变、不写死流程；两块看板以可写目录划界，需求对齐在主页面
