@@ -13,13 +13,20 @@ from pathlib import Path
 
 from framework.capabilities import discover
 from framework.chat.guide import REPO_ROOT
-from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, add_runs_root, open_run_dir
+from framework.cli._common import (
+    EXIT_INVALID,
+    EXIT_OK,
+    EXIT_USAGE,
+    add_runs_root,
+    open_run_dir,
+    runs_root,
+)
 from framework.contracts import packs, workflows
 from framework.contracts.capability import STAGES
 from framework.contracts.flow import check_flow, stage_remarks, stages_of
 from framework.contracts.report import read_report
 from framework.memory import ledger
-from framework.run import layout
+from framework.run import jobs, layout
 from framework.run.checkpoint import read_checkpoint
 from framework.run.context import load_manifest
 
@@ -86,6 +93,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         # 报告不合约就当没有报告：打出来退 1，别把坏报告的 status 当结论
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
+    for job in jobs.jobs_for(runs_root(args), state["run_id"]):
+        print(f"job\t{job.job_id}\t{jobs.effective_status(job)}\t{job.cap}\t{job.result}")
     # 账本 × git 的对账放在这里跑：不对账的状态只是"它自己说它没事"（P-3）
     problems = ledger.reconcile(ledger_path, layout.work(run_dir))
     if problems:
@@ -93,6 +102,31 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(problem, file=sys.stderr)
         return EXIT_INVALID
     return EXIT_OK
+
+
+def cmd_jobs(args: argparse.Namespace) -> int:
+    """作业清单：每个 `--detach` 起的进程一条；状态探过 pid（running / done / failed / lost）。"""
+    for job in jobs.list_jobs(runs_root(args)):
+        print(_job_line(job))
+    return EXIT_OK
+
+
+def cmd_job(args: argparse.Namespace) -> int:
+    try:
+        job = jobs.load(runs_root(args), args.job_id)
+    except jobs.JobNotFound as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    print(_job_line(job))
+    print(f"argv\tai4sci {' '.join(job.argv)}")
+    print(f"log\t{job.log}")
+    return EXIT_OK if jobs.effective_status(job) != "failed" else EXIT_INVALID
+
+
+def _job_line(job: jobs.Job) -> str:
+    return (f"{job.job_id}\t{jobs.effective_status(job)}\t{job.cap}\t{job.target}"
+            f"\tstarted={job.started_at}\tfinished={job.finished_at or '-'}"
+            f"\texit={'-' if job.exit_code is None else job.exit_code}\t{job.result}")
 
 
 def cmd_caps(args: argparse.Namespace) -> int:
@@ -193,6 +227,15 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     run.add_argument("--tail", type=int, default=5, help="账本尾部行数，缺省 5")
     add_runs_root(run)
     run.set_defaults(func=cmd_run)
+
+    listing = what.add_parser("jobs", help="作业清单：--detach 起的每个进程的状态与结论")
+    add_runs_root(listing)
+    listing.set_defaults(func=cmd_jobs)
+
+    one = what.add_parser("job", help="一个作业：状态、命令、结论行、日志在哪")
+    one.add_argument("job_id")
+    add_runs_root(one)
+    one.set_defaults(func=cmd_job)
 
     caps = what.add_parser("caps", help="能力清单：按七个科研阶段列全部按钮，带用在哪几条流")
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")

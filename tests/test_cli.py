@@ -153,6 +153,35 @@ def test_cap_init_creates_the_task_dir_instead_of_requiring_it(tmp_path):
     assert again.returncode == EXIT_INVALID and "已存在" in again.stderr
 
 
+def test_cap_detach_returns_a_job_id_and_the_job_finishes_on_its_own(tmp_path, monkeypatch):
+    """外层 #63：`--detach` 立刻打印作业号退出；子进程自己跑完回写；show job / show jobs 能查。"""
+    import time
+
+    from framework.run import jobs
+
+    monkeypatch.setenv("AI4SCI_RUNS_ROOT", str(tmp_path / "runs"))
+    lock = tmp_path / "freeze.txt"
+    lock.write_text("numpy==2.0.0\n", encoding="utf-8")
+    (tmp_path / "tasks").mkdir()
+    proc = run_cli("cap", "init", str(tmp_path / "tasks" / "t"), "--python", "3.12",
+                   "--lock", str(lock), "--detach")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    head, *fields = proc.stdout.strip().split("\t")
+    job_id = head.split(" ", 1)[1]
+    assert head.startswith("job job-") and "cap=init" in fields and fields[-1].endswith(job_id)
+    for _ in range(300):
+        if jobs.load(tmp_path / "runs", job_id).status != "running":
+            break
+        time.sleep(0.2)
+    shown = run_cli("show", "job", job_id)
+    assert shown.returncode == EXIT_OK, shown.stderr
+    assert shown.stdout.startswith(f"{job_id}\tdone\tinit\t") and "ok t\t" in shown.stdout
+    assert "argv\tai4sci cap init" in shown.stdout and "--detach" not in shown.stdout
+    listing = run_cli("show", "jobs")
+    assert listing.returncode == EXIT_OK and listing.stdout.startswith(job_id)
+    assert run_cli("show", "job", "nope").returncode == EXIT_USAGE
+
+
 def test_start_missing_task_dir_exits_two(tmp_path):
     proc = run_cli("cap", "start", str(tmp_path / "没有"), "--runs-root", str(tmp_path / "runs"))
     assert proc.returncode == EXIT_USAGE

@@ -4,11 +4,16 @@
 task 级是任务包目录），`--backend` 只在 needs_executor 时有，`--compute` 只在 needs_compute
 时有，每个 `Param` 变成一个选项——所以"CLI 参数与描述符一致"是构造保证，不靠人对。
 跑完即退，用退出码表态；能力之间怎么串是协调层的事，这里没有顺序。
+
+`--detach` 是每颗按钮都有的开关（外层 #63）：把去掉它的同一条命令起成独立进程当作业，立刻打印
+作业号退出；子进程跑完把结论行回写进作业记录。这里是作业唯一的起点与终点，能力自己不知道
+自己是不是作业。
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -20,10 +25,12 @@ from framework.cli._common import (
     add_runs_root,
     open_run_dir,
     resolve_ports,
+    runs_root,
     setup_logging,
 )
-from framework.contracts.capability import PARAM_TYPES, CapabilityFailed
+from framework.contracts.capability import PARAM_TYPES, Capability, CapabilityFailed, Ports
 from framework.contracts.publish import NotPublished
+from framework.run import jobs
 from framework.run.context import TaskInvalid
 
 
@@ -41,15 +48,37 @@ def cmd_cap(args: argparse.Namespace) -> int:
     ports = resolve_ports(getattr(args, "backend", None), getattr(args, "compute", None))
     if isinstance(ports, int):
         return ports
-    params = {p.name: getattr(args, p.name) for p in descriptor.params}
+    job_id = os.environ.get(jobs.JOB_ID_ENV)
+    if args.detach:
+        if job_id:
+            print(f"已经在作业 {job_id} 里了，作业里不能再 --detach", file=sys.stderr)
+            return EXIT_USAGE
+        return _detach(args, descriptor.name, descriptor.level, target)
     setup_logging()
+    code, line = _run(args, descriptor, target, ports)
+    print(line, file=sys.stdout if code == EXIT_OK else sys.stderr)
+    if job_id:
+        jobs.finish(runs_root(args), job_id, exit_code=code, result=line)
+    return code
+
+
+def _run(args: argparse.Namespace, descriptor: Capability, target: Path,
+         ports: Ports) -> tuple[int, str]:
+    """跑一颗能力：退出码与那一行话（成功是结论行，失败是能力自己说的那一句，P-7）。"""
+    params = {p.name: getattr(args, p.name) for p in descriptor.params}
     try:
-        line = args.module.run(target, ports, **params)
+        return EXIT_OK, args.module.run(target, ports, **params)
     except (CapabilityFailed, NotPublished, TaskInvalid) as exc:
-        # 能力自己说的那句话原样给协调层，别留半个栈让人猜（P-7）
-        print(str(exc), file=sys.stderr)
-        return EXIT_INVALID
-    print(line)
+        return EXIT_INVALID, str(exc)
+
+
+def _detach(args: argparse.Namespace, name: str, level: str, target: Path) -> int:
+    argv = [a for a in args.argv if a != "--detach"]
+    job = jobs.spawn(runs_root(args), argv, cap=name, level=level,
+                     target=args.run_id if level != "task" else str(target),
+                     chat_id=os.environ.get(jobs.CHAT_ID_ENV))
+    print(f"job {job.job_id}\tcap={name}\ttarget={job.target}\tpid={job.pid}"
+          f"\tnext=ai4sci show job {job.job_id}")
     return EXIT_OK
 
 
@@ -78,4 +107,6 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
                                  default=param.default, help=help_text)
         if descriptor.level != "task":
             add_runs_root(sub)
+        sub.add_argument("--detach", action="store_true",
+                         help="起成后台作业，立刻打印作业号；进度看 ai4sci show job <作业号>")
         sub.set_defaults(func=cmd_cap, module=module)

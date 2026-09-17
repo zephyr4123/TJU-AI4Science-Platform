@@ -197,6 +197,27 @@ def test_run_board_and_accept_key(served, tmp_path):
     assert status == 422 and "正在跑" in json.loads(body)["error"]
 
 
+def test_jobs_endpoints(served, tmp_path):
+    """作业清单与单个作业（外层 #63）：run 看板带正在跑的作业与全部作业。"""
+    import os
+
+    from framework.run import jobs
+    from tests.fixtures.runs_factory import make_run
+
+    base, _ = served
+    assert json.loads(call(base, "/jobs")[2]) == []
+    assert call(base, "/jobs/nope")[0] == 404
+    run_dir = make_run(tmp_path)
+    job = jobs.Job(job_id="job-1", cap="experiment", level="run", target=run_dir.name,
+                   argv=["cap", "experiment", run_dir.name], pid=os.getpid(), started_at="t")
+    jobs._save(tmp_path / "runs", job)
+    status, _, body = call(base, "/jobs/job-1")
+    assert status == 200 and json.loads(body)["effective_status"] == "running"
+    doc = json.loads(call(base, f"/runs/{run_dir.name}")[2])
+    assert doc["job"]["job_id"] == "job-1" and [j["job_id"] for j in doc["jobs"]] == ["job-1"]
+    assert json.loads(call(base, "/runs")[2])[0]["job"]["job_id"] == "job-1"
+
+
 def test_flow_check_endpoint(served):
     base, _ = served
     assert call(base, "/flow/check")[0] == 400

@@ -16,6 +16,7 @@ parser 装配起来、导出 `main`。
 from __future__ import annotations
 
 import argparse
+import sys
 
 from framework.cli import cap, chat, serve, show, sign
 
@@ -35,5 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
+    args.argv = argv  # 原样的命令行：`cap ... --detach` 要把同一条命令起成作业
     return int(args.func(args))

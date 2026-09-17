@@ -18,7 +18,9 @@
     GET  /tasks/<id>               manifest、design.md、发布前检查、预检
     POST /tasks/<id>/publish       {"by"} → 发布记录；这是人按的键，agent 不该替人按
     GET  /runs                     结果验收：run 清单（best、账本花费、验证、验收）
-    GET  /runs/<id>                账本全部行、journal、分析全文、验证报告
+    GET  /runs/<id>                账本全部行、journal、分析全文、验证报告、这个 run 的作业
+    GET  /jobs                     作业清单（`cap ... --detach` 起的进程：状态、结论行）
+    GET  /jobs/<id>                一个作业
     POST /runs/<id>/accept         {"by"} → 验收记录
     GET  /<其它>                   `ui_dir` 里的静态文件，找不到的路径回 index.html（单页应用）
 """
@@ -40,13 +42,13 @@ from backends import BackendNotFound, Chat, ChatEvent, get_chat
 from framework.chat import boards, conversation, guide
 from framework.contracts import packs, publish
 from framework.contracts.capability import STAGES
-from framework.run import accept, layout
+from framework.run import accept, jobs, layout
 
 LOGGER = logging.getLogger("ai4sci.serve")
 DEFAULT_BACKEND = "claude_code"
 MAX_BODY = 1 << 20
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
-API_ROOTS = ("health", "stages", "cap", "workflows", "flow", "chats", "tasks", "runs")
+API_ROOTS = ("health", "stages", "cap", "workflows", "flow", "chats", "tasks", "runs", "jobs")
 INDEX_NAME = "index.html"
 
 
@@ -125,6 +127,13 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 2 and parts[0] == "runs":
             run_dir = self._run_dir(parts[1])
             return None if run_dir is None else self._json(boards.run_detail(run_dir))
+        if parts == ["jobs"]:
+            return self._json([job.to_dict() for job in jobs.list_jobs(self.server.runs_root)])
+        if len(parts) == 2 and parts[0] == "jobs":
+            try:
+                return self._json(jobs.load(self.server.runs_root, parts[1]).to_dict())
+            except jobs.JobNotFound as exc:
+                return self._error(HTTPStatus.NOT_FOUND, str(exc))
         return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{url.path}")
 
     # ── POST ─────────────────────────────────────────────────────────────

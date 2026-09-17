@@ -18,7 +18,7 @@ import yaml
 from framework.contracts import headroom, packs, publish
 from framework.contracts.report import read_report
 from framework.memory import ledger
-from framework.run import accept, layout
+from framework.run import accept, jobs, layout
 from framework.run.checkpoint import read_checkpoint
 from framework.run.context import load_manifest, primary_metric
 
@@ -133,6 +133,7 @@ def run_summary(run_dir: Path) -> dict[str, Any]:
         "updated_at": state.get("updated_at"),
         "cost_usd": ledger.total_cost(layout.ledger(run_dir)),
         "running": layout.inflight(run_dir).is_file(),
+        "job": _job_dict(jobs.running_for(run_dir.parent, state["run_id"])),
         "analysis": layout.analysis_doc(run_dir).is_file(),
         "verify": verify_state(run_dir),
         "accept": accept.read_acceptance(run_dir),
@@ -143,12 +144,18 @@ def run_detail(run_dir: Path) -> dict[str, Any]:
     run_dir = Path(run_dir)
     analysis = layout.analysis_doc(run_dir)
     journal = layout.journal(run_dir)
+    summary = run_summary(run_dir)
     return {
-        **run_summary(run_dir),
+        **summary,
         "ledger": [asdict(row) for row in ledger.read(layout.ledger(run_dir))],
+        "jobs": [job.to_dict() for job in jobs.jobs_for(run_dir.parent, summary["run_id"])],
         "journal": journal.read_text(encoding="utf-8") if journal.is_file() else "",
         "analysis_text": analysis.read_text(encoding="utf-8") if analysis.is_file() else None,
     }
+
+
+def _job_dict(job: jobs.Job | None) -> dict[str, Any] | None:
+    return None if job is None else job.to_dict()
 
 
 def verify_state(run_dir: Path) -> dict[str, Any] | None:

@@ -64,6 +64,25 @@ export interface VerifyState {
   checks?: unknown
 }
 
+/** `cap ... --detach` 起的一个后台作业（`GET /jobs[/<id>]`）。`status` 是记录里写的，
+ *  `effective_status` 探过 pid：记录说 running 但进程不在了就是 lost。 */
+export interface Job {
+  job_id: string
+  cap: string
+  level: 'task' | 'run' | 'project'
+  target: string
+  argv: string[]
+  pid: number
+  started_at: string
+  status: 'running' | 'done' | 'failed'
+  effective_status: 'running' | 'done' | 'failed' | 'lost'
+  finished_at: string | null
+  exit_code: number | null
+  result: string
+  chat_id: string | null
+  log: string
+}
+
 export interface RunSummary {
   run_id: string
   task: string | null
@@ -77,6 +96,8 @@ export interface RunSummary {
   updated_at: string | null
   cost_usd: number | null
   running: boolean
+  /** 正在跑的后台作业；没有就是 null */
+  job: Job | null
   analysis: boolean
   verify: VerifyState | null
   accept: Acceptance | null
@@ -104,6 +125,8 @@ export interface LedgerRow {
 
 export interface RunDetail extends RunSummary {
   ledger: LedgerRow[]
+  /** 这个 run 的全部作业，按起的先后 */
+  jobs: Job[]
   journal: string
   analysis_text: string | null
 }
