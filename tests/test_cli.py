@@ -136,7 +136,8 @@ def test_start_with_workflow_snapshots_it_and_show_run_reads_the_note(tmp_path, 
     assert proc.returncode == EXIT_OK, proc.stderr
     assert "\tworkflow=quick-look\tstep=1\t" in proc.stdout
     run_dir = tmp_path / "runs" / "r1"
-    assert (run_dir / "workflow" / "quick-look.yaml").is_file() and (run_dir / "flow.json").is_file()
+    assert (run_dir / "workflow" / "quick-look.yaml").is_file()
+    assert (run_dir / "flow.json").is_file()
     shown = run_cli("show", "run", "r1", "--runs-root", str(tmp_path / "runs"))
     assert shown.returncode == EXIT_OK, shown.stderr
     assert "workflow\tquick-look\tstep=1/4\twaiting=assistant\tnext=助理：跑 3 轮" in shown.stdout

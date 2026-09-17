@@ -45,7 +45,7 @@ DESCRIPTOR = Capability(
         Param("runs_root", "str", "",
               "runs 根目录；缺省环境变量 AI4SCI_RUNS_ROOT，再缺省 <仓根>/runs"),
         Param("workflow", "str", "",
-              "照哪条预装的流（show workflows 里的名字）：快照进 run，之后每按一颗按钮记它落在第几步"),
+              "照哪条预装的流（show workflows 里的名字）：快照进 run，之后每按一颗按钮记步序"),
     ),
     criteria=(
         "任务包已发布、合契约、预检有改进空间",
