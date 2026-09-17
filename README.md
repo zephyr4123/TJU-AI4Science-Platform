@@ -51,7 +51,7 @@ AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会�
 .venv/bin/ai4sci show caps                                    # 按七个科研阶段列全部能力（--json 带描述符与 used_by）；show workflows 列工作流与覆盖的阶段
 ```
 
-执行层用哪个模型、超时多久走环境变量：`AI4SCI_EXECUTOR_MODEL=sonnet`、`AI4SCI_EXECUTOR_TIMEOUT_S=600`。
+执行层用哪个模型、超时多久走环境变量：`AI4SCI_EXECUTOR_MODEL=sonnet`、`AI4SCI_EXECUTOR_TIMEOUT_S=600`；协调层同理 `AI4SCI_COORDINATOR_MODEL` / `_TIMEOUT_S` / `_MAX_BUDGET_USD`。这些是起 `ai4sci serve` 或 `ai4sci chat` 的人在环境里配的，协调 agent 敲的命令上不带（纲领 P-14：它面前只有裸 `ai4sci`）。
 
 任务跑在自己的环境里：`cap start` 按任务包的 `env/` 建 `runs/<id>/.venv`，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新任务看 [`docs/add-a-task.md`](docs/add-a-task.md)。
 

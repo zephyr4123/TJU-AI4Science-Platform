@@ -6,7 +6,7 @@ import { actorOf, coverageSentence, groupByStage } from './stages'
 
 const cap = (name: string, stage: string, needs_executor = false): Capability => ({
   name, stage, level: 'run', title: name, what: 'w', summary: 's', inputs: [], outputs: [], params: [],
-  needs_executor, needs_compute: false, criteria: [], used_by: [],
+  needs_executor, needs_compute: false, criteria: [], creates_target: false, used_by: [],
 })
 
 describe('按阶段分组', () => {
