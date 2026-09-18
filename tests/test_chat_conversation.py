@@ -54,7 +54,7 @@ def test_deltas_stream_through_but_only_the_full_text_lands_on_disk(tmp_path):
 
 
 def test_framework_origin_turn_is_labelled_and_chat_id_reaches_the_adapter(tmp_path):
-    """外层 #63：框架叫醒的一轮标「框架」；适配器拿到 chat_id 好传给 agent 按的按钮。"""
+    """外层 #63：框架叫醒的一轮标「框架」；适配器拿到 chat_id 好传给 agent 调用的命令。"""
     conv, chat = start(tmp_path, reply("醒了"), reply("好"))
     drain(conv, chat, "作业跑完了", origin="框架")
     assert chat.calls[0]["chat_id"] == conv.chat_id

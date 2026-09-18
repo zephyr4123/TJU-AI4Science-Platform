@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from compute.local import LocalCompute
-from framework.capabilities.experiment import run_loop
+from framework.capabilities.auto_research import run_loop
 from framework.contracts.results import read_metrics
 from framework.run import artifacts
 from tests.fixtures.scripted_backend import ScriptedRunner

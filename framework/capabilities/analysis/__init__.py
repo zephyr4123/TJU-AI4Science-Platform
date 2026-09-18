@@ -1,4 +1,5 @@
-"""分析能力：读一个 run 的账本、笔记、diff 与结果，执行层写一份可回溯的 analysis.md。
+"""写分析初稿：分析间里现有的一颗能力——读一个 run 的账本、笔记、diff 与结果，执行层写三节固定的
+analysis.md。
 
 一个能力一个子包，互不 import（`capabilities/__init__.py`）。对外只露描述符与统一入口；
 怎么组 prompt、怎么判产物形状是 `analyze.py` 自己的事。
@@ -9,34 +10,39 @@ from __future__ import annotations
 from pathlib import Path
 
 from framework.capabilities.analysis.analyze import analyze
-from framework.contracts.capability import Artifact, Capability, Ports
+from framework.contracts.capability import Capability, Ports
 
 __all__ = ["DESCRIPTOR", "run"]
 
 DESCRIPTOR = Capability(
     name="analysis",
     level="run",
-    summary="实验分析：执行层读账本、笔记、best diff 与结果清单，写三节固定、数字可回溯的分析",
     stage="分析",
-    title="写分析",
-    what="读账本和每一轮的结果，写一份分析：结论、数据表、证伪与未决三节。",
-    inputs=(
-        Artifact("manifest", "manifest.yaml", "研究问题、主指标与方向"),
-        Artifact("ledger", "experiment/ledger.tsv", "账本全部行"),
-        Artifact("notebook", "experiment/notebook.md", "实验笔记全文"),
-        Artifact("runs", "experiment/runs/", "每轮的 results.json：数据表只许从这里抄"),
-        Artifact("work", "work/", "基线到 best 的代码 diff"),
+    title="写分析初稿",
+    does=(
+        "起一个执行层会话，只给它这个 run 的 manifest 快照、账本全部行、实验笔记全文、"
+        "每轮的 results.json 清单，以及 work/ 里基线到 best 的代码 diff，"
+        "让它写一份三节固定的 analysis/analysis.md：结论、数据表（| run | 指标 | 值 |，"
+        "只许从 results.json 抄）、证伪与未决。会话结束后框架核形状：三节齐、"
+        "数据表至少一行能解析。"
     ),
-    outputs=(
-        Artifact("analysis", "analysis/analysis.md",
-                 "三节固定：结论 / 数据（| run | 指标 | 值 |）/ 证伪与未决"),
+    does_not=(
+        "不核对数字对不对（那是验证间「核对数字」的事）、不画图、不写综述、不比较别的 run。"
+        "它是初稿，不是分析这一间的全部：以后加进来的对比、作图、复盘都是这一间里另外的能力。"
+        "执行层只许写 analysis/，越界判失败。"
+    ),
+    brings=(
+        "一个跑过至少一轮的 run：manifest.yaml、experiment/ledger.tsv、"
+        "experiment/notebook.md、experiment/runs/run_N/results.json、work/（git 仓）。"
+    ),
+    leaves=(
+        "analysis/analysis.md；重跑时旧的改名成 analysis_v1/ 留档，不覆盖。"
+    ),
+    stops=(
+        "一次成稿就退出。会话越界、三节缺一、数据表一行都解析不出：判失败、报告原因，"
+        "协调层看了决定重跑还是找人。"
     ),
     needs_executor=True,
-    criteria=(
-        "三节齐全，数据表至少一行能解析（分析能力自己校验形状）",
-        "数据表每个值在对应 run 的 results.json 里能找到，正文里的小数都在表里（验证能力回溯）",
-        "执行层只写 analysis/，越界判失败",
-    ),
 )
 
 

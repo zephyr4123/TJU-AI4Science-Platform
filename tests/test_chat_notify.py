@@ -21,7 +21,8 @@ def _ws(tmp_path: Path) -> workspace.Workspace:
 
 def _job(chat_id: str | None, exit_code: int = 0) -> jobs.Job:
     return jobs.Job(job_id="job-7", cap="experiment", level="run", target="r1",
-                    argv=["cap", "experiment", "r1", "--max-iters", "2"], pid=1, started_at="t",
+                    argv=["cap", "auto-research", "--run-id", "r1", "--max-iters", "2"], pid=1,
+                    started_at="t",
                     status="done" if exit_code == 0 else "failed", exit_code=exit_code,
                     result="ok r1\tstop=batch_exhausted" if exit_code == 0 else "有 in-flight",
                     chat_id=chat_id)
@@ -44,7 +45,7 @@ def test_wake_sends_a_framework_turn_with_the_job_result(tmp_path: Path, scripte
     assert call["chat_id"] == conv.chat_id and call["system_prompt"] == "指南"
     assert call["allowed_paths"] == [ws.task, ws.flows, ws.runs]  # 叫醒的一轮也只在工作区里写
     assert call["readable_paths"] == [paths.workflows_root()]
-    head = "作业 job-7（`ai4sci cap experiment r1 --max-iters 2`）跑完了"
+    head = "作业 job-7（`ai4sci cap auto-research --run-id r1 --max-iters 2`）跑完了"
     assert call["message"].startswith(head)
     assert "ok r1\tstop=batch_exhausted" in call["message"] and "--detach" in call["message"]
     turns = conv_mod.read_turns(conv_mod.load_conversation(ws.chats, conv.chat_id))

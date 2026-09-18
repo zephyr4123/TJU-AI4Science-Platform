@@ -229,8 +229,8 @@ class ClaudeCodeChat:
     模型记得第一轮的内容，result 事件的 session_id 与第一轮相同；两轮共 $0.02。
     事件边跑边出：stdout 逐行读、逐行翻译，stderr 另起线程排空（同 Runner 的教训）。
 
-    长按钮不许进后台（外层 #57）：`claude -p` 里 Bash 超过 CLI 自己的缺省超时（2 分钟）会被
-    自动挪到后台，一轮结束后台子进程约 5 秒后被杀——实测 `cap experiment --max-iters 3` 第 4 轮
+    长命令不许进后台（外层 #57）：`claude -p` 里 Bash 超过 CLI 自己的缺省超时（2 分钟）会被
+    自动挪到后台，一轮结束后台子进程约 5 秒后被杀——实测 `cap auto-research --max-iters 3` 第 4 轮
     死在半路。所以起会话时 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` 关掉全部后台机制，并把
     Bash 超时抬到与本轮超时一样长：唯一会杀它的只有我们自己的定时器，杀了会报"这一轮超过 N 秒"。
     """
@@ -263,7 +263,7 @@ class ClaudeCodeChat:
         path = f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir
         env = {**os.environ, "PATH": path, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
                "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis}
-        # agent 按的按钮从这里知道自己属于哪段对话：`--detach` 的作业记下它，跑完叫醒（外层 #63）
+        # agent 调用的命令从这里知道自己属于哪段对话：`--detach` 的作业记下它，跑完叫醒（外层 #63）
         env.pop(CHAT_ID_ENV, None)
         if chat_id:
             env[CHAT_ID_ENV] = chat_id

@@ -138,7 +138,7 @@ class Chat(Protocol):
     一个 `done` 或 `error`。`system_prompt` 是协调层指南；`allowed_paths` 与 `bash_rules`
     的语义同 `Runner`：尽量收紧，各家 CLI 的权限模型对不齐；`readable_paths` 是工作目录之外
     「能读不能写」的目录（研究助理看工作流库用，P-16）。`chat_id` 是这段对话的名字：
-    适配器要让 agent 按的按钮拿得到它（环境变量 `AI4SCI_CHAT_ID`），后台作业跑完才知道叫醒谁。
+    适配器要让 agent 调用的命令拿得到它（环境变量 `AI4SCI_CHAT_ID`），后台作业跑完才知道叫醒谁。
     `tuning` 是这一轮用什么模型、什么思考深度（外层 #86）：None 或字段为 None 就用后端缺省；
     `knobs()` 报这家 CLI 有哪些刻度，页面与终端只许从里面选。
     """

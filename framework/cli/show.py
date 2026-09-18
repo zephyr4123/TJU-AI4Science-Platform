@@ -1,8 +1,8 @@
-"""`ai4sci show workspaces | task | run <id> | jobs | job <id> | flows | caps | workflows | flow`
+"""`ai4sci show workspaces | task | run <id> | jobs | job <id> | flows | caps | workflows`
 
 在 cli 层。这一组只看不做：不产出文件、不起会话、不改任何东西。与 `ai4sci serve` 的 GET
 端点读的是同一批函数——页面和终端是同一份数据的两张脸。task / run / jobs / flows 看的是
-当前工作区（P-15）；caps / workflows / flow 看的是库。
+当前工作区（P-15）；caps / workflows 看的是库。
 """
 
 from __future__ import annotations
@@ -22,8 +22,7 @@ from framework.cli._common import (
     open_run_dir,
 )
 from framework.contracts import packs, workflows
-from framework.contracts.capability import STAGES
-from framework.contracts.flow import check_flow, stage_remarks, stages_of
+from framework.contracts.capability import COLUMNS, STAGES
 from framework.contracts.report import read_report
 from framework.memory import ledger
 from framework.run import flow_state, jobs, layout, workspace
@@ -94,7 +93,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         following = flow["next"]
         print(f"workflow\t{flow['workflow']}\tstep={flow['step']}/{flow['total']}"
               f"\twaiting={flow['waiting']}"
-              f"\tnext={'-' if following is None else following['by'] + '：' + following['does']}")
+              f"\tnext={'-' if following is None else _next_word(following)}")
     # 账本 × git 的对账放在这里跑：不对账的状态只是"它自己说它没事"（P-3）
     problems = ledger.reconcile(ledger_path, layout.work(run_dir))
     if problems:
@@ -136,8 +135,9 @@ def _job_line(job: jobs.Job) -> str:
 
 
 def cmd_caps(args: argparse.Namespace) -> int:
-    """能力清单：平台的全部按钮，按七个科研阶段列，空着的阶段也列出来。每颗带"用在哪几条流"，
-    那是从库里的工作流文件反查的，能力自己不知道。"""
+    """能力清单：七间房、每间里的能力，空着的房间也列出来。每颗带五栏（干什么 / 不干什么 /
+    要带什么进来 / 留下什么 / 什么时候停）与"用在哪几条流"——后者是从库里的工作流文件反查的，
+    能力自己不知道。"""
     descriptors = [module.DESCRIPTOR for module in discover().values()]
     # 坏掉的工作流文件不算进反查；坏在哪由 show workflows 报
     uses = workflows.used_by(workflows.load_valid(paths.workflows_root()))
@@ -148,12 +148,14 @@ def cmd_caps(args: argparse.Namespace) -> int:
     for stage in STAGES:
         caps = [d for d in descriptors if d.stage == stage]
         if not caps:
-            print(f"{stage}\t-\t还没有这一步的能力")
+            print(f"{stage}\t-\t这一间还没有能力")
         for d in caps:
-            print(f"{stage}\t{d.name}\t{d.title}\t{d.level}"
-                  f"\texecutor={'yes' if d.needs_executor else 'no'}"
-                  f"\tcompute={'yes' if d.needs_compute else 'no'}"
-                  f"\tused_by={','.join(uses.get(d.name, [])) or '-'}\t{d.summary}")
+            who = "助理" if d.needs_executor else "机器"
+            params = " ".join(f"--{p.name.replace('_', '-')}" for p in d.params) or "-"
+            print(f"{stage}\t{d.name}\t{d.title}\t{who}\t{d.level}\t参数 {params}"
+                  f"\tused_by={','.join(uses.get(d.name, [])) or '-'}")
+            for key, label in COLUMNS:
+                print(f"  {label}：{getattr(d, key)}")
     return EXIT_OK
 
 
@@ -162,7 +164,7 @@ def _catalog():
 
 
 def cmd_workflows(args: argparse.Namespace) -> int:
-    """库里的工作流：每条一行带覆盖的阶段，能力步骤对不上吃吐文件的退 1；提醒只打不退。"""
+    """库里的工作流：每条一行带走过的房间，点名的能力不在那一间、参数不对的退 1；提醒只打不退。"""
     return _print_flows(paths.workflows_root(), args.json)
 
 
@@ -180,10 +182,8 @@ def _print_flows(root: Path, as_json: bool) -> int:
         print(json.dumps(found, ensure_ascii=False, indent=2))
     else:
         for wf in found:
-            steps = " → ".join(s["cap"] or f"[{s['key']}]" if (s["cap"] or s["key"]) else s["by"]
-                               for s in wf["steps"])
-            covers = " → ".join(wf["covers"]) or "-"
-            print(f"{wf['name']}\t{wf['title']}\t覆盖 {covers}\t{steps}")
+            rooms = " → ".join(_room_word(item) for item in wf["rooms"])
+            print(f"{wf['name']}\t{wf['title']}\t{rooms or '-'}")
             for remark in wf["remarks"]:
                 print(f"  · {remark}")
             for problem in wf["problems"]:
@@ -191,29 +191,20 @@ def _print_flows(root: Path, as_json: bool) -> int:
     return EXIT_INVALID if any(wf["problems"] for wf in found) else EXIT_OK
 
 
-def cmd_flow(args: argparse.Namespace) -> int:
-    """一串能力按顺序通不通：只对吃吐文件，不跑。名字对不上退 2，不通退 1。"""
-    catalog = _catalog()
-    unknown = [name for name in args.steps if name not in catalog]
-    if unknown:
-        print(f"没有这些能力：{unknown}（有的：{sorted(catalog)}）", file=sys.stderr)
-        return EXIT_USAGE
-    steps = [catalog[name] for name in args.steps]
-    covers = stages_of(steps)
-    remarks = stage_remarks(covers)
-    problems = check_flow(steps)
-    if args.json:
-        print(json.dumps({"steps": list(args.steps), "covers": covers, "remarks": remarks,
-                          "problems": problems}, ensure_ascii=False, indent=2))
-        return EXIT_INVALID if problems else EXIT_OK
-    if problems:
-        for problem in problems:
-            print(problem, file=sys.stderr)
-        return EXIT_INVALID
-    print(f"ok {len(args.steps)} 步：{' → '.join(args.steps)}\t覆盖 {' → '.join(covers)}")
-    for remark in remarks:
-        print(f"  · {remark}")
-    return EXIT_OK
+def _next_word(item: dict) -> str:
+    """便条上的下一项，给人念的一句：进哪一间（点了名带能力），或停在哪个断点等谁。"""
+    if item["kind"] == "stop":
+        return f"断点：{item['note'] or '等你确认'}"
+    picks = "、".join(c["cap"] for c in item["caps"])
+    return f"{item['stage']}间" + (f"（{picks}）" if picks else "")
+
+
+def _room_word(item: dict) -> str:
+    """一项一个词：房间名（点了名带能力），断点画成 ◆（带键的写键名）。"""
+    if item["kind"] == "stop":
+        return f"◆{item['key'] or ''}"
+    picks = ",".join(c["cap"] for c in item["caps"])
+    return f"{item['stage']}({picks})" if picks else item["stage"]
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
@@ -238,19 +229,14 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     one.add_argument("job_id")
     one.set_defaults(func=cmd_job)
 
-    flows = what.add_parser("flows", help="当前工作区的流实例（flows/*.yaml）：覆盖的阶段、通不通")
+    flows = what.add_parser("flows", help="当前工作区的流实例（flows/*.yaml）：走哪几间、有无问题")
     flows.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     flows.set_defaults(func=cmd_flows)
 
-    caps = what.add_parser("caps", help="能力清单：按七个科研阶段列全部按钮，带用在哪几条流")
+    caps = what.add_parser("caps", help="能力清单：七间房、每间里的能力与五栏说明，带用在哪几条流")
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     caps.set_defaults(func=cmd_caps)
 
-    wfs = what.add_parser("workflows", help="库里的工作流（workflows/*.yaml）：覆盖的阶段、通不通")
+    wfs = what.add_parser("workflows", help="库里的工作流（workflows/*.yaml）：走哪几间、有无问题")
     wfs.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     wfs.set_defaults(func=cmd_workflows)
-
-    flow = what.add_parser("flow", help="一串能力按顺序通不通：只对吃吐文件，不跑")
-    flow.add_argument("steps", nargs="+", help="能力名，按顺序")
-    flow.add_argument("--json", action="store_true", help="打 JSON")
-    flow.set_defaults(func=cmd_flow)

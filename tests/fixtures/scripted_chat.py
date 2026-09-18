@@ -42,7 +42,7 @@ def streamed(text: str, *, pieces: int = 3) -> list[ChatEvent]:
 
 
 def with_tool(text: str, tool: str, tool_input: dict, result: str) -> list[ChatEvent]:
-    """按了一个按钮的一轮：init → tool_use → tool_result → 文本 → done。"""
+    """调用了一条命令的一轮：init → tool_use → tool_result → 文本 → done。"""
     events = reply(text)
     events[1:1] = [ChatEvent("tool_use", tool=tool, tool_input=tool_input, session_id=SESSION,
                              raw={"type": "assistant", "message": {"content": [

@@ -22,7 +22,7 @@ import yaml
 from compute import Job
 from compute._procs import group_alive
 from compute.local import LocalCompute
-from framework.capabilities.experiment import (
+from framework.capabilities.auto_research import (
     InflightPending,
     ResumeMismatch,
     StopReason,
@@ -420,7 +420,8 @@ def test_run_refuses_to_start_while_a_round_is_in_flight(tmp_path):
     runner = ScriptedRunner([NOOP])
     with pytest.raises(InflightPending) as exc:
         run_loop(run_dir, runner, LocalCompute(), max_iters=1)
-    assert "第 1 轮没走完" in str(exc.value) and "cap experiment r1 --resume" in str(exc.value)
+    assert "第 1 轮没走完" in str(exc.value)
+    assert "cap auto-research --run-id r1 --resume" in str(exc.value)
     assert runner.calls == 0, "还没收尸就不该叫执行层"
 
 

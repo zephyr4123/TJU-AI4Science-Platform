@@ -1,8 +1,9 @@
-"""起任务包能力：接一个新课题的第一颗按钮——建目录、搬材料、放模板，人和协调 agent 再往里填。
+"""说清课题：假设间里的那颗能力——建任务包目录、搬材料、放模板，然后人和助理在对话里把课题说清。
 
 task 级，不起执行层。为什么要有它（纲领 P-14 CLI 主导封装）：协调 agent 面前只有 `ai4sci`，
 没有 mkdir、没有 cp；实验 #59 里它只好把研究者的 8 个数据文件一个个读进上下文再写出来，结果对、
-路是歪的。按钮把"任务包长什么样"收回框架：目录表在纲领 packs §2，模板在这个子包里，agent 只填内容。
+路是歪的。这条命令把"任务包长什么样"收回框架：目录表在纲领 packs §2，模板在这个子包里，agent 只填
+内容。
 
 模板里没定的数写「待填」（`packs.PLACEHOLDER`），发布键看到它不给签：模板不能被当成需求签走。
 它建的是工作区里的 `task/`，工作区本身由 `ai4sci workspace new` 或页面先起好（纲领 P-15）；
@@ -16,7 +17,7 @@ import shutil
 from pathlib import Path
 
 from framework.contracts import env, packs
-from framework.contracts.capability import Artifact, Capability, CapabilityFailed, Param, Ports
+from framework.contracts.capability import Capability, CapabilityFailed, Param, Ports
 from framework.run.workspace import Workspace
 
 LOGGER = logging.getLogger("ai4sci.init")
@@ -33,17 +34,33 @@ DATA_README = (
 DESCRIPTOR = Capability(
     name=NAME,
     level="task",
-    summary="起任务包：建目录、材料搬进 data/、写 env/，manifest 与 design.md 先放带说明的模板",
-    stage="设计",
-    title="起任务包",
-    what="把研究者给的文件搬进一个新任务包，需求和设计说明先放好模板，等你和研究者一起填。",
-    inputs=(),
-    outputs=(
-        Artifact("manifest", packs.MANIFEST_NAME,
-                 "需求模板：每个数旁边写着它是什么，没定的标「待填」"),
-        Artifact("brief", packs.BRIEF_NAME, "设计说明模板：四节标题与每节该写什么"),
-        Artifact("data", "data/", "研究者的材料原样搬进来，外加 README 存根"),
-        Artifact("env", "env/", "python-version 与 requirements.lock"),
+    stage="假设",
+    title="说清课题",
+    does=(
+        "起一个任务包：在工作区里建 task/，研究者给的文件夹整棵搬进 data/（跳过 .git、"
+        ".venv 这类），把脚本用的 Python 版本与 pip freeze 写进 env/（之后裁判与内环都按它建环境）"
+        "，manifest.yaml 与 design.md 先放带说明的模板——每个数旁边写着它是什么，"
+        "没定的标「待填」。命令跑完，助理在对话里和研究者把课题说清：研究问题、主指标与方向、"
+        "预算、统计门、产物契约与「怎么算好」，逐项填进这两个文件。"
+    ),
+    does_not=(
+        "不替研究者定指标与预算，不猜「待填」；不写代码、不跑任何东西；"
+        "不发布——需求要研究者自己看过、署名。任务包已经在了就拒绝，不覆盖：改需求直接改文件，"
+        "另一份需求另起工作区。"
+    ),
+    brings=(
+        "研究者的材料文件夹（数据、模型定义、现在能跑的脚本）、脚本用的 Python 版本、"
+        "pip freeze 出来的锁文件；领域包名（domains/ 下的目录，缺省 generic）。"
+    ),
+    leaves=(
+        "task/manifest.yaml（需求：指标、方向、预算、统计门，先是模板）、"
+        "task/design.md（设计说明：四节标题）、task/data/（材料原样 + README 存根）、"
+        "task/env/（python-version、requirements.lock）。填完、发布过（publish.json）"
+        "的任务包才算这一间做完。"
+    ),
+    stops=(
+        "缺 --python 或 --lock、材料文件夹不存在、任务包已在：不建。建好就退出，"
+        "结论行说下一步是填两个文件里的「待填」；填得对不对由 ai4sci show task 按契约查。"
     ),
     params=(
         Param("domain", "str", packs.DEFAULT_DOMAIN, "领域包名（domains/ 下的目录）"),
@@ -51,10 +68,6 @@ DESCRIPTOR = Capability(
         Param("python", "str", "", "研究者脚本用的 Python 版本，写进 env/python-version（必填）"),
         Param("lock", "str", "",
               "研究者环境的 pip freeze 文件，复制成 env/requirements.lock（必填）"),
-    ),
-    criteria=(
-        "目标目录原本不存在，跑完有 manifest.yaml、design.md、data/、env/ 四样",
-        "data/ 里的文件与材料逐字节一致",
     ),
 )
 

@@ -1,4 +1,4 @@
-"""验收记录：结果验收看板上那颗键（外层 vision「两个发布键、一次验收」）。
+"""验收记录：人在结果看板上确认「验收」留下的东西（外层 vision「两个发布键、一次验收」）。
 
 与 `contracts.publish` 对称：发布签的是需求（manifest.yaml、design.md），验收签的是结果
 （checkpoint 里的 best_iter / best_metric / best_commit 与验证报告的结论）。验收之后内环又跑了、
@@ -30,7 +30,7 @@ class AcceptRefused(ValueError):
 
 
 def accept_run(run_dir: Path, *, by: str) -> dict[str, Any]:
-    """写 `<run_dir>/accept.json`，返回记录。人按的键；协调 agent 不该替人按。
+    """写 `<run_dir>/accept.json`，返回记录。人的确认；协调 agent 不该替人签。
 
     三道门：要署名、内环没在跑、至少跑过一轮（只有基线没东西可验）。验证报告有就把结论签进去，
     报告不合约就拒绝——坏报告不能被一次验收盖过去。

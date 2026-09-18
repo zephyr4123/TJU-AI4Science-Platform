@@ -1,11 +1,13 @@
-"""接任务能力：发布之后按的第一格——起执行层给任务包写 harness 与基线草稿，框架封、lint、校验。
+"""写裁判、跑基线：设计间里的那颗能力——起执行层照 design.md 写 harness 与基线代码，框架封、lint、
+校验，接着起 `make_run0.sh` 跑基线、算预检。
 
-task 级（动的是任务包，还没有 run）。干活的代码在 `executor/design.py`（组提示、起会话、
-判越界、封 harness、ruff、validate），这里只是让它有一张描述符、进 `cap list`，好让编排
-看板把它画成节点、`ai4sci cap design` 从描述符生成。
+task 级（动的是任务包，还没有 run）。前半段的干活代码在 `executor/design.py`（组提示、起会话、
+判越界、封 harness、ruff、validate），后半段在同包的 `baseline.py`。原来是两条命令，从来
+没有人只调一条：裁判写完不跑基线没意义，基线又只能跑封好的裁判——2026-09-18 并成一颗
+（外层 #96）。
 
-门：需求没发布不起会话（`publish.require_published`）——裁判脚本必须在人看过「怎么算好」
-之后才写，顺序反了就是原来那个鸡肋停点。
+门：需求没发布不起会话（`publish.require_published`）——裁判脚本必须在人看过「怎么算好」之后才写。
+草稿有问题就停在前半段（草稿留在盘上，问题一行一条），协调层喂 `--feedback` 重跑整颗。
 """
 
 from __future__ import annotations
@@ -13,8 +15,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from framework import paths
+from framework.capabilities.design.baseline import run_baseline
 from framework.contracts import packs, publish
-from framework.contracts.capability import Artifact, Capability, CapabilityFailed, Param, Ports
+from framework.contracts.capability import Capability, CapabilityFailed, Param, Ports
 from framework.executor.design import DesignFailed, design_task
 from framework.run.workspace import Workspace
 
@@ -22,31 +25,41 @@ NAME = "design"
 DESCRIPTOR = Capability(
     name=NAME,
     level="task",
-    summary="接任务：执行层照 design.md 写 harness/ 与 code/ 草稿，框架封 harness、ruff、校验",
     stage="设计",
-    title="接任务",
-    what="按设计说明写裁判脚本和一版最朴素的代码。裁判脚本封起来之后不再改，后面每一轮都用它打分。",
-    inputs=(
-        Artifact("manifest", packs.MANIFEST_NAME, "任务声明：指标、方向、预算、统计门"),
-        Artifact("brief", packs.BRIEF_NAME, "协调层写的产物契约与「怎么算好」"),
-        Artifact("publish", publish.PUBLISH_NAME, "发布记录：人看过需求才有，没有不起会话"),
-        Artifact("data", "data/", "问题定义与输入数据，裁判用它重算指标"),
-        Artifact("env", "env/", "python-version + requirements.lock"),
+    title="写裁判、跑基线",
+    does=(
+        "起一个执行层会话，照 design.md 的「怎么算好」写裁判脚本（harness/：launcher.sh、"
+        "evaluate.py、make_run0.sh）和一版最朴素的基线代码（code/）。会话结束后框架接手："
+        "给脚本加执行位、写 SHA256SUMS 封住 harness，跑 ruff 与任务包契约校验；"
+        "都过了就按 env/ 建 .venv、起 make_run0.sh 跑基线——重复 inner_k 次得到起点成绩与 σ，"
+        "写进 run_0/；最后做预检：统计门 max(accept_sigma × σ, min_delta) 要大于零，"
+        "给了尽头值 attainable 则基线到尽头的距离要大于门。"
     ),
-    outputs=(
-        Artifact("harness", "harness/",
-                 "launcher.sh、evaluate.py、make_run0.sh、SHA256SUMS（框架封）"),
-        Artifact("code", "code/", "基线代码，之后由内环逐轮改"),
+    does_not=(
+        "不定指标、不改需求：manifest.yaml 与 design.md 是它的输入，人发布过才动手。不跑内环、"
+        "不开 run。封好的 harness 之后任何能力都不许再改（hash 守着），"
+        "要改裁判就带意见重跑这颗能力。"
+    ),
+    brings=(
+        "发布过的任务包：manifest.yaml（指标、方向、预算、统计门）、"
+        "design.md（产物契约与「怎么算好」）、data/（裁判重算指标要用的数据）、"
+        "env/（python-version 与 requirements.lock）；可选 --feedback 带上一版的修改意见。"
+    ),
+    leaves=(
+        "harness/（封好的裁判脚本与 SHA256SUMS）、code/（基线代码）、run_0/（results.json、"
+        "repeats/、sigma.json：改进率的分母与统计门的基线）、.venv/（按 lock 建的环境）；"
+        "执行层会话的日志在 runs/design/。"
+    ),
+    stops=(
+        "执行层越界改了别的目录、ruff 或契约校验没过：草稿留在盘上、问题一行一条，"
+        "等 --feedback 重跑。make_run0.sh 退非零或预检没过（门为零、离尽头不够一个门）："
+        "停下来说清，这道题不值得跑。都过了就一次成活，结论行里是基线、σ、门与离尽头几个门。"
     ),
     params=(
         Param("feedback", "str", "",
               "喂回执行层的修改意见（改第二版）；写 @<文件> 就读那个文件；空串是第一版"),
     ),
     needs_executor=True,
-    criteria=(
-        "执行层只改了 harness/ 与 code/",
-        "harness/ 已封（执行位、SHA256SUMS）且 ruff 与 validate（不查 run_0）都没有问题",
-    ),
 )
 
 
@@ -74,5 +87,7 @@ def run(workspace: Workspace, ports: Ports, *, feedback: str = "") -> str:
         raise CapabilityFailed(
             f"design draft\t{head}\n" + "\n".join(outcome.problems)
             + "\nnext=把上面的问题喂回：ai4sci cap design --feedback @<文件>")
-    return (f"design ok\t{head}\tnext=对照 {packs.BRIEF_NAME}「怎么算好」核对 harness/evaluate.py"
-            "（一致 / 有出入报给人）→ ai4sci cap baseline")
+    baseline = run_baseline(workspace)
+    return (f"design ok\t{head}\t{baseline}"
+            f"\tnext=对照 {packs.BRIEF_NAME}「怎么算好」核对 harness/evaluate.py，报给人；"
+            "人点头了就 ai4sci cap auto-research")

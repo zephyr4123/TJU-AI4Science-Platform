@@ -30,10 +30,10 @@ def _lock(root: Path) -> Path:
     return lock
 
 
-def test_descriptor_needs_nothing_and_starts_the_design_stage():
+def test_descriptor_sits_in_the_hypothesis_room_and_needs_no_executor():
     catalog = {name: module.DESCRIPTOR for name, module in discover().items()}
-    assert catalog["init"].stage == "设计" and catalog["init"].level == "task"
-    assert catalog["init"].inputs == () and not catalog["init"].needs_executor
+    assert catalog["init"].stage == "假设" and catalog["init"].level == "task"
+    assert catalog["init"].title == "说清课题" and not catalog["init"].needs_executor
 
 
 def test_init_copies_materials_verbatim_and_lays_out_the_skeleton(tmp_path: Path):

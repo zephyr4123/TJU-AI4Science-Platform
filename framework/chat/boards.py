@@ -23,7 +23,7 @@ from framework.run.checkpoint import read_checkpoint
 from framework.run.context import load_manifest, primary_metric
 from framework.run.workspace import Workspace
 
-# 任务包走到哪一步。看板按它决定该亮哪颗键、说哪句「下一步」。
+# 任务包走到哪一步。看板按它决定该亮发布还是验收、说哪句「下一步」。
 STAGES = ("drafting", "published", "designed", "baselined")
 
 

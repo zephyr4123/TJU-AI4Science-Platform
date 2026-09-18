@@ -1,8 +1,8 @@
 """网页的后端：HTTP 端点包住 conversation.py 与 boards.py，事件用 SSE 推，页面本身也从这里端出去。
 
 标准库 ThreadingHTTPServer：二十个端点不值得引一个 web 框架。零模型：模型在适配器的子进程里。
-能力清单（`/cap`）、工作流库（`/workflows`）、流实例（`/workspaces/<id>/flows`）与流通不通检查
-（`/flow/check`）由调用方以函数传入——这一层不认识 capabilities，依赖方向不能反过来。
+能力清单（`/cap`）、工作流库（`/workflows`）、流实例（`/workspaces/<id>/flows`）与拼流检查
+（`/workflows/check`）由调用方以函数传入——这一层不认识 capabilities，依赖方向不能反过来。
 页面是这些端点的客户端，换一种 UI 也是同一套（`ui/README.md`）。
 
 端点按域分前缀（纲领 P-16）：工作区 `/workspaces/<id>/…` 是研究助理的域，`/studio/…` 是造流助理
@@ -10,15 +10,15 @@
 
     GET  /health                            {"ok": true}
     GET  /backends                          每家 agent 后端的旋钮：模型清单、思考深度档位、缺省
-    GET  /stages                            七个科研阶段，按清单顺序
-    GET  /cap                               能力描述符清单，每颗带 stage 与 used_by
+    GET  /stages                            七间房，按清单顺序
+    GET  /cap                               能力描述符清单：每颗带 stage、五栏与 used_by
     GET  /workflows                         库：`workflows/*.yaml`，covers / remarks / problems
-    POST /workflows                         {name, title, summary, steps[, assumes, overwrite]}
-    GET  /flow/check?steps=a,b              这串能力通不通，不跑
+    POST /workflows                         {name, title, summary, rooms[, overwrite]} → 存进库
+    POST /workflows/check                   同一个 body，只查不存：covers / remarks / problems
     GET  /workspaces                        工作区清单：标题、任务包走到哪、几个 run
     POST /workspaces                        {"id", "title"?} → 新工作区
     GET  /workspaces/<id>                   工作区 + 任务包细节 + 流实例 + run 清单
-    POST /workspaces/<id>/publish           {"by"} → 发布记录；人按的键，agent 不替人按
+    POST /workspaces/<id>/publish           {"by"} → 发布记录；人的确认，agent 不替人签
     GET  /workspaces/<id>/flows             流实例：covers / remarks / problems
     GET  /workspaces/<id>/runs[/<rid>]      run 摘要清单 / 一个 run 的账本、分析、验证、作业
     POST /workspaces/<id>/runs/<rid>/accept {"by"} → 验收记录
@@ -44,7 +44,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
 from backends import BackendNotFound, Chat, ChatEvent, Tuning, available_backends, get_chat
 from framework.chat import boards, conversation, guide, scope
@@ -57,7 +57,7 @@ LOGGER = logging.getLogger("ai4sci.serve")
 DEFAULT_BACKEND = "claude_code"
 MAX_BODY = 1 << 20
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
-API_ROOTS = ("health", "backends", "stages", "cap", "workflows", "flow", "workspaces", "studio")
+API_ROOTS = ("health", "backends", "stages", "cap", "workflows", "workspaces", "studio")
 INDEX_NAME = "index.html"
 
 
@@ -70,7 +70,7 @@ class ChatServer(ThreadingHTTPServer):
                  catalog: Callable[[], list[dict[str, Any]]],
                  workflows: Callable[[], list[dict[str, Any]]],
                  flows: Callable[[Workspace], list[dict[str, Any]]],
-                 flow_check: Callable[[list[str]], dict[str, Any]],
+                 check_workflow: Callable[[dict[str, Any]], dict[str, Any]],
                  save_workflow: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  chat_factory: Callable[[str], Chat] = get_chat,
                  system_prompts: dict[str, str] | None = None,
@@ -80,7 +80,7 @@ class ChatServer(ThreadingHTTPServer):
         self.catalog = catalog
         self.workflows = workflows
         self.flows = flows
-        self.flow_check = flow_check
+        self.check_workflow = check_workflow
         # 编辑台存流：cli 注入（要对着能力清单核对，chat 层不认识 capabilities）；None 是不让存
         self.save_workflow = save_workflow
         self.chat_factory = chat_factory
@@ -131,12 +131,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.server.catalog())
         if parts == ["workflows"]:
             return self._json(self.server.workflows())
-        if parts == ["flow", "check"]:
-            raw = parse_qs(url.query).get("steps", [""])[0]
-            steps = [s for s in raw.split(",") if s]
-            if not steps:
-                return self._error(HTTPStatus.BAD_REQUEST, "要有 steps=能力名,能力名")
-            return self._json(self.server.flow_check(steps))
         if parts == ["workspaces"]:
             return self._json([boards.workspace_summary(ws) for ws in
                                workspace.list_workspaces(self.server.workspaces_root)])
@@ -202,6 +196,8 @@ class Handler(BaseHTTPRequestHandler):
         body = self._body()
         if body is None:
             return None
+        if parts == ["workflows", "check"]:
+            return self._json(self.server.check_workflow(body))
         if parts == ["workflows"]:
             if self.server.save_workflow is None:
                 return self._error(HTTPStatus.NOT_IMPLEMENTED, "这个服务没开存流")

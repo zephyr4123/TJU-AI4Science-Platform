@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from framework.capabilities.experiment import gate as loop_gate
+from framework.capabilities.auto_research import gate as loop_gate
 from framework.contracts import headroom
 from framework.run import context
 from tests.fixtures import packs_factory as pf

@@ -1,18 +1,24 @@
-"""工作流：一串步骤，有的步骤是能力（助理按），有的是键（人按），有的只是人要做的事。
+"""工作流：走几个房间、按什么顺序，房间之间可以插断点（纲领 P-18）。
 
 一个工作流一个 YAML。库在仓根 `workflows/`（通用，编辑台的造流助理改），工作区 `flows/` 里的是取来
-改过参数的实例（研究助理用），两处同一套形状检查。它是预装的拼法，不是平台本身：平台是能力清单。这里只管读文件、查形状、把能力步骤交给
-`flow.check_flow` 核对吃吐文件通不通；不跑任何东西。
+改过参数的实例（研究助理用），两处同一套检查。它是预装的走法，不是平台本身：平台是七间房和每间里的能力。
 
-    name: intake                 # 目录里唯一，等于文件名去掉 .yaml
-    title: 接一个新课题
+    name: research               # 目录里唯一，等于文件名去掉 .yaml
+    title: 从课题到验证
     summary: 一段人话
-    assumes: [harness/, code/, run_0/]   # 可选：这条流开始时任务包里已经有的东西
-    steps:
-      - by: 人 | 助理
-        does: 一句人话
-        cap: design              # 可选：能力清单里的名字
-        key: publish | accept    # 可选：人按的键
+    rooms:
+      - 假设                                     # 一间房：这一间用哪些能力由助理看着办
+      - 断点: 发布                               # 停下来等人确认；「发布」「验收」是出厂的两个
+      - 设计
+      - 断点: 核对裁判算的是不是你要的数         # 别的断点写一句要人确认什么
+      - 实验: {auto-research: {max_iters: 3}}   # 点名用哪颗能力、
+      带什么参数（参数名是描述符里的 Param）
+      - 分析: [analysis]                         # 点名但不带参数也行
+      - 验证
+      - 断点: 验收
+
+房间之间不接管子：检查只看房间名对不对、点名的能力在不在那一间、参数名与类型对不对、断点位置合不合法
+（不能开头就是断点、不能两个断点挨着）。一间里要的东西盘上有没有，是那颗能力进门时自己查的（P-7）。
 """
 
 from __future__ import annotations
@@ -25,11 +31,11 @@ from typing import Any
 
 import yaml
 
-from framework.contracts.capability import PARAM_TYPES, Capability
-from framework.contracts.flow import check_flow, stage_remarks, stages_of
+from framework.contracts.capability import PARAM_TYPES, STAGES, Capability
 
-ACTORS = ("人", "助理")
-KEYS = ("publish", "accept")
+STOP = "断点"
+# 出厂的两个断点：人的确认，各有一份记录（task/publish.json、runs/<id>/accept.json）
+STOP_KEYS = {"发布": "publish", "验收": "accept"}
 # 文件名就是流的名字（P-13）：小写英文加连字符，页面存流时也按这个拒
 NAME_RE = re.compile(r"[a-z][a-z0-9-]*")
 
@@ -39,17 +45,37 @@ class WorkflowInvalid(ValueError):
 
 
 @dataclass(frozen=True)
-class Step:
-    by: str
-    does: str
-    cap: str | None = None
-    key: str | None = None
-    # 能力步骤的参数（`with: {max_iters: 3}`），键是描述符里的 Param 名：agent 照着按，页面照着画
+class Pick:
+    """一间里点名用的一颗能力，可带参数（`with`），键是描述符里的 Param 名：agent 照着按，"
+    "页面照着画。"""
+
+    cap: str
     with_: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"by": self.by, "does": self.does, "cap": self.cap, "key": self.key,
-                "with": dict(self.with_)}
+        return {"cap": self.cap, "with": dict(self.with_)}
+
+
+@dataclass(frozen=True)
+class Room:
+    """走进一间房。`picks` 空着就是这一间用什么由助理看着办。"""
+
+    stage: str
+    picks: tuple[Pick, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": "room", "stage": self.stage, "caps": [p.to_dict() for p in self.picks]}
+
+
+@dataclass(frozen=True)
+class Stop:
+    """停下来等人确认。`key` 是出厂两个之一（publish / accept）或 None；`note` 是要人确认什么。"""
+
+    key: str | None = None
+    note: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": "stop", "key": self.key, "note": self.note}
 
 
 @dataclass(frozen=True)
@@ -57,16 +83,25 @@ class Workflow:
     name: str
     title: str
     summary: str
-    steps: tuple[Step, ...] = field(default_factory=tuple)
-    assumes: tuple[str, ...] = ()
+    rooms: tuple[Room | Stop, ...] = ()
 
     @property
     def caps(self) -> list[str]:
-        return [step.cap for step in self.steps if step.cap]
+        """点名用到的能力，按出现顺序。"""
+        return [p.cap for r in self.rooms if isinstance(r, Room) for p in r.picks]
+
+    @property
+    def stages(self) -> list[str]:
+        """走过哪几间，按出现顺序、去重：给卡片说一句「从哪儿到哪儿」。"""
+        out: list[str] = []
+        for r in self.rooms:
+            if isinstance(r, Room) and r.stage not in out:
+                out.append(r.stage)
+        return out
 
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "title": self.title, "summary": self.summary,
-                "assumes": list(self.assumes), "steps": [step.to_dict() for step in self.steps]}
+                "rooms": [r.to_dict() for r in self.rooms]}
 
 
 def load_workflows(root: Path) -> list[Workflow]:
@@ -108,54 +143,75 @@ def parse_workflow(filename: str, raw: Any) -> Workflow:
         raise WorkflowInvalid(f"{filename}: name 要等于文件名 {stem!r}，实际 {name!r}")
     if not NAME_RE.fullmatch(str(name)):
         raise WorkflowInvalid(f"{filename}: name 只能是小写英文、数字、连字符，实际 {name!r}")
-    path = Path(filename)
     title, summary = raw.get("title"), raw.get("summary")
     if not isinstance(title, str) or not title.strip():
-        raise WorkflowInvalid(f"{path.name}: 缺 title")
+        raise WorkflowInvalid(f"{filename}: 缺 title")
     if not isinstance(summary, str) or not summary.strip():
-        raise WorkflowInvalid(f"{path.name}: 缺 summary")
-    steps_raw = raw.get("steps")
-    if not isinstance(steps_raw, list) or not steps_raw:
-        raise WorkflowInvalid(f"{path.name}: steps 要是非空列表")
-    assumes = raw.get("assumes") or []
-    if not isinstance(assumes, list) or not all(isinstance(a, str) and a for a in assumes):
-        raise WorkflowInvalid(f"{path.name}: assumes 要是路径列表")
-    return Workflow(name=name, title=title.strip(), summary=" ".join(summary.split()),
-                    steps=tuple(_step(path.name, i, s) for i, s in enumerate(steps_raw, start=1)),
-                    assumes=tuple(assumes))
+        raise WorkflowInvalid(f"{filename}: 缺 summary")
+    rooms_raw = raw.get("rooms")
+    if not isinstance(rooms_raw, list) or not rooms_raw:
+        raise WorkflowInvalid(f"{filename}: rooms 要是非空列表")
+    rooms = tuple(_item(filename, i, item) for i, item in enumerate(rooms_raw, start=1))
+    if isinstance(rooms[0], Stop):
+        raise WorkflowInvalid(f"{filename}: 第 1 项就是断点：还什么都没做，没有东西可确认")
+    for i in range(1, len(rooms)):
+        if isinstance(rooms[i], Stop) and isinstance(rooms[i - 1], Stop):
+            raise WorkflowInvalid(
+                f"{filename}: 第 {i} 项与第 {i + 1} 项都是断点：两个断点挨着等于一个")
+    return Workflow(name=name, title=title.strip(), summary=" ".join(summary.split()), rooms=rooms)
 
 
-def _step(filename: str, index: int, raw: Any) -> Step:
-    label = f"{filename}: 第 {index} 步"
-    if not isinstance(raw, dict):
-        raise WorkflowInvalid(f"{label} 要是映射")
-    by, does = raw.get("by"), raw.get("does")
-    if by not in ACTORS:
-        raise WorkflowInvalid(f"{label} 的 by 只能是 {ACTORS}，实际 {by!r}")
-    if not isinstance(does, str) or not does.strip():
-        raise WorkflowInvalid(f"{label} 缺 does")
-    cap, key = raw.get("cap"), raw.get("key")
-    if cap is not None and (not isinstance(cap, str) or not cap):
-        raise WorkflowInvalid(f"{label} 的 cap 要是能力名")
-    if key is not None and key not in KEYS:
-        raise WorkflowInvalid(f"{label} 的 key 只能是 {KEYS}，实际 {key!r}")
-    if cap and key:
-        raise WorkflowInvalid(f"{label} 不能既是能力又是键")
-    if cap and by != "助理":
-        raise WorkflowInvalid(f"{label} 是能力 {cap}，by 要是「助理」（能力是给 agent 按的按钮）")
-    if key and by != "人":
-        raise WorkflowInvalid(f"{label} 是键 {key}，by 要是「人」（键只有人能按）")
-    params = raw.get("with") or {}
-    if not isinstance(params, dict) or not all(isinstance(k, str) and k for k in params):
-        raise WorkflowInvalid(f"{label} 的 with 要是「参数名: 值」的映射")
-    if params and not cap:
-        raise WorkflowInvalid(f"{label} 不是能力步骤，不该有 with")
-    return Step(by=by, does=" ".join(does.split()), cap=cap, key=key, with_=dict(params))
+def _item(filename: str, index: int, raw: Any) -> Room | Stop:
+    label = f"{filename}: 第 {index} 项"
+    if isinstance(raw, str):
+        if raw == STOP:
+            return Stop()
+        if raw in STAGES:
+            return Room(raw)
+        raise WorkflowInvalid(
+            f"{label} {raw!r} 不是房间也不是断点（房间：{STAGES}；断点写「{STOP}」）")
+    if not isinstance(raw, dict) or len(raw) != 1:
+        raise WorkflowInvalid(
+            f"{label} 要是房间名、「{STOP}」，或「房间名: 能力」「{STOP}: 一句话」的单键映射")
+    [(key, value)] = raw.items()
+    if key == STOP:
+        if value is None:
+            return Stop()
+        if not isinstance(value, str) or not value.strip():
+            raise WorkflowInvalid(
+                f"{label} 的断点后面要是一句话（要人确认什么），或「发布」「验收」")
+        note = " ".join(value.split())
+        return Stop(key=STOP_KEYS.get(note), note=note)
+    if key not in STAGES:
+        raise WorkflowInvalid(f"{label} 的 {key!r} 不是房间（房间：{STAGES}）")
+    return Room(key, _picks(label, value))
+
+
+def _picks(label: str, raw: Any) -> tuple[Pick, ...]:
+    """一间里点名的能力：`[a, b]` 或 `{a: {参数}, b: null}`；空就是不点名。"""
+    if raw is None:
+        return ()
+    if isinstance(raw, list):
+        if not all(isinstance(c, str) and c for c in raw):
+            raise WorkflowInvalid(f"{label} 的能力清单要是名字的列表")
+        return tuple(Pick(c) for c in raw)
+    if isinstance(raw, dict):
+        out: list[Pick] = []
+        for cap, params in raw.items():
+            if not isinstance(cap, str) or not cap:
+                raise WorkflowInvalid(f"{label} 的能力名要是字符串")
+            if params is None:
+                params = {}
+            if not isinstance(params, dict) or not all(isinstance(k, str) and k for k in params):
+                raise WorkflowInvalid(f"{label} 的 {cap} 后面要是「参数名: 值」的映射")
+            out.append(Pick(cap, dict(params)))
+        return tuple(out)
+    raise WorkflowInvalid(f"{label} 的房间后面要是能力名列表、「能力: 参数」映射，或空着")
 
 
 def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability], *,
                   overwrite: bool = False) -> Workflow:
-    """编辑台存一条流：形状与通不通都过了才写 `<root>/<name>.yaml`；已有同名不覆盖，除非明说。
+    """编辑台存一条流：形状与检查都过了才写 `<root>/<name>.yaml`；已有同名不覆盖，除非明说。
 
     存的是页面交来的原样映射（只留认识的键），YAML 里中文原样、键序照给。
     """
@@ -168,53 +224,74 @@ def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability
         raise FileExistsError(
             f"已经有一条叫 {workflow.name!r} 的流：{path}；换个名字，或者明说覆盖")
     doc: dict[str, Any] = {"name": workflow.name, "title": workflow.title,
-                           "summary": workflow.summary}
-    if workflow.assumes:
-        doc["assumes"] = list(workflow.assumes)
-    doc["steps"] = [_step_doc(step) for step in workflow.steps]
+                           "summary": workflow.summary,
+                           "rooms": [_item_doc(item) for item in workflow.rooms]}
     Path(root).mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=100),
                     encoding="utf-8")
     return workflow
 
 
-def _step_doc(step: Step) -> dict[str, Any]:
-    doc: dict[str, Any] = {"by": step.by, "does": step.does}
-    if step.cap:
-        doc["cap"] = step.cap
-    if step.key:
-        doc["key"] = step.key
-    if step.with_:
-        doc["with"] = dict(step.with_)
-    return doc
+def _item_doc(item: Room | Stop) -> Any:
+    """写回文件时用最短的写法：不点名的房间一个名字，不带参数的点名一个列表，断点一个词。"""
+    if isinstance(item, Stop):
+        return {STOP: item.note} if item.note else STOP
+    if not item.picks:
+        return item.stage
+    if all(not p.with_ for p in item.picks):
+        return {item.stage: [p.cap for p in item.picks]}
+    return {item.stage: {p.cap: (dict(p.with_) or None) for p in item.picks}}
 
 
 def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> list[str]:
-    """能力名都在清单里、能力步骤按顺序吃吐文件对得上。空清单表示通。"""
-    unknown = [cap for cap in workflow.caps if cap not in catalog]
-    if unknown:
-        return [f"没有这些能力：{unknown}（有的：{sorted(catalog)}）"]
-    problems = [p for i, step in enumerate(workflow.steps, start=1) if step.cap
-                for p in _with_problems(f"第 {i} 步 {step.cap}", step.with_, catalog[step.cap])]
-    if not workflow.caps:
-        return problems
-    return problems + check_flow([catalog[cap] for cap in workflow.caps], have=workflow.assumes)
+    """点名的能力都在清单里、都属于那一间、参数对得上描述符。空清单表示通。"""
+    problems: list[str] = []
+    for i, item in enumerate(workflow.rooms, start=1):
+        if not isinstance(item, Room):
+            continue
+        for pick in item.picks:
+            cap = catalog.get(pick.cap)
+            label = f"第 {i} 间「{item.stage}」里的 {pick.cap}"
+            if cap is None:
+                problems.append(f"{label}：没有这颗能力（有的：{sorted(catalog)}）")
+                continue
+            if cap.stage != item.stage:
+                problems.append(f"{label} 属于「{cap.stage}」间，不能摆在「{item.stage}」间里")
+            problems += _with_problems(label, pick.with_, cap)
+    return problems
 
 
 def _with_problems(label: str, params: dict[str, Any], cap: Capability) -> list[str]:
-    """步骤参数按描述符核对：名字要在 Param 表里，值要是那个类型（int 可以当 float）。"""
+    """参数按描述符核对：名字要在 Param 表里，值要是那个类型（int 可以当 float）。"""
     known = {p.name: p for p in cap.params}
     out: list[str] = []
     for name, value in params.items():
         param = known.get(name)
         if param is None:
-            out.append(f"{label} 的 with 有描述符里没有的参数 {name!r}（有的：{sorted(known)}）")
+            out.append(f"{label} 带了描述符里没有的参数 {name!r}（有的：{sorted(known)}）")
             continue
         expected = PARAM_TYPES[param.type]
         ok = (isinstance(value, expected) and not (expected is not bool and isinstance(value, bool))
               or (expected is float and isinstance(value, int) and not isinstance(value, bool)))
         if not ok:
-            out.append(f"{label} 的 with.{name} 要是 {param.type}，实际 {value!r}")
+            out.append(f"{label} 的 {name} 要是 {param.type}，实际 {value!r}")
+    return out
+
+
+def remarks(workflow: Workflow) -> list[str]:
+    """给人看的提醒，不是问题、不拦流。机器能说的两句：有实验或分析却没有验证，数字没人回溯；
+    设计或实验之前没有「发布」断点，裁判与内环都要人签过需求才动，助理到那儿会被拒。"""
+    out: list[str] = []
+    stages = workflow.stages
+    if ("实验" in stages or "分析" in stages) and "验证" not in stages:
+        out.append("有实验或分析、没有验证：数字没人回溯，结果不能算可信")
+    published = False
+    for item in workflow.rooms:
+        if isinstance(item, Stop) and item.key == "publish":
+            published = True
+        elif isinstance(item, Room) and item.stage in ("设计", "实验") and not published:
+            out.append(f"「{item.stage}」之前没有「发布」断点：需求要人签过才写裁判、才开跑，助理到那儿会被拒")
+            break
     return out
 
 
@@ -227,26 +304,21 @@ def describe_dir(root: Path, catalog: dict[str, Capability]) -> list[dict[str, A
         try:
             wf = load_workflow(path)
         except WorkflowInvalid as exc:
-            out.append({"name": path.stem, "title": path.stem, "summary": "", "assumes": [],
-                        "steps": [], "covers": [], "remarks": [], "problems": [str(exc)]})
+            out.append({"name": path.stem, "title": path.stem, "summary": "", "rooms": [],
+                        "covers": [], "remarks": [], "problems": [str(exc)]})
             continue
         out += describe([wf], catalog)
     return out
 
 
 def describe(workflows: Sequence[Workflow], catalog: dict[str, Capability]) -> list[dict[str, Any]]:
-    """给页面与 `show workflows` 的响应体：每个工作流带它覆盖的阶段、提醒与问题清单。
-    覆盖范围是从能力步骤算出来的，文件里不写。"""
-    out: list[dict[str, Any]] = []
-    for wf in workflows:
-        covers = stages_of([catalog[cap] for cap in wf.caps if cap in catalog])
-        out.append({**wf.to_dict(), "covers": covers, "remarks": stage_remarks(covers),
-                    "problems": workflow_problems(wf, catalog)})
-    return out
+    """给页面与 `show workflows` 的响应体：每条流带它走过的房间、提醒与问题清单。"""
+    return [{**wf.to_dict(), "covers": wf.stages, "remarks": remarks(wf),
+             "problems": workflow_problems(wf, catalog)} for wf in workflows]
 
 
 def used_by(workflows: Sequence[Workflow]) -> dict[str, list[str]]:
-    """能力名 → 用到它的工作流名。反查而不是写在能力上：工作流引用能力，能力不认识工作流。"""
+    """能力名 → 点名用到它的工作流名。反查而不是写在能力上：工作流引用能力，能力不认识工作流。"""
     uses: dict[str, list[str]] = {}
     for wf in workflows:
         for cap in dict.fromkeys(wf.caps):

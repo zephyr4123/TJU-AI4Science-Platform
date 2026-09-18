@@ -1,8 +1,8 @@
-"""`ai4sci sign task | run <id> --by <谁>`：两颗人按的键，终端这张脸。
+"""`ai4sci sign task | run <id> --by <谁>`：人的两处确认（发布需求、验收结果），终端这张脸。
 
-在 cli 层。键不是能力：不产出科研产物，只落一条签字记录——需求的 `task/publish.json`
-（`contracts.publish`）、结果的 `accept.json`（`run.accept`）。后面的按钮查的是记录，不是
-谁按的；页面上的两颗键写的是同一份记录。协调 agent 的指南写明它不替人按。
+在 cli 层。确认不是能力：不产出科研产物，只落一条记录——需求的 `task/publish.json`
+（`contracts.publish`）、结果的 `accept.json`（`run.accept`）。后面的能力查的是记录，不是
+谁签的；页面上的发布、验收写的是同一份记录。协调 agent 的指南写明它不替人签。
 发布签的是当前工作区的需求，不带路径（P-15）。
 """
 
@@ -53,15 +53,15 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
-    sign = groups.add_parser("sign", help="人按的两颗键：发布需求、验收结果")
+    sign = groups.add_parser("sign", help="人的确认：发布需求、验收结果")
     what = sign.add_subparsers(dest="what", required=True)
 
     task = what.add_parser(
-        "task", help="发布当前工作区的需求：看过 manifest.yaml 与 design.md 后按，写 publish.json")
-    task.add_argument("--by", default=getpass.getuser(), help="谁按的，记在记录上；缺省当前登录名")
+        "task", help="发布当前工作区的需求：看过 manifest.yaml 与 design.md 后签，写 publish.json")
+    task.add_argument("--by", default=getpass.getuser(), help="谁签的，记在记录上；缺省当前登录名")
     task.set_defaults(func=cmd_task)
 
-    run = what.add_parser("run", help="验收结果：看过 best、分析与验证后按，写 accept.json")
+    run = what.add_parser("run", help="验收结果：看过 best、分析与验证后签，写 accept.json")
     run.add_argument("run_id")
-    run.add_argument("--by", default=getpass.getuser(), help="谁按的，记在记录上；缺省当前登录名")
+    run.add_argument("--by", default=getpass.getuser(), help="谁签的，记在记录上；缺省当前登录名")
     run.set_defaults(func=cmd_run)

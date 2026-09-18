@@ -120,7 +120,7 @@ def intake_problems(task_dir: Path) -> list[str]:
     """需求看板发布前要过的最小检查：manifest 合 schema、design.md 在且非空。
 
     比 `validate_task` 早得多：此时 harness/ code/ run_0/ 都还没有，那些是发布**之后**
-    按钮产出的东西。这里只管人和 agent 聊出来的两个文件。
+    能力产出的东西。这里只管人和 agent 聊出来的两个文件。
     """
     task_dir = Path(task_dir)
     _, problems = _check_manifest(task_dir)

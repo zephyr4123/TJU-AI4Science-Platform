@@ -18,7 +18,7 @@ from typing import Any
 
 from backends import RunResult
 from compute import Compute, Job
-from framework.capabilities.experiment import failures, gate
+from framework.capabilities.auto_research import failures, gate
 from framework.contracts import env
 from framework.contracts.packs import BUDGET_OVERRUN_RATIO
 from framework.contracts.results import read_results

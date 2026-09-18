@@ -2,7 +2,7 @@
 
 为什么在 run 层：作业是框架的磁盘状态，和 checkpoint 一样"在盘上、谁都能读"；它不认识能力，
 也不认识对话——属于哪段对话只是记一个 id，跑完叫醒 agent 的活在 chat 层。
-为什么是独立进程不是线程：按按钮的是协调 agent 的一轮对话，轮次一结束它的进程树就没了；
+为什么是独立进程不是线程：调用命令的是协调 agent 的一轮对话，轮次一结束它的进程树就没了；
 作业要活过那一刻，只能另起会话（`start_new_session`），stdout / stderr 落到自己的日志文件。
 
 记录只写两次：起的时候（running）、结束的时候（done / failed，由子进程自己回写）。中途死了
@@ -26,7 +26,7 @@ from typing import Any
 LOGGER = logging.getLogger("ai4sci.jobs")
 # 子进程凭它知道自己是哪个作业，跑完回写记录；起作业的进程看到它就拒绝再 --detach
 JOB_ID_ENV = "AI4SCI_JOB_ID"
-# 按按钮的那段对话：chat 层起 agent 时设，作业记下来，跑完好知道该叫醒谁
+# 调用命令的那段对话：chat 层起 agent 时设，作业记下来，跑完好知道该叫醒谁
 CHAT_ID_ENV = "AI4SCI_CHAT_ID"
 STATUSES = ("running", "done", "failed")
 
@@ -66,7 +66,7 @@ def spawn(jobs_dir: Path, argv: list[str], *, cap: str, level: str, target: str,
     """起 `ai4sci <argv>` 当作业：新会话、日志落盘、记录写 running，立刻返回。
 
     `argv` 是去掉了 `--detach` 的那条命令；子进程从 `AI4SCI_JOB_ID` 知道自己是作业。
-    起的是本解释器的 `framework.cli`，不是 PATH 上的 `ai4sci`：作业必须和按钮跑在同一份代码里。
+    起的是本解释器的 `framework.cli`，不是 PATH 上的 `ai4sci`：作业必须和命令跑在同一份代码里。
     """
     assert "--detach" not in argv, "作业的命令里不该还有 --detach"
     root = Path(jobs_dir)

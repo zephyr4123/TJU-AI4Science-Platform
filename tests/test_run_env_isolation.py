@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from compute.local import LocalCompute
-from framework.capabilities.experiment import run_loop
+from framework.capabilities.auto_research import run_loop
 from framework.contracts import env
 from framework.run import layout
 from framework.run.context import load_context, read_domain_extra

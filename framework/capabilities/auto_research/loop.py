@@ -22,8 +22,8 @@ from typing import Any
 
 from backends import Runner
 from compute import Compute
-from framework.capabilities.experiment import failures, gate
-from framework.capabilities.experiment.judge import append_row, judge_run, read_job, settle
+from framework.capabilities.auto_research import failures, gate
+from framework.capabilities.auto_research.judge import append_row, judge_run, read_job, settle
 from framework.executor import prompting, session
 from framework.memory import ledger, notebook
 from framework.run import gitwork, layout
@@ -74,7 +74,8 @@ def run_loop(
     if inflight is not None:
         # 有 in-flight 标记就说明上一次被杀在半路：直接往下跑会把那一轮的账漏掉（P-7）
         raise InflightPending(
-            f"第 {inflight['iter']} 轮没走完，请跑 ai4sci cap experiment {state['run_id']} --resume"
+            f"第 {inflight['iter']} 轮没走完，请跑 "
+            f"ai4sci cap auto-research --run-id {state['run_id']} --resume"
         )
     if state.get("stop_reason"):
         # 已经停过的 run 不自己续命：要不要继续是协调层的决定（P-10）

@@ -23,7 +23,7 @@ def _lock(root: Path) -> Path:
 
 
 def _ws(tmp_path: Path, monkeypatch) -> workspace.Workspace:
-    """作业子进程靠环境认工作区（它的 cwd 是测试进程的），和 agent 按的按钮一样只认一个工作区。"""
+    """作业子进程靠环境认工作区（它的 cwd 是测试进程的），和 agent 调用的命令一样只认一个工作区。"""
     ws = workspace.create(tmp_path / "workspaces", "w1")
     monkeypatch.setenv("PYTHONPATH", str(REPO_ROOT))
     monkeypatch.setenv(workspace.WORKSPACE_ENV, str(ws.root))

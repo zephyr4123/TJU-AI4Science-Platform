@@ -56,7 +56,7 @@ $skills
 #!/usr/bin/env bash
 # 唯一执行入口：先清干净上一轮的产物，再跑基线、再评分——"results.json 存在"永远等于"这一轮真跑出了成绩"。
 set -euo pipefail
-# 三个保证变量拿不到就停在这里，不兜底（框架与 ai4sci cap baseline 都会给）
+# 三个保证变量拿不到就停在这里，不兜底（框架与 ai4sci cap design 都会给）
 : "$${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON}"
 : "$${AI4SCI_BUDGET_S:?未设 AI4SCI_BUDGET_S}"
 : "$${AI4SCI_INNER_K:?未设 AI4SCI_INNER_K}"
@@ -78,12 +78,12 @@ export AI4SCI_START_EPOCH
 set -euo pipefail
 TASK_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$$TASK_DIR"
-# 由 ai4sci cap baseline 起：解释器、预算、inner_k 都从它来；这里只给解释器一个指向任务自己 .venv 的缺省
+# 由 ai4sci cap design 起：解释器、预算、inner_k 都从它来；这里只给解释器一个指向任务自己 .venv 的缺省
 export AI4SCI_PYTHON="$${AI4SCI_PYTHON:-$$TASK_DIR/.venv/bin/python}"
-: "$${AI4SCI_BUDGET_S:?未设 AI4SCI_BUDGET_S：经 ai4sci cap baseline 起}"
-: "$${AI4SCI_INNER_K:?未设 AI4SCI_INNER_K：经 ai4sci cap baseline 起}"
+: "$${AI4SCI_BUDGET_S:?未设 AI4SCI_BUDGET_S：经 ai4sci cap design 起}"
+: "$${AI4SCI_INNER_K:?未设 AI4SCI_INNER_K：经 ai4sci cap design 起}"
 if [ ! -x "$$AI4SCI_PYTHON" ]; then
-  echo "make_run0: 任务环境不存在：$$AI4SCI_PYTHON（由 ai4sci cap baseline 建）" >&2
+  echo "make_run0: 任务环境不存在：$$AI4SCI_PYTHON（由 ai4sci cap design 建）" >&2
   exit 1
 fi
 SEEDS=(42 43 44)   # 与 manifest.budget.repeat_k 对应；改一处就要改另一处

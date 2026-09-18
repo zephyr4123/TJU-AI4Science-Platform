@@ -1,7 +1,7 @@
 """`ai4sci serve`：起网页的后端（HTTP + SSE）并把页面端出去，常驻直到 Ctrl-C。
 
 cli 层里唯一常驻的命令：它不是"跑一个能力"，是给页面一个门。能力清单、工作流库、工作区里的流实例
-与流通不通检查从 `capabilities.discover` 与 `contracts.workflows` 拿，以函数传给 server
+与拼流检查从 `capabilities.discover` 与 `contracts.workflows` 拿，以函数传给 server
 （chat 层不认识 capabilities）。数据根是 `AI4SCI_HOME`（缺省仓根）：工作区与编辑台的对话都在它下面。
 
 页面是 `ui/web` 构建出来的静态文件（`ui/README.md`）：缺省端 `ui/web/dist`，没构建就只开接口。
@@ -20,7 +20,6 @@ from framework.chat import guide
 from framework.chat.server import ChatServer
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, setup_logging
 from framework.contracts import workflows
-from framework.contracts.flow import check_flow, stage_remarks, stages_of
 from framework.run.workspace import Workspace
 
 DEFAULT_UI_DIR = paths.REPO_ROOT / "ui" / "web" / "dist"
@@ -55,17 +54,17 @@ def _save_workflow(doc: dict) -> dict:
     return described
 
 
-def _flow_check(steps: list[str]) -> dict:
-    """与 `ai4sci show flow --json` 同一个形状；名字对不上也当问题报，页面不该为此拿 500。"""
-    found = discover()
-    unknown = [name for name in steps if name not in found]
-    if unknown:
-        return {"steps": steps, "covers": [], "remarks": [],
-                "problems": [f"没有这些能力：{unknown}（有的：{sorted(found)}）"]}
-    descriptors = [found[name].DESCRIPTOR for name in steps]
-    covers = stages_of(descriptors)
-    return {"steps": steps, "covers": covers, "remarks": stage_remarks(covers),
-            "problems": check_flow(descriptors)}
+def _check_workflow(doc: dict) -> dict:
+    """编辑台拼着的那条流有没有问题：与存流同一套检查，只查不写；形状不对也当问题报，"
+    "页面不该为此拿 500。"""
+    catalog = _descriptors()
+    doc = {k: v for k, v in doc.items() if k != "overwrite"}
+    try:
+        workflow = workflows.parse_workflow(f"{doc.get('name') or 'draft'}.yaml", doc)
+    except workflows.WorkflowInvalid as exc:
+        return {"covers": [], "remarks": [], "problems": [str(exc)]}
+    return {"covers": workflow.stages, "remarks": workflows.remarks(workflow),
+            "problems": workflows.workflow_problems(workflow, catalog)}
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -79,7 +78,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     setup_logging()
     try:
         server = ChatServer((args.host, args.port), home=paths.home(), catalog=_catalog,
-                            workflows=_workflows, flows=_flows, flow_check=_flow_check,
+                            workflows=_workflows, flows=_flows, check_workflow=_check_workflow,
                             save_workflow=_save_workflow, ui_dir=ui_dir)
     except guide.GuideMissing as exc:
         print(str(exc), file=sys.stderr)

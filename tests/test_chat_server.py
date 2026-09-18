@@ -15,18 +15,22 @@ from framework.chat.server import ChatServer
 from framework.run import workspace
 from tests.fixtures.scripted_chat import KNOBS, ScriptedChat, reply, with_tool
 
-CATALOG = [{"name": "design", "level": "task"}, {"name": "experiment", "level": "run"}]
-WORKFLOWS = [{"name": "w", "title": "一条", "summary": "…", "assumes": [],
-              "steps": [{"by": "助理", "does": "接", "cap": "design", "key": None}],
-              "problems": []}]
+CATALOG = [{"name": "design", "level": "task", "stage": "设计"},
+           {"name": "auto-research", "level": "task", "stage": "实验"}]
+WORKFLOWS = [{"name": "w", "title": "一条", "summary": "…",
+              "rooms": [{"kind": "room", "stage": "设计", "caps": [{"cap": "design", "with": {}}]}],
+              "covers": ["设计"], "remarks": [], "problems": []}]
 PROMPTS = {"workspace": "研究助理指南", "studio": "造流助理指南"}
 
 
-def flow_check(steps: list[str]) -> dict:
-    """剧本版：与 cli.serve._flow_check 同形状，只认 CATALOG 里的名字。"""
+def check_workflow(doc: dict) -> dict:
+    """剧本版：与 cli.serve._check_workflow 同形状，只认 CATALOG 里的名字。"""
     known = {c["name"] for c in CATALOG}
-    unknown = [s for s in steps if s not in known]
-    return {"steps": steps, "problems": [f"没有这些能力：{unknown}"] if unknown else []}
+    caps = [c for room in doc.get("rooms", []) if isinstance(room, dict)
+            for caps in room.values() for c in (caps or [])]
+    unknown = [c for c in caps if c not in known]
+    return {"covers": ["设计"], "remarks": [],
+            "problems": [f"没有这颗能力：{unknown}"] if unknown else []}
 
 
 def flows(ws: workspace.Workspace) -> list[dict]:
@@ -57,12 +61,12 @@ def served(tmp_path):
     def save_workflow(doc: dict) -> dict:
         if doc.get("name") == "taken":
             raise FileExistsError("已经有一条叫 'taken' 的流")
-        if not doc.get("steps"):
-            raise ValueError("x.yaml: steps 要是非空列表")
+        if not doc.get("rooms"):
+            raise ValueError("x.yaml: rooms 要是非空列表")
         return {**doc, "covers": ["实验"], "remarks": [], "problems": []}
 
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
-                        workflows=lambda: WORKFLOWS, flows=flows, flow_check=flow_check,
+                        workflows=lambda: WORKFLOWS, flows=flows, check_workflow=check_workflow,
                         save_workflow=save_workflow, chat_factory=factory,
                         system_prompts=PROMPTS, ui_dir=ui_dir(tmp_path))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -260,7 +264,7 @@ def test_bad_json_body_is_400(served):
     assert exc.value.code == 400
 
 
-# ── 看板端点、两颗键、静态页 ──────────────────────────────────────────────
+# ── 看板端点、发布与验收、静态页 ──────────────────────────────────────────────
 def test_workspace_board_and_publish_key(served, tmp_path):
     from tests.fixtures.packs_factory import make_pack
 
@@ -344,12 +348,14 @@ def test_jobs_endpoints(served, tmp_path):
     assert json.loads(call(base, "/workspaces/toy/runs")[2])[0]["job"]["job_id"] == "job-1"
 
 
-def test_flow_check_endpoint(served):
+def test_check_workflow_endpoint(served):
+    """拼流台边拼边问：同一个 body 只查不存。"""
     base, _ = served
-    assert call(base, "/flow/check")[0] == 400
-    status, _, body = call(base, "/flow/check?steps=design,experiment")
-    assert status == 200 and json.loads(body) == {"steps": ["design", "experiment"], "problems": []}
-    status, _, body = call(base, "/flow/check?steps=design,nope")
+    assert call(base, "/workflows/check")[0] == 404  # GET 下没有它，只有 POST
+    doc = {"name": "w", "title": "t", "summary": "s", "rooms": ["假设", {"设计": ["design"]}]}
+    status, _, body = call(base, "/workflows/check", doc)
+    assert status == 200 and json.loads(body) == {"covers": ["设计"], "remarks": [], "problems": []}
+    status, _, body = call(base, "/workflows/check", {**doc, "rooms": [{"设计": ["nope"]}]})
     assert status == 200 and "nope" in json.loads(body)["problems"][0]
 
 
@@ -367,7 +373,7 @@ def test_static_page_and_spa_fallback(served):
 
 def test_no_ui_dir_says_how_to_build(tmp_path):
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
-                        workflows=lambda: WORKFLOWS, flows=flows, flow_check=flow_check,
+                        workflows=lambda: WORKFLOWS, flows=flows, check_workflow=check_workflow,
                         system_prompts=PROMPTS)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -382,9 +388,8 @@ def test_no_ui_dir_says_how_to_build(tmp_path):
 def test_save_workflow_endpoint_maps_errors_to_status_codes(served):
     """编辑台存流（外层 #68）：存成 201 回清单里的样子；形状 / 不通 422；同名 409。"""
     base, _ = served
-    doc = {"name": "w", "title": "t", "summary": "s",
-           "steps": [{"by": "助理", "does": "x", "cap": "design"}]}
+    doc = {"name": "w", "title": "t", "summary": "s", "rooms": [{"设计": ["design"]}]}
     status, _, body = call(base, "/workflows", doc)
     assert status == 201 and json.loads(body)["covers"] == ["实验"]
-    assert call(base, "/workflows", {**doc, "steps": []})[0] == 422
+    assert call(base, "/workflows", {**doc, "rooms": []})[0] == 422
     assert call(base, "/workflows", {**doc, "name": "taken"})[0] == 409

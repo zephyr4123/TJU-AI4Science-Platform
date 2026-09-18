@@ -5,7 +5,7 @@ task 级没有——它动的是当前工作区的任务包，P-15），`--backe
 `--compute` 只在 needs_compute 时有，每个 `Param` 变成一个选项——所以"CLI 参数与描述符一致"
 是构造保证，不靠人对。跑完即退，用退出码表态；能力之间怎么串是协调层的事，这里没有顺序。
 
-`--detach` 是每颗按钮都有的开关（外层 #63）：把去掉它的同一条命令起成独立进程当作业，立刻打印
+`--detach` 是每颗能力都有的开关（外层 #63）：把去掉它的同一条命令起成独立进程当作业，立刻打印
 作业号退出；子进程跑完把结论行回写进作业记录，作业属于某段对话的就去叫醒它（chat.notify）。
 这里是作业唯一的起点与终点，能力自己不知道自己是不是作业。
 """
@@ -58,14 +58,15 @@ def cmd_cap(args: argparse.Namespace) -> int:
     code, line = _run(args, descriptor, target, ports)
     print(line, file=sys.stdout if code == EXIT_OK else sys.stderr)
     if code == EXIT_OK and descriptor.level == "run":
-        flow_state.record_press(target, descriptor.name)  # 记它落在流的第几步；没照流就不记
+        flow_state.record_press(target, descriptor.name, descriptor.stage)
+          # 记它走到流的哪一间；没照流就不记
     if job_id:
         job = jobs.finish(ws.jobs, job_id, exit_code=code, result=line)
-        # 作业到此为止：叫醒起的 agent 会继承这个进程的环境，带着作业号它按的 --detach 全被拒
+        # 作业到此为止：叫醒起的 agent 会继承这个进程的环境，带着作业号它调用的 --detach 全被拒
         # （端到端第一次真跑就撞上：醒来的 agent 只好前台跑分析）
         os.environ.pop(jobs.JOB_ID_ENV, None)
         if job.chat_id:
-            # 作业是某段对话里按的：跑完以框架的身份叫醒那段对话，结果记回作业
+            # 作业是某段对话里起的：跑完以框架的身份叫醒那段对话，结果记回作业
             jobs.mark_wake(ws.jobs, job_id, notify.wake(ws, job))
     return code
 
@@ -95,7 +96,7 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     actions = cap.add_subparsers(dest="name", required=True)
     for name, module in discover().items():
         descriptor = module.DESCRIPTOR
-        sub = actions.add_parser(name, help=descriptor.summary)
+        sub = actions.add_parser(name, help=descriptor.title)
         if descriptor.level != "task":
             sub.add_argument("run_id")
         if descriptor.needs_executor:

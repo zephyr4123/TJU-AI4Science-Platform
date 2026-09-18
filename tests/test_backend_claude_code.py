@@ -286,7 +286,7 @@ def test_get_chat_returns_chat_shaped_object():
 
 
 def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
-    """外层 #57：长按钮不许被 CLI 挪到后台，Bash 超时抬到本轮超时，杀它的只能是我们的定时器。"""
+    """外层 #57：长命令不许被 CLI 挪到后台，Bash 超时抬到本轮超时，杀它的只能是我们的定时器。"""
     monkeypatch.setenv("KEEP_ME", "1")
     env = ClaudeCodeChat().build_env(900.0)
     assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"

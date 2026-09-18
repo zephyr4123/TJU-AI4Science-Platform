@@ -1,8 +1,9 @@
 """`ai4sci flow take <name> [--as <新名>]`：把库里的一条流取到当前工作区当实例（纲领 P-15）。
 
 在 cli 层。流分三层：库（`workflows/`，造流助理改）→ 实例（工作区 `flows/`，研究助理按这份需求
-改参数、增删步骤）→ run 里的快照。取流就是把库里那份复制成实例，过一遍同样的形状检查再落盘；之后
-研究助理直接改 `flows/<name>.yaml`，`show flows` 校验，`cap start --workflow <name>` 照它开 run。
+改参数、增删房间与断点）→ run 里的快照。取流就是把库里那份复制成实例，过一遍同样的检查再落盘；之后
+研究助理直接改 `flows/<name>.yaml`，`show flows` 校验，`cap auto-research --workflow <name>` 照它
+开 run。
 同名实例已在就拒绝：改实例直接改文件，不重取。
 """
 
@@ -39,9 +40,9 @@ def cmd_take(args: argparse.Namespace) -> int:
     except (workflows.WorkflowInvalid, FileExistsError) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
-    print(f"ok {taken.name}\tflows/{taken.name}.yaml\t{len(taken.steps)} 步"
-          f"\tnext=按需要改它的 with 参数或步骤，ai4sci show flows 校验；"
-          f"开实验 ai4sci cap start --workflow {taken.name}")
+    print(f"ok {taken.name}\tflows/{taken.name}.yaml\t{len(taken.rooms)} 项"
+          f"\tnext=按需要改它的房间、能力参数或断点，ai4sci show flows 校验；"
+          f"开实验 ai4sci cap auto-research --workflow {taken.name}")
     return EXIT_OK
 
 

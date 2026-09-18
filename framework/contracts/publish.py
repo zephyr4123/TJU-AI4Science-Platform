@@ -1,8 +1,8 @@
-"""发布记录：需求看板上那颗「发布」键按下去以后留在盘上的东西，也是后面每个按钮开门前查的钥匙。
+"""发布记录：人在需求看板上确认「发布」以后留在盘上的东西，也是后面每颗能力开门前查的记录。
 
 为什么要有它（外层 vision「产品形态：两个发布键、一次验收」）：流程往下走的钥匙在人手里，
-不在 agent 手里。按钮只改网页上的显示是假的——agent 按的是命令行按钮，不看网页。所以发布
-必须落到框架看得见的地方：按钮负责写，框架负责查，查只写一次、所有按钮共用。
+不在 agent 手里。只改网页上的显示是假的——agent 调用的是命令，不看网页。所以发布
+必须落到框架看得见的地方：发布负责写，框架负责查，查只写一次、所有能力共用。
 
 签什么：`manifest.yaml` 与 `design.md`——人和 agent 聊出来的两个文件，目标、指标、预算、
 「怎么算好」全在里面。任一文件在发布后改过，记录就失效，得重新发布；这样"发布"签的是
@@ -32,11 +32,11 @@ class PublishRefused(ValueError):
 
 
 class NotPublished(ValueError):
-    """按钮开门前查钥匙没查到：没发布过，或发布后需求改了。信息里带着怎么办。"""
+    """能力开门前查记录没查到：没发布过，或发布后需求改了。信息里带着怎么办。"""
 
 
 def publish_task(task_dir: Path, *, by: str) -> dict[str, Any]:
-    """写 `<task_dir>/publish.json`，返回记录。人按的键；协调 agent 不该替人按（README 写明）。"""
+    """写 `<task_dir>/publish.json`，返回记录。人的确认；协调 agent 不该替人签（README 写明）。"""
     task_dir = Path(task_dir).resolve()
     if not by.strip():
         raise PublishRefused("发布要署名：--by <谁>，这是钥匙上的名字")
@@ -61,13 +61,13 @@ def write_record(task_dir: Path, *, by: str) -> dict[str, Any]:
 
 
 def require_published(task_dir: Path) -> dict[str, Any]:
-    """按钮的门：记录在、版本认得、签的文件一个都没改过。否则抛 `NotPublished`。"""
+    """能力的门：记录在、版本认得、签的文件一个都没改过。否则抛 `NotPublished`。"""
     task_dir = Path(task_dir).resolve()
     path = task_dir / PUBLISH_NAME
     how = f"ai4sci sign task {task_dir} --by <谁>"
     if not path.is_file():
         raise NotPublished(
-            f"需求还没发布，按钮不开：人看过需求看板（manifest.yaml、design.md）后 {how}")
+            f"需求还没发布，不开：人看过需求看板（manifest.yaml、design.md）后 {how}")
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
     except ValueError as exc:

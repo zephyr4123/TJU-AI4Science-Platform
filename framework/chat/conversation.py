@@ -52,7 +52,7 @@ class ConversationBusy(RuntimeError):
 
 
 def coordinator_timeout_s() -> float:
-    """协调 agent 一轮的墙钟上限：它会按按钮等基线跑完，所以缺省和执行层一样给 15 分钟。"""
+    """协调 agent 一轮的墙钟上限：它会调用命令等基线跑完，所以缺省和执行层一样给 15 分钟。"""
     raw = os.environ.get(TIMEOUT_ENV)
     value = DEFAULT_TIMEOUT_S if raw is None else float(raw)
     assert value > 0, f"{TIMEOUT_ENV} 必须是正数，得到 {value!r}"

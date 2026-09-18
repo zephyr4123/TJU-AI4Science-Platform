@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from compute.local import LocalCompute
-from framework.capabilities.experiment import failures, run_loop
+from framework.capabilities.auto_research import failures, run_loop
 from framework.contracts.results import read_results
 from framework.memory import ledger
 from framework.run import gitwork
