@@ -1,20 +1,29 @@
 // 输入框就是门：还没有对话时在这里打字回车就开一段。壳是 reactbits 的 GlassSurface（浮在配图与滚过的对话上），分两层：
-// 上面写字（起步三行高，随内容长到十行），下面一排是工具位——左边以后放模型切换、思考深度、上传，现在只站着快捷键提示；右边发送键。
+// 上面写字（起步三行高，随内容长到十行），下面一排是工具位——左边两枚下拉片「模型」「思考」（reactbits GlideSelect 改装，
+// 清单是后端自报的，选了随下一条消息发出去、记进对话；外层 #86），上传以后排在它们后面；右边发送键。
 // 宽度与正文同一列（主人：矮胖显窄，要高一点瘦一点、大气一点）。空着的时候 RotatingText 轮换提示能说什么（减少动效时静态一句）；
 // 助理答着的时候只剩「助理回答中」、不许发。
 import { ArrowUp } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 
+import type { Backend, Choice, Tuning } from '@/api/types'
 import GlassSurface from '@/components/reactbits/GlassSurface'
+import GlideSelect from '@/components/reactbits/GlideSelect'
 import RotatingText from '@/components/reactbits/RotatingText'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { shownValue } from '@/lib/tuning'
 
 interface Props {
   busy: boolean
   /** 轮换的提示语，三句短的 */
   hints: string[]
+  /** 后端的两个旋钮清单；还没拿到就先不摆 */
+  knobs: Backend | null
+  /** 这段对话记着的选；null 是后端缺省 */
+  tuning: Tuning
+  onTune: (next: Tuning) => void
   onSend: (text: string) => void
 }
 
@@ -22,7 +31,7 @@ const LINE = 24
 const MIN_LINES = 3
 const MAX_LINES = 10
 
-export function Composer({ busy, hints, onSend }: Props) {
+export function Composer({ busy, hints, knobs, tuning, onTune, onSend }: Props) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
   const still = useReducedMotion()
@@ -74,9 +83,17 @@ export function Composer({ busy, hints, onSend }: Props) {
             className="min-h-[4.5rem] resize-none border-0 bg-transparent px-1 py-0 text-[1rem] leading-6 shadow-none focus-visible:ring-0"
           />
           <div className="mt-3 flex items-center gap-2">
-            {/* 工具位：模型切换、思考深度、上传以后从左边排进来 */}
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1">
-              <span className="t-label truncate">Enter 发送，Shift + Enter 换行</span>
+            {/* 工具位：两枚旋钮在左，上传以后排在它们后面 */}
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              {knobs && (
+                <>
+                  <Knob prefix="模型" ariaLabel="模型" choices={knobs.models} fallback={knobs.model}
+                        value={tuning.model} disabled={busy} onChange={(model) => onTune({ ...tuning, model })} />
+                  <Knob prefix="思考" ariaLabel="思考深度" choices={knobs.efforts} fallback={knobs.effort}
+                        value={tuning.effort} disabled={busy} onChange={(effort) => onTune({ ...tuning, effort })} />
+                </>
+              )}
+              <span className="t-label hidden truncate px-1 sm:inline">Enter 发送，Shift + Enter 换行</span>
             </div>
             <Button size="icon-lg" className="rounded-full" onClick={submit} disabled={busy || !text.trim()} aria-label="发送">
               <ArrowUp weight="bold" className="size-5" />
@@ -85,5 +102,27 @@ export function Composer({ busy, hints, onSend }: Props) {
         </div>
       </GlassSurface>
     </div>
+  )
+}
+
+interface KnobProps {
+  prefix: string
+  ariaLabel: string
+  choices: Choice[]
+  /** 后端不选时实际用的；null 是 CLI 自己定，清单顶上多一行「默认」好改回去 */
+  fallback: string | null
+  value: string | null
+  disabled: boolean
+  onChange: (value: string | null) => void
+}
+
+/** 一枚旋钮：清单空着（这家后端换不了）就不出现。片上显示记着的 > 后端缺省 > 「默认」。 */
+function Knob({ prefix, ariaLabel, choices, fallback, value, disabled, onChange }: KnobProps) {
+  if (choices.length === 0) return null
+  const options = choices.map((c) => ({ value: c.id, label: c.label, tag: c.note || undefined }))
+  if (fallback === null) options.unshift({ value: '', label: '默认', tag: undefined })
+  return (
+    <GlideSelect prefix={prefix} ariaLabel={ariaLabel} options={options} value={shownValue(value, fallback)}
+                 disabled={disabled} onChange={(picked) => onChange(picked === '' ? null : picked)} />
   )
 }

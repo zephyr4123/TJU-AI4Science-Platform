@@ -5,12 +5,13 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { api, type Scope } from '@/api/client'
 import { ASSETS } from '@/assets'
 import { streamTurn } from '@/api/sse'
-import type { ChatEvent, ChatMeta } from '@/api/types'
+import type { Backend, ChatEvent, ChatMeta, Tuning } from '@/api/types'
 import BlurText from '@/components/BlurText'
 import { ErrorNote, Skeleton } from '@/components/bits'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
 import { usd } from '@/lib/format'
+import { type Pick, storedTuning } from '@/lib/tuning'
 import { useResource } from '@/lib/useResource'
 
 import { Composer } from './Composer'
@@ -31,8 +32,10 @@ interface Props {
   /** 还没有对话时在输入框里打的第一句：对话一建好就发出去 */
   autoSend: string | null
   onAutoSent: () => void
-  /** 没有对话时按下回车：开一段，第一句话由 autoSend 带回来 */
-  onStart: (text: string) => void
+  /** 没有对话时按下回车：开一段（带上门里选的模型与思考深度），第一句话由 autoSend 带回来 */
+  onStart: (text: string, tuning: Tuning) => void
+  /** 后端的两个旋钮清单；还没拿到就先不摆 */
+  knobs: Backend | null
   /** 一轮结束：助理可能运行了命令、改了需求或 run，看板要重读 */
   onTurnDone: () => void
   drawer: ReactNode
@@ -54,10 +57,13 @@ interface LiveTurn {
 type Kept = Record<number, { trace: TraceItem[]; outcome: TurnOutcome }>
 
 export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, autoSend, onAutoSent, onStart, onTurnDone,
-                           drawer, intro, hints, welcome }: Props) {
+                           knobs, drawer, intro, hints, welcome }: Props) {
   const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId])
   const [live, setLive] = useState<LiveTurn | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
+  // 输入框上这次改过的旋钮；没碰过就沿用对话上记的，随每条消息发出去（外层 #86）
+  const [pick, setPick] = useState<Pick>({})
+  const tuning = storedTuning(pick, current)
   // 本次打开页面期间跑过的轮次，按轮号留着它做过什么；刷新后只剩落盘的问答
   const [kept, setKept] = useState<Kept>({})
   const bottom = useRef<HTMLDivElement>(null)
@@ -86,7 +92,7 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
     let currentTurn: LiveTurn = { n, message: text, trace: [], outcome: null }
     setLive(currentTurn)
     try {
-      await streamTurn(scope, chatId, text, (event: ChatEvent) => {
+      await streamTurn(scope, chatId, text, tuning, (event: ChatEvent) => {
         const done = event.kind === 'done' || event.kind === 'error' ? outcome(event) : currentTurn.outcome
         currentTurn = { ...currentTurn, trace: reduceTrace(currentTurn.trace, event), outcome: done }
         setLive(currentTurn)
@@ -100,7 +106,7 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
     setLive(null)
     await doc.reload()
     onTurnDone()
-  }, [chatId, doc, onTurnDone, scope])
+  }, [chatId, doc, onTurnDone, scope, tuning])
 
   // 门里带进来的第一句：对话建好、本视图挂上来，就替它发出去。只发一次——send 的身份会随取数变，靠 ref 拦住重放
   const opened = useRef(false)
@@ -151,8 +157,9 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
         )}
       </div>
 
-      <Composer busy={live !== null || autoSend !== null} hints={hints}
-                onSend={(text) => (chatId ? void send(text) : onStart(text))} />
+      <Composer busy={live !== null || autoSend !== null} hints={hints} knobs={knobs} tuning={tuning}
+                onTune={(next) => setPick(next)}
+                onSend={(text) => (chatId ? void send(text) : onStart(text, tuning))} />
     </div>
   )
 }

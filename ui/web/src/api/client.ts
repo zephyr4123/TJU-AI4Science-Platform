@@ -4,8 +4,8 @@
 // 对话四个端点在两个域下共用，`Scope` 决定前缀。
 
 import type {
-  Capability, ChatDoc, ChatMeta, FlowCheck, ResearchStage, RunDetail, RunSummary, TaskDetail,
-  Workflow, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
+  Backend, Capability, ChatDoc, ChatMeta, FlowCheck, ResearchStage, RunDetail, RunSummary, TaskDetail,
+  Tuning, Workflow, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
 } from './types'
 
 export type Scope = { kind: 'workspace'; id: string } | { kind: 'studio' }
@@ -55,6 +55,7 @@ const ws = (id: string) => scopePath(inWorkspace(id))
 
 export const api = {
   health: () => request<{ ok: boolean }>('/health'),
+  backends: () => request<Backend[]>('/backends'),
   stages: () => request<ResearchStage[]>('/stages'),
   capabilities: () => request<Capability[]>('/cap'),
   workflows: () => request<Workflow[]>('/workflows'),
@@ -76,5 +77,6 @@ export const api = {
   chats: (scope: Scope) => request<ChatMeta[]>(`${scopePath(scope)}/chats`),
   chat: (scope: Scope, chatId: string) =>
     request<ChatDoc>(`${scopePath(scope)}/chats/${encodeURIComponent(chatId)}`),
-  newChat: (scope: Scope) => request<ChatMeta>(`${scopePath(scope)}/chats`, post({})),
+  newChat: (scope: Scope, tuning?: Tuning) =>
+    request<ChatMeta>(`${scopePath(scope)}/chats`, post(tuning ?? {})),
 }

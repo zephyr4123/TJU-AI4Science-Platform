@@ -52,7 +52,7 @@
 
 ## Components
 
-shadcn（radix-nova 预设）作基础件。reactbits 只用在承担信息的地方，从 registry 捞来改装、走 tokens：Dock（地方栏：横改竖、块是真按钮、名字靠右提示、减少动效不放大）、ElectricBorder（正在跑的那一步）、CountUp（结果三个大数字）、SpotlightCard（工作流墙）、SpecularButton / StarBorder（发布、验收两颗键，全页只有它们有这种质感）、ShinyText（作业跑着时的状态字）、GlassSurface（输入框的壳，跟 `data-theme`）、RotatingText（输入框里轮换的提示语）、FoldText（面板的名字像折纸展开，gsap 换成 motion）、TiltedCard（门口那张封面卡，换名字换图）、GlareHover（对话抽屉的入口按钮，改成真按钮）、GlassIcon（顶栏那枚标记，GlassIcons 只留一枚）、AnimatedList（工作区清单与对话清单逐条浮现）。`components/Band` 是自家的：一张图 + 一层纱幕，顶栏（wash，糊成颜色）、抽屉与库（foot，脚下压纸色）都用它；`components/Scene` 也是自家的：铺满整块面板的画面，欢迎屏（side，左边压纸色给字站）、对话正文与脊柱那列（mist，压七成只剩氛围）用它。图标 Phosphor（regular；看板开着那颗用 fill），全站一套，`components.json` 的 `iconLibrary` 也是它，shadcn 再生成的件不会带回 lucide。
+shadcn（radix-nova 预设）作基础件。reactbits 只用在承担信息的地方，从 registry 捞来改装、走 tokens：Dock（地方栏：横改竖、块是真按钮、名字靠右提示、减少动效不放大）、ElectricBorder（正在跑的那一步）、CountUp（结果三个大数字）、SpotlightCard（工作流墙）、SpecularButton / StarBorder（发布、验收两颗键，全页只有它们有这种质感）、ShinyText（作业跑着时的状态字）、GlassSurface（输入框的壳，跟 `data-theme`）、RotatingText（输入框里轮换的提示语）、FoldText（面板的名字像折纸展开，gsap 换成 motion）、TiltedCard（门口那张封面卡，换名字换图）、GlareHover（对话抽屉的入口按钮，改成真按钮）、GlassIcon（顶栏那枚标记，GlassIcons 只留一枚）、AnimatedList（工作区清单与对话清单逐条浮现）、GlideSelect（输入框上「模型」「思考」两枚下拉片：菜单从片的一角弹出、高亮在行间滑动，改装成挂在 body 上定位——玻璃壳 overflow-hidden 会切菜单——片上带前缀字、图标换 Phosphor、颜色走 tokens）。`components/Band` 是自家的：一张图 + 一层纱幕，顶栏（wash，糊成颜色）、抽屉与库（foot，脚下压纸色）都用它；`components/Scene` 也是自家的：铺满整块面板的画面，欢迎屏（side，左边压纸色给字站）、对话正文与脊柱那列（mist，压七成只剩氛围）用它。图标 Phosphor（regular；看板开着那颗用 fill），全站一套，`components.json` 的 `iconLibrary` 也是它，shadcn 再生成的件不会带回 lucide。
 
 ## Motion
 

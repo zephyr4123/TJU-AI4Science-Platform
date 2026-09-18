@@ -18,7 +18,7 @@
 | 看板 | 端点 | 人在这里做什么 |
 |---|---|---|
 | 工作区 | `GET /workspaces`、`POST /workspaces`、`GET /workspaces/<id>` | 地方栏选一个工作区，或起一个（一个工作区一份需求，P-15）；一整份里有需求、流实例、全部 run |
-| 对话 | `POST <域>/chats`、`POST <域>/chats/<id>/messages`（SSE）、`GET <域>/chats[/<id>]` | 主页面和研究助理说话、编辑台和造流助理说话；助理运行的每条命令以 `tool_use` / `tool_result` 事件流回来 |
+| 对话 | `POST <域>/chats`、`POST <域>/chats/<id>/messages`（SSE）、`GET <域>/chats[/<id>]`、`GET /backends` | 主页面和研究助理说话、编辑台和造流助理说话；助理运行的每条命令以 `tool_use` / `tool_result` 事件流回来；输入框上「模型」「思考」两枚旋钮的清单来自 `GET /backends`（后端自报），选了随消息的 `model` / `effort` 发出去、记进对话 |
 | 需求 | `GET /workspaces/<id>`（里面的 `task`）、`POST /workspaces/<id>/publish` | 脊柱上的需求对齐：看 manifest、设计说明、预检；按**发布**。发布是钥匙（`publish.json`），后面的按钮没它不开 |
 | 库 | `GET /workflows`、`POST /workflows`、`GET /cap`、`GET /stages`、`GET /flow/check` | 编辑台：工作流墙、七段货架、拼流台；存进库。研究者不改库 |
 | 结果 | `GET /workspaces/<id>/runs[/<rid>]`、`POST …/runs/<rid>/accept`、`GET …/jobs[/<jid>]` | 脊柱上的 run：看 best、账本、分析、验证、后台作业；按**验收**（`accept.json`，签这一版 best 与验证结论） |

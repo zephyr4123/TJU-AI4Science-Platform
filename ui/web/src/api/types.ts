@@ -176,6 +176,32 @@ export interface ChatMeta {
   session_id: string | null
   turns: number
   cost_usd: number
+  /** 这段对话记着的模型与思考深度；null 是后端缺省（外层 #86） */
+  model: string | null
+  effort: string | null
+}
+
+/** 一轮用什么：发消息、开对话时带上；null 是后端缺省 */
+export interface Tuning {
+  model: string | null
+  effort: string | null
+}
+
+/** 旋钮上的一个刻度：`id` 给后端，`label` 给人看，`note` 一句提示（可空） */
+export interface Choice {
+  id: string
+  label: string
+  note: string
+}
+
+/** 一家 agent 后端的两个旋钮（`GET /backends`）：清单是后端自报的；`model` / `effort` 是不选时实际会用的，null 是 CLI 自己定（页面写「默认」） */
+export interface Backend {
+  name: string
+  default: boolean
+  models: Choice[]
+  efforts: Choice[]
+  model: string | null
+  effort: string | null
 }
 
 export interface TurnRecord {

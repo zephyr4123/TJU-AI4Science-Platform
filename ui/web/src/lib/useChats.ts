@@ -2,6 +2,7 @@
 import { useCallback, useState } from 'react'
 
 import { api, type Scope } from '@/api/client'
+import type { Tuning } from '@/api/types'
 
 import { useResource } from './useResource'
 
@@ -21,10 +22,11 @@ export function useChats(scope: Scope) {
   const chatId = picked ?? latest
   const current = chats.data?.find((c) => c.chat_id === chatId) ?? null
 
-  const newChat = useCallback(async () => {
+  // 开一段；`tuning` 是门里选好的模型与思考深度，新对话一开始就记着
+  const newChat = useCallback(async (tuning?: Tuning) => {
     setCreating(true)
     try {
-      const meta = await api.newChat(scope)
+      const meta = await api.newChat(scope, tuning)
       await chats.reload()
       setPicked(meta.chat_id)
     } finally {
@@ -32,9 +34,9 @@ export function useChats(scope: Scope) {
     }
   }, [chats, scope])
 
-  const start = useCallback(async (text: string) => {
+  const start = useCallback(async (text: string, tuning: Tuning) => {
     setOpening(text)
-    await newChat()
+    await newChat(tuning)
   }, [newChat])
 
   const opened = useCallback(() => setOpening(null), [])

@@ -4,6 +4,7 @@
 import { type ReactNode, useState } from 'react'
 
 import { api, inWorkspace, STUDIO } from '@/api/client'
+import type { Backend } from '@/api/types'
 import { ASSETS, coverOf } from '@/assets'
 import { ChatView } from '@/chat/ChatView'
 import { Band } from '@/components/Band'
@@ -26,6 +27,9 @@ import { NewWorkspace } from '@/workspace/NewWorkspace'
 export default function App() {
   const workspaces = useResource(api.workspaces, [])
   const health = useResource(api.health, [])
+  // 输入框上两枚旋钮的清单：缺省那家后端有哪些模型、哪几档思考深度（外层 #86）
+  const backends = useResource(api.backends, [])
+  const knobs = backends.data?.find((b) => b.default) ?? backends.data?.[0] ?? null
   const [picked, setPicked] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [studio, setStudio] = useState(false)
@@ -66,12 +70,12 @@ export default function App() {
                  note={place.kind === 'studio' ? '不分工作区' : current && place.kind === 'workspace' ? stageSentence(current) : null} />
           )}
           {place?.kind === 'studio'
-            ? <StudioView healthy={healthy} />
+            ? <StudioView healthy={healthy} knobs={knobs} />
             : place?.kind === 'door'
               ? <NewWorkspace existing={workspaces.data ?? []} onCreated={(id) => void created(id)}
                               onCancel={wsId ? () => setCreating(false) : undefined} />
               : place
-                ? <MainView key={place.id} wsId={place.id} healthy={healthy} title={current?.title ?? place.id} />
+                ? <MainView key={place.id} wsId={place.id} healthy={healthy} knobs={knobs} title={current?.title ?? place.id} />
                 : <div className="flex-1" />}
         </div>
       </div>
@@ -95,7 +99,7 @@ function Top({ place, title, note, menu }: { place: Place; title: string; note: 
 }
 
 /** 主页面：这个工作区的对话 + 脊柱。换工作区时父组件用 key 重建，状态天然按工作区隔离。 */
-function MainView({ wsId, title, healthy }: { wsId: string; title: string; healthy: boolean | null }) {
+function MainView({ wsId, title, healthy, knobs }: { wsId: string; title: string; healthy: boolean | null; knobs: Backend | null }) {
   const scope = inWorkspace(wsId)
   const c = useChats(scope)
   const wide = useMediaQuery(WIDE)
@@ -108,7 +112,8 @@ function MainView({ wsId, title, healthy }: { wsId: string; title: string; healt
       <ChatView
         key={c.chatId ?? 'none'} scope={scope} chatId={c.chatId} current={c.current}
         boardOpen={open} onToggleBoard={() => setBoardOpen(!open)}
-        autoSend={c.opening} onAutoSent={c.opened} onStart={(text) => void c.start(text)} onTurnDone={c.turnDone}
+        autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
+        knobs={knobs}
         intro={{ lede: '先说清课题。', body: '想解决什么、数据在哪、什么算好。' }}
         hints={['说说你的课题', '数据在哪', '什么算好']}
         welcome={{
@@ -145,14 +150,15 @@ function MainView({ wsId, title, healthy }: { wsId: string; title: string; healt
 }
 
 /** 编辑台：左边造流助理的对话（窄一列，库才是主角），右边工作流墙、货架、拼流台。 */
-function StudioView({ healthy }: { healthy: boolean | null }) {
+function StudioView({ healthy, knobs }: { healthy: boolean | null; knobs: Backend | null }) {
   const c = useChats(STUDIO)
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       <div className="flex h-[45dvh] shrink-0 flex-col border-b lg:h-auto lg:w-[30rem] lg:border-r lg:border-b-0">
         <ChatView
           key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current}
-          autoSend={c.opening} onAutoSent={c.opened} onStart={(text) => void c.start(text)} onTurnDone={c.turnDone}
+          autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
+          knobs={knobs}
           intro={{ lede: '说清要拼什么流。', body: '给谁用、从哪步起、要不要验证。' }}
           hints={['说说要拼的流', '给谁用', '要不要验证']}
           welcome={{
