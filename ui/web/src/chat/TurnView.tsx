@@ -4,13 +4,15 @@ import { ErrorNote } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { seconds, splitLede, usd } from '@/lib/format'
-import { denialSentence, toolSentence } from '@/lib/humanize'
+import { denialSentence, toolSentence, wakeSentence } from '@/lib/humanize'
 import { cn } from '@/lib/utils'
 
 import { describeTool, type TraceItem, type TurnOutcome } from './trace'
 
 export interface Turn {
   n: number
+  /** 谁开的口：研究者，或框架（后台作业跑完来叫醒助理） */
+  origin: '人' | '框架'
   message: string
   reply: string | null
   trace: TraceItem[]
@@ -32,11 +34,18 @@ export function TurnView({ turn }: { turn: Turn }) {
   )
   return (
     <article className="space-y-4" aria-label={`第 ${turn.n} 轮`}>
-      <div className="flex justify-end">
-        <p className="max-w-[78%] rounded-[18px_18px_4px_18px] bg-accent px-4 py-2.5 text-[0.9375rem] leading-relaxed whitespace-pre-wrap text-accent-foreground">
-          {turn.message}
+      {turn.origin === '框架' ? (
+        <p className="flex items-center justify-center gap-2 text-[0.8125rem] text-muted-foreground">
+          <span className="rounded-sm border px-1.5 py-px text-[0.6875rem] leading-tight">框架</span>
+          {wakeSentence(turn.message)}
         </p>
-      </div>
+      ) : (
+        <div className="flex justify-end">
+          <p className="max-w-[78%] rounded-[18px_18px_4px_18px] bg-accent px-4 py-2.5 text-[0.9375rem] leading-relaxed whitespace-pre-wrap text-accent-foreground">
+            {turn.message}
+          </p>
+        </div>
+      )}
       {foldable ? (
         <Collapsible>
           <CollapsibleTrigger className="group flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground hover:text-foreground">

@@ -31,7 +31,7 @@ export function WorkspaceSwitcher({ workspaces, selected, onPick, onNew }: Props
       <PopoverTrigger asChild>
         <button
           type="button" aria-label="切换工作区"
-          className={cn('flex h-9 max-w-[22rem] min-w-0 items-center gap-2 rounded-full border bg-background pr-3 pl-4',
+          className={cn('flex h-9 max-w-[12rem] min-w-0 items-center gap-2 rounded-full border bg-background pr-3 pl-4 sm:max-w-[22rem]',
                         'text-left transition-colors hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-ring')}
         >
           <span className={cn('truncate font-serif text-[0.9375rem] font-semibold', !current && 'text-muted-foreground')}>

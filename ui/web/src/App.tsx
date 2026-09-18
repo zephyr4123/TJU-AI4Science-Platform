@@ -6,8 +6,10 @@ import { useState } from 'react'
 import { api, inWorkspace, STUDIO } from '@/api/client'
 import { ChatView } from '@/chat/ChatView'
 import { PillNav } from '@/components/reactbits/PillNav'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useChats } from '@/lib/useChats'
+import { useMediaQuery, WIDE } from '@/lib/useMediaQuery'
 import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 import { ChatDrawer } from '@/sidebar/ChatDrawer'
@@ -45,8 +47,8 @@ export default function App() {
   return (
     <TooltipProvider>
       <div className="flex h-dvh flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center gap-5 border-b bg-card px-5">
-          <span className="font-serif text-[1.0625rem] font-semibold tracking-[0.02em]">AI4Science</span>
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-card px-4 sm:gap-5 sm:px-5">
+          <span className="hidden font-serif text-[1.0625rem] font-semibold tracking-[0.02em] sm:inline">AI4Science</span>
           <WorkspaceSwitcher workspaces={workspaces.data} selected={wsId}
                              onPick={(id) => { setPicked(id); setCreating(false); setView('main') }}
                              onNew={() => { setCreating(true); setView('main') }} />
@@ -72,12 +74,16 @@ export default function App() {
 function MainView({ wsId, healthy }: { wsId: string; healthy: boolean | null }) {
   const scope = inWorkspace(wsId)
   const c = useChats(scope)
-  const [boardOpen, setBoardOpen] = useState(true)
+  const wide = useMediaQuery(WIDE)
+  // 没点过：宽屏常开、窄屏收着；窄屏上脊柱是一张从右边拉出来的抽屉
+  const [boardOpen, setBoardOpen] = useState<boolean | null>(null)
+  const open = boardOpen ?? wide
+  const spine = <Spine workspace={wsId} epoch={c.epoch} />
   return (
     <div className="flex min-h-0 flex-1">
       <ChatView
         key={c.chatId ?? 'none'} scope={scope} chatId={c.chatId} current={c.current}
-        boardOpen={boardOpen} onToggleBoard={() => setBoardOpen((v) => !v)}
+        boardOpen={open} onToggleBoard={() => setBoardOpen(!open)}
         onNew={() => void c.newChat()} onTurnDone={c.turnDone}
         intro={{ lede: '先说清课题。', body: '想解决什么、数据在哪、什么算好。' }}
         placeholder="说说你的课题"
@@ -91,13 +97,22 @@ function MainView({ wsId, healthy }: { wsId: string; healthy: boolean | null }) 
                       description="这个工作区的对话" />
         }
       />
-      <aside
-        className={cn('paper-grid relative h-full shrink-0 border-l transition-[width] duration-200',
-                      boardOpen ? 'w-[27.5rem]' : 'w-0 overflow-hidden border-l-0')}
-        aria-label="这条流" aria-hidden={!boardOpen}
-      >
-        <div className="h-full w-[27.5rem]"><Spine workspace={wsId} epoch={c.epoch} /></div>
-      </aside>
+      {wide ? (
+        <aside
+          className={cn('paper-grid relative h-full shrink-0 border-l transition-[width] duration-200',
+                        open ? 'w-[27.5rem]' : 'w-0 overflow-hidden border-l-0')}
+          aria-label="这条流" aria-hidden={!open}
+        >
+          <div className="h-full w-[27.5rem]">{spine}</div>
+        </aside>
+      ) : (
+        <Sheet open={open} onOpenChange={setBoardOpen}>
+          <SheetContent side="right" className="paper-grid w-full gap-0 p-0 sm:max-w-[27.5rem]">
+            <SheetHeader className="sr-only"><SheetTitle>这条流</SheetTitle></SheetHeader>
+            <div className="h-full">{spine}</div>
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   )
 }
@@ -106,8 +121,8 @@ function MainView({ wsId, healthy }: { wsId: string; healthy: boolean | null }) 
 function StudioView({ healthy }: { healthy: boolean | null }) {
   const c = useChats(STUDIO)
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="flex w-[30rem] shrink-0 flex-col border-r">
+    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div className="flex h-[45dvh] shrink-0 flex-col border-b lg:h-auto lg:w-[30rem] lg:border-r lg:border-b-0">
         <ChatView
           key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current}
           onNew={() => void c.newChat()} onTurnDone={c.turnDone}

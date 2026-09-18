@@ -2,6 +2,7 @@
 // 只读一个工作区（P-15）：有 run 就是当前 run 照的那条流，一步一个模块，模块的实心程度来自盘上真实的文件；
 // 没有 run 时就是需求对齐，看这个工作区的任务包。
 // 装什么流长什么样：这里不写死任何一条流，步骤从 run 的便条（或工作流文件）来，状态由 derive.ts 算。
+import { useReducedMotion } from 'motion/react'
 import { type ReactNode, useState } from 'react'
 
 import { api } from '@/api/client'
@@ -72,8 +73,6 @@ function RunSpine({ workspace, run, runs, onPick, workflows, epoch }: {
 function RunStepContent({ workspace, step, run, reload }: {
   workspace: string; step: StepView; run: RunDetail; reload: () => Promise<void>
 }) {
-  const indigo = useToken('--primary')
-  const muted = useToken('--muted-foreground')
   const delta = run.baseline !== null ? run.baseline - run.best_metric : null
   if (step.state === 'todo') return <Hint>{tail(step.does)}</Hint>
   if (step.key === 'accept') return <AcceptKey workspace={workspace} run={run} reload={reload} />
@@ -85,8 +84,7 @@ function RunStepContent({ workspace, step, run, reload }: {
         return (
           <>
             {run.last_iter > 0 && <Pair from={run.baseline} to={run.best_metric} />}
-            <ShinyText text={`第 ${run.last_iter + 1} 轮跑着`} color={muted} shineColor={indigo}
-                       speed={2.5} className="text-[0.8125rem]" />
+            <Live text={`第 ${run.last_iter + 1} 轮跑着`} />
           </>
         )
       }
@@ -102,7 +100,7 @@ function RunStepContent({ workspace, step, run, reload }: {
       )
     case 'analysis':
       if (step.state === 'running') {
-        return <ShinyText text="写分析中" color={muted} shineColor={indigo} speed={2.5} className="text-[0.8125rem]" />
+        return <Live text="写分析中" />
       }
       if (!run.analysis_text) return <Hint>{tail(step.does)}</Hint>
       return (
@@ -217,10 +215,20 @@ const BUBBLE: Record<StepView['state'], string> = {
   todo: 'border-[1.5px] border-dashed border-muted-foreground text-muted-foreground',
 }
 
+/** 跑着的那一步的状态字：闪着的一行；系统要求减少动效就是普通一行。 */
+function Live({ text }: { text: string }) {
+  const still = useReducedMotion()
+  const indigo = useToken('--primary')
+  const muted = useToken('--muted-foreground')
+  if (still) return <p className="text-[0.8125rem] text-muted-foreground">{text}</p>
+  return <ShinyText text={text} color={muted} shineColor={indigo} speed={2.5} className="text-[0.8125rem]" />
+}
+
 function StepModule({ step, last, ok = false, children }: {
   step: StepView; last: boolean; ok?: boolean; children: ReactNode
 }) {
   const indigo = useToken('--primary')
+  const still = useReducedMotion()
   const waiting = step.state === 'wait-key' || step.state === 'wait-human'
   const box = (
     <div className={cn('rounded-xl border px-4 py-3',
@@ -244,7 +252,7 @@ function StepModule({ step, last, ok = false, children }: {
         {step.n}
       </span>
       {!last && <span aria-hidden className="absolute top-[30px] bottom-[-14px] left-[13px] w-0.5 bg-border" />}
-      {step.state === 'running'
+      {step.state === 'running' && !still
         ? <ElectricBorder color={indigo} speed={0.5} chaos={0.06} borderRadius={12}>{box}</ElectricBorder>
         : box}
     </li>

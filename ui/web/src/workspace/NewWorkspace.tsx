@@ -1,6 +1,7 @@
 // 新建工作区：一个工作区一份需求，也就是一个文件夹（外层 #70 #74）。
 // 这一屏没有表单：那句话本身就是要填的（记录本上的填空行），右边那只文件夹是全屏唯一放胆处，
 // 名字一边打、标签一边显，打好了它就打开，露出里面会有的三样：需求、流、实验。字要少（主人：简洁）。
+import { useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 
 import { api } from '@/api/client'
@@ -26,6 +27,7 @@ export function NewWorkspace({ existing, onCreated, onCancel, onPick }: {
   const [error, setError] = useState<string | null>(null)
   const indigo = useToken('--primary')
   const muted = useToken('--muted-foreground')
+  const still = useReducedMotion()
   const slug = id.trim()
   const valid = ID_RE.test(slug)
   const taken = existing.some((w) => w.id === slug)
@@ -79,7 +81,8 @@ export function NewWorkspace({ existing, onCreated, onCancel, onPick }: {
           <div className="mt-8 flex items-center gap-4">
             <Button size="lg" type="submit" disabled={!valid || taken || busy}>{busy ? '新建中' : '新建'}</Button>
             {onCancel && <Button variant="ghost" type="button" onClick={onCancel}>取消</Button>}
-            {busy && <ShinyText text="建目录" color={muted} shineColor={indigo} speed={2} className="text-[0.8125rem]" />}
+            {busy && (still ? <span className="text-[0.8125rem] text-muted-foreground">建目录</span>
+              : <ShinyText text="建目录" color={muted} shineColor={indigo} speed={2} className="text-[0.8125rem]" />)}
           </div>
 
           {!first && (

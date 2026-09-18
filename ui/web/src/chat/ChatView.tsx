@@ -1,4 +1,5 @@
 import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { useReducedMotion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { api, type Scope } from '@/api/client'
@@ -58,11 +59,11 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onN
 
   const turns = useMemo<Turn[]>(() => {
     const settled: Turn[] = (doc.data?.history ?? []).map((t) => ({
-      n: t.turn, message: t.message, reply: t.reply,
+      n: t.turn, origin: t.origin, message: t.message, reply: t.reply,
       trace: kept[t.turn]?.trace ?? [], outcome: kept[t.turn]?.outcome ?? null, live: false,
     }))
     if (live) {
-      settled.push({ n: live.n, message: live.message, reply: null, trace: live.trace,
+      settled.push({ n: live.n, origin: '人', message: live.message, reply: null, trace: live.trace,
                      outcome: live.outcome, live: live.outcome === null })
     }
     return settled
@@ -141,14 +142,19 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onN
 
 /** 还没有对话：一句话说清这一边的助理管什么；背景是安静的波纹，动的是线不是字。 */
 function Welcome({ copy, onNew }: { copy: Copy; onNew: () => void }) {
+  const still = useReducedMotion()  // 系统要求减少动效：没有波纹，标题直接出现
   return (
     <div className="relative h-full min-h-[24rem]">
       {/* Waves 自带一个跟随光标的小圆点，这里不需要，藏掉 */}
-      <Waves lineColor="oklch(0.9 0.02 80)" backgroundColor="transparent" waveSpeedX={0.01} waveSpeedY={0.004}
-             waveAmpX={28} waveAmpY={14} xGap={14} yGap={36} className="[&>div]:hidden" />
+      {!still && (
+        <Waves lineColor="oklch(0.9 0.02 80)" backgroundColor="transparent" waveSpeedX={0.01} waveSpeedY={0.004}
+               waveAmpX={28} waveAmpY={14} xGap={14} yGap={36} className="[&>div]:hidden" />
+      )}
       <div className="relative mx-auto flex h-full max-w-[36rem] flex-col justify-center px-6">
-        <BlurText text={copy.headline} delay={50} animateBy="words"
-                  direction="top" className="text-[1.75rem] leading-[1.25] font-semibold tracking-tight text-balance" />
+        {still
+          ? <h2 className="text-[1.75rem] leading-[1.25] font-semibold tracking-tight text-balance">{copy.headline}</h2>
+          : <BlurText text={copy.headline} delay={50} animateBy="words"
+                      direction="top" className="text-[1.75rem] leading-[1.25] font-semibold tracking-tight text-balance" />}
         <p className="t-body mt-5 text-muted-foreground">{copy.body}</p>
         <div className="mt-8">
           <Button size="lg" onClick={onNew}>开始对话</Button>

@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { api } from '@/api/client'
 import type { RunDetail } from '@/api/types'
 import { DoneBlock, ErrorNote } from '@/components/bits'
-import ClickSpark from '@/components/ClickSpark'
 import { StarBorder } from '@/components/reactbits/StarBorder'
 import { metric, when } from '@/lib/format'
 import { useToken } from '@/lib/tokens'
@@ -12,6 +11,7 @@ import { useSigner } from '@/lib/useSigner'
 
 import { KeyPanel } from './KeyPanel'
 import { SignerField } from './SignerField'
+import { Spark } from './Spark'
 
 export function AcceptKey({ workspace, run, reload }: { workspace: string; run: RunDetail; reload: () => Promise<void> }) {
   const [signer, setSigner] = useSigner()
@@ -52,9 +52,9 @@ export function AcceptKey({ workspace, run, reload }: { workspace: string; run: 
       {error && <div className="mb-3"><ErrorNote text={error} /></div>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <SignerField id="accept-signer" value={signer} onChange={setSigner} />
-        <ClickSpark sparkColor={amber} sparkRadius={20} sparkCount={8} duration={420}>
+        <Spark color={amber}>
           <StarBorder glow={amber} onClick={press} disabled={disabled}>{busy ? '验收中' : '验收'}</StarBorder>
-        </ClickSpark>
+        </Spark>
       </div>
     </KeyPanel>
   )

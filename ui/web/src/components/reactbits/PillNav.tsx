@@ -2,6 +2,7 @@
 // 去掉了 logo、react-router 与移动端菜单——这里只是两块看板之间切换，不是站点导航；
 // 留下它的滑圆 hover 动效（gsap），颜色改走 tokens。
 import { gsap } from 'gsap'
+import { useReducedMotion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -23,6 +24,7 @@ export function PillNav<K extends string>({ items, active, onSelect, className, 
   const circleRefs = useRef<Array<HTMLSpanElement | null>>([])
   const tlRefs = useRef<Array<gsap.core.Timeline | null>>([])
   const activeTweenRefs = useRef<Array<gsap.core.Tween | null>>([])
+  const still = useReducedMotion()  // 减少动效：选中态照旧，hover 不鼓圆
 
   useEffect(() => {
     const layout = () => {
@@ -63,13 +65,13 @@ export function PillNav<K extends string>({ items, active, onSelect, className, 
 
   const enter = (i: number) => {
     const tl = tlRefs.current[i]
-    if (!tl) return
+    if (!tl || still) return
     activeTweenRefs.current[i]?.kill()
     activeTweenRefs.current[i] = tl.tweenTo(tl.duration(), { duration: 0.3, ease, overwrite: 'auto' })
   }
   const leave = (i: number) => {
     const tl = tlRefs.current[i]
-    if (!tl) return
+    if (!tl || still) return
     activeTweenRefs.current[i]?.kill()
     activeTweenRefs.current[i] = tl.tweenTo(0, { duration: 0.2, ease, overwrite: 'auto' })
   }

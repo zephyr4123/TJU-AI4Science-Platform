@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { api } from '@/api/client'
 import type { TaskDetail } from '@/api/types'
 import { DoneBlock, ErrorNote, Problems } from '@/components/bits'
-import ClickSpark from '@/components/ClickSpark'
 import { StarBorder } from '@/components/reactbits/StarBorder'
 import { when } from '@/lib/format'
 import { useToken } from '@/lib/tokens'
@@ -12,6 +11,7 @@ import { useSigner } from '@/lib/useSigner'
 
 import { KeyPanel } from './KeyPanel'
 import { SignerField } from './SignerField'
+import { Spark } from './Spark'
 
 export function PublishKey({ workspace, task, reload }: { workspace: string; task: TaskDetail; reload: () => Promise<void> }) {
   const [signer, setSigner] = useSigner()
@@ -50,11 +50,11 @@ export function PublishKey({ workspace, task, reload }: { workspace: string; tas
       {error && <div className="mb-3"><ErrorNote text={error} /></div>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <SignerField id="publish-signer" value={signer} onChange={setSigner} />
-        <ClickSpark sparkColor={amber} sparkRadius={20} sparkCount={8} duration={420}>
+        <Spark color={amber}>
           <StarBorder glow={amber} onClick={press} disabled={busy || blocked || !signer.trim()}>
             {busy ? '发布中' : '发布'}
           </StarBorder>
-        </ClickSpark>
+        </Spark>
       </div>
     </KeyPanel>
   )

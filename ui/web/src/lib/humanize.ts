@@ -80,6 +80,15 @@ export function toolSentence(tool: string, input: Record<string, unknown>): stri
   return `用了 ${tool}`
 }
 
+/** 框架来叫醒助理的那一轮，页面上只显示一句：哪件事跑完了或没跑成。 */
+export function wakeSentence(message: string): string {
+  const first = message.split('\n')[0]
+  const found = /^作业 \S+（`([^`]+)`）(跑完了|没跑成)/.exec(first)
+  if (!found) return first.replace(/`/g, '').slice(0, 80)
+  const what = toolSentence('Bash', { command: found[1] }).replace(/，放到后台跑$/, '')
+  return `后台作业${found[2]}（${what}）`
+}
+
 /** 被拒的命令，原因翻成一句话；不是认识的拒绝原因就原样给。 */
 export function denialSentence(text: string): string {
   if (/Permission to use \w+ has been denied/.test(text)) {
