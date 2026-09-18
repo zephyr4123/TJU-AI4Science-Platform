@@ -76,6 +76,7 @@ def cmd_send(args: argparse.Namespace) -> int:
         for event in conversation.send(
             conv, get_chat(conv.backend), text, system_prompt=system_prompt,
             allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
+            readable_paths=list(where.readable_paths),
         ):
             last = event
             if event.kind == "delta":

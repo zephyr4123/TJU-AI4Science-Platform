@@ -259,7 +259,8 @@ class Handler(BaseHTTPRequestHandler):
             chat = self.server.chat_factory(conv.backend)
             events = conversation.send(
                 conv, chat, text, system_prompt=self.server.system_prompts[where.kind],
-                allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES)
+                allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
+                readable_paths=list(where.readable_paths))
             first = next(events)  # 忙、空消息这类错误在头响应之前就要报出来
         except conversation.ConversationBusy as exc:
             return self._error(HTTPStatus.CONFLICT, str(exc))

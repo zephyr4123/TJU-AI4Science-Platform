@@ -51,6 +51,8 @@ def test_the_two_scopes_write_to_disjoint_places(tmp_path, monkeypatch):
     assert studio.allowed_paths == (library,) and studio.chats == tmp_path / "studio" / "chats"
     assert not set(research.allowed_paths) & set(studio.allowed_paths)
     assert all(p.is_relative_to(ws.root) for p in research.allowed_paths)
+    # 库对研究助理是只读的：在可读清单里、不在可写清单里；造流助理反过来
+    assert research.readable_paths == (library,) and studio.readable_paths == ()
 
 
 def test_bash_rules_only_allow_bare_ai4sci():
@@ -62,6 +64,7 @@ def test_bash_rules_only_allow_bare_ai4sci():
     assert "现在一律写 `ai4sci`" in guide.PREAMBLES[guide.WORKSPACE]
     assert "平台还没有这个功能" in guide.PREAMBLES[guide.WORKSPACE]
     assert "去编辑台拼一条" in guide.PREAMBLES[guide.WORKSPACE]
+    assert "不拼 `find`" in guide.PREAMBLES[guide.WORKSPACE]
     assert "去主页面找研究助理" in guide.PREAMBLES[guide.STUDIO]
 
 
@@ -86,6 +89,7 @@ def test_research_guide_takes_flows_and_never_builds_them():
     只教取流、改实例；命令里不带任务包路径（P-15）。"""
     text = guide.system_prompt(guide.WORKSPACE)
     assert "## 取一条流，按需求改" in text and "ai4sci flow take" in text
+    assert f"库在 `{paths.workflows_root()}`：你能读不能写" in text  # 路径写实，agent 不用去找
     assert "## 拼一条自己的流" not in text and "workflows/<name>.yaml" not in text
     assert "不要造流" in text and "去编辑台" in text
     assert "不要自己把 `ai4sci cap` 放后台" in text

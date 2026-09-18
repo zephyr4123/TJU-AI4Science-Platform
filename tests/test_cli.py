@@ -610,6 +610,7 @@ def test_show_flow_unknown_capability_is_a_usage_error():
 # ── chat：终端里和两位助理聊 ────────────────────────────────────────────────
 def test_chat_new_send_list_in_the_workspace_with_a_scripted_backend(tmp_path, monkeypatch,
                                                                        capsys):
+    from framework import paths
     from framework.chat import guide
     from framework.cli import main
     from framework.run import workspace
@@ -636,6 +637,7 @@ def test_chat_new_send_list_in_the_workspace_with_a_scripted_backend(tmp_path, m
         "用流不造流" in chat.calls[0]["system_prompt"]
     assert chat.calls[0]["cwd"] == ws.root
     assert chat.calls[0]["allowed_paths"] == [ws.task, ws.flows, ws.runs]
+    assert chat.calls[0]["readable_paths"] == [paths.workflows_root()]
 
     assert main(["chat", "list"]) == EXIT_OK
     assert capsys.readouterr().out.startswith(f"{chat_id}\tturns=1\tcost_usd=0.0100")
@@ -672,6 +674,7 @@ def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_p
     prompt = chat.calls[0]["system_prompt"]
     assert "只写库" in prompt and "造流助理" in prompt
     assert chat.calls[0]["cwd"] == library.parent and chat.calls[0]["allowed_paths"] == [library]
+    assert chat.calls[0]["readable_paths"] == []
     assert main(["chat", "list", "--studio"]) == EXIT_OK
     assert capsys.readouterr().out.startswith(f"{chat_id}\tturns=1")
     assert main(["chat", "list"]) == EXIT_USAGE  # 没在工作区里：研究助理那边没得列

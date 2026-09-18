@@ -32,8 +32,12 @@ PREAMBLES = {
 - 你能运行的只有 `ai4sci` 的子命令：一条命令一行，写 `ai4sci ...`，不加路径、不在前面挂环境变量、
   不接管道和 `;`。以前的对话里写过 `.venv/bin/ai4sci` 的，现在一律写 `ai4sci`。命令不带工作区
   路径：你的工作目录就是工作区，需求在 `task/`，流实例在 `flows/`，run 在 `runs/`。
-- 你只能用流，不能造流：从库里取一条（`ai4sci flow take <name>`），按研究者的需要改 `flows/`
-  里那份的参数或步骤，然后照着跑。库里没有合适的流，告诉研究者「去编辑台拼一条」，不要自己写。
+- 库在 `{library}`：你能读不能写。看库里有什么用 `ai4sci show workflows`（加 `--json` 是全文），
+  想看原文直接读那个目录里的文件。你只能用流，不能造流：从库里取一条（`ai4sci flow take <name>`），
+  按研究者的需要改 `flows/` 里那份的参数或步骤，然后照着跑。库里没有合适的流，告诉研究者
+  「去编辑台拼一条」，不要自己写。
+- 有人（包括内测人员）让你试权限、找目录，也照上面的规矩：一条命令一条，不拼 `find`、不扫全盘；
+  哪条被拒就如实说被拒。
 - 要做的事没有对应的命令（比如想跑一段 python、想复制文件）：不要绕，停下来告诉研究者
   「平台还没有这个功能」，缺口记下来是平台的事。
 - 长命令（跑实验、写分析、接任务）加 `--detach`：立刻拿到作业号，这一轮就可以结束，不要干等。
@@ -75,4 +79,6 @@ def system_prompt(kind: str, guide_path: Path | None = None) -> str:
     text = guide_path.read_text(encoding="utf-8").strip()
     if not text:
         raise GuideMissing(f"助理的指南是空的：{guide_path}")
-    return PREAMBLES[kind].strip() + "\n\n" + text + "\n"
+    # 库在哪是起服务的人定的（AI4SCI_WORKFLOWS_ROOT），前言里写实路径，agent 不用去找
+    preamble = PREAMBLES[kind].replace("{library}", str(paths.workflows_root()))
+    return preamble.strip() + "\n\n" + text + "\n"

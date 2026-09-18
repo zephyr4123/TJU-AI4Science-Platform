@@ -333,6 +333,22 @@ def test_chat_argv_asks_for_partial_messages(tmp_path: Path):
     assert "--include-partial-messages" in argv
 
 
+def test_chat_argv_adds_readable_dirs_without_write_rules(tmp_path: Path):
+    """纲领 P-16：研究助理看得见库（--add-dir 让 Read 在 dontAsk 下不被拒），但库不进写的白名单。"""
+    library = tmp_path / "workflows"
+    library.mkdir()
+    argv = ClaudeCodeChat().build_argv("hi", tmp_path / "ws", session_id=None, system_prompt="",
+                                       allowed_paths=[tmp_path / "ws" / "flows"], bash_rules=(),
+                                       readable_paths=[library])
+    assert argv[argv.index("--add-dir") + 1] == str(library.resolve())
+    rules = argv[argv.index("--allowedTools") + 1:argv.index("--max-turns")]
+    assert f"Read(//{library.resolve().as_posix().lstrip('/')}/**)" in rules
+    assert not any(r.startswith(("Edit(", "Write(")) and "workflows" in r for r in rules)
+    plain = ClaudeCodeChat().build_argv("hi", tmp_path, session_id=None, system_prompt="",
+                                        allowed_paths=[], bash_rules=())
+    assert "--add-dir" not in plain
+
+
 def test_chat_env_carries_the_chat_id_to_the_buttons_the_agent_presses(monkeypatch):
     """外层 #63：agent 按的 `--detach` 从环境里知道自己属于哪段对话；没给就不留上一段的。"""
     from framework.run.jobs import CHAT_ID_ENV

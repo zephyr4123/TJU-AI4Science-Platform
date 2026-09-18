@@ -152,11 +152,12 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
     if prefix == "/studio":
         assert call_["system_prompt"] == "造流助理指南"
         assert call_["cwd"] == paths.workflows_root().parent
-        assert call_["allowed_paths"] == [paths.workflows_root()]
+        assert call_["allowed_paths"] == [paths.workflows_root()] and call_["readable_paths"] == []
     else:
         ws = workspace.load(tmp_path / "workspaces" / "w1")
         assert call_["system_prompt"] == "研究助理指南" and call_["cwd"] == ws.root
         assert call_["allowed_paths"] == [ws.task, ws.flows, ws.runs]
+        assert call_["readable_paths"] == [paths.workflows_root()]  # 库可读不可写
 
     status, _, body = call(base, f"{prefix}/chats/{chat_id}/messages", {"text": "有几个？"})
     events = sse_events(body)

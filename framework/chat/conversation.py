@@ -134,8 +134,8 @@ def read_turns(conv: Conversation) -> list[dict[str, Any]]:
 
 def send(
     conv: Conversation, chat: Chat, message: str, *, system_prompt: str,
-    allowed_paths: list[Path], bash_rules: tuple[str, ...], timeout_s: float | None = None,
-    origin: str = "人",
+    allowed_paths: list[Path], bash_rules: tuple[str, ...], readable_paths: list[Path] = (),
+    timeout_s: float | None = None, origin: str = "人",
 ) -> Iterator[ChatEvent]:
     """发一轮：写 message.md → 逐个事件落盘并往外吐 → done/error 时更新 meta 与 transcript。
 
@@ -168,7 +168,8 @@ def send(
         with events_path.open("a", encoding="utf-8") as fh:
             for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
                                    system_prompt=system_prompt, allowed_paths=allowed_paths,
-                                   bash_rules=bash_rules, chat_id=conv.chat_id):
+                                   bash_rules=bash_rules, readable_paths=readable_paths,
+                                   chat_id=conv.chat_id):
                 if event.kind != "delta":  # 逐字片段只往外吐不落盘：证据是完整的 text，不是碎片
                     fh.write(json.dumps(event.raw or _bare(event), ensure_ascii=False) + "\n")
                     fh.flush()

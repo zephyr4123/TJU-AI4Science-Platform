@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from backends import BackendNotFound
+from framework import paths
 from framework.chat import conversation as conv_mod
 from framework.chat import notify
 from framework.run import jobs, workspace
@@ -42,6 +43,7 @@ def test_wake_sends_a_framework_turn_with_the_job_result(tmp_path: Path, scripte
     call = scripted.calls[0]
     assert call["chat_id"] == conv.chat_id and call["system_prompt"] == "指南"
     assert call["allowed_paths"] == [ws.task, ws.flows, ws.runs]  # 叫醒的一轮也只在工作区里写
+    assert call["readable_paths"] == [paths.workflows_root()]
     head = "作业 job-7（`ai4sci cap experiment r1 --max-iters 2`）跑完了"
     assert call["message"].startswith(head)
     assert "ok r1\tstop=batch_exhausted" in call["message"] and "--detach" in call["message"]

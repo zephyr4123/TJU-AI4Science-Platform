@@ -243,11 +243,16 @@ class ClaudeCodeChat:
     def build_argv(
         self, message: str, cwd: Path, *, session_id: str | None, system_prompt: str,
         allowed_paths: list[Path], bash_rules: tuple[str, ...],
+        readable_paths: list[Path] = (),
     ) -> list[str]:
         rules: list[str] = []
         for path in allowed_paths:
             rules += [f"Edit({_abs_glob(path)})", f"Write({_abs_glob(path)})"]
         rules.append(f"Read({_abs_glob(cwd)})")
+        # 工作目录之外能读不能写的目录（研究助理看工作流库）：`--add-dir` 让 Read / Glob / Grep 在
+        # dontAsk 下不被拒；Edit / Write 的白名单没有它，写照旧被拒
+        for path in readable_paths:
+            rules.append(f"Read({_abs_glob(path)})")
         rules += bash_rules
         argv = [self.cli, "-p", message, "--output-format", "stream-json", "--verbose",
                 "--include-partial-messages",  # 逐字吐（端口的 delta 事件，外层 #65）
@@ -256,6 +261,8 @@ class ClaudeCodeChat:
                 "--max-turns", str(int(_env_num("AI4SCI_COORDINATOR_MAX_TURNS", 50, int))),
                 "--max-budget-usd",
                 str(_env_num("AI4SCI_COORDINATOR_MAX_BUDGET_USD", 2.0, float))]
+        if readable_paths:
+            argv += ["--add-dir", *(str(Path(p).resolve()) for p in readable_paths)]
         if system_prompt:
             argv += ["--append-system-prompt", system_prompt]
         if session_id:
@@ -268,10 +275,11 @@ class ClaudeCodeChat:
     def turn(
         self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
         system_prompt: str, allowed_paths: list[Path], bash_rules: tuple[str, ...],
-        chat_id: str | None = None,
+        readable_paths: list[Path] = (), chat_id: str | None = None,
     ) -> Iterator[ChatEvent]:
         argv = self.build_argv(message, cwd, session_id=session_id, system_prompt=system_prompt,
-                               allowed_paths=allowed_paths, bash_rules=bash_rules)
+                               allowed_paths=allowed_paths, bash_rules=bash_rules,
+                               readable_paths=readable_paths)
         err: list[str] = []
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
