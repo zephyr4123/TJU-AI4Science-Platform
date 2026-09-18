@@ -1,5 +1,7 @@
-// 输入框就是门：还没有对话时在这里打字回车就开一段。壳是 reactbits 的 GlassSurface（浮在配图与滚过的对话上），
-// 空着的时候 RotatingText 轮换提示能说什么（减少动效时静态一句）；助理答着的时候只剩「助理回答中」、不许发。
+// 输入框就是门：还没有对话时在这里打字回车就开一段。壳是 reactbits 的 GlassSurface（浮在配图与滚过的对话上），分两层：
+// 上面写字（起步三行高，随内容长到十行），下面一排是工具位——左边以后放模型切换、思考深度、上传，现在只站着快捷键提示；右边发送键。
+// 宽度与正文同一列（主人：矮胖显窄，要高一点瘦一点、大气一点）。空着的时候 RotatingText 轮换提示能说什么（减少动效时静态一句）；
+// 助理答着的时候只剩「助理回答中」、不许发。
 import { ArrowUp } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
@@ -16,17 +18,21 @@ interface Props {
   onSend: (text: string) => void
 }
 
+const LINE = 24
+const MIN_LINES = 3
+const MAX_LINES = 10
+
 export function Composer({ busy, hints, onSend }: Props) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
   const still = useReducedMotion()
 
-  // 输入框随内容长高，封顶 8 行；不用第三方 autosize
+  // 输入框随内容长高：起步三行，封顶十行；不用第三方 autosize
   useEffect(() => {
     const el = ref.current
     if (!el) return
     el.style.height = '0px'
-    el.style.height = `${Math.min(el.scrollHeight, 8 * 24 + 16)}px`
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, MIN_LINES * LINE), MAX_LINES * LINE)}px`
   }, [text])
 
   const submit = () => {
@@ -46,12 +52,12 @@ export function Composer({ busy, hints, onSend }: Props) {
 
   const texts = busy ? ['助理回答中'] : hints
   return (
-    <div className="relative z-10 px-4 pt-2 pb-3">
-      <GlassSurface borderRadius={22} className="mx-auto max-w-3xl focus-within:ring-3 focus-within:ring-ring/35">
-        <div className="relative flex items-end gap-2 p-2">
+    <div className="relative z-10 px-6 pt-2 pb-5">
+      <GlassSurface borderRadius={24} className="mx-auto max-w-[44rem] focus-within:ring-3 focus-within:ring-ring/35">
+        <div className="relative flex flex-col px-4 pt-4 pb-3">
           {text === '' && (
             <span aria-hidden="true"
-                  className="pointer-events-none absolute top-[0.875rem] left-4 text-[0.9375rem] leading-6 text-muted-foreground">
+                  className="pointer-events-none absolute top-4 left-5 text-[1rem] leading-6 text-muted-foreground">
               {still
                 ? texts[0]
                 : <RotatingText key={texts.join('|')} texts={texts} rotationInterval={3400} staggerDuration={0.02}
@@ -61,18 +67,23 @@ export function Composer({ busy, hints, onSend }: Props) {
           <Textarea
             ref={ref}
             value={text}
-            rows={1}
+            rows={MIN_LINES}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={onKeyDown}
             aria-label="给助理的消息"
-            className="min-h-9 resize-none border-0 bg-transparent px-2 py-1.5 text-[0.9375rem] leading-6 shadow-none focus-visible:ring-0"
+            className="min-h-[4.5rem] resize-none border-0 bg-transparent px-1 py-0 text-[1rem] leading-6 shadow-none focus-visible:ring-0"
           />
-          <Button size="icon" className="rounded-full" onClick={submit} disabled={busy || !text.trim()} aria-label="发送">
-            <ArrowUp weight="bold" />
-          </Button>
+          <div className="mt-3 flex items-center gap-2">
+            {/* 工具位：模型切换、思考深度、上传以后从左边排进来 */}
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1">
+              <span className="t-label truncate">Enter 发送，Shift + Enter 换行</span>
+            </div>
+            <Button size="icon-lg" className="rounded-full" onClick={submit} disabled={busy || !text.trim()} aria-label="发送">
+              <ArrowUp weight="bold" className="size-5" />
+            </Button>
+          </div>
         </div>
       </GlassSurface>
-      <p className="mx-auto mt-1.5 max-w-3xl px-1 text-xs text-muted-foreground">Enter 发送，Shift + Enter 换行</p>
     </div>
   )
 }
