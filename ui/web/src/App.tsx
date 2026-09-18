@@ -115,7 +115,6 @@ function MainView({ wsId, title, healthy, knobs }: { wsId: string; title: string
         autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
         knobs={knobs}
         intro={{ lede: '先说清课题。', body: '想解决什么、数据在哪、什么算好。' }}
-        hints={['说说你的课题', '数据在哪', '什么算好']}
         welcome={{
           headline: '把实验交给助理。',
           body: '你只做两件事：发布需求，验收结果。',
@@ -160,7 +159,6 @@ function StudioView({ healthy, knobs }: { healthy: boolean | null; knobs: Backen
           autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
           knobs={knobs}
           intro={{ lede: '说清要拼什么流。', body: '给谁用、从哪步起、要不要验证。' }}
-          hints={['说说要拼的流', '给谁用', '要不要验证']}
           welcome={{
             headline: '把能力拼成流。',
             body: '存进库，研究者取走就能跑。',

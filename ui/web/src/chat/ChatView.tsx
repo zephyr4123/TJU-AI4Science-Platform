@@ -41,8 +41,6 @@ interface Props {
   drawer: ReactNode
   /** 对话还没开口时的两句引导 */
   intro: { lede: string; body: string }
-  /** 输入框里轮换的提示语 */
-  hints: string[]
   /** 还没有对话时的欢迎屏文案 */
   welcome: Copy
 }
@@ -57,7 +55,7 @@ interface LiveTurn {
 type Kept = Record<number, { trace: TraceItem[]; outcome: TurnOutcome }>
 
 export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, autoSend, onAutoSent, onStart, onTurnDone,
-                           knobs, drawer, intro, hints, welcome }: Props) {
+                           knobs, drawer, intro, welcome }: Props) {
   const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId])
   const [live, setLive] = useState<LiveTurn | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -157,7 +155,7 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
         )}
       </div>
 
-      <Composer busy={live !== null || autoSend !== null} hints={hints} knobs={knobs} tuning={tuning}
+      <Composer busy={live !== null || autoSend !== null} knobs={knobs} tuning={tuning}
                 onTune={(next) => setPick(next)}
                 onSend={(text) => (chatId ? void send(text) : onStart(text, tuning))} />
     </div>
