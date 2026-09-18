@@ -1,6 +1,6 @@
-// 壳：左边地方栏（工作区 / 新建 / 编辑台），右边页眉 + 当前地方的内容（外层 #58 #64 #70 #79）。
+// 壳：左边地方栏（先选世界：工作区 / 编辑台，再选工作区），右边页眉 + 当前地方的内容（外层 #58 #64 #70 #79）。
 // 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的对话 + 流程脊柱。编辑台是全局一个库：造流助理的对话 + 工作流墙、
-// 七段货架、拼流台，不在任何工作区里，所以在地方栏上单独一块、页眉也不跟着工作区换（P-16）。页面只是 `ai4sci serve` 的客户端。
+// 七段货架、拼流台，和工作区是两个平行的世界：地方栏上是一个开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。页面只是 `ai4sci serve` 的客户端。
 import { type ReactNode, useState } from 'react'
 
 import { api, inWorkspace, STUDIO } from '@/api/client'
@@ -14,7 +14,7 @@ import { useChats } from '@/lib/useChats'
 import { useMediaQuery, WIDE } from '@/lib/useMediaQuery'
 import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
-import type { Place } from '@/places/place'
+import type { Place, World } from '@/places/place'
 import { PlacesSheet } from '@/places/PlacesSheet'
 import { Rail } from '@/places/Rail'
 import { ChatDrawer } from '@/sidebar/ChatDrawer'
@@ -51,7 +51,7 @@ export default function App() {
     place: place ?? { kind: 'door' as const },
     onPick: (id: string) => { setPicked(id); setCreating(false); setStudio(false) },
     onNew: () => { setCreating(true); setStudio(false) },
-    onStudio: () => setStudio(true),
+    onWorld: (world: World) => setStudio(world === 'studio'),
   }
 
   return (

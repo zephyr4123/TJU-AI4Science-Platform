@@ -1,6 +1,6 @@
-// 窄屏的地方栏：页眉左端的玻璃标记就是入口，点开一张从左边拉出来的清单——工作区逐条浮现（reactbits AnimatedList 改装）、末行「新建」，
-// 分线下面是编辑台。和宽屏的 Rail 认同一份 Place。
-import { Blueprint, Flask, FolderSimplePlus } from '@phosphor-icons/react'
+// 窄屏的地方栏：页眉左端的玻璃标记就是入口，点开一张从左边拉出来的清单。和宽屏的 Rail 同一个结构——先「工作区 / 编辑台」两个世界，
+// 再列当前世界的内容：工作区世界是逐条浮现的工作区（reactbits AnimatedList 改装）与末行「新建」，编辑台世界里没有可切的东西。
+import { Blueprint, Flask, FolderSimplePlus, Folders } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import { coverOf } from '@/assets'
@@ -10,13 +10,16 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { stageSentence } from '@/lib/humanize'
 import { cn } from '@/lib/utils'
 
-import { newestFirst, type PlacesProps } from './place'
+import { newestFirst, type PlacesProps, type World, worldOf } from './place'
 
 const ROW = 'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring'
+const TAB = 'flex h-9 items-center justify-center gap-1.5 rounded-full border text-[0.875rem] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring'
 
-export function PlacesSheet({ workspaces, place, onPick, onNew, onStudio }: PlacesProps) {
+export function PlacesSheet({ workspaces, place, onPick, onNew, onWorld }: PlacesProps) {
   const [open, setOpen] = useState(false)
+  const world = worldOf(place)
   const go = (action: () => void) => () => { action(); setOpen(false) }
+  const tab = (w: World) => cn(TAB, world === w ? 'border-primary bg-primary text-primary-foreground' : 'bg-card text-muted-foreground hover:text-foreground')
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -30,33 +33,43 @@ export function PlacesSheet({ workspaces, place, onPick, onNew, onStudio }: Plac
           <SheetTitle className="font-serif text-[1.125rem] font-semibold">AI4Science</SheetTitle>
           <SheetDescription>工作区各有自己的对话，编辑台只有一个。</SheetDescription>
         </SheetHeader>
-        <AnimatedList
-          items={newestFirst(workspaces)} keyOf={(w) => w.id} fade="popover"
-          className="min-h-0 flex-1" listClassName="h-full px-3 py-1"
-          render={(w) => {
-            const active = place.kind === 'workspace' && place.id === w.id
-            return (
-              <button type="button" onClick={go(() => onPick(w.id))} aria-current={active ? 'true' : undefined}
-                      className={cn(ROW, active && 'bg-accent')}>
-                <img src={coverOf(w.id).thumb} alt="" width={56} height={35}
-                     className={cn('h-9 w-14 shrink-0 rounded-md object-cover', active && 'ring-2 ring-primary ring-offset-1 ring-offset-popover')} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[0.9375rem] font-medium">{w.title}</span>
-                  <span className="block text-[0.75rem] text-muted-foreground">{stageSentence(w)}</span>
-                </span>
-              </button>
-            )
-          }}
-        />
-        <div className="space-y-0.5 border-t px-3 py-2">
-          <button type="button" onClick={go(onNew)} className={cn(ROW, 'text-primary', place.kind === 'door' && 'bg-accent')}>
-            <FolderSimplePlus className="size-5" />新建工作区
+        <div role="tablist" aria-label="世界" className="grid grid-cols-2 gap-2 px-5 pt-2 pb-3">
+          <button type="button" role="tab" aria-selected={world === 'workspace'} onClick={go(() => onWorld('workspace'))} className={tab('workspace')}>
+            <Folders className="size-[1.125rem]" weight={world === 'workspace' ? 'fill' : 'regular'} />工作区
           </button>
-          <button type="button" onClick={go(onStudio)} aria-current={place.kind === 'studio' ? 'true' : undefined}
-                  className={cn(ROW, place.kind === 'studio' && 'bg-accent')}>
-            <Blueprint className="size-5" weight={place.kind === 'studio' ? 'fill' : 'regular'} />编辑台
+          <button type="button" role="tab" aria-selected={world === 'studio'} onClick={go(() => onWorld('studio'))} className={tab('studio')}>
+            <Blueprint className="size-[1.125rem]" weight={world === 'studio' ? 'fill' : 'regular'} />编辑台
           </button>
         </div>
+        {world === 'workspace' ? (
+          <>
+            <AnimatedList
+              items={newestFirst(workspaces)} keyOf={(w) => w.id} fade="popover"
+              className="min-h-0 flex-1" listClassName="h-full px-3 py-1"
+              render={(w) => {
+                const active = place.kind === 'workspace' && place.id === w.id
+                return (
+                  <button type="button" onClick={go(() => onPick(w.id))} aria-current={active ? 'true' : undefined}
+                          className={cn(ROW, active && 'bg-accent')}>
+                    <img src={coverOf(w.id).thumb} alt="" width={56} height={35}
+                         className={cn('h-9 w-14 shrink-0 rounded-md object-cover', active && 'ring-2 ring-primary ring-offset-1 ring-offset-popover')} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[0.9375rem] font-medium">{w.title}</span>
+                      <span className="block text-[0.75rem] text-muted-foreground">{stageSentence(w)}</span>
+                    </span>
+                  </button>
+                )
+              }}
+            />
+            <div className="border-t px-3 py-2">
+              <button type="button" onClick={go(onNew)} className={cn(ROW, 'text-primary', place.kind === 'door' && 'bg-accent')}>
+                <FolderSimplePlus className="size-5" />新建工作区
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="px-5 py-3 text-sm text-muted-foreground">库只有一个，不分工作区。</p>
+        )}
       </SheetContent>
     </Sheet>
   )
