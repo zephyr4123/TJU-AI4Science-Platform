@@ -45,9 +45,9 @@ export function NewWorkspace({ existing, onCreated, onCancel, onPick }: {
   }
 
   return (
-    <div className="paper-grid relative flex-1 overflow-y-auto">
+    <div className="paper-grid paper-grid-faint relative flex-1 overflow-y-auto">
       <form
-        className="mx-auto grid max-w-[68rem] gap-12 px-8 py-16 lg:grid-cols-[1fr_20rem] lg:items-center lg:py-24"
+        className="mx-auto grid min-h-full max-w-[72rem] gap-12 px-8 py-16 lg:grid-cols-[1fr_26rem] lg:items-center"
         onSubmit={(e) => { e.preventDefault(); if (valid && !taken && !busy) void create() }}
       >
         <div className="min-w-0">
@@ -61,13 +61,13 @@ export function NewWorkspace({ existing, onCreated, onCancel, onPick }: {
           <p className="mt-12 font-serif text-[1.375rem] leading-[2.4] font-medium">
             <span>起一个工作区，叫</span>
             <Blank
-              value={id} onChange={setId} mono autoFocus width="14ch" placeholder="rahman-stability"
+              value={id} onChange={setId} mono autoFocus width="17ch" placeholder="rahman-stability"
               label="工作区名" invalid={id !== '' && (!valid || taken)}
             />
             <span>，</span>
             <br />
             <span>它要解决的是</span>
-            <Blank value={title} onChange={setTitle} width="24ch" placeholder="Rahman 模型多起点估计的稳定性" label="标题" />
+            <Blank value={title} onChange={setTitle} width="32ch" placeholder="Rahman 模型多起点估计的稳定性" label="标题" />
             <span>。</span>
           </p>
           <p className="mt-2 min-h-[1.5rem] text-[0.8125rem] text-muted-foreground">
@@ -100,9 +100,9 @@ export function NewWorkspace({ existing, onCreated, onCancel, onPick }: {
           )}
         </div>
 
-        <div className="hidden justify-center lg:flex">
+        <div className="hidden justify-center overflow-visible pt-16 lg:flex">
           <Folder
-            color={indigo} label={slug ? `workspaces/${slug}` : ''} open={valid && !taken} width={228}
+            color={indigo} label={slug ? `workspaces/${slug}` : ''} open={valid && !taken} width={236}
             papers={[
               <Sheet key="task" title="需求" lines={['想解决什么', '数据在哪', '怎么算好']} />,
               <Sheet key="flow" title="这条流" lines={['从库里取一条', '按需要改参数', '照着跑']} />,
@@ -124,7 +124,7 @@ function Blank({ value, onChange, placeholder, label, width, mono = false, inval
     <input
       value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label}
       autoFocus={autoFocus} spellCheck={false} autoComplete="off"
-      style={{ width: `max(${width}, ${Math.max(value.length, 1) + 1}ch)` }}
+      style={{ width: `max(${width}, ${Math.max(value.length, 1) * (mono ? 1 : 2.2) + 3}ch)` }}
       className={cn('blank mx-2 max-w-full', mono ? 'font-mono text-[1.0625rem]' : 'font-serif',
                     invalid && 'blank-invalid')}
     />

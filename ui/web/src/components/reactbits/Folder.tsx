@@ -6,10 +6,11 @@ import { type CSSProperties, type ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
+// 打开时三张纸的落点：左、右、正上；x 里含着 -50% 的居中量，纸不会飞出文件夹的地盘太远
 const OPEN_TRANSFORM = [
-  'translate(-118%, -68%) rotate(-14deg)',
-  'translate(14%, -72%) rotate(13deg)',
-  'translate(-50%, -104%) rotate(4deg)',
+  'translate(-112%, -58%) rotate(-12deg)',
+  'translate(14%, -56%) rotate(12deg)',
+  'translate(-50%, -104%) rotate(3deg)',
 ]
 
 /** 把 hex 压暗一点，给文件夹的背板。 */
@@ -40,7 +41,8 @@ export function Folder({ color, label, open, papers, width = 220, className }: {
     <div className={cn('relative', className)} style={{ ...style, width, height: height + 24 }}>
       <div
         className="group relative mt-6 transition-transform duration-300 ease-out"
-        style={{ width, height, transform: open ? 'translateY(-6px)' : undefined }}
+        style={{ width, height, transform: open ? 'translateY(-6px)' : undefined,
+                 filter: 'drop-shadow(0 18px 28px color-mix(in oklab, var(--folder) 28%, transparent))' }}
         aria-hidden
       >
         {/* 背板与标签 */}
@@ -59,7 +61,7 @@ export function Folder({ color, label, open, papers, width = 220, className }: {
               key={i}
               className={cn('absolute bottom-[10%] left-1/2 z-20 overflow-hidden rounded-[10px] border border-border bg-card',
                             'px-3 py-2.5 text-left transition-all duration-500 ease-out', size,
-                            !open && '-translate-x-1/2 translate-y-[10%]')}
+                            !open && '-translate-x-1/2 translate-y-[10%] group-hover:translate-y-[-6%]')}
               style={open ? { transform: OPEN_TRANSFORM[i] } : undefined}
             >
               {sheet}
@@ -71,7 +73,7 @@ export function Folder({ color, label, open, papers, width = 220, className }: {
           <div
             key={skew}
             className="absolute inset-0 z-30 origin-bottom rounded-[6px_14px_14px_14px] transition-transform duration-500 ease-out"
-            style={{ backgroundColor: 'var(--folder)',
+            style={{ background: `linear-gradient(${skew > 0 ? '160deg' : '200deg'}, color-mix(in oklab, var(--folder) 86%, white) 0%, var(--folder) 55%)`,
                      transform: open ? `skew(${skew}deg) scaleY(0.62)` : undefined }}
           />
         ))}

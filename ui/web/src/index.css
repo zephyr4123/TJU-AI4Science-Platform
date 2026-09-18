@@ -221,6 +221,11 @@
 
 @layer components {
   /* 四种字：结论（宋体）、步骤标题（宋体）、大数字、正文、标签（docs/DESIGN.md） */
+  /* 满铺的方格纸淡一档：只在起工作区那一屏用，字要压得住 */
+  .paper-grid-faint {
+    --grid: color-mix(in oklab, var(--grid) 55%, var(--background));
+  }
+
   /* 记录本上的填空线：没有框，底线一条；聚焦变靛，填错变红 */
   .blank {
     display: inline-block;
