@@ -57,8 +57,9 @@ export default function App() {
         {view === 'studio'
           ? <StudioView healthy={healthy} />
           : creating || (workspaces.data && !wsId)
-            ? <NewWorkspace first={!wsId} onCreated={(id) => void created(id)}
-                            onCancel={wsId ? () => setCreating(false) : undefined} />
+            ? <NewWorkspace existing={workspaces.data ?? []} onCreated={(id) => void created(id)}
+                            onCancel={wsId ? () => setCreating(false) : undefined}
+                            onPick={(id) => { setPicked(id); setCreating(false) }} />
             : wsId
               ? <MainView key={wsId} wsId={wsId} healthy={healthy} />
               : <div className="flex-1" />}
