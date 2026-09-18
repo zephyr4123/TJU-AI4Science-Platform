@@ -1,5 +1,5 @@
 // 窄屏的地方栏：页眉左端的玻璃标记就是入口，点开一张从左边拉出来的清单。和宽屏的 Rail 同一个结构——先「工作区 / 编辑台」两个世界，
-// 再列当前世界的内容：工作区世界是逐条浮现的工作区（reactbits AnimatedList 改装）与末行「新建」，编辑台世界里没有可切的东西。
+// 再列当前世界的内容：主页面世界是逐条浮现的工作区（reactbits AnimatedList 改装）与末行「新建」，编辑台世界里没有可切的东西。
 import { Blueprint, Flask, FolderSimplePlus, Folders } from '@phosphor-icons/react'
 import { useState } from 'react'
 
@@ -35,7 +35,7 @@ export function PlacesSheet({ workspaces, place, onPick, onNew, onWorld }: Place
         </SheetHeader>
         <div role="tablist" aria-label="世界" className="grid grid-cols-2 gap-2 px-5 pt-2 pb-3">
           <button type="button" role="tab" aria-selected={world === 'workspace'} onClick={go(() => onWorld('workspace'))} className={tab('workspace')}>
-            <Folders className="size-[1.125rem]" weight={world === 'workspace' ? 'fill' : 'regular'} />工作区
+            <Folders className="size-[1.125rem]" weight={world === 'workspace' ? 'fill' : 'regular'} />主页面
           </button>
           <button type="button" role="tab" aria-selected={world === 'studio'} onClick={go(() => onWorld('studio'))} className={tab('studio')}>
             <Blueprint className="size-[1.125rem]" weight={world === 'studio' ? 'fill' : 'regular'} />编辑台
@@ -43,6 +43,7 @@ export function PlacesSheet({ workspaces, place, onPick, onNew, onWorld }: Place
         </div>
         {world === 'workspace' ? (
           <>
+            <p className="px-5 pt-1 text-[0.6875rem] text-muted-foreground">工作区</p>
             <AnimatedList
               items={newestFirst(workspaces)} keyOf={(w) => w.id} fade="popover"
               className="min-h-0 flex-1" listClassName="h-full px-3 py-1"

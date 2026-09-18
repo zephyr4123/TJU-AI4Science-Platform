@@ -10,6 +10,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { api } from '@/api/client'
 import type { RunDetail, RunSummary, TaskDetail, Workflow, WorkspaceDetail } from '@/api/types'
 import { Dot, ErrorNote, Problems, Skeleton } from '@/components/bits'
+import { FoldText } from '@/components/reactbits/FoldText'
 import ElectricBorder from '@/components/reactbits/ElectricBorder'
 import ShinyText from '@/components/reactbits/ShinyText'
 import { AcceptKey } from '@/keys/AcceptKey'
@@ -65,6 +66,11 @@ export function Spine({ workspace, epoch, chatId }: { workspace: string; epoch: 
 
   return (
     <div className="h-full space-y-3 overflow-y-auto px-5 pt-5 pb-8">
+      {/* 这块板叫什么、怎么用，一眼看到（主人：没字用户不知道是啥） */}
+      <header className="px-1 pb-1">
+        <h2 className="font-serif text-[1.125rem] leading-snug font-semibold"><FoldText text="工作流" /></h2>
+        <p className="mt-0.5 text-[0.8125rem] text-muted-foreground">每条走到哪、在等谁，点开看细节。</p>
+      </header>
       {intake && (
         <IntakeLane workspace={doc.data} intake={intake} reload={doc.reload} stageOfCap={stageOfCap}
                     open={isOpen('intake', intakeAuto)} onToggle={() => toggle('intake', intakeAuto)} />

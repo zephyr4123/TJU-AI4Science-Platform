@@ -125,7 +125,7 @@ function MainView({ wsId, title, healthy }: { wsId: string; title: string; healt
         <aside
           className={cn('relative h-full shrink-0 border-l transition-[width] duration-200',
                         open ? 'w-[27.5rem]' : 'w-0 overflow-hidden border-l-0')}
-          aria-label="流" aria-hidden={!open}
+          aria-label="工作流" aria-hidden={!open}
         >
           <Scene picture={ASSETS.board} veil="mist" />
           <div className="relative h-full w-[27.5rem]">{spine}</div>
@@ -134,7 +134,7 @@ function MainView({ wsId, title, healthy }: { wsId: string; title: string; healt
         <Sheet open={open} onOpenChange={setBoardOpen}>
           <SheetContent side="right"
                         className="gap-0 p-0 data-[side=right]:w-[100vw] data-[side=right]:sm:w-[27.5rem] data-[side=right]:sm:max-w-[27.5rem]">
-            <SheetHeader className="sr-only"><SheetTitle>流</SheetTitle></SheetHeader>
+            <SheetHeader className="sr-only"><SheetTitle>工作流</SheetTitle></SheetHeader>
             <Scene picture={ASSETS.board} veil="mist" />
             <div className="relative h-full">{spine}</div>
           </SheetContent>
