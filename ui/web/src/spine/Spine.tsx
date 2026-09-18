@@ -1,8 +1,8 @@
 // 流程脊柱：主页面右边那一列（外层 #64 #67 #74 #82 #98）。只读一个工作区（P-15），一块板几条泳道：
-// 顶上一条是任务包那一段（流开头的假设 / 设计间与断点），下面每个 run 一条（照的那条流的全部房间），取了还没开跑的流
+// 顶上一条是任务包那一段（流开头的假设 / 设计阶段与断点），下面每个 run 一条（照的那条流的全部阶段），取了还没开跑的流
 // 一行薄的「备着」。默认全部收着；只有助理正在承接的那条——作业在跑，或当前对话开的、还没走完——自动展开，展开才拉详情，
-// 一间一个模块，模块的实心程度来自盘上真实的文件。人点哪条展开哪条，点过的以人为准。对话不绑流：流走到哪写在盘上，谁驱动的都一样。
-// 装什么流长什么样：这里不写死任何一条流，房间与断点从 run 的便条（或流文件）来，状态由 derive.ts 算。
+// 一个阶段一个模块，模块的实心程度来自盘上真实的文件。人点哪条展开哪条，点过的以人为准。对话不绑流：流走到哪写在盘上，谁驱动的都一样。
+// 装什么流长什么样：这里不写死任何一条流，阶段与断点从 run 的进度记录（或流文件）来，状态由 derive.ts 算。
 import { CaretDown } from '@phosphor-icons/react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { createElement, type ReactNode, useEffect, useState } from 'react'
@@ -51,10 +51,10 @@ export function Spine({ workspace, epoch, chatId }: { workspace: string; epoch: 
   const catalog = caps.data
   const titleOf: TitleOf = (name) => catalog.find((c) => c.name === name)?.title
   // 任务包那一段照哪条流：工作区里取来的、从任务包起步的第一条；没有就照库里的；库里也没有就不画这一段
-  const startsAtTask = (f: Workflow) => f.problems.length === 0 && taskPart(f.rooms).length > 0
+  const startsAtTask = (f: Workflow) => f.problems.length === 0 && taskPart(f.stages).length > 0
   const guide: Workflow | null = doc.data.flows.find(startsAtTask) ?? workflows.data.find(startsAtTask) ?? null
   const runs = [...doc.data.runs].sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
-  // 老 run 没便条时照哪条：库里第一条能用的
+  // 老 run 没进度记录时照哪条：库里第一条能用的
   const template = workflows.data.find((f) => f.problems.length === 0) ?? null
   const spare = doc.data.flows.filter((f) => f !== guide && !runs.some((r) => r.flow?.workflow === f.name))
   const task = doc.data.task
@@ -87,7 +87,7 @@ export function Spine({ workspace, epoch, chatId }: { workspace: string; epoch: 
           <span className="font-serif font-semibold text-foreground/80">{flow.title}</span>
           {flow.problems.length > 0
             ? <span className="text-bad">{flow.problems[0]}</span>
-            : <span>备着，{flow.rooms.length} 项，还没开跑</span>}
+            : <span>备着，{flow.stages.length} 项，还没开跑</span>}
         </p>
       ))}
     </div>
@@ -131,8 +131,8 @@ function RunLane({ workspace, run, template, epoch, titleOf, open, onToggle }: {
   workspace: string; run: RunSummary; template: Workflow | null; epoch: number; titleOf: TitleOf
   open: boolean; onToggle: () => void
 }) {
-  // 老 run 没便条：按库里那条的样子从摘要推一条出来
-  const flow = run.flow ?? (template ? synthesizeFlow(run, template.rooms, template.name, template.title) : null)
+  // 老 run 没进度记录：按库里那条的样子从摘要推一条出来
+  const flow = run.flow ?? (template ? synthesizeFlow(run, template.stages, template.name, template.title) : null)
   const items = flow ? deriveRunItems(flow, run) : []
   const where = waitingSentence(items, titleOf) || (flow ? `第 ${flow.step} 项` : '没有流可对照')
   return (
@@ -155,7 +155,7 @@ function RunLaneBody({ workspace, run, items, epoch, titleOf }: {
     <>
       {items.map((view, i) => (
         <ItemModule key={view.n} view={view} title={itemLabel(view.item, titleOf)} last={i === items.length - 1}
-                    ok={view.item.kind === 'room' && view.item.stage === '验证' && doc.verify?.status === 'PASS'}>
+                    ok={view.item.kind === 'stage' && view.item.stage === '验证' && doc.verify?.status === 'PASS'}>
           <RunItemContent workspace={workspace} view={view} run={doc} reload={detail.reload} />
         </ItemModule>
       ))}
@@ -163,7 +163,7 @@ function RunLaneBody({ workspace, run, items, epoch, titleOf }: {
   )
 }
 
-/** 一间房里显示这个 run 留下的东西：按房间名配视图，没配的房间就是一句状态。 */
+/** 一个阶段里显示这个 run 留下的东西：按阶段名配视图，没配的阶段就是一句状态。 */
 function RunItemContent({ workspace, view, run, reload }: {
   workspace: string; view: ItemView; run: RunDetail; reload: () => Promise<void>
 }) {
@@ -219,7 +219,7 @@ function TaskLane({ workspace, guide, reload, titleOf, open, onToggle }: {
   open: boolean; onToggle: () => void
 }) {
   const task = workspace.task
-  const items = deriveTaskItems(taskPart(guide.rooms), task, task?.intake_problems ?? null)
+  const items = deriveTaskItems(taskPart(guide.stages), task, task?.intake_problems ?? null)
   return (
     <Lane title={task?.title ?? guide.title} note={task ? waitingSentence(items, titleOf) : '还没有需求'} open={open} onToggle={onToggle}>
       {items.map((view, i) => (
@@ -255,12 +255,12 @@ function TaskItemContent({ workspace, view, task, reload }: {
     if (state === 'done' && h?.baseline !== undefined) {
       return (
         <Fact>
-          裁判已封。起点 {metric(h.baseline)}，抖动 {metric(h.sigma, 3)}，门 {metric(h.gate, 3)}
+          评分脚本已封。起点 {metric(h.baseline)}，抖动 {metric(h.sigma, 3)}，门 {metric(h.gate, 3)}
           {h.gates != null ? `，离尽头 ${h.gates.toFixed(1)} 个门` : ''}
         </Fact>
       )
     }
-    return <Hint>{state === 'done' ? '裁判已封' : '轮到助理：写裁判、跑基线'}</Hint>
+    return <Hint>{state === 'done' ? '评分脚本已封' : '轮到助理：写评分脚本、跑基线'}</Hint>
   }
   return <Hint>{state === 'done' ? '做完了' : '轮到助理'}</Hint>
 }

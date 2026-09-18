@@ -5,7 +5,7 @@ import type { Stage, WorkspaceSummary } from '@/api/types'
 
 // ── 需求走到哪 ───────────────────────────────────────────────────────────
 export const STAGE_LABEL: Record<Stage, string> = {
-  drafting: '还没发布', published: '已发布', designed: '裁判写了', baselined: '基线已跑',
+  drafting: '还没发布', published: '已发布', designed: '评分脚本写了', baselined: '基线已跑',
 }
 
 /** 一行里说这份需求走到哪：还没有需求、需求还在聊、已发布…、跑了几次实验 */
@@ -37,14 +37,14 @@ export function conclusionOf(analysis: string): string {
 }
 
 // ── 能力清单 ─────────────────────────────────────────────────────────────
-// 能力的人话标题、五栏与所属房间都在描述符里，页面直接读 `/cap`，这里不再另抄一份。
+// 能力的人话标题、五栏与所属阶段都在描述符里，页面直接读 `/cap`，这里不再另抄一份。
 export const LEVEL_COPY: Record<string, string> = { task: '动任务包', run: '动一个 run', project: '动项目' }
 
 // ── 对话里的工具行 ────────────────────────────────────────────────────────
 // 每条命令一句直白的话：查了什么、运行了什么、写了什么。带 --detach 的加一句「放到后台跑」。
 const CLI_SENTENCE: [RegExp, string][] = [
   [/ai4sci cap init/, '起了任务包'],
-  [/ai4sci cap design/, '写了裁判、跑了基线'],
+  [/ai4sci cap design/, '写了评分脚本、跑了基线'],
   [/ai4sci cap auto-research.*--resume/, '接着跑上次没走完的实验'],
   [/ai4sci cap auto-research.*--(patience|max-iterations|max-cost-usd)/, '给实验续了命，接着跑'],
   [/ai4sci cap auto-research/, '跑了几轮实验'],

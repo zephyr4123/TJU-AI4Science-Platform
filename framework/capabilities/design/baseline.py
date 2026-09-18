@@ -1,4 +1,4 @@
-"""跑基线：「写裁判、跑基线」的后半段——起 `harness/make_run0.sh` 出 run_0/，跑完机器预检值不值得跑。
+"""跑基线：「写评分脚本、跑基线」的后半段——起 `harness/make_run0.sh` 出 run_0/，跑完机器预检。
 
 为什么不让人直接 `bash harness/make_run0.sh`：launcher 从 AI4SCI_BUDGET_S / AI4SCI_INNER_K 读数，
 人手工起就得自己想着导出，忘了就是一次"看着像跑了"的基线。这里把两处的环境收成一处
@@ -27,7 +27,7 @@ def run_baseline(workspace: Workspace) -> str:
     script = task_dir / "harness" / "make_run0.sh"
     if not script.is_file():
         raise CapabilityFailed(
-            "缺 task/harness/make_run0.sh：裁判脚本还没写出来")
+            "缺 task/harness/make_run0.sh：评分脚本还没写出来")
     python = env.venv_python(task_dir / env.VENV_DIRNAME)
     if not python.is_file():
         # 环境是基线的一部分，不是人要记得先跑的另一条命令；建不出来就是基线跑不了

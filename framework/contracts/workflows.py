@@ -1,24 +1,24 @@
-"""工作流：走几个房间、按什么顺序，房间之间可以插断点（纲领 P-18）。
+"""工作流：经过几个阶段、按什么顺序，阶段之间可以插断点（纲领 P-18）。
 
 一个工作流一个 YAML。库在仓根 `workflows/`（通用，编辑台的造流助理改），工作区 `flows/` 里的是取来
-改过参数的实例（研究助理用），两处同一套检查。它是预装的走法，不是平台本身：平台是七间房和每间里的能力。
+改过参数的实例（研究助理用），两处同一套检查。它是预装的走法，不是平台本身：平台是七个研究阶段和每个阶段里的能力。
 
     name: research               # 目录里唯一，等于文件名去掉 .yaml
     title: 从课题到验证
     summary: 一段人话
-    rooms:
-      - 假设                                     # 一间房：这一间用哪些能力由助理看着办
+    stages:
+      - 假设                                     # 一个阶段：这个阶段用哪些能力由助理看着办
       - 断点: 发布                               # 停下来等人确认；「发布」「验收」是出厂的两个
       - 设计
-      - 断点: 核对裁判算的是不是你要的数         # 别的断点写一句要人确认什么
+      - 断点: 核对评分脚本算的是不是你要的数         # 别的断点写一句要人确认什么
       - 实验: {auto-research: {max_iters: 3}}   # 点名用哪颗能力、
       带什么参数（参数名是描述符里的 Param）
       - 分析: [analysis]                         # 点名但不带参数也行
       - 验证
       - 断点: 验收
 
-房间之间不接管子：检查只看房间名对不对、点名的能力在不在那一间、参数名与类型对不对、断点位置合不合法
-（不能开头就是断点、不能两个断点挨着）。一间里要的东西盘上有没有，是那颗能力进门时自己查的（P-7）。
+阶段之间没有显式的输入输出接口：检查只看阶段名对不对、点名的能力在不在那个阶段、参数名与类型对不对、断点位置合不合法
+（不能开头就是断点、不能两个断点挨着）。一个阶段里要的东西盘上有没有，是那颗能力开始执行时自己查的（P-7）。
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ class WorkflowInvalid(ValueError):
 
 @dataclass(frozen=True)
 class Pick:
-    """一间里点名用的一颗能力，可带参数（`with`），键是描述符里的 Param 名：agent 照着调用，
+    """一个阶段里点名用的一颗能力，可带参数（`with`），键是描述符里的 Param 名：agent 照着调用，
     页面照着画。"""
 
     cap: str
@@ -57,14 +57,14 @@ class Pick:
 
 
 @dataclass(frozen=True)
-class Room:
-    """走进一间房。`picks` 空着就是这一间用什么由助理看着办。"""
+class Stage:
+    """走进入一个阶段。`picks` 空着就是这个阶段用什么由助理看着办。"""
 
     stage: str
     picks: tuple[Pick, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {"kind": "room", "stage": self.stage, "caps": [p.to_dict() for p in self.picks]}
+        return {"kind": "stage", "stage": self.stage, "caps": [p.to_dict() for p in self.picks]}
 
 
 @dataclass(frozen=True)
@@ -83,25 +83,25 @@ class Workflow:
     name: str
     title: str
     summary: str
-    rooms: tuple[Room | Stop, ...] = ()
+    stages: tuple[Stage | Stop, ...] = ()
 
     @property
     def caps(self) -> list[str]:
         """点名用到的能力，按出现顺序。"""
-        return [p.cap for r in self.rooms if isinstance(r, Room) for p in r.picks]
+        return [p.cap for r in self.stages if isinstance(r, Stage) for p in r.picks]
 
     @property
-    def stages(self) -> list[str]:
-        """走过哪几间，按出现顺序、去重：给卡片说一句「从哪儿到哪儿」。"""
+    def covered(self) -> list[str]:
+        """经过哪几个阶段，按出现顺序、去重：给卡片说一句「从哪儿到哪儿」。"""
         out: list[str] = []
-        for r in self.rooms:
-            if isinstance(r, Room) and r.stage not in out:
+        for r in self.stages:
+            if isinstance(r, Stage) and r.stage not in out:
                 out.append(r.stage)
         return out
 
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "title": self.title, "summary": self.summary,
-                "rooms": [r.to_dict() for r in self.rooms]}
+                "stages": [r.to_dict() for r in self.stages]}
 
 
 def load_workflows(root: Path) -> list[Workflow]:
@@ -148,31 +148,32 @@ def parse_workflow(filename: str, raw: Any) -> Workflow:
         raise WorkflowInvalid(f"{filename}: 缺 title")
     if not isinstance(summary, str) or not summary.strip():
         raise WorkflowInvalid(f"{filename}: 缺 summary")
-    rooms_raw = raw.get("rooms")
-    if not isinstance(rooms_raw, list) or not rooms_raw:
-        raise WorkflowInvalid(f"{filename}: rooms 要是非空列表")
-    rooms = tuple(_item(filename, i, item) for i, item in enumerate(rooms_raw, start=1))
-    if isinstance(rooms[0], Stop):
+    stages_raw = raw.get("stages")
+    if not isinstance(stages_raw, list) or not stages_raw:
+        raise WorkflowInvalid(f"{filename}: stages 要是非空列表")
+    stages = tuple(_item(filename, i, item) for i, item in enumerate(stages_raw, start=1))
+    if isinstance(stages[0], Stop):
         raise WorkflowInvalid(f"{filename}: 第 1 项就是断点：还什么都没做，没有东西可确认")
-    for i in range(1, len(rooms)):
-        if isinstance(rooms[i], Stop) and isinstance(rooms[i - 1], Stop):
+    for i in range(1, len(stages)):
+        if isinstance(stages[i], Stop) and isinstance(stages[i - 1], Stop):
             raise WorkflowInvalid(
                 f"{filename}: 第 {i} 项与第 {i + 1} 项都是断点：两个断点挨着等于一个")
-    return Workflow(name=name, title=title.strip(), summary=" ".join(summary.split()), rooms=rooms)
+    return Workflow(name=name, title=title.strip(), summary=" ".join(summary.split()),
+                    stages=stages)
 
 
-def _item(filename: str, index: int, raw: Any) -> Room | Stop:
+def _item(filename: str, index: int, raw: Any) -> Stage | Stop:
     label = f"{filename}: 第 {index} 项"
     if isinstance(raw, str):
         if raw == STOP:
             return Stop()
         if raw in STAGES:
-            return Room(raw)
+            return Stage(raw)
         raise WorkflowInvalid(
-            f"{label} {raw!r} 不是房间也不是断点（房间：{STAGES}；断点写「{STOP}」）")
+            f"{label} {raw!r} 不是阶段也不是断点（阶段：{STAGES}；断点写「{STOP}」）")
     if not isinstance(raw, dict) or len(raw) != 1:
         raise WorkflowInvalid(
-            f"{label} 要是房间名、「{STOP}」，或「房间名: 能力」「{STOP}: 一句话」的单键映射")
+            f"{label} 要是阶段名、「{STOP}」，或「阶段名: 能力」「{STOP}: 一句话」的单键映射")
     [(key, value)] = raw.items()
     if key == STOP:
         if value is None:
@@ -183,12 +184,12 @@ def _item(filename: str, index: int, raw: Any) -> Room | Stop:
         note = " ".join(value.split())
         return Stop(key=STOP_KEYS.get(note), note=note)
     if key not in STAGES:
-        raise WorkflowInvalid(f"{label} 的 {key!r} 不是房间（房间：{STAGES}）")
-    return Room(key, _picks(label, value))
+        raise WorkflowInvalid(f"{label} 的 {key!r} 不是阶段（阶段：{STAGES}）")
+    return Stage(key, _picks(label, value))
 
 
 def _picks(label: str, raw: Any) -> tuple[Pick, ...]:
-    """一间里点名的能力：`[a, b]` 或 `{a: {参数}, b: null}`；空就是不点名。"""
+    """一个阶段里点名的能力：`[a, b]` 或 `{a: {参数}, b: null}`；空就是不点名。"""
     if raw is None:
         return ()
     if isinstance(raw, list):
@@ -206,7 +207,7 @@ def _picks(label: str, raw: Any) -> tuple[Pick, ...]:
                 raise WorkflowInvalid(f"{label} 的 {cap} 后面要是「参数名: 值」的映射")
             out.append(Pick(cap, dict(params)))
         return tuple(out)
-    raise WorkflowInvalid(f"{label} 的房间后面要是能力名列表、「能力: 参数」映射，或空着")
+    raise WorkflowInvalid(f"{label} 的阶段后面要是能力名列表、「能力: 参数」映射，或空着")
 
 
 def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability], *,
@@ -225,15 +226,15 @@ def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability
             f"已经有一条叫 {workflow.name!r} 的流：{path}；换个名字，或者明说覆盖")
     doc: dict[str, Any] = {"name": workflow.name, "title": workflow.title,
                            "summary": workflow.summary,
-                           "rooms": [_item_doc(item) for item in workflow.rooms]}
+                           "stages": [_item_doc(item) for item in workflow.stages]}
     Path(root).mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=100),
                     encoding="utf-8")
     return workflow
 
 
-def _item_doc(item: Room | Stop) -> Any:
-    """写回文件时用最短的写法：不点名的房间一个名字，不带参数的点名一个列表，断点一个词。"""
+def _item_doc(item: Stage | Stop) -> Any:
+    """写回文件时用最短的写法：不点名的阶段一个名字，不带参数的点名一个列表，断点一个词。"""
     if isinstance(item, Stop):
         return {STOP: item.note} if item.note else STOP
     if not item.picks:
@@ -244,10 +245,10 @@ def _item_doc(item: Room | Stop) -> Any:
 
 
 def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> list[str]:
-    """点名的能力都在清单里、都属于那一间、参数对得上描述符。空清单表示通。"""
+    """点名的能力都在清单里、都属于那个阶段、参数对得上描述符。空清单表示通。"""
     problems: list[str] = []
-    for i, item in enumerate(workflow.rooms, start=1):
-        if not isinstance(item, Room):
+    for i, item in enumerate(workflow.stages, start=1):
+        if not isinstance(item, Stage):
             continue
         for pick in item.picks:
             cap = catalog.get(pick.cap)
@@ -280,17 +281,17 @@ def _with_problems(label: str, params: dict[str, Any], cap: Capability) -> list[
 
 def remarks(workflow: Workflow) -> list[str]:
     """给人看的提醒，不是问题、不拦流。机器能说的两句：有实验或分析却没有验证，数字没人回溯；
-    设计或实验之前没有「发布」断点，裁判与内环都要人签过需求才动，助理到那儿会被拒。"""
+    设计或实验之前没有「发布」断点，评分脚本与内环都要人签过需求才动，助理到那儿会被拒。"""
     out: list[str] = []
-    stages = workflow.stages
-    if ("实验" in stages or "分析" in stages) and "验证" not in stages:
+    covered = workflow.covered
+    if ("实验" in covered or "分析" in covered) and "验证" not in covered:
         out.append("有实验或分析、没有验证：数字没人回溯，结果不能算可信")
     published = False
-    for item in workflow.rooms:
+    for item in workflow.stages:
         if isinstance(item, Stop) and item.key == "publish":
             published = True
-        elif isinstance(item, Room) and item.stage in ("设计", "实验") and not published:
-            out.append(f"「{item.stage}」之前没有「发布」断点：需求要人签过才写裁判、才开跑，助理到那儿会被拒")
+        elif isinstance(item, Stage) and item.stage in ("设计", "实验") and not published:
+            out.append(f"「{item.stage}」之前没有「发布」断点：需求要人签过才写评分脚本、才开跑，助理到那儿会被拒")
             break
     return out
 
@@ -304,7 +305,7 @@ def describe_dir(root: Path, catalog: dict[str, Capability]) -> list[dict[str, A
         try:
             wf = load_workflow(path)
         except WorkflowInvalid as exc:
-            out.append({"name": path.stem, "title": path.stem, "summary": "", "rooms": [],
+            out.append({"name": path.stem, "title": path.stem, "summary": "", "stages": [],
                         "covers": [], "remarks": [], "problems": [str(exc)]})
             continue
         out += describe([wf], catalog)
@@ -312,8 +313,8 @@ def describe_dir(root: Path, catalog: dict[str, Capability]) -> list[dict[str, A
 
 
 def describe(workflows: Sequence[Workflow], catalog: dict[str, Capability]) -> list[dict[str, Any]]:
-    """给页面与 `show workflows` 的响应体：每条流带它走过的房间、提醒与问题清单。"""
-    return [{**wf.to_dict(), "covers": wf.stages, "remarks": remarks(wf),
+    """给页面与 `show workflows` 的响应体：每条流带它走过的阶段、提醒与问题清单。"""
+    return [{**wf.to_dict(), "covers": wf.covered, "remarks": remarks(wf),
              "problems": workflow_problems(wf, catalog)} for wf in workflows]
 
 

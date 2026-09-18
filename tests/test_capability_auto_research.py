@@ -1,5 +1,5 @@
 """auto-research 这颗能力：run 不在就建（三道门在门口就停）、在就接着跑；照流的 run 跑成后记到
-实验那一间。
+实验那个阶段。
 
 内环本身的行为在 test_experiment_loop.py；这里只测命令层：开 run、参数的门、便条。"""
 
@@ -87,8 +87,8 @@ def test_following_a_flow_records_the_experiment_room(tmp_path, monkeypatch):
     auto_research.run(pack.workspace, ports(0.015), run_id="r1", workflow="research", max_iters=1)
     run_dir = pack.workspace.runs / "r1"
     note = flow_state.status(run_dir, pack.workspace.jobs)
-    rooms = yaml.safe_load(source.read_text(encoding="utf-8"))["rooms"]
-    # 实验是第 5 项（假设、◆发布、设计、◆核对、实验）：跑成后便条停在它上面，下一项是分析间
-    assert note["step"] == 5 and rooms[4] == {"实验": {"auto-research": {"max_iters": 3}}}
-    assert note["next"] == {"kind": "room", "stage": "分析", "caps": []}
+    stages = yaml.safe_load(source.read_text(encoding="utf-8"))["stages"]
+    # 实验是第 5 项（假设、◆发布、设计、◆核对、实验）：跑成后便条停在它上面，下一项是分析阶段
+    assert note["step"] == 5 and stages[4] == {"实验": {"auto-research": {"max_iters": 3}}}
+    assert note["next"] == {"kind": "stage", "stage": "分析", "caps": []}
     assert note["waiting"] == "assistant"

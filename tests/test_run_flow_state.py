@@ -1,4 +1,4 @@
-"""便条（外层 #63 等待状态，P-18 按房间记）：快照那条流、按一颗记到那一间、流外的能力不动、
+"""便条（外层 #63 等待状态，P-18 按阶段记）：快照那条流、按一颗记到那个阶段、流外的能力不动、
 「在等谁」现算。"""
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from framework.run import flow_state, jobs
 FLOW = """name: demo
 title: 演示
 summary: 跑 → 分析 → 人看 → 验证 → 人验收
-rooms:
+stages:
   - 实验: [auto-research]
   - 分析
   - 断点: 看一眼分析
@@ -43,16 +43,16 @@ def test_attach_snapshots_the_file_and_stops_before_the_opening_room(tmp_path: P
     snapshot = run_dir / "workflow" / "demo.yaml"
     assert snapshot.read_text(encoding="utf-8") == FLOW
     path.write_text(FLOW.replace("看一眼分析", "改了"), encoding="utf-8")  # 仓里的流改了不影响 run
-    assert workflows.load_workflow(snapshot).rooms[2].note == "看一眼分析"
+    assert workflows.load_workflow(snapshot).stages[2].note == "看一眼分析"
     doc = flow_state.status(run_dir, tmp_path / "jobs")
     assert doc["step"] == 0 and doc["total"] == 5 and doc["waiting"] == "assistant"
-    assert doc["next"] == {"kind": "room", "stage": "实验",
+    assert doc["next"] == {"kind": "stage", "stage": "实验",
                            "caps": [{"cap": "auto-research", "with": {}}]}
-    assert doc["rooms"][2] == {"kind": "stop", "key": None, "note": "看一眼分析"}
-    # 流里开 run 的那一间不在开头：便条停在它前面，跑着的时候页面就知道当前是哪一间
+    assert doc["stages"][2] == {"kind": "stop", "key": None, "note": "看一眼分析"}
+    # 流里开 run 的那个阶段不在开头：便条停在它前面，跑着的时候页面就知道当前是哪个阶段
     later = tmp_path / "workflows" / "later.yaml"
     text = FLOW.replace("name: demo", "name: later")
-    text = text.replace("rooms:\n", "rooms:\n  - 假设\n  - 断点: 发布\n")
+    text = text.replace("stages:\n", "stages:\n  - 假设\n  - 断点: 发布\n")
     later.write_text(text, encoding="utf-8")
     other = tmp_path / "runs" / "r2"
     other.mkdir()
@@ -61,12 +61,12 @@ def test_attach_snapshots_the_file_and_stops_before_the_opening_room(tmp_path: P
     assert flow_state.attach(other, later, cap="nope", stage="写作")["step"] == 0  # 流里没有它
 
 
-def test_presses_land_on_rooms_by_name_or_by_stage_and_offpath_presses_do_not_move(tmp_path):
+def test_presses_land_on_stages_by_name_and_offpath_presses_do_not_move(tmp_path):
     run_dir = _run_dir(tmp_path)
     flow_state.attach(run_dir, _flow_file(tmp_path), cap="auto-research", stage="实验")
     assert flow_state.record_press(run_dir, "auto-research", "实验")["step"] == 1  # 点了名：按名字
     assert flow_state.record_press(run_dir, "auto-research", "实验")["step"] == 1  # 再跑：后面没它
-    assert flow_state.record_press(run_dir, "verify", "验证")["step"] == 4  # 跳过分析：记到验证那间
+    assert flow_state.record_press(run_dir, "verify", "验证")["step"] == 4  # 跳过分析：记到验证
     assert flow_state.record_press(run_dir, "analysis", "分析")["step"] == 4  # 回头补分析：不动
     doc = flow_state.status(run_dir, tmp_path / "jobs")
     assert doc["waiting"] == "key:accept" and doc["next"]["key"] == "accept"
@@ -76,7 +76,7 @@ def test_unnamed_room_matches_any_capability_of_that_stage(tmp_path):
     run_dir = _run_dir(tmp_path)
     flow_state.attach(run_dir, _flow_file(tmp_path), cap="auto-research", stage="实验")
     flow_state.record_press(run_dir, "auto-research", "实验")
-    # 分析间没点名：这一间的任何能力都算走到了它；别的间的不算
+    # 分析阶段没点名：这个阶段的任何能力都算走到了它；别的间的不算
     assert flow_state.record_press(run_dir, "some-plot", "分析")["step"] == 2
     assert flow_state.record_press(run_dir, "some-plot", "写作")["step"] == 2
 

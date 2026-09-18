@@ -1,7 +1,7 @@
 """run 的生命周期：建 run 与给已停的 run 续命。
 
 在 run 层，contracts 之上：建 run 的第一件事是过任务包契约（`contracts.packs`），
-过不了就停在门口（P-7）。续命只改快照里的 budget 与停止标记——要不要继续是协调层的
+过不了就不建 run（P-7）。续命只改快照里的 budget 与停止标记——要不要继续是协调层的
 决定（P-10），怎么继续必须留痕。
 
 `TaskInvalid` 的定义在 `context.py`（那里说明了为什么），本模块转出它：调用方从
@@ -40,9 +40,10 @@ def new_run(
     task_dir: Path, runs_root: Path, run_id: str, *, domains_root: Path | None = None,
     chat_id: str | None = None,
 ) -> Path:
-    """建 runs/<run_id>/：钥匙 → 校验 → 预检 → 拷 work/ → 快照领域包 → 建环境 → git init → 基线。
+    """建 runs/<run_id>/：查发布记录 → 校验 → 预检 → 拷 work/ → 快照领域包 → 建环境 → git init →
+    基线。
 
-    开跑是花钱的第一步，所以三道门都在这：需求没发布不开（`NotPublished`）、包不合约不开、
+    开跑是花钱的第一步，所以三道前置检查都在这：需求没发布不开（`NotPublished`）、包不合约不开、
     预检说这道题无解不开（都是 `TaskInvalid`）。环境建不出来就把半截的 run 目录删掉再抛：
     一个没有环境的 run 跑不了任何一轮，留着只会让 `loop run` 在更晚的地方以更难懂的方式失败。
 

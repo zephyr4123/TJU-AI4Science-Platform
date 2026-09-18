@@ -18,7 +18,7 @@ describe('run 的句子', () => {
 
 describe('工具行', () => {
   it('命令翻成动作', () => {
-    expect(toolSentence('Bash', { command: '.venv/bin/ai4sci cap design' })).toBe('写了裁判、跑了基线')
+    expect(toolSentence('Bash', { command: '.venv/bin/ai4sci cap design' })).toBe('写了评分脚本、跑了基线')
     expect(toolSentence('Bash', { command: 'ai4sci cap auto-research --run-id r1 --resume' })).toBe('接着跑上次没走完的实验')
     expect(toolSentence('Bash', { command: 'ai4sci show task' })).toBe('检查了需求')
     expect(toolSentence('Bash', { command: 'ai4sci show workspaces' })).toBe('查了有哪些工作区')

@@ -59,7 +59,7 @@ def cmd_cap(args: argparse.Namespace) -> int:
     print(line, file=sys.stdout if code == EXIT_OK else sys.stderr)
     if code == EXIT_OK and descriptor.level == "run":
         flow_state.record_press(target, descriptor.name, descriptor.stage)
-          # 记它走到流的哪一间；没照流就不记
+          # 记它走到流的哪个阶段；没照流就不记
     if job_id:
         job = jobs.finish(ws.jobs, job_id, exit_code=code, result=line)
         # 作业到此为止：叫醒起的 agent 会继承这个进程的环境，带着作业号它调用的 --detach 全被拒

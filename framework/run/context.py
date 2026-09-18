@@ -127,7 +127,7 @@ def load_context(run_dir: Path) -> RunContext:
     assert min_delta >= 0, f"budget.min_delta 要 >= 0：{min_delta!r}"
     if sigma == 0 and min_delta == 0:
         # σ 与最小改进量同时为 0，统计门就是 0，任何一点点差值都会被判成改进——
-        # 那等于没有门。这时不猜一个默认值，停在门口让人显式给（P-7 fail-closed）。
+        # 那等于没有门。这时不猜一个默认值，直接失败让人显式给（P-7 fail-closed）。
         raise TaskInvalid(
             f"run_0 的重复跑完全一致，σ=0，统计门退化为 0"
             f"（accept_sigma={budget['accept_sigma']}）：请在 manifest 的 budget.min_delta 里"

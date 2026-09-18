@@ -56,7 +56,7 @@ def _save_workflow(doc: dict) -> dict:
 
 def _check_workflow(doc: dict) -> dict:
     """编辑台拼着的那条流有没有问题：与存流同一套检查，只查不写；形状不对也当问题报，页面不该为此
-    拿 500。名字、标题、说明还没填是常态（人先排房间），这里只查房间那部分，三样空着的补个占位。"""
+    拿 500。名字、标题、说明还没填是常态（人先排阶段），这里只查阶段那部分，三样空着的补个占位。"""
     catalog = _descriptors()
     name = str(doc.get("name") or "").strip() or "draft"
     doc = {k: v for k, v in doc.items() if k != "overwrite"}
@@ -66,7 +66,7 @@ def _check_workflow(doc: dict) -> dict:
         workflow = workflows.parse_workflow(f"{name}.yaml", doc)
     except workflows.WorkflowInvalid as exc:
         return {"covers": [], "remarks": [], "problems": [str(exc)]}
-    return {"covers": workflow.stages, "remarks": workflows.remarks(workflow),
+    return {"covers": workflow.covered, "remarks": workflows.remarks(workflow),
             "problems": workflows.workflow_problems(workflow, catalog)}
 
 

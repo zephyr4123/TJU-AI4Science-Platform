@@ -135,7 +135,7 @@ def _job_line(job: jobs.Job) -> str:
 
 
 def cmd_caps(args: argparse.Namespace) -> int:
-    """能力清单：七间房、每间里的能力，空着的房间也列出来。每颗带五栏（干什么 / 不干什么 /
+    """能力清单：七个研究阶段、每个阶段里的能力，空着的阶段也列出来。每颗带五栏（干什么 / 不干什么 /
     要带什么进来 / 留下什么 / 什么时候停）与"用在哪几条流"——后者是从库里的工作流文件反查的，
     能力自己不知道。"""
     descriptors = [module.DESCRIPTOR for module in discover().values()]
@@ -148,7 +148,7 @@ def cmd_caps(args: argparse.Namespace) -> int:
     for stage in STAGES:
         caps = [d for d in descriptors if d.stage == stage]
         if not caps:
-            print(f"{stage}\t-\t这一间还没有能力")
+            print(f"{stage}\t-\t这个阶段还没有能力")
         for d in caps:
             who = "助理" if d.needs_executor else "机器"
             params = " ".join(f"--{p.name.replace('_', '-')}" for p in d.params) or "-"
@@ -164,7 +164,7 @@ def _catalog():
 
 
 def cmd_workflows(args: argparse.Namespace) -> int:
-    """库里的工作流：每条一行带走过的房间，点名的能力不在那一间、参数不对的退 1；提醒只打不退。"""
+    """库里的工作流：每条一行带走过的阶段，点名的能力不在那个阶段、参数不对的退 1；提醒只打不退。"""
     return _print_flows(paths.workflows_root(), args.json)
 
 
@@ -182,8 +182,8 @@ def _print_flows(root: Path, as_json: bool) -> int:
         print(json.dumps(found, ensure_ascii=False, indent=2))
     else:
         for wf in found:
-            rooms = " → ".join(_room_word(item) for item in wf["rooms"])
-            print(f"{wf['name']}\t{wf['title']}\t{rooms or '-'}")
+            stages = " → ".join(_stage_word(item) for item in wf["stages"])
+            print(f"{wf['name']}\t{wf['title']}\t{stages or '-'}")
             for remark in wf["remarks"]:
                 print(f"  · {remark}")
             for problem in wf["problems"]:
@@ -192,15 +192,15 @@ def _print_flows(root: Path, as_json: bool) -> int:
 
 
 def _next_word(item: dict) -> str:
-    """便条上的下一项，给人念的一句：进哪一间（点了名带能力），或停在哪个断点等谁。"""
+    """进度记录里的下一项，给人念的一句：进入哪个阶段（点了名带能力），或停在哪个断点等谁。"""
     if item["kind"] == "stop":
         return f"断点：{item['note'] or '等你确认'}"
     picks = "、".join(c["cap"] for c in item["caps"])
-    return f"{item['stage']}间" + (f"（{picks}）" if picks else "")
+    return f"{item['stage']}阶段" + (f"（{picks}）" if picks else "")
 
 
-def _room_word(item: dict) -> str:
-    """一项一个词：房间名（点了名带能力），断点画成 ◆（带键的写键名）。"""
+def _stage_word(item: dict) -> str:
+    """一项一个词：阶段名（点了名带能力），断点画成 ◆（带键的写键名）。"""
     if item["kind"] == "stop":
         return f"◆{item['key'] or ''}"
     picks = ",".join(c["cap"] for c in item["caps"])
@@ -229,14 +229,17 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     one.add_argument("job_id")
     one.set_defaults(func=cmd_job)
 
-    flows = what.add_parser("flows", help="当前工作区的流实例（flows/*.yaml）：走哪几间、有无问题")
+    flows = what.add_parser("flows",
+                            help="当前工作区的流实例（flows/*.yaml）：经过哪些阶段、有无问题")
     flows.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     flows.set_defaults(func=cmd_flows)
 
-    caps = what.add_parser("caps", help="能力清单：七间房、每间里的能力与五栏说明，带用在哪几条流")
+    caps = what.add_parser("caps",
+                           help="能力清单：七个研究阶段各有什么能力、每颗五栏说明，带用在哪几条流")
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     caps.set_defaults(func=cmd_caps)
 
-    wfs = what.add_parser("workflows", help="库里的工作流（workflows/*.yaml）：走哪几间、有无问题")
+    wfs = what.add_parser("workflows",
+                          help="库里的工作流（workflows/*.yaml）：经过哪些阶段、有无问题")
     wfs.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     wfs.set_defaults(func=cmd_workflows)

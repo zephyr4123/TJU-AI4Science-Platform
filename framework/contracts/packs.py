@@ -226,7 +226,7 @@ def _bare_python_lines(script: Path) -> list[int]:
 def _env_default_lines(script: Path) -> list[tuple[int, str]]:
     """harness 的 Python 里给保证变量写默认值的位置：`environ.get(NAME, x)` / `getenv(NAME, x)`。
 
-    只认这两种直接写法，且只认 GUARANTEED_ENV 里的名字：这是裁判文件的安检，不是通用静态警察，
+    只认这两种直接写法，且只认 GUARANTEED_ENV 里的名字：这是评分脚本的检查，不是通用静态警察，
     范围收到"框架保证会给、拿不到必须停"的那几个变量。读不出 AST 的文件不在这里报——语法错
     lint 会报。
     """

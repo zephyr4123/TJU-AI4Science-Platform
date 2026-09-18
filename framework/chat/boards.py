@@ -70,7 +70,7 @@ def task_detail(task_dir: Path) -> dict[str, Any]:
 
 
 def publish_state(task_dir: Path) -> dict[str, Any]:
-    """钥匙现在是否有效。`state`：ok / missing（从没发布过，看板用自己的话说）/ invalid
+    """发布记录现在是否有效。`state`：ok / missing（从没发布过，看板用自己的话说）/ invalid
     （发布过但签的文件改了或记录坏了，`reason` 是 `require_published` 那句话，原样给人看）。"""
     try:
         record = publish.require_published(task_dir)

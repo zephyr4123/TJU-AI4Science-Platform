@@ -1,5 +1,5 @@
-"""工作流文件（P-18）：房间 + 断点读得出来，点名的能力得在那一间、参数得对得上描述符；坏文件当场报，
-不静默跳过。"""
+"""工作流文件（P-18）：阶段 + 断点读得出来，点名的能力得在那个阶段、参数得对得上描述符；
+坏文件当场报，不静默跳过。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pytest
 from framework import paths
 from framework.capabilities import discover
 from framework.contracts import workflows
-from framework.contracts.workflows import Pick, Room, Stop
+from framework.contracts.workflows import Pick, Stage, Stop
 
 GOOD = """\
 name: w
@@ -16,11 +16,11 @@ title: 一条
 summary: >
   两行的
   摘要
-rooms:
+stages:
   - 假设
   - 断点: 发布
   - 设计: [design]
-  - 断点: 核对裁判
+  - 断点: 核对评分脚本
   - 实验: {auto-research: {max_iters: 2}}
   - 验证
 """
@@ -39,28 +39,28 @@ def test_shipped_workflow_is_one_line_from_topic_to_verification():
     assert [wf.name for wf in found] == ["research"]
     [wf] = found
     assert workflows.workflow_problems(wf, catalog()) == [] and workflows.remarks(wf) == []
-    assert wf.stages == ["假设", "设计", "实验", "分析", "验证"]
-    assert wf.caps == ["auto-research"]  # 只点名了实验间；别的间由助理看着办
-    stops = [r for r in wf.rooms if isinstance(r, Stop)]
-    assert [s.key for s in stops] == ["publish", None, "accept"]  # 出厂两个 + 核对裁判
-    assert stops[1].note == "核对裁判算的是不是你要的数"
+    assert wf.covered == ["假设", "设计", "实验", "分析", "验证"]
+    assert wf.caps == ["auto-research"]  # 只点名了实验阶段；别的间由助理看着办
+    stops = [r for r in wf.stages if isinstance(r, Stop)]
+    assert [s.key for s in stops] == ["publish", None, "accept"]  # 出厂两个 + 核对评分脚本
+    assert stops[1].note == "核对评分脚本算的是不是你要的数"
 
 
-def test_rooms_parse_in_all_three_spellings(tmp_path):
+def test_stages_parse_in_all_three_spellings(tmp_path):
     write(tmp_path, GOOD)
     [wf] = workflows.load_workflows(tmp_path)
     assert wf.summary == "两行的 摘要"
-    assert wf.rooms == (
-        Room("假设"), Stop("publish", "发布"), Room("设计", (Pick("design"),)),
-        Stop(None, "核对裁判"), Room("实验", (Pick("auto-research", {"max_iters": 2}),)),
-        Room("验证"))
-    assert wf.to_dict()["rooms"][4] == {
-        "kind": "room", "stage": "实验",
+    assert wf.stages == (
+        Stage("假设"), Stop("publish", "发布"), Stage("设计", (Pick("design"),)),
+        Stop(None, "核对评分脚本"), Stage("实验", (Pick("auto-research", {"max_iters": 2}),)),
+        Stage("验证"))
+    assert wf.to_dict()["stages"][4] == {
+        "kind": "stage", "stage": "实验",
         "caps": [{"cap": "auto-research", "with": {"max_iters": 2}}]}
-    assert wf.to_dict()["rooms"][1] == {"kind": "stop", "key": "publish", "note": "发布"}
-    write(tmp_path, GOOD.replace("- 断点: 核对裁判", "- 断点"))  # 光秃秃的断点也行
+    assert wf.to_dict()["stages"][1] == {"kind": "stop", "key": "publish", "note": "发布"}
+    write(tmp_path, GOOD.replace("- 断点: 核对评分脚本", "- 断点"))  # 光秃秃的断点也行
     [wf] = workflows.load_workflows(tmp_path)
-    assert wf.rooms[3] == Stop()
+    assert wf.stages[3] == Stop()
     assert workflows.load_workflows(tmp_path / "nowhere") == []
 
 
@@ -71,7 +71,7 @@ def test_describe_dir_keeps_a_broken_file_as_a_problem_row(tmp_path):
     rows = workflows.describe_dir(tmp_path, catalog())
     assert [r["name"] for r in rows] == ["w", "zz"]
     assert rows[0]["problems"] == [] and rows[0]["covers"] == ["假设", "设计", "实验", "验证"]
-    assert rows[1]["rooms"] == [] and rows[1]["problems"] == ["zz.yaml: 缺 title"]
+    assert rows[1]["stages"] == [] and rows[1]["problems"] == ["zz.yaml: 缺 title"]
     assert [wf.name for wf in workflows.load_valid(tmp_path)] == ["w"]
     assert workflows.describe_dir(tmp_path / "nowhere", catalog()) == []
 
@@ -102,21 +102,21 @@ def test_a_capability_must_sit_in_its_own_room(tmp_path):
         "'init', 'verify']）"]
 
 
-def test_any_order_of_rooms_is_fine_including_going_back(tmp_path):
-    """房间之间不接管子（P-18）：假设完直接写作是开题报告，实验完回设计是改裁判，都不是问题。"""
+def test_any_order_of_stages_is_fine_including_going_back(tmp_path):
+    """阶段之间不做数据流校验（P-18）：假设完直接写作是开题报告，实验完回设计是改评分脚本，都不是问题。"""
     write(tmp_path, GOOD.replace("  - 验证\n", "  - 写作\n  - 设计\n  - 文献\n"))
     [wf] = workflows.load_workflows(tmp_path)
     assert workflows.workflow_problems(wf, catalog()) == []
-    assert wf.stages == ["假设", "设计", "实验", "写作", "文献"]
+    assert wf.covered == ["假设", "设计", "实验", "写作", "文献"]
 
 
 def test_remarks_are_advice_not_problems(tmp_path):
-    write(tmp_path, "name: w\ntitle: t\nsummary: s\nrooms: [实验, 分析]\n")
+    write(tmp_path, "name: w\ntitle: t\nsummary: s\nstages: [实验, 分析]\n")
     [wf] = workflows.load_workflows(tmp_path)
     assert workflows.workflow_problems(wf, catalog()) == []
     assert workflows.remarks(wf) == [
         "有实验或分析、没有验证：数字没人回溯，结果不能算可信",
-        "「实验」之前没有「发布」断点：需求要人签过才写裁判、才开跑，助理到那儿会被拒"]
+        "「实验」之前没有「发布」断点：需求要人签过才写评分脚本、才开跑，助理到那儿会被拒"]
     write(tmp_path, GOOD)  # 出厂那种：发布在设计前、末尾有验证
     [wf] = workflows.load_workflows(tmp_path)
     assert workflows.remarks(wf) == []
@@ -125,7 +125,7 @@ def test_remarks_are_advice_not_problems(tmp_path):
 def test_save_workflow_writes_the_shortest_spelling_and_refuses_bad_or_duplicate(tmp_path):
     """编辑台存流（外层 #68）：形状与检查都过了才落盘，存出的文件能被同一套读回来；同名不覆盖。"""
     doc = {"name": "my-look", "title": "我的流", "summary": "看一眼",
-           "rooms": ["假设", {"断点": "发布"}, "设计",
+           "stages": ["假设", {"断点": "发布"}, "设计",
                      {"实验": {"auto-research": {"max_iters": 2}}},
                      {"分析": ["analysis"]}, {"断点": "看一眼结论"}]}
     saved = workflows.save_workflow(tmp_path, doc, catalog())
@@ -139,7 +139,7 @@ def test_save_workflow_writes_the_shortest_spelling_and_refuses_bad_or_duplicate
     workflows.save_workflow(tmp_path, {**doc, "title": "改了"}, catalog(), overwrite=True)
     assert workflows.load_workflows(tmp_path)[0].title == "改了"
     with pytest.raises(workflows.WorkflowInvalid, match="没有这颗能力"):
-        workflows.save_workflow(tmp_path, {**doc, "name": "bad", "rooms": [{"设计": ["nope"]}]},
+        workflows.save_workflow(tmp_path, {**doc, "name": "bad", "stages": [{"设计": ["nope"]}]},
                                 catalog())
     with pytest.raises(workflows.WorkflowInvalid, match="小写英文"):
         workflows.save_workflow(tmp_path, {**doc, "name": "My Flow"}, catalog())
@@ -151,9 +151,9 @@ def test_bad_shapes_are_named(tmp_path):
         "name 要等于文件名": GOOD.replace("name: w", "name: other"),
         "缺 title": GOOD.replace("title: 一条\n", ""),
         "缺 summary": GOOD.replace("summary: >\n  两行的\n  摘要\n", ""),
-        "rooms 要是非空列表": GOOD.replace("rooms:", "rooms: []\nsteps:"),
-        "不是房间也不是断点": GOOD.replace("- 假设", "- 调参"),
-        "不是房间": GOOD.replace("设计: [design]", "调参: [design]"),
+        "stages 要是非空列表": GOOD.replace("stages:", "stages: []\nsteps:"),
+        "不是阶段也不是断点": GOOD.replace("- 假设", "- 调参"),
+        "不是阶段": GOOD.replace("设计: [design]", "调参: [design]"),
         "第 1 项就是断点": GOOD.replace("  - 假设\n", ""),
         "两个断点挨着": GOOD.replace("  - 设计: [design]\n", ""),
         "要是一句话": GOOD.replace("断点: 发布", "断点: 3"),

@@ -5,28 +5,28 @@ import type { FlowItem, FlowState, RunSummary, TaskSummary } from '@/api/types'
 import { deriveRunItems, deriveTaskItems, synthesizeFlow, taskPart, waitingSentence } from './derive'
 
 const room = (stage: string, caps: string[] = []): FlowItem =>
-  ({ kind: 'room', stage, caps: caps.map((cap) => ({ cap, with: {} })) })
+  ({ kind: 'stage', stage, caps: caps.map((cap) => ({ cap, with: {} })) })
 const stop = (note: string, key: 'publish' | 'accept' | null = null): FlowItem => ({ kind: 'stop', key, note })
 
 // 出厂那条：假设 →◆发布 → 设计 →◆核对 → 实验 → 分析 → 验证 →◆验收
 const research: FlowItem[] = [
-  room('假设'), stop('发布', 'publish'), room('设计'), stop('核对裁判'),
+  room('假设'), stop('发布', 'publish'), room('设计'), stop('核对评分脚本'),
   room('实验', ['auto-research']), room('分析'), room('验证'), stop('验收', 'accept'),
 ]
 const titleOf = (cap: string) => (cap === 'auto-research' ? 'auto-research' : undefined)
-const flow = (step: number, waiting: string, rooms = research): FlowState =>
-  ({ workflow: 'research', title: '从课题到验证', step, total: rooms.length, rooms,
-     next: rooms[step] ?? null, waiting, updated_at: null })
+const flow = (step: number, waiting: string, stages = research): FlowState =>
+  ({ workflow: 'research', title: '从课题到验证', step, total: stages.length, stages,
+     next: stages[step] ?? null, waiting, updated_at: null })
 const accepted = { accepted_at: 't', by: '李', best_iter: 1, best_metric: 1, best_commit: 'c', verify: 'PASS', stale: false }
 
 describe('run 的脊柱', () => {
-  it('便条说到第几项：前面实心、当前按在等谁、后面虚线', () => {
+  it('进度记录说到第几项：前面实心、当前按在等谁、后面虚线', () => {
     expect(deriveRunItems(flow(4, 'job:job-1'), { accept: null }).map((s) => s.state))
       .toEqual(['done', 'done', 'done', 'done', 'running', 'todo', 'todo', 'todo'])
     expect(waitingSentence(deriveRunItems(flow(4, 'job:job-1'), { accept: null }), titleOf)).toBe('auto-research跑着')
     const atAnalysis = deriveRunItems(flow(5, 'assistant'), { accept: null })
     expect(atAnalysis[5].state).toBe('assistant')
-    expect(waitingSentence(atAnalysis, titleOf)).toBe('分析间，轮到助理')
+    expect(waitingSentence(atAnalysis, titleOf)).toBe('分析阶段，轮到助理')
   })
   it('停在断点：出厂的两个说等你发布 / 验收，别的说等你确认什么', () => {
     const items = [room('实验'), stop('看一眼结论'), room('分析')]
@@ -37,7 +37,7 @@ describe('run 的脊柱', () => {
     expect(before[7].state).toBe('wait-key')
     expect(waitingSentence(before, titleOf)).toBe('等你验收')
   })
-  it('验收签过就算完成，便条不会替人的确认推进', () => {
+  it('验收签过就算完成，进度记录不会替人的确认推进', () => {
     const after = deriveRunItems(flow(7, 'key:accept'), { accept: accepted })
     expect(after[7].state).toBe('done')
     expect(waitingSentence(after, titleOf)).toBe('走完了')
@@ -57,7 +57,7 @@ describe('run 的脊柱', () => {
 describe('任务包那一段的脊柱', () => {
   const task = (stage: 'drafting' | 'published' | 'designed' | 'baselined', ok: boolean) =>
     ({ id: 't', stage, publish: { ok, state: ok ? 'ok' : 'missing', by: null, at: null, reason: null } }) as unknown as TaskSummary
-  it('任务包那一段到第一间别的房间为止', () => {
+  it('任务包那一段到第一个阶段别的阶段为止', () => {
     expect(taskPart(research)).toEqual(research.slice(0, 4))
     expect(taskPart([room('假设'), room('写作')])).toEqual([room('假设')])
     expect(taskPart([room('假设'), stop('发布', 'publish'), room('设计')])).toHaveLength(3)
@@ -66,7 +66,7 @@ describe('任务包那一段的脊柱', () => {
     expect(deriveTaskItems(taskPart(research), null, null).map((s) => s.state))
       .toEqual(['assistant', 'todo', 'todo', 'todo'])
   })
-  it('需求填好就等发布；发布后轮到助理写裁判；基线跑完等人核对', () => {
+  it('需求填好就等发布；发布后轮到助理写评分脚本；基线跑完等人核对', () => {
     expect(deriveTaskItems(taskPart(research), task('drafting', false), []).map((s) => s.state))
       .toEqual(['done', 'wait-key', 'todo', 'todo'])
     expect(deriveTaskItems(taskPart(research), task('drafting', false), ['还有待填']).map((s) => s.state)[0]).toBe('assistant')
@@ -74,6 +74,6 @@ describe('任务包那一段的脊柱', () => {
       .toEqual(['done', 'done', 'assistant', 'todo'])
     const baselined = deriveTaskItems(taskPart(research), task('baselined', true), [])
     expect(baselined.map((s) => s.state)).toEqual(['done', 'done', 'done', 'wait-human'])
-    expect(waitingSentence(baselined, titleOf)).toBe('等你确认：核对裁判')
+    expect(waitingSentence(baselined, titleOf)).toBe('等你确认：核对评分脚本')
   })
 })

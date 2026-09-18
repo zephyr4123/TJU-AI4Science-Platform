@@ -115,7 +115,7 @@ export AI4SCI_START_EPOCH
 ```bash
 cd workspaces/<name>
 ai4sci sign task --by <你>        # 发布：签 manifest.yaml 与 design.md，写 publish.json
-ai4sci cap design                 # 执行层写裁判与基线代码、框架封 harness，接着跑 make_run0.sh 出 run_0/、预检
+ai4sci cap design                 # 执行层写评分脚本与基线代码、框架封 harness，接着跑 make_run0.sh 出 run_0/、预检
 ai4sci show task                  # 退 0 才算接进来了
 ```
 

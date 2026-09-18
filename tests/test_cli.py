@@ -170,7 +170,7 @@ def test_auto_research_opens_the_run_inside_the_workspace(tmp_path, monkeypatch,
 
 def test_flow_take_then_auto_research_with_workflow_snapshots_it_and_reads_the_note(
         tmp_path, monkeypatch, capsys):
-    """纲领 P-15：库里的流先取成实例才能照着开 run；快照进 run、跑成后记到实验那一间；
+    """纲领 P-15：库里的流先取成实例才能照着开 run；快照进 run、跑成后记到实验那个阶段；
     名字不对在开 run 之前就拒。"""
     from framework.cli import main
 
@@ -210,7 +210,7 @@ def test_flow_take_then_auto_research_with_workflow_snapshots_it_and_reads_the_n
     assert (run_dir / "flow.json").is_file()
     shown = run_cli("show", "run", "r1", **in_pack(pack))
     assert shown.returncode == EXIT_OK, shown.stderr
-    assert "workflow\tresearch\tstep=5/8\twaiting=assistant\tnext=分析间" in shown.stdout
+    assert "workflow\tresearch\tstep=5/8\twaiting=assistant\tnext=分析阶段" in shown.stdout
     # 已经开过的 run 不能再换流
     code = main(["cap", "auto-research", "--run-id", "r1", "--workflow", "research-5"])
     assert code == EXIT_INVALID and "已经开过了" in capsys.readouterr().err
@@ -391,14 +391,14 @@ def test_auto_research_extends_the_budget_before_looping(tmp_path, monkeypatch, 
 
 
 # ── cap：按名字跑一个能力 ────────────────────────────────────────────────
-def test_show_caps_lists_rooms_with_empty_rooms_visible_and_five_columns():
+def test_show_caps_lists_stages_with_empty_stages_visible_and_five_columns():
     proc = run_cli("show", "caps")
     assert proc.returncode == EXIT_OK, proc.stderr
     rows = [line.split("\t") for line in proc.stdout.splitlines() if not line.startswith("  ")]
     assert [r[0] for r in rows] == ["文献", "假设", "设计", "实验", "分析", "写作", "验证"]
     assert [r[1] for r in rows] == ["-", "init", "design", "auto-research", "analysis", "-",
                                     "verify"]
-    assert rows[0][2] == "这一间还没有能力"
+    assert rows[0][2] == "这个阶段还没有能力"
     auto = next(r for r in rows if r[1] == "auto-research")
     assert auto[2] == "auto-research" and auto[3] == "助理" and "used_by=research" in auto
     columns = [line.strip().split("：", 1)[0] for line in proc.stdout.splitlines()
@@ -421,7 +421,7 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
     assert [p["name"] for p in by_name["auto-research"]["params"]][:2] == ["run_id", "workflow"]
 
 
-def test_show_workflows_lists_rooms_and_stops():
+def test_show_workflows_lists_stages_and_stops():
     proc = run_cli("show", "workflows")
     assert proc.returncode == EXIT_OK, proc.stderr
     assert proc.stdout.splitlines() == [
@@ -430,7 +430,7 @@ def test_show_workflows_lists_rooms_and_stops():
     proc = run_cli("show", "workflows", "--json")
     [doc] = json.loads(proc.stdout)
     assert doc["covers"] == ["假设", "设计", "实验", "分析", "验证"] and doc["problems"] == []
-    assert doc["rooms"][1] == {"kind": "stop", "key": "publish", "note": "发布"}
+    assert doc["stages"][1] == {"kind": "stop", "key": "publish", "note": "发布"}
 
 
 def test_cap_unknown_capability_is_a_usage_error(tmp_path):
@@ -526,7 +526,7 @@ def test_sign_run_writes_the_acceptance(tmp_path):
     assert proc.returncode == EXIT_USAGE
 
 
-# ── cap design：写裁判、跑基线（task 级能力，子命令从描述符生成）──────────────
+# ── cap design：写评分脚本、跑基线（task 级能力，子命令从描述符生成）──────────────
 def test_cap_design_missing_feedback_file_exits_one(tmp_path):
     pack = pf.make_pack(tmp_path)
     proc = run_cli("cap", "design", "--feedback", "@/nonexistent/f.md", **in_pack(pack))
@@ -565,7 +565,7 @@ def test_cap_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch
     assert code == EXIT_OK, out
     assert out.startswith(
         "design ok\tsession=1\tchanged=4\tsealed=evaluate.py,launcher.sh,make_run0.sh")
-    # 后半段：裁判封好就接着跑基线、算预检，一条命令到底
+    # 后半段：评分脚本封好就接着跑基线、算预检，一条命令到底
     assert "\tinner_k=" in out and "\tbaseline=" in out and "\tgate=" in out
     assert "next=对照 design.md" in out and out.rstrip().endswith("ai4sci cap auto-research")
     assert (pack.workspace.runs / "design" / "executor" / "session-1" / "prompt.md").is_file()
@@ -578,7 +578,7 @@ def test_cap_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch
     assert "裸调 python" in captured.err and "--feedback @" in captured.err
 
 
-# ── 写裁判、跑基线的后半段：跑 make_run0.sh，环境变量与内环同一组，跑完预检 ─────────
+# ── 写评分脚本、跑基线的后半段：跑 make_run0.sh，环境变量与内环同一组，跑完预检 ─────────
 MAKE_RUN0_THREE_REPEATS = (
     "#!/usr/bin/env bash\nset -euo pipefail\n"
     'TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"\n'
@@ -769,15 +769,15 @@ def test_chat_send_unknown_id_and_missing_file_exit_two(tmp_path):
 
 # ── serve 注入给页面后端的几个函数：真清单、真检查 ────────────────────────
 def test_serve_helpers_check_a_draft_and_list_the_catalog():
-    """页面拼流台边拼边问：名字、标题、说明还没填也只报房间的问题；清单每颗带五栏与 used_by。"""
+    """页面拼流台边拼边问：名字、标题、说明还没填也只报阶段的问题；清单每颗带五栏与 used_by。"""
     from framework.cli import serve
 
-    ok = serve._check_workflow({"rooms": ["假设", {"断点": "发布"}, {"设计": ["design"]}, "分析"]})
+    ok = serve._check_workflow({"stages": ["假设", {"断点": "发布"}, {"设计": ["design"]}, "分析"]})
     assert ok["problems"] == [] and ok["covers"] == ["假设", "设计", "分析"]
     assert ok["remarks"] == ["有实验或分析、没有验证：数字没人回溯，结果不能算可信"]
-    bad = serve._check_workflow({"name": "x", "rooms": [{"设计": ["verify"]}, "断点", "断点"]})
+    bad = serve._check_workflow({"name": "x", "stages": [{"设计": ["verify"]}, "断点", "断点"]})
     assert bad["problems"] == ["x.yaml: 第 2 项与第 3 项都是断点：两个断点挨着等于一个"]
-    bad = serve._check_workflow({"rooms": [{"设计": ["verify"]}]})
+    bad = serve._check_workflow({"stages": [{"设计": ["verify"]}]})
     assert "属于「验证」间" in bad["problems"][0]
     catalog = {c["name"]: c for c in serve._catalog()}
     assert catalog["auto-research"]["used_by"] == ["research"] and catalog["verify"]["does"]

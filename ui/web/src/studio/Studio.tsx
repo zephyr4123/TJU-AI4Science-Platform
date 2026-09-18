@@ -1,5 +1,5 @@
-// 编辑台的库那一半（外层 #58 #68 #74 #98）：上面是工作流墙（一流一卡），下面是七间房的货架 + 拼流台。
-// 拼流就是排房间、往房间里挂能力、房间之间插断点（纲领 P-18）：点货架上的房间名加一间，点能力挂进去，
+// 编辑台的库那一半（外层 #58 #68 #74 #98）：上面是工作流墙（一流一卡），下面是七个研究阶段的货架 + 拼流台。
+// 拼流就是排阶段、往阶段里挂能力、阶段之间插断点（纲领 P-18）：点货架上的阶段名加一个阶段，点能力挂进去，
 // 边拼边问后端有没有问题（POST /workflows/check），存成 workflows/<name>.yaml。三张清单都从后端读，页面不写死。
 // 左边那位造流助理每说完一轮 epoch 加一，墙就重读——它可能刚存了一条。
 import { ArrowDown, ArrowUp, CaretDown, HandPalm, X } from '@phosphor-icons/react'
@@ -19,7 +19,7 @@ import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 
 /** 拼流台上的一项：与后端的 FlowItem 同形，只是断点还没分出是不是出厂的那两个（那是后端按「发布」「验收」认的） */
-type BenchItem = { kind: 'room'; stage: string; caps: string[] } | { kind: 'stop'; note: string }
+type BenchItem = { kind: 'stage'; stage: string; caps: string[] } | { kind: 'stop'; note: string }
 interface Draft { name: string; title: string; summary: string; items: BenchItem[] }
 const EMPTY: Draft = { name: '', title: '', summary: '', items: [] }
 
@@ -38,23 +38,23 @@ export function Studio({ epoch }: { epoch: number }) {
   for (const cap of catalog.data ?? []) titles.set(cap.name, cap.title)
   const titleOf = (name: string) => titles.get(name)
 
-  /** 点货架上的能力：最后一项是同一间就挂进去，否则新开一间 */
+  /** 点货架上的能力：最后一项是同一个阶段就挂进去，否则新开一个阶段 */
   const hang = (cap: Capability) => setDraft((d) => {
     const last = d.items[d.items.length - 1]
-    if (last && last.kind === 'room' && last.stage === cap.stage) {
+    if (last && last.kind === 'stage' && last.stage === cap.stage) {
       if (last.caps.includes(cap.name)) return d
       return { ...d, items: [...d.items.slice(0, -1), { ...last, caps: [...last.caps, cap.name] }] }
     }
-    return { ...d, items: [...d.items, { kind: 'room', stage: cap.stage, caps: [cap.name] }] }
+    return { ...d, items: [...d.items, { kind: 'stage', stage: cap.stage, caps: [cap.name] }] }
   })
-  const addRoom = (stage: string) => setDraft((d) => ({ ...d, items: [...d.items, { kind: 'room', stage, caps: [] }] }))
+  const addStage = (stage: string) => setDraft((d) => ({ ...d, items: [...d.items, { kind: 'stage', stage, caps: [] }] }))
 
   return (
     <div>
       <Band picture={ASSETS.studio} veil="foot" className="h-44">
         <header className="mx-auto flex h-full max-w-[76rem] flex-col justify-end px-8 pb-5">
           <h1 className="font-serif text-[1.5rem] font-semibold">库</h1>
-          <p className="t-body mt-1 text-muted-foreground">排房间，挂能力，插断点，存进库。</p>
+          <p className="t-body mt-1 text-muted-foreground">排阶段，挂能力，插断点，存进库。</p>
         </header>
       </Band>
       <div className="mx-auto max-w-[76rem] space-y-12 px-8 py-8">
@@ -79,17 +79,17 @@ export function Studio({ epoch }: { epoch: number }) {
       {catalog.data && stages.data && (
         <section className="grid gap-8 lg:grid-cols-[1fr_24rem]">
           <div className="min-w-0 space-y-4">
-            <h2 className="t-lede">七间房 · 能力 {catalog.data.length}</h2>
-            <p className="t-body text-muted-foreground">点房间名加一间；点能力挂进最后一间。</p>
+            <h2 className="t-lede">七个研究阶段 · 能力 {catalog.data.length}</h2>
+            <p className="t-body text-muted-foreground">点阶段名加一个阶段；点能力挂进最后一个阶段。</p>
             <ol className="flex gap-3 overflow-x-auto pb-2">
               {groupByStage(stages.data, catalog.data).map(({ stage, caps }) => (
                 <li key={stage} className="w-[12rem] shrink-0 space-y-2">
-                  <button type="button" onClick={() => addRoom(stage)} title={`加一间${stage}`}
+                  <button type="button" onClick={() => addStage(stage)} title={`加一个${stage}阶段`}
                           className="flex w-full items-center gap-1.5 rounded-lg px-1 py-1 text-left font-serif text-[0.9375rem] font-semibold transition-colors hover:bg-accent/40">
                     <StageMark stage={stage} className="text-primary" />{stage}
                   </button>
                   {caps.length === 0
-                    ? <p className="rounded-xl border border-dashed px-3 py-4 text-[0.8125rem] text-muted-foreground">这一间还没有能力</p>
+                    ? <p className="rounded-xl border border-dashed px-3 py-4 text-[0.8125rem] text-muted-foreground">这个阶段还没有能力</p>
                     : caps.map((cap) => <CapChip key={cap.name} cap={cap} onHang={() => hang(cap)} />)}
                 </li>
               ))}
@@ -104,7 +104,7 @@ export function Studio({ epoch }: { epoch: number }) {
   )
 }
 
-/** 一间的图标：货架的标题、能力卡、工作流卡上走过的几间都用它 */
+/** 一个阶段的图标：货架的标题、能力卡、工作流卡上走过的几个阶段都用它 */
 function StageMark({ stage, className }: { stage: string; className?: string }) {
   return createElement(stageIcon(stage), { weight: 'duotone', 'aria-label': stage, className: cn('size-4 shrink-0', className) })
 }
@@ -123,7 +123,7 @@ function WorkflowCard({ workflow, titleOf, onLoad }: { workflow: Workflow; title
       <p className="mt-2 text-[0.875rem] leading-relaxed">{workflow.summary}</p>
       <p className="t-label mt-2">{coverageSentence(workflow.covers)}</p>
       <ol className="mt-3 space-y-1 text-[0.8125rem] text-muted-foreground">
-        {workflow.rooms.map((item, i) => (
+        {workflow.stages.map((item, i) => (
           <li key={i} className="flex items-center gap-2">
             {createElement(itemIcon(item), { className: 'size-3.5 shrink-0', 'aria-hidden': true })}
             <span className={cn('min-w-0 truncate', item.kind === 'stop' && 'text-wait')}>
@@ -186,7 +186,7 @@ function Bench({ draft, setDraft, titleOf, stages, onSaved }: {
   stages: string[]; onSaved: () => void
 }) {
   const doc = toDraft(draft)
-  const key = JSON.stringify(doc.rooms)
+  const key = JSON.stringify(doc.stages)
   const check = useResource(() => (draft.items.length ? api.checkWorkflow(doc) : Promise.resolve(null)), [key])
   const [busy, setBusy] = useState(false)
   const [overwrite, setOverwrite] = useState(false)
@@ -203,7 +203,7 @@ function Bench({ draft, setDraft, titleOf, stages, onSaved }: {
     return { ...d, items }
   })
   const unhang = (i: number, cap: string) => setDraft((d) => ({
-    ...d, items: d.items.map((s, j) => (j === i && s.kind === 'room' ? { ...s, caps: s.caps.filter((c) => c !== cap) } : s)),
+    ...d, items: d.items.map((s, j) => (j === i && s.kind === 'stage' ? { ...s, caps: s.caps.filter((c) => c !== cap) } : s)),
   }))
   const addStop = (text: string) => setDraft((d) => ({ ...d, items: [...d.items, { kind: 'stop', note: text }] }))
 
@@ -238,14 +238,14 @@ function Bench({ draft, setDraft, titleOf, stages, onSaved }: {
       <ol className="mt-4 space-y-2">
         {draft.items.length === 0 && (
           <li className="rounded-xl border border-dashed px-3 py-4 text-[0.8125rem] text-muted-foreground">
-            从左边点房间或能力。
+            从左边点阶段或能力。
           </li>
         )}
         {draft.items.map((item, i) => (
           <li key={i} className={cn('flex items-start gap-2 rounded-xl border px-3 py-2', item.kind === 'stop' ? 'border-wait/60 bg-wait-soft' : 'bg-card')}>
             <span className="mt-1 w-4 shrink-0 text-right text-[0.8125rem] font-semibold tabular">{item.kind === 'stop' ? '◆' : i + 1}</span>
             <div className="min-w-0 flex-1">
-              {item.kind === 'room' ? (
+              {item.kind === 'stage' ? (
                 <>
                   <div className="flex items-center gap-1.5 text-[0.875rem] font-medium"><StageMark stage={item.stage} className="text-primary" />{item.stage}</div>
                   {item.caps.length === 0
@@ -302,7 +302,7 @@ function Bench({ draft, setDraft, titleOf, stages, onSaved }: {
         <Button onClick={() => void save()} disabled={!canSave}>{busy ? '保存中' : '保存'}</Button>
       </div>
       {note && <p className={cn('mt-3 text-[0.8125rem] leading-relaxed', note.ok ? 'text-ok' : 'text-bad')}>{note.text}</p>}
-      <p className="mt-3 text-[0.75rem] text-muted-foreground">{stages.length} 间房任意排，房间之间不接管子。</p>
+      <p className="mt-3 text-[0.75rem] text-muted-foreground">{stages.length} 个阶段任意排，阶段之间不做数据流校验。</p>
     </aside>
   )
 }
@@ -316,24 +316,24 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   )
 }
 
-/** 拼流台 → 文件同形的 JSON：不点名的房间一个名字、点名的一个清单、断点一个词或「断点: 一句话」。 */
+/** 拼流台 → 文件同形的 JSON：不点名的阶段一个名字、点名的一个清单、断点一个词或「断点: 一句话」。 */
 function toDraft(draft: Draft): WorkflowDraft {
-  const rooms: DraftItem[] = draft.items.map((item) => {
+  const stages: DraftItem[] = draft.items.map((item) => {
     if (item.kind === 'stop') return item.note.trim() ? { 断点: item.note.trim() } : '断点'
     return item.caps.length ? { [item.stage]: item.caps } : item.stage
   })
-  return { name: draft.name.trim(), title: draft.title.trim(), summary: draft.summary.trim(), rooms }
+  return { name: draft.name.trim(), title: draft.title.trim(), summary: draft.summary.trim(), stages }
 }
 
 function fromWorkflow(wf: Workflow): Draft {
   return {
     name: `${wf.name}-2`, title: wf.title, summary: wf.summary,
-    items: wf.rooms.map(fromItem),
+    items: wf.stages.map(fromItem),
   }
 }
 
 function fromItem(item: FlowItem): BenchItem {
   if (item.kind === 'stop') return { kind: 'stop', note: item.note }
   // 参数在页面上还没有位置：照着拼时只带名字，参数由取走的研究助理改（P-15）
-  return { kind: 'room', stage: item.stage, caps: item.caps.map((c) => c.cap) }
+  return { kind: 'stage', stage: item.stage, caps: item.caps.map((c) => c.cap) }
 }

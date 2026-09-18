@@ -1,4 +1,4 @@
-"""说清课题：假设间里的那颗能力——建任务包目录、搬材料、放模板，然后人和助理在对话里把课题说清。
+"""说清课题：假设阶段里的那颗能力——建任务包目录、搬材料、放模板，然后人和助理在对话里把课题说清。
 
 task 级，不起执行层。为什么要有它（纲领 P-14 CLI 主导封装）：协调 agent 面前只有 `ai4sci`，
 没有 mkdir、没有 cp；实验 #59 里它只好把研究者的 8 个数据文件一个个读进上下文再写出来，结果对、
@@ -28,7 +28,7 @@ IGNORED = (".git", ".venv", "__pycache__", ".DS_Store", "*.pyc")
 DATA_README = (
     "# data/ · 问题定义与输入数据\n\n"
     f"来源与许可：{packs.PLACEHOLDER}（谁给的、从哪下的、什么许可证）。\n\n"
-    "这里的东西执行层不许改，裁判用它重算指标。\n"
+    "这里的东西执行层不许改，评分脚本 evaluate.py 用它重算指标。\n"
 )
 
 DESCRIPTOR = Capability(
@@ -38,8 +38,8 @@ DESCRIPTOR = Capability(
     title="说清课题",
     does=(
         "起一个任务包：在工作区里建 task/，研究者给的文件夹整棵搬进 data/（跳过 .git、"
-        ".venv 这类），把脚本用的 Python 版本与 pip freeze 写进 env/（之后裁判与内环都按它建环境）"
-        "，manifest.yaml 与 design.md 先放带说明的模板——每个数旁边写着它是什么，"
+        ".venv 这类），把脚本用的 Python 版本与 pip freeze 写进 env/（之后评分脚本与内环都按它建"
+        "环境），manifest.yaml 与 design.md 先放带说明的模板——每个数旁边写着它是什么，"
         "没定的标「待填」。命令跑完，助理在对话里和研究者把课题说清：研究问题、主指标与方向、"
         "预算、统计门、产物契约与「怎么算好」，逐项填进这两个文件。"
     ),
@@ -56,7 +56,7 @@ DESCRIPTOR = Capability(
         "task/manifest.yaml（需求：指标、方向、预算、统计门，先是模板）、"
         "task/design.md（设计说明：四节标题）、task/data/（材料原样 + README 存根）、"
         "task/env/（python-version、requirements.lock）。填完、发布过（publish.json）"
-        "的任务包才算这一间做完。"
+        "的任务包才算这个阶段做完。"
     ),
     stops=(
         "缺 --python 或 --lock、材料文件夹不存在、任务包已在：不建。建好就退出，"

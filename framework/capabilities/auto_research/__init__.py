@@ -1,11 +1,11 @@
-"""auto-research：实验间的那颗能力——开一个 run，然后一轮一轮改代码，统计门棘轮（workflow.md §2）。
+"""auto-research：实验阶段的那颗能力——开一个 run，然后一轮一轮改代码，统计门棘轮（workflow.md §2）。
 
 一个能力一个子包，跑完即退、互不 import（见 `capabilities/__init__.py`）。对外露的是描述符
 `DESCRIPTOR`、统一入口 `run`（`ai4sci cap auto-research` 走它）、内环自己的两个动作 `run_loop` /
 `resume_loop`，以及三种"停下来"的表达。内部怎么分模块（loop / judge / gate / failures / prompt.md）
 是这个能力自己的事，别的层不该知道。
 
-task 级：它动的是工作区——run 不在就从任务包建一个（`run/lifecycle.new_run`：钥匙、契约、预检、
+task 级：它动的是工作区——run 不在就从任务包建一个（`run/lifecycle.new_run`：查发布记录、契约、预检、
 拷 work/、建环境、git init、记基线），在就接着跑。原来「开一次实验」是单独一条命令（start），
 2026-09-18 并进来（外层 #96）：开 run 只是内环开工前的准备，没有人开了 run 不跑。
 
@@ -58,7 +58,7 @@ DESCRIPTOR = Capability(
         "不判结果可不可信——它只负责让分支 tip 永远是目前最好的那一版。"
     ),
     brings=(
-        "发布过、跑过基线的任务包：harness/（封好的裁判）、code/（基线代码）、"
+        "发布过、跑过基线的任务包：harness/（封好的评分脚本）、code/（基线代码）、"
         "run_0/（基线成绩与 σ）、manifest.yaml（指标、方向、budget：max_iterations、patience、"
         "max_cost_usd、inner_k、统计门）、env/。接着跑时带 --run-id；被杀在半路带 --resume；"
         "已停的 run 要续命带新的预算与 --reason。"
@@ -74,12 +74,12 @@ DESCRIPTOR = Capability(
         "或执行层连续几轮不可修复地失败——停止原因写进 checkpoint 与 experiment/stop.json。"
         "给了 --max-iters 就只跑这么多轮再退出（run 不算停，下次接着跑）。"
         "开 run 那一步就拒的情况：需求没发布、任务包不合契约、预检说没有改进空间、"
-        "环境建不出来——都停在门口，不留半截 run。"
+        "环境建不出来——前置检查失败就不建 run，不留半截。"
     ),
     params=(
         Param("run_id", "str", "", "run 的名字；缺省 <工作区名>-<UTC 时间戳>。已有的 run 就接着跑"),
         Param("workflow", "str", "",
-              "开 run 时照工作区里的哪条流（show flows 里的名字）：快照进 run，之后记走到哪一间"),
+              "开 run 时照工作区里的哪条流（show flows 里的名字）：快照进 run，之后记走到哪个阶段"),
         Param("max_iters", "int", None,
               "本次增量最多跑几轮；上限仍是 manifest 的 budget.max_iterations"),
         Param("resume", "bool", False,
@@ -126,7 +126,7 @@ def run(
     except (ResumeMismatch, InflightPending) as exc:
         # 通用驱动只认能力契约里的异常；内环自己的两种"现状不许往下跑"原话照转
         raise CapabilityFailed(str(exc)) from exc
-    # 照着流的 run：记它走到了实验这一间；没照流就不记
+    # 照着流的 run：记它走到了实验这个阶段；没照流就不记
     flow_state.record_press(run_dir, NAME, DESCRIPTOR.stage)
     return (f"stop {stop.reason}\titer={stop.iter}\tbest={stop.best_metric}\trun={run_id}"
             f"\tnext=ai4sci cap analysis {run_id}")

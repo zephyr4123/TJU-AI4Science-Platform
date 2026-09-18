@@ -10,10 +10,10 @@
 
     GET  /health                            {"ok": true}
     GET  /backends                          每家 agent 后端的旋钮：模型清单、思考深度档位、缺省
-    GET  /stages                            七间房，按清单顺序
+    GET  /stages                            七个研究阶段，按清单顺序
     GET  /cap                               能力描述符清单：每颗带 stage、五栏与 used_by
     GET  /workflows                         库：`workflows/*.yaml`，covers / remarks / problems
-    POST /workflows                         {name, title, summary, rooms[, overwrite]} → 存进库
+    POST /workflows                         {name, title, summary, stages[, overwrite]} → 存进库
     POST /workflows/check                   同一个 body，只查不存：covers / remarks / problems
     GET  /workspaces                        工作区清单：标题、任务包走到哪、几个 run
     POST /workspaces                        {"id", "title"?} → 新工作区

@@ -1,6 +1,6 @@
-// 脊柱上每一项长什么样，全由盘上的状态算出来：run 的便条（flow）、作业、发布 / 验收的记录、任务包的阶段。
+// 脊柱上每一项长什么样，全由盘上的状态算出来：run 的进度记录（flow）、作业、发布 / 验收的记录、任务包的阶段。
 // 纯函数，不碰 React；页面「装什么流长什么样」靠它，不写死任何一条流（外层 #58 #64 #98）。
-// 房间之间不接管子（P-18），所以这里也不推"下一间要什么"：只回答每一项是做完了、跑着、轮到助理、还是等人。
+// 阶段之间没有显式的输入输出接口（P-18），所以这里也不推"下一个阶段要什么"：只回答每一项是做完了、跑着、轮到助理、还是等人。
 import type { FlowItem, FlowState, RunSummary, TaskSummary } from '@/api/types'
 
 export type ItemState = 'done' | 'running' | 'assistant' | 'wait-key' | 'wait-human' | 'todo'
@@ -11,7 +11,7 @@ export interface ItemView {
   state: ItemState
 }
 
-/** 便条说「在等谁」时，下一项该亮成什么 */
+/** 进度记录说「在等谁」时，下一项该亮成什么 */
 function openState(waiting: string, item: FlowItem): ItemState {
   if (waiting.startsWith('job:')) return 'running'
   if (waiting.startsWith('key:')) return 'wait-key'
@@ -19,10 +19,10 @@ function openState(waiting: string, item: FlowItem): ItemState {
   return item.kind === 'stop' ? (item.key ? 'wait-key' : 'wait-human') : 'assistant'
 }
 
-/** run 照的那条流：便条说走到第几项、在等谁；验收那一项看记录（便条不会替人的确认推进）。 */
+/** run 照的那条流：进度记录说走到第几项、在等谁；验收那一项看记录（进度记录不会替人的确认推进）。 */
 export function deriveRunItems(flow: FlowState, run: Pick<RunSummary, 'accept'>): ItemView[] {
   const accepted = run.accept !== null && !run.accept.stale
-  return flow.rooms.map((item, i) => {
+  return flow.stages.map((item, i) => {
     const n = i + 1
     if (item.kind === 'stop' && item.key === 'accept' && accepted) return { n, item, state: 'done' }
     if (n <= flow.step) return { n, item, state: 'done' }
@@ -31,13 +31,13 @@ export function deriveRunItems(flow: FlowState, run: Pick<RunSummary, 'accept'>)
   })
 }
 
-/** 任务包这一段的房间：页面从任务包的阶段推——假设间做完 = 需求填好了，设计间做完 = 基线跑了。
- *  只有这两间能从任务包看出来；别的房间要等 run 才知道。 */
+/** 任务包这一段的阶段：页面从任务包的阶段推——假设阶段做完 = 需求填好了，设计阶段做完 = 基线跑了。
+ *  只有这两个阶段能从任务包看出来；别的阶段要等 run 才知道。 */
 const TASK_ROOMS = new Set(['假设', '设计'])
 
-/** 一条流里属于任务包的那一段：开头连续的假设 / 设计间与它们之间的断点，到第一间别的房间为止。 */
+/** 一条流里属于任务包的那一段：开头连续的假设 / 设计阶段与它们之间的断点，到第一个阶段别的阶段为止。 */
 export function taskPart(items: FlowItem[]): FlowItem[] {
-  const end = items.findIndex((it) => it.kind === 'room' && !TASK_ROOMS.has(it.stage))
+  const end = items.findIndex((it) => it.kind === 'stage' && !TASK_ROOMS.has(it.stage))
   return end < 0 ? items : items.slice(0, end)
 }
 
@@ -49,16 +49,16 @@ export function deriveTaskItems(items: FlowItem[], task: TaskSummary | null,
   const filled = task !== null && problems !== null && problems.length === 0
   const published = task?.publish.ok === true
   const doneOf = (item: FlowItem): boolean | null => {
-    if (item.kind === 'room') {
+    if (item.kind === 'stage') {
       if (item.stage === '假设') return filled
       if (item.stage === '设计') return rank >= 3
-      return null // 别的房间从任务包看不出来
+      return null // 别的阶段从任务包看不出来
     }
     if (item.key === 'publish') return published
-    return null // 别的断点：跟着它后面那一间走
+    return null // 别的断点：跟着它后面那个阶段走
   }
   const done = items.map(doneOf)
-  // 断点做没做完看它后面那一项（人点了头助理才会进下一间）；末尾的断点没人能替它说做完了
+  // 断点做没做完看它后面那一项（人点了头助理才会进入下一个阶段）；末尾的断点没人能替它说做完了
   for (let i = items.length - 1; i >= 0; i -= 1) {
     if (done[i] === null && items[i].kind === 'stop') done[i] = i + 1 < items.length ? done[i + 1] : false
   }
@@ -73,7 +73,7 @@ export function deriveTaskItems(items: FlowItem[], task: TaskSummary | null,
   })
 }
 
-/** 没照流的老 run：按库里的样板从文件推一条便条出来，让它也有脊柱。 */
+/** 没照流的老 run：按库里的样板从文件推一份进度记录出来，让它也有脊柱。 */
 export function synthesizeFlow(run: RunSummary, items: FlowItem[], name: string, title: string): FlowState {
   const accepted = run.accept !== null && !run.accept.stale
   const roomDone: Record<string, boolean> = {
@@ -82,16 +82,16 @@ export function synthesizeFlow(run: RunSummary, items: FlowItem[], name: string,
   }
   let step = 0
   for (const [i, item] of items.entries()) {
-    const ok = item.kind === 'room' ? (roomDone[item.stage] ?? false)
+    const ok = item.kind === 'stage' ? (roomDone[item.stage] ?? false)
       : item.key === 'accept' ? accepted : item.key === 'publish' ? true
-      : (items[i + 1]?.kind === 'room' ? (roomDone[(items[i + 1] as { stage: string }).stage] ?? false) : false)
+      : (items[i + 1]?.kind === 'stage' ? (roomDone[(items[i + 1] as { stage: string }).stage] ?? false) : false)
     if (!ok) break
     step = i + 1
   }
   const following = items[step] ?? null
   const waiting = run.job ? `job:${run.job.job_id}` : following === null ? 'done'
     : following.kind === 'stop' ? (following.key ? `key:${following.key}` : 'human') : 'assistant'
-  return { workflow: name, title, step, total: items.length, rooms: items, next: following, waiting,
+  return { workflow: name, title, step, total: items.length, stages: items, next: following, waiting,
            updated_at: run.updated_at }
 }
 
@@ -105,6 +105,6 @@ export function waitingSentence(items: ItemView[], titleOf: (cap: string) => str
     if (item.key === 'accept') return '等你验收'
     return item.note ? `等你确认：${item.note}` : '等你确认'
   }
-  const name = item.caps.length ? item.caps.map((c) => titleOf(c.cap) ?? c.cap).join('、') : `${item.stage}间`
+  const name = item.caps.length ? item.caps.map((c) => titleOf(c.cap) ?? c.cap).join('、') : `${item.stage}阶段`
   return open.state === 'running' ? `${name}跑着` : `${name}，轮到助理`
 }

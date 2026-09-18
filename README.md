@@ -13,7 +13,7 @@ platform/
 ├── coordinator/   协调层入口指南（执行层不加载）
 ├── framework/     框架：能力、runner、契约、验证、ai4sci CLI；零模型调用
 │   ├── cli/           一个子命令一个模块
-│   ├── capabilities/  一个能力一个子包（init/ 说清课题、design/ 写裁判跑基线、auto_research/、analysis/ 写分析初稿、verify/ 核对数字），互不 import，各带五栏描述符
+│   ├── capabilities/  一个能力一个子包（init/ 说清课题、design/ 写评分脚本跑基线、auto_research/、analysis/ 写分析初稿、verify/ 核对数字），互不 import，各带五栏描述符
 │   ├── executor/      组 prompt、起执行层会话、留档日志
 │   ├── memory/        账本、实验笔记
 │   ├── run/           run 的布局、checkpoint、上下文、生命周期、work/ 的 git、结果索引
@@ -22,7 +22,7 @@ platform/
 ├── compute/       算力适配器：local.py …
 ├── tools/         确定性脚本
 ├── domains/       领域包，按工具链命名（generic/ 兜底、petab/ 参数估计）；prompts/ 与 skills/ 随 run 快照进执行层提示
-├── workflows/     工作流库：房间 + 断点的走法，编辑台改；工作区取实例
+├── workflows/     工作流库：阶段 + 断点的走法，编辑台改；工作区取实例
 ├── workspaces/    一个工作区一份需求：<id>/{workspace.yaml, task/, flows/, chats/, runs/, jobs/}；样例 mlp-regression 玩具、boehm-nll、rahman-nll
 ├── studio/        编辑台的对话，不进 git
 ├── docs/          add-a-task.md：十分钟接一个任务
@@ -42,7 +42,7 @@ cd workspaces/mlp-regression && ../../.venv/bin/ai4sci show task   # 校验这�
 AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会花钱，CI 不跑
 ```
 
-做科研是在七间房里走（文献、假设、设计、实验、分析、写作、验证，纲领 P-18）：每间房里几颗能力，一条流是走几间、每间挂哪些能力、房间之间哪儿要停下来等人确认（断点）。出厂的 `research` 流从已跑过基线的任务包起，在工作区里由协调层手工串（框架不连跑，见 `coordinator/README.md`；下面省略 `.venv/bin/` 前缀）：
+科研分七个阶段（文献、假设、设计、实验、分析、写作、验证，纲领 P-18）：每个阶段里几颗能力，一条流是经过几个阶段、每个阶段挂哪些能力、阶段之间哪儿要停下来等人确认（断点）。出厂的 `research` 流从已跑过基线的任务包起，在工作区里由协调层手工串（框架不连跑，见 `coordinator/README.md`；下面省略 `.venv/bin/` 前缀）：
 
 ```bash
 cd workspaces/mlp-regression
@@ -50,7 +50,7 @@ ai4sci flow take research                                     # 把库里的流�
 ai4sci cap auto-research --run-id demo --workflow research --max-iters 5 --detach   # 开 run、一轮一轮改；起成后台作业，show job 看进度
 ai4sci cap analysis demo                            # 执行层写 analysis/analysis.md
 ai4sci cap verify demo                              # 零模型核对数字，退出码就是 PASS / FAIL
-ai4sci show caps                                    # 七间房、每间的能力与五栏（--json 带描述符与 used_by）；show workflows 列流走哪几间
+ai4sci show caps                                    # 七个研究阶段、每个阶段的能力与五栏（--json 带描述符与 used_by）；show workflows 列流经过哪几个阶段
 ```
 
 执行层用哪个模型、超时多久走环境变量：`AI4SCI_EXECUTOR_MODEL=sonnet`、`AI4SCI_EXECUTOR_TIMEOUT_S=600`；协调层同理 `AI4SCI_COORDINATOR_MODEL` / `_EFFORT`（思考深度 low / medium / high / xhigh / max）/ `_TIMEOUT_S` / `_MAX_BUDGET_USD`。这些是起 `ai4sci serve` 或 `ai4sci chat` 的人在环境里配的缺省，协调 agent 敲的命令上不带（纲领 P-14：它面前只有裸 `ai4sci`）；人在页面的输入框上或 `ai4sci chat new|send --model --effort` 随时换，选了记进那段对话（`GET /backends` 列出每家后端有哪些可选）。

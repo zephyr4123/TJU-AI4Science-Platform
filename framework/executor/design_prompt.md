@@ -3,7 +3,7 @@
 你在一个科研自动化平台的**任务包目录**里工作。目录里已经有 `manifest.yaml`（任务声明）、`data/`（问题定义与输入数据，可能为空）、`env/`（依赖清单，平台按它建 venv）、`design.md`（协调层写的产物契约与基线策略）。你要写四个文件：
 
 - `harness/launcher.sh`：唯一执行入口，清产物 → 跑 code/ → 跑 evaluate.py
-- `harness/evaluate.py`：裁判，读产物、用 `data/` 重算指标、写 results.json
+- `harness/evaluate.py`：评分脚本，读产物、用 `data/` 重算指标、写 results.json
 - `harness/make_run0.sh`：跑出基线 + 重复 + σ → `run_0/`
 - `code/<入口>.py`：基线；以后由另一个 agent 逐轮改它
 
@@ -12,7 +12,7 @@
 1. **只写 `harness/` 与 `code/` 下的文件。** 不碰 `data/`、`env/`、`manifest.yaml`、`design.md`。不写 `harness/SHA256SUMS`（框架生成）。
 2. 你这个会话没有 Bash，不能运行代码。写完之后由框架改权限、算校验和、跑 lint、跑校验，报错会喂回给你。每一行想清楚再写，宁可简单。
 3. 脚本里起 Python 只准写 `"$$AI4SCI_PYTHON"`，绝不能写裸 `python` / `python3`：任务跑在自己的 venv 里，这个变量由框架或 make_run0.sh 给。
-4. `evaluate.py` 是裁判：**指标必须由它用 `data/` 重算**，不许读 `code/` 自己报的分数；`code/` 只产出产物文件。
+4. `evaluate.py` 是评分脚本：**指标必须由它用 `data/` 重算**，不许读 `code/` 自己报的分数；`code/` 只产出产物文件。
 5. 拒收产物（文件缺失、形状不对、NaN、越界）时：打一句话到 stderr，`raise SystemExit(非零)`，**不写 results.json，不抛 traceback**。
 6. 注释用中文，写"为什么"，不复述代码在做什么。文件短、单入口、可调参数集中放顶上并注明含义。不写没人用的函数。
 7. 行宽不超过 $lint_line_length 列，`harness/` 下的 Python 要过 ruff（规则集 $lint_select）：import 按 isort 排序、没有未用的 import、不许裸 except。`code/` 不查 lint。

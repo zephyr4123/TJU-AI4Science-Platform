@@ -1,12 +1,12 @@
-"""写裁判、跑基线：设计间里的那颗能力——起执行层照 design.md 写 harness 与基线代码，框架封、lint、
-校验，接着起 `make_run0.sh` 跑基线、算预检。
+"""写评分脚本、跑基线：设计阶段里的那颗能力——起执行层照 design.md 写 harness 与基线代码，框架封、
+lint、校验，接着起 `make_run0.sh` 跑基线、算预检。
 
 task 级（动的是任务包，还没有 run）。前半段的干活代码在 `executor/design.py`（组提示、起会话、
 判越界、封 harness、ruff、validate），后半段在同包的 `baseline.py`。原来是两条命令，从来
-没有人只调一条：裁判写完不跑基线没意义，基线又只能跑封好的裁判——2026-09-18 并成一颗
+没有人只调一条：评分脚本写完不跑基线没意义，基线又只能跑封好的评分脚本——2026-09-18 并成一颗
 （外层 #96）。
 
-门：需求没发布不起会话（`publish.require_published`）——裁判脚本必须在人看过「怎么算好」之后才写。
+前置检查：需求没发布不起会话（`publish.require_published`）——评分脚本必须在人看过「怎么算好」之后才写。
 草稿有问题就停在前半段（草稿留在盘上，问题一行一条），协调层喂 `--feedback` 重跑整颗。
 """
 
@@ -26,9 +26,9 @@ DESCRIPTOR = Capability(
     name=NAME,
     level="task",
     stage="设计",
-    title="写裁判、跑基线",
+    title="写评分脚本、跑基线",
     does=(
-        "起一个执行层会话，照 design.md 的「怎么算好」写裁判脚本（harness/：launcher.sh、"
+        "起一个执行层会话，照 design.md 的「怎么算好」写评分脚本（harness/：launcher.sh、"
         "evaluate.py、make_run0.sh）和一版最朴素的基线代码（code/）。会话结束后框架接手："
         "给脚本加执行位、写 SHA256SUMS 封住 harness，跑 ruff 与任务包契约校验；"
         "都过了就按 env/ 建 .venv、起 make_run0.sh 跑基线——重复 inner_k 次得到起点成绩与 σ，"
@@ -38,15 +38,15 @@ DESCRIPTOR = Capability(
     does_not=(
         "不定指标、不改需求：manifest.yaml 与 design.md 是它的输入，人发布过才动手。不跑内环、"
         "不开 run。封好的 harness 之后任何能力都不许再改（hash 守着），"
-        "要改裁判就带意见重跑这颗能力。"
+        "要改评分脚本就带意见重跑这颗能力。"
     ),
     brings=(
         "发布过的任务包：manifest.yaml（指标、方向、预算、统计门）、"
-        "design.md（产物契约与「怎么算好」）、data/（裁判重算指标要用的数据）、"
+        "design.md（产物契约与「怎么算好」）、data/（evaluate.py 重算指标要用的数据）、"
         "env/（python-version 与 requirements.lock）；可选 --feedback 带上一版的修改意见。"
     ),
     leaves=(
-        "harness/（封好的裁判脚本与 SHA256SUMS）、code/（基线代码）、run_0/（results.json、"
+        "harness/（封好的评分脚本与 SHA256SUMS）、code/（基线代码）、run_0/（results.json、"
         "repeats/、sigma.json：改进率的分母与统计门的基线）、.venv/（按 lock 建的环境）；"
         "执行层会话的日志在 runs/design/。"
     ),

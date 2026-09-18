@@ -100,7 +100,7 @@ def test_research_guide_takes_flows_and_never_builds_them():
 def test_studio_guide_builds_flows_and_never_runs_experiments():
     text = guide.system_prompt(guide.STUDIO)
     assert "workflows/<name>.yaml" in text and "ai4sci show workflows" in text
-    assert "断点" in text and "房间之间不接管子" in text
+    assert "断点" in text and "不做数据流校验" in text
     assert "不跑实验" in text and "不碰任何工作区" in text
     assert "ai4sci cap " not in "\n".join(_commands(text))
 
@@ -118,4 +118,4 @@ def test_the_studio_guides_example_workflow_actually_loads_and_passes(tmp_path):
     assert workflows.workflow_problems(wf, catalog) == []
     [described] = workflows.describe([wf], catalog)
     assert described["covers"] == ["实验", "分析"] and len(described["remarks"]) == 2
-    assert wf.rooms[0].picks[0].with_ == {"max_iters": 2}
+    assert wf.stages[0].picks[0].with_ == {"max_iters": 2}

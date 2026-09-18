@@ -5,7 +5,7 @@ export type Stage = 'drafting' | 'published' | 'designed' | 'baselined'
 
 export interface PublishState {
   ok: boolean
-  /** ok：钥匙有效；missing：从没发布过；invalid：发布过但签的文件改了，reason 说是哪个 */
+  /** ok：发布记录有效；missing：从没发布过；invalid：发布过但签的文件改了，reason 说是哪个 */
   state: 'ok' | 'missing' | 'invalid'
   by: string | null
   at: string | null
@@ -109,7 +109,7 @@ export interface FlowState {
   title: string
   step: number
   total: number
-  rooms: FlowItem[]
+  stages: FlowItem[]
   next: FlowItem | null
   waiting: string
   updated_at: string | null
@@ -242,13 +242,13 @@ export interface CapabilityParam {
   type?: string
 }
 
-/** 七间房之一（`GET /stages` 给顺序）；能力描述符的 `stage` 取值。 */
+/** 七个研究阶段之一（`GET /stages` 给顺序）；能力描述符的 `stage` 取值。 */
 export type ResearchStage = string
 
-/** 一颗能力：一间房里的一件活，对助理就是一条命令。五栏是给人读的机制说明（纲领 P-18）。 */
+/** 一颗能力：一个阶段里的一件活，对助理就是一条命令。五栏是给人读的机制说明（纲领 P-18）。 */
 export interface Capability {
   name: string
-  /** 属于哪一间：标签，不定先后 */
+  /** 属于哪个阶段：标签，不定先后 */
   stage: ResearchStage
   level: 'task' | 'run' | 'project'
   /** 给研究者看的名字 */
@@ -265,19 +265,19 @@ export interface Capability {
   used_by: string[]
 }
 
-/** 流里的一项：一间房（可点名能力、带参数），或一个断点（停下来等人确认；发布 / 验收是出厂的两个）。 */
+/** 流里的一项：一个阶段（可点名能力、带参数），或一个断点（停下来等人确认；发布 / 验收是出厂的两个）。 */
 export type FlowItem =
-  | { kind: 'room'; stage: ResearchStage; caps: { cap: string; with: Record<string, unknown> }[] }
+  | { kind: 'stage'; stage: ResearchStage; caps: { cap: string; with: Record<string, unknown> }[] }
   | { kind: 'stop'; key: 'publish' | 'accept' | null; note: string }
 
 /** 编辑台交给 `POST /workflows`（存）与 `POST /workflows/check`（只查）的一条流：形状同文件。
- *  一项是房间名、`{房间: [能力]}`、`{房间: {能力: 参数}}`、`"断点"` 或 `{断点: 一句话}`。 */
+ *  一项是阶段名、`{阶段: [能力]}`、`{阶段: {能力: 参数}}`、`"断点"` 或 `{断点: 一句话}`。 */
 export type DraftItem = string | Record<string, string | string[] | Record<string, Record<string, unknown> | null>>
 export interface WorkflowDraft {
   name: string
   title: string
   summary: string
-  rooms: DraftItem[]
+  stages: DraftItem[]
   overwrite?: boolean
 }
 
@@ -291,8 +291,8 @@ export interface Workflow {
   name: string
   title: string
   summary: string
-  rooms: FlowItem[]
-  /** 走过哪几间，按出现顺序去重 */
+  stages: FlowItem[]
+  /** 经过哪几个阶段，按出现顺序去重 */
   covers: ResearchStage[]
   /** 提醒，不是问题：比如做了实验没验证 */
   remarks: string[]

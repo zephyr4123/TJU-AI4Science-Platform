@@ -18,7 +18,8 @@ from tests.fixtures.scripted_chat import KNOBS, ScriptedChat, reply, with_tool
 CATALOG = [{"name": "design", "level": "task", "stage": "设计"},
            {"name": "auto-research", "level": "task", "stage": "实验"}]
 WORKFLOWS = [{"name": "w", "title": "一条", "summary": "…",
-              "rooms": [{"kind": "room", "stage": "设计", "caps": [{"cap": "design", "with": {}}]}],
+              "stages": [{"kind": "stage", "stage": "设计",
+                          "caps": [{"cap": "design", "with": {}}]}],
               "covers": ["设计"], "remarks": [], "problems": []}]
 PROMPTS = {"workspace": "研究助理指南", "studio": "造流助理指南"}
 
@@ -26,7 +27,7 @@ PROMPTS = {"workspace": "研究助理指南", "studio": "造流助理指南"}
 def check_workflow(doc: dict) -> dict:
     """剧本版：与 cli.serve._check_workflow 同形状，只认 CATALOG 里的名字。"""
     known = {c["name"] for c in CATALOG}
-    caps = [c for room in doc.get("rooms", []) if isinstance(room, dict)
+    caps = [c for room in doc.get("stages", []) if isinstance(room, dict)
             for caps in room.values() for c in (caps or [])]
     unknown = [c for c in caps if c not in known]
     return {"covers": ["设计"], "remarks": [],
@@ -61,8 +62,8 @@ def served(tmp_path):
     def save_workflow(doc: dict) -> dict:
         if doc.get("name") == "taken":
             raise FileExistsError("已经有一条叫 'taken' 的流")
-        if not doc.get("rooms"):
-            raise ValueError("x.yaml: rooms 要是非空列表")
+        if not doc.get("stages"):
+            raise ValueError("x.yaml: stages 要是非空列表")
         return {**doc, "covers": ["实验"], "remarks": [], "problems": []}
 
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
@@ -352,10 +353,10 @@ def test_check_workflow_endpoint(served):
     """拼流台边拼边问：同一个 body 只查不存。"""
     base, _ = served
     assert call(base, "/workflows/check")[0] == 404  # GET 下没有它，只有 POST
-    doc = {"name": "w", "title": "t", "summary": "s", "rooms": ["假设", {"设计": ["design"]}]}
+    doc = {"name": "w", "title": "t", "summary": "s", "stages": ["假设", {"设计": ["design"]}]}
     status, _, body = call(base, "/workflows/check", doc)
     assert status == 200 and json.loads(body) == {"covers": ["设计"], "remarks": [], "problems": []}
-    status, _, body = call(base, "/workflows/check", {**doc, "rooms": [{"设计": ["nope"]}]})
+    status, _, body = call(base, "/workflows/check", {**doc, "stages": [{"设计": ["nope"]}]})
     assert status == 200 and "nope" in json.loads(body)["problems"][0]
 
 
@@ -388,8 +389,8 @@ def test_no_ui_dir_says_how_to_build(tmp_path):
 def test_save_workflow_endpoint_maps_errors_to_status_codes(served):
     """编辑台存流（外层 #68）：存成 201 回清单里的样子；形状 / 不通 422；同名 409。"""
     base, _ = served
-    doc = {"name": "w", "title": "t", "summary": "s", "rooms": [{"设计": ["design"]}]}
+    doc = {"name": "w", "title": "t", "summary": "s", "stages": [{"设计": ["design"]}]}
     status, _, body = call(base, "/workflows", doc)
     assert status == 201 and json.loads(body)["covers"] == ["实验"]
-    assert call(base, "/workflows", {**doc, "rooms": []})[0] == 422
+    assert call(base, "/workflows", {**doc, "stages": []})[0] == 422
     assert call(base, "/workflows", {**doc, "name": "taken"})[0] == 409
