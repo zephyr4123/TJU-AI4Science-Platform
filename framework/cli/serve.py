@@ -32,18 +32,18 @@ def _descriptors() -> dict[str, object]:
 
 def _catalog() -> list[dict]:
     """与 `ai4sci show caps --json` 同一个形状：描述符加反查出来的 used_by。"""
-    uses = workflows.used_by(workflows.load_workflows(paths.workflows_root()))
+    uses = workflows.used_by(workflows.load_valid(paths.workflows_root()))
     return [{**module.DESCRIPTOR.to_dict(), "used_by": uses.get(name, [])}
             for name, module in discover().items()]
 
 
 def _workflows() -> list[dict]:
-    return workflows.describe(workflows.load_workflows(paths.workflows_root()), _descriptors())
+    return workflows.describe_dir(paths.workflows_root(), _descriptors())
 
 
 def _flows(ws: Workspace) -> list[dict]:
-    """工作区里的流实例，与库同一套形状检查。"""
-    return workflows.describe(workflows.load_workflows(ws.flows), _descriptors())
+    """工作区里的流实例，与库同一套形状检查；坏文件是一条问题，不是一次 500。"""
+    return workflows.describe_dir(ws.flows, _descriptors())
 
 
 def _save_workflow(doc: dict) -> dict:

@@ -99,6 +99,18 @@ class Handler(BaseHTTPRequestHandler):
 
     # ── GET ──────────────────────────────────────────────────────────────
     def do_GET(self) -> None:
+        # 盘上的东西不合约（坏的 yaml、坏的报告、少了快照）是 422 一句话，不是掉线：连接一断
+        # 页面只看得到「Failed to fetch」，什么都说不清（实测：flows/ 里一个只有一行的文件）
+        try:
+            self._get()
+        except ValueError as exc:
+            LOGGER.warning("http_get_unprocessable path=%s why=%s", self.path, exc)
+            self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
+        except OSError as exc:
+            LOGGER.exception("http_get_failed path=%s", self.path)
+            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
+
+    def _get(self) -> None:
         url = urlsplit(self.path)
         parts = [p for p in url.path.split("/") if p]
         if not parts or parts[0] not in API_ROOTS:
@@ -163,6 +175,21 @@ class Handler(BaseHTTPRequestHandler):
 
     # ── POST ─────────────────────────────────────────────────────────────
     def do_POST(self) -> None:
+        self.streaming = False  # 头已经发出去（SSE）之后再出错，只能断流，不能再回一个 JSON
+        try:
+            self._post()
+        except ValueError as exc:
+            LOGGER.warning("http_post_unprocessable path=%s why=%s", self.path, exc)
+            if self.streaming:
+                raise
+            self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
+        except OSError as exc:
+            LOGGER.exception("http_post_failed path=%s", self.path)
+            if self.streaming:
+                raise
+            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
+
+    def _post(self) -> None:
         parts = [p for p in urlsplit(self.path).path.split("/") if p]
         body = self._body()
         if body is None:
@@ -268,6 +295,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(HTTPStatus.BAD_REQUEST, str(exc))
         except StopIteration:
             return self._error(HTTPStatus.BAD_GATEWAY, "适配器一个事件都没吐")
+        self.streaming = True
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")

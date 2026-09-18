@@ -163,6 +163,12 @@ def test_flow_take_then_start_with_workflow_snapshots_it_and_reads_the_note(tmp_
     assert listed.returncode == EXIT_OK, listed.stderr
     names = [line.split("\t")[0] for line in listed.stdout.splitlines() if not line.startswith(" ")]
     assert names == ["quick-look-5", "quick-look"]  # 按文件名排
+    # 助理随手写个只有一行的文件：清单照列、那一条报问题、退 1；不是整张清单炸掉
+    (pack.workspace.flows / "zz.yaml").write_text("name: zz\n", encoding="utf-8")
+    listed = run_cli("show", "flows", **in_pack(pack))
+    assert listed.returncode == EXIT_INVALID and "zz.yaml: 缺 title" in listed.stderr
+    assert listed.stdout.startswith("quick-look-5\t")
+    (pack.workspace.flows / "zz.yaml").unlink()
 
     proc = run_cli("cap", "start", "--run-id", "r1", "--workflow", "quick-look", **in_pack(pack))
     assert proc.returncode == EXIT_OK, proc.stderr

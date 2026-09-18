@@ -30,7 +30,9 @@ def flow_check(steps: list[str]) -> dict:
 
 
 def flows(ws: workspace.Workspace) -> list[dict]:
-    """剧本版：工作区里有几个 yaml 就回几条。"""
+    """剧本版：工作区里有几个 yaml 就回几条；有个叫 boom 的就抛，模拟盘上的东西不合约。"""
+    if (ws.flows / "boom.yaml").exists():
+        raise ValueError("boom.yaml: 坏了")
     return [{"name": p.stem} for p in sorted(ws.flows.glob("*.yaml"))]
 
 
@@ -226,6 +228,11 @@ def test_workspace_board_and_publish_key(served, tmp_path):
     (pack.workspace.flows / "mine.yaml").write_text("name: mine\n", encoding="utf-8")
     assert json.loads(call(base, "/workspaces/toy/flows")[2]) == [{"name": "mine"}]
     assert json.loads(call(base, "/workspaces/toy")[2])["flows"] == [{"name": "mine"}]
+    # 盘上的东西不合约：回 422 一句话，不是断连接让页面「Failed to fetch」
+    (pack.workspace.flows / "boom.yaml").write_text("", encoding="utf-8")
+    status, _, body = call(base, "/workspaces/toy")
+    assert status == 422 and "boom.yaml: 坏了" in json.loads(body)["error"]
+    (pack.workspace.flows / "boom.yaml").unlink()
 
     assert call(base, "/workspaces/toy/publish", {})[0] == 400  # 不署名不发
     status, _, body = call(base, "/workspaces/toy/publish", {"by": "张三"})

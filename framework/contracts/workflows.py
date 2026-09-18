@@ -77,6 +77,18 @@ def load_workflows(root: Path) -> list[Workflow]:
     return [load_workflow(path) for path in sorted(root.glob("*.yaml"))]
 
 
+def load_valid(root: Path) -> list[Workflow]:
+    """读得出来的那些；坏文件跳过。坏在哪不在这里说，`describe_dir` 会把它当一条问题摆出来，
+    所以这里的跳过不是静默——用在只要"能用的流"的地方（反查 used_by）。"""
+    out: list[Workflow] = []
+    for path in sorted(Path(root).glob("*.yaml")) if Path(root).is_dir() else []:
+        try:
+            out.append(load_workflow(path))
+        except WorkflowInvalid:
+            continue
+    return out
+
+
 def load_workflow(path: Path) -> Workflow:
     path = Path(path)
     try:
@@ -203,6 +215,22 @@ def _with_problems(label: str, params: dict[str, Any], cap: Capability) -> list[
               or (expected is float and isinstance(value, int) and not isinstance(value, bool)))
         if not ok:
             out.append(f"{label} 的 with.{name} 要是 {param.type}，实际 {value!r}")
+    return out
+
+
+def describe_dir(root: Path, catalog: dict[str, Capability]) -> list[dict[str, Any]]:
+    """目录里每个文件一条：读得出来的带 covers / remarks / problems；读不出来的（形状不对、YAML 坏）
+    也占一条，名字是文件名，problems 里是那句原因。一个坏文件不能让整张清单打不开——研究助理
+    在工作区 flows/ 里随手写个只有一行的文件，主页面就整个「Failed to fetch」，实测撞过。"""
+    out: list[dict[str, Any]] = []
+    for path in sorted(Path(root).glob("*.yaml")) if Path(root).is_dir() else []:
+        try:
+            wf = load_workflow(path)
+        except WorkflowInvalid as exc:
+            out.append({"name": path.stem, "title": path.stem, "summary": "", "assumes": [],
+                        "steps": [], "covers": [], "remarks": [], "problems": [str(exc)]})
+            continue
+        out += describe([wf], catalog)
     return out
 
 

@@ -46,6 +46,18 @@ def test_shipped_workflows_load_and_connect():
     assert quick.steps[1].with_ == {"max_iters": 3}  # 「跑 3 轮」不只是句人话，按钮参数也在
 
 
+def test_describe_dir_keeps_a_broken_file_as_a_problem_row(tmp_path):
+    """一个坏文件不能让整张清单打不开：它自己占一条、problems 里说原因；反查只用读得出来的。"""
+    (tmp_path / "w.yaml").write_text(GOOD, encoding="utf-8")
+    (tmp_path / "zz.yaml").write_text("name: zz\n", encoding="utf-8")
+    rows = workflows.describe_dir(tmp_path, catalog())
+    assert [r["name"] for r in rows] == ["w", "zz"]
+    assert rows[0]["problems"] == [] and rows[0]["covers"] == ["设计"]
+    assert rows[1]["steps"] == [] and rows[1]["problems"] == ["zz.yaml: 缺 title"]
+    assert [wf.name for wf in workflows.load_valid(tmp_path)] == ["w"]
+    assert workflows.describe_dir(tmp_path / "nowhere", catalog()) == []
+
+
 def test_shipped_workflows_cover_stages_and_are_looked_up_from_capabilities():
     found = workflows.load_workflows(paths.workflows_root())
     described = {d["name"]: d for d in workflows.describe(found, catalog())}

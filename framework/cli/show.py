@@ -139,12 +139,8 @@ def cmd_caps(args: argparse.Namespace) -> int:
     """能力清单：平台的全部按钮，按七个科研阶段列，空着的阶段也列出来。每颗带"用在哪几条流"，
     那是从库里的工作流文件反查的，能力自己不知道。"""
     descriptors = [module.DESCRIPTOR for module in discover().values()]
-    try:
-        uses = workflows.used_by(workflows.load_workflows(paths.workflows_root()))
-    except workflows.WorkflowInvalid as exc:
-        # 坏掉的工作流文件不静默跳过：清单里"用在哪"会是错的
-        print(str(exc), file=sys.stderr)
-        return EXIT_INVALID
+    # 坏掉的工作流文件不算进反查；坏在哪由 show workflows 报
+    uses = workflows.used_by(workflows.load_valid(paths.workflows_root()))
     if args.json:
         print(json.dumps([{**d.to_dict(), "used_by": uses.get(d.name, [])} for d in descriptors],
                          ensure_ascii=False, indent=2))
@@ -179,11 +175,7 @@ def cmd_flows(args: argparse.Namespace) -> int:
 
 
 def _print_flows(root: Path, as_json: bool) -> int:
-    try:
-        found = workflows.describe(workflows.load_workflows(root), _catalog())
-    except workflows.WorkflowInvalid as exc:
-        print(str(exc), file=sys.stderr)
-        return EXIT_INVALID
+    found = workflows.describe_dir(root, _catalog())  # 坏文件也是一条，problems 里说原因
     if as_json:
         print(json.dumps(found, ensure_ascii=False, indent=2))
     else:
