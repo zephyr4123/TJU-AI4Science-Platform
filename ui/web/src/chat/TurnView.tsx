@@ -5,7 +5,7 @@ import { ErrorNote } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
 import ShinyText from '@/components/reactbits/ShinyText'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { seconds, splitLede, usd } from '@/lib/format'
+import { seconds, usd } from '@/lib/format'
 import { denialSentence, toolSentence, wakeSentence } from '@/lib/humanize'
 import { useToken } from '@/lib/tokens'
 import { cn } from '@/lib/utils'
@@ -69,15 +69,9 @@ export function TurnView({ turn, thinking = 'thinking' }: { turn: Turn; thinking
   )
 }
 
-/** 助理的回答：开头那句结论用宋体立起来（指南要它先说结论），其余照 Markdown 排。 */
+/** 助理的回答：照普通 Markdown 排，排版交给它自己（主人：别限得这么死；原来「开头一句拎成宋体结论」的规则把短回复整条变成大号粗体）。 */
 function Reply({ text }: { text: string }) {
-  const { lede, rest } = splitLede(text)
-  return (
-    <div className="space-y-2">
-      {lede && <p className="t-lede">{lede}</p>}
-      {rest && <Markdown text={rest} />}
-    </div>
-  )
+  return <Markdown text={text} />
 }
 
 function withoutTrailingText(items: TraceItem[]): TraceItem[] {
