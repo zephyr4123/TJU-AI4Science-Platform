@@ -1,5 +1,7 @@
 // 一个媒体查询的布尔值：窄屏时脊柱收进抽屉、编辑台上下叠，靠它切。
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+
+import { isDark, onThemeChange } from './theme'
 
 /** 宽屏：脊柱常驻右栏、编辑台左右分栏 */
 export const WIDE = '(min-width: 64rem)'
@@ -16,11 +18,7 @@ export function useMediaQuery(query: string): boolean {
   return matches
 }
 
-/** 深色与否：跟系统偏好，`<html data-theme>` 可强制——与 index.css 里的规则同一口径 */
-export const DARK = '(prefers-color-scheme: dark)'
-
+/** 深色与否：系统偏好，或页眉的开关拨的那个（`lib/theme.ts`）；拨了这里跟着变 */
 export function useDark(): boolean {
-  const system = useMediaQuery(DARK)
-  const forced = document.documentElement.dataset.theme
-  return forced === 'dark' || (forced !== 'light' && system)
+  return useSyncExternalStore(onThemeChange, isDark)
 }

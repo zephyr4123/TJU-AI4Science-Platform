@@ -9,6 +9,7 @@ import { ASSETS, coverOf } from '@/assets'
 import { ChatView } from '@/chat/ChatView'
 import { Band } from '@/components/Band'
 import { Scene } from '@/components/Scene'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { stageSentence } from '@/lib/humanize'
@@ -92,6 +93,7 @@ function Top({ place, title, note, menu }: { place: Place; title: string; note: 
       {menu}
       <span className="min-w-0 truncate font-serif text-[1.0625rem] font-semibold tracking-[0.02em]">{title}</span>
       {note && <span className="t-label hidden whitespace-nowrap sm:inline">{note}</span>}
+      <ThemeToggle className="ml-auto" />
     </header>
   )
   if (!picture) return <div className="shrink-0 border-b bg-card">{row}</div>
