@@ -5,7 +5,7 @@ import type { Stage, WorkspaceSummary } from '@/api/types'
 
 // ── 需求走到哪 ───────────────────────────────────────────────────────────
 export const STAGE_LABEL: Record<Stage, string> = {
-  drafting: '还没发布', published: '已发布', designed: '已接任务', baselined: '基线已跑',
+  drafting: '还没发布', published: '已发布', designed: '裁判写了', baselined: '基线已跑',
 }
 
 /** 一行里说这份需求走到哪：还没有需求、需求还在聊、已发布…、跑了几次实验 */
@@ -37,22 +37,21 @@ export function conclusionOf(analysis: string): string {
 }
 
 // ── 能力清单 ─────────────────────────────────────────────────────────────
-// 能力的人话标题与说明（title / what）与所属阶段都在描述符里，页面直接读 `/cap`，这里不再另抄一份。
-export const LEVEL_COPY: Record<string, string> = { task: '任务包', run: '一次实验', project: '项目' }
+// 能力的人话标题、五栏与所属房间都在描述符里，页面直接读 `/cap`，这里不再另抄一份。
+export const LEVEL_COPY: Record<string, string> = { task: '动任务包', run: '动一个 run', project: '动项目' }
 
 // ── 对话里的工具行 ────────────────────────────────────────────────────────
 // 每条命令一句直白的话：查了什么、运行了什么、写了什么。带 --detach 的加一句「放到后台跑」。
 const CLI_SENTENCE: [RegExp, string][] = [
   [/ai4sci cap init/, '起了任务包'],
-  [/ai4sci cap design/, '接了任务'],
-  [/ai4sci cap baseline/, '跑了基线'],
-  [/ai4sci cap start/, '开了一次实验'],
-  [/ai4sci cap experiment.*--resume/, '接着跑上次没走完的实验'],
-  [/ai4sci cap experiment/, '跑了几轮实验'],
-  [/ai4sci cap analysis/, '写了分析'],
-  [/ai4sci cap verify/, '验证了分析里的数字'],
-  [/ai4sci sign task/, '替人发布了需求（该由人按）'],
-  [/ai4sci sign run/, '替人验收了结果（该由人按）'],
+  [/ai4sci cap design/, '写了裁判、跑了基线'],
+  [/ai4sci cap auto-research.*--resume/, '接着跑上次没走完的实验'],
+  [/ai4sci cap auto-research.*--(patience|max-iterations|max-cost-usd)/, '给实验续了命，接着跑'],
+  [/ai4sci cap auto-research/, '跑了几轮实验'],
+  [/ai4sci cap analysis/, '写了分析初稿'],
+  [/ai4sci cap verify/, '核对了分析里的数字'],
+  [/ai4sci sign task/, '替人发布了需求（该由人确认）'],
+  [/ai4sci sign run/, '替人验收了结果（该由人确认）'],
   [/ai4sci show workspaces/, '查了有哪些工作区'],
   [/ai4sci show task\b/, '检查了需求'],
   [/ai4sci show runs?\b/, '查了实验进度'],
@@ -60,7 +59,6 @@ const CLI_SENTENCE: [RegExp, string][] = [
   [/ai4sci show flows\b/, '看了这个工作区里的流'],
   [/ai4sci show caps/, '查了有哪些能力'],
   [/ai4sci show workflows/, '查了库里有哪些流'],
-  [/ai4sci show flow\b/, '检查了这样拼通不通'],
   [/ai4sci flow take/, '从库里取了一条流'],
   [/ai4sci workspace new/, '起了一个工作区'],
   [/^\s*(ls|find|tree)\b/, '看了目录'],

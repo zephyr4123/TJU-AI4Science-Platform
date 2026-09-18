@@ -30,15 +30,17 @@ FLOW_STATE_NAME = "flow.json"
 SNAPSHOT_DIRNAME = "workflow"
 
 
-def attach(run_dir: Path, workflow_path: Path) -> dict[str, Any]:
-    """开 run 时照一条流：快照文件、step 记 0。开 run 的那颗能力跑成之后自己 `record_press`。"""
+def attach(run_dir: Path, workflow_path: Path, *, cap: str, stage: str) -> dict[str, Any]:
+    """开 run 时照一条流：快照文件，step 记到开 run 的那颗能力所在的房间**之前**——它正跑着，
+    下一项就是它那一间；跑成之后它自己 `record_press` 推进去。流里没有它就记 0。"""
     run_dir = Path(run_dir)
     workflow = workflows.load_workflow(workflow_path)  # 快照前先读一遍：坏文件不进 run
     snapshot_dir = run_dir / SNAPSHOT_DIRNAME
     snapshot_dir.mkdir(exist_ok=True)
     shutil.copy2(workflow_path, snapshot_dir / workflow_path.name)
-    state = _save(run_dir, {"workflow": workflow.name, "step": 0})
-    LOGGER.info("flow_attach run=%s workflow=%s", run_dir.name, workflow.name)
+    step = next((i for i, item in enumerate(workflow.rooms) if _matches(item, cap, stage)), 0)
+    state = _save(run_dir, {"workflow": workflow.name, "step": step})
+    LOGGER.info("flow_attach run=%s workflow=%s step=%d", run_dir.name, workflow.name, step)
     return state
 
 

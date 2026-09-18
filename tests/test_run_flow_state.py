@@ -36,10 +36,10 @@ def _run_dir(tmp_path: Path) -> Path:
     return run_dir
 
 
-def test_attach_snapshots_the_file_and_starts_before_the_first_room(tmp_path: Path):
+def test_attach_snapshots_the_file_and_stops_before_the_opening_room(tmp_path: Path):
     run_dir, path = _run_dir(tmp_path), _flow_file(tmp_path)
-    state = flow_state.attach(run_dir, path)
-    assert state["workflow"] == "demo" and state["step"] == 0
+    state = flow_state.attach(run_dir, path, cap="auto-research", stage="实验")
+    assert state["workflow"] == "demo" and state["step"] == 0  # 开 run 的能力在第 1 项：它之前是 0
     snapshot = run_dir / "workflow" / "demo.yaml"
     assert snapshot.read_text(encoding="utf-8") == FLOW
     path.write_text(FLOW.replace("看一眼分析", "改了"), encoding="utf-8")  # 仓里的流改了不影响 run
@@ -49,11 +49,21 @@ def test_attach_snapshots_the_file_and_starts_before_the_first_room(tmp_path: Pa
     assert doc["next"] == {"kind": "room", "stage": "实验",
                            "caps": [{"cap": "auto-research", "with": {}}]}
     assert doc["rooms"][2] == {"kind": "stop", "key": None, "note": "看一眼分析"}
+    # 流里开 run 的那一间不在开头：便条停在它前面，跑着的时候页面就知道当前是哪一间
+    later = tmp_path / "workflows" / "later.yaml"
+    text = FLOW.replace("name: demo", "name: later")
+    text = text.replace("rooms:\n", "rooms:\n  - 假设\n  - 断点: 发布\n")
+    later.write_text(text, encoding="utf-8")
+    other = tmp_path / "runs" / "r2"
+    other.mkdir()
+    assert flow_state.attach(other, later, cap="auto-research", stage="实验")["step"] == 2
+    assert flow_state.status(other, tmp_path / "jobs")["next"]["stage"] == "实验"
+    assert flow_state.attach(other, later, cap="nope", stage="写作")["step"] == 0  # 流里没有它
 
 
 def test_presses_land_on_rooms_by_name_or_by_stage_and_offpath_presses_do_not_move(tmp_path):
     run_dir = _run_dir(tmp_path)
-    flow_state.attach(run_dir, _flow_file(tmp_path))
+    flow_state.attach(run_dir, _flow_file(tmp_path), cap="auto-research", stage="实验")
     assert flow_state.record_press(run_dir, "auto-research", "实验")["step"] == 1  # 点了名：按名字
     assert flow_state.record_press(run_dir, "auto-research", "实验")["step"] == 1  # 再跑：后面没它
     assert flow_state.record_press(run_dir, "verify", "验证")["step"] == 4  # 跳过分析：记到验证那间
@@ -64,7 +74,7 @@ def test_presses_land_on_rooms_by_name_or_by_stage_and_offpath_presses_do_not_mo
 
 def test_unnamed_room_matches_any_capability_of_that_stage(tmp_path):
     run_dir = _run_dir(tmp_path)
-    flow_state.attach(run_dir, _flow_file(tmp_path))
+    flow_state.attach(run_dir, _flow_file(tmp_path), cap="auto-research", stage="实验")
     flow_state.record_press(run_dir, "auto-research", "实验")
     # 分析间没点名：这一间的任何能力都算走到了它；别的间的不算
     assert flow_state.record_press(run_dir, "some-plot", "分析")["step"] == 2
@@ -73,7 +83,7 @@ def test_unnamed_room_matches_any_capability_of_that_stage(tmp_path):
 
 def test_waiting_is_derived_from_jobs_and_the_next_item(tmp_path: Path):
     run_dir = _run_dir(tmp_path)
-    flow_state.attach(run_dir, _flow_file(tmp_path))
+    flow_state.attach(run_dir, _flow_file(tmp_path), cap="auto-research", stage="实验")
     flow_state.record_press(run_dir, "auto-research", "实验")
     flow_state.record_press(run_dir, "analysis", "分析")
     assert flow_state.status(run_dir, tmp_path / "jobs")["waiting"] == "human"  # 下一项是断点
@@ -98,5 +108,5 @@ def test_no_flow_means_none_and_missing_snapshot_is_loud(tmp_path: Path):
     bad.parent.mkdir()
     bad.write_text("name: bad\n", encoding="utf-8")
     with pytest.raises(workflows.WorkflowInvalid):
-        flow_state.attach(run_dir, bad)
+        flow_state.attach(run_dir, bad, cap="auto-research", stage="实验")
     assert not (run_dir / "workflow").exists() or not any((run_dir / "workflow").iterdir())

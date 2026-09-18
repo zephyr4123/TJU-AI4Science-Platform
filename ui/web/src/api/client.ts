@@ -4,8 +4,8 @@
 // 对话四个端点在两个域下共用，`Scope` 决定前缀。
 
 import type {
-  Backend, Capability, ChatDoc, ChatMeta, FlowCheck, ResearchStage, RunDetail, RunSummary, TaskDetail,
-  Tuning, Workflow, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
+  Backend, Capability, ChatDoc, ChatMeta, ResearchStage, RunDetail, RunSummary, TaskDetail,
+  Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
 } from './types'
 
 export type Scope = { kind: 'workspace'; id: string } | { kind: 'studio' }
@@ -60,8 +60,7 @@ export const api = {
   capabilities: () => request<Capability[]>('/cap'),
   workflows: () => request<Workflow[]>('/workflows'),
   saveWorkflow: (doc: WorkflowDraft) => request<Workflow>('/workflows', post(doc)),
-  flowCheck: (steps: string[]) =>
-    request<FlowCheck>(`/flow/check?steps=${encodeURIComponent(steps.join(','))}`),
+  checkWorkflow: (doc: WorkflowDraft) => request<WorkflowCheck>('/workflows/check', post(doc)),
 
   workspaces: () => request<WorkspaceSummary[]>('/workspaces'),
   newWorkspace: (id: string, title: string) =>

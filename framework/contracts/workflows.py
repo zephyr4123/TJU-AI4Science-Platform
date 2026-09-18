@@ -46,8 +46,8 @@ class WorkflowInvalid(ValueError):
 
 @dataclass(frozen=True)
 class Pick:
-    """一间里点名用的一颗能力，可带参数（`with`），键是描述符里的 Param 名：agent 照着按，"
-    "页面照着画。"""
+    """一间里点名用的一颗能力，可带参数（`with`），键是描述符里的 Param 名：agent 照着调用，
+    页面照着画。"""
 
     cap: str
     with_: dict[str, Any] = field(default_factory=dict)

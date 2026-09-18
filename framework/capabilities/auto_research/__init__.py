@@ -142,7 +142,7 @@ def _open(workspace: Workspace, run_id: str, workflow: str) -> Path:
     except (NotPublished, TaskInvalid, EnvBuildError, FileExistsError) as exc:
         raise CapabilityFailed(str(exc)) from exc
     if workflow_path is not None:
-        flow_state.attach(run_dir, workflow_path)
+        flow_state.attach(run_dir, workflow_path, cap=NAME, stage=DESCRIPTOR.stage)
     return run_dir
 
 

@@ -101,15 +101,16 @@ export interface Job {
   log: string
 }
 
-/** run 照的那条流与走到第几步（`cap start --workflow`）；`waiting` 是现算的：
- *  `job:<id>` 等作业、`key:publish|accept` 等人发布或验收、`human` 等人、`assistant` 轮到助理、`done` 走完。 */
+/** run 照的那条流与走到第几项（`cap auto-research --workflow`）；`waiting` 是现算的：
+ *  `job:<id>` 等作业、`key:publish|accept` 停在出厂的两个断点等人、`human` 停在别的断点等人、
+ *  `assistant` 轮到助理、`done` 走完。 */
 export interface FlowState {
   workflow: string
   title: string
   step: number
   total: number
-  steps: WorkflowStep[]
-  next: WorkflowStep | null
+  rooms: FlowItem[]
+  next: FlowItem | null
   waiting: string
   updated_at: string | null
 }
@@ -234,73 +235,64 @@ export interface ChatEvent {
   exit_code: number | null
 }
 
-export interface CapabilityFile {
-  name: string
-  path: string
-  description: string
-}
-
 export interface CapabilityParam {
   name: string
-  description?: string
+  help?: string
   default?: unknown
   type?: string
 }
 
-/** 七个科研阶段之一（`GET /stages` 给顺序）；能力描述符的 `stage` 取值。 */
+/** 七间房之一（`GET /stages` 给顺序）；能力描述符的 `stage` 取值。 */
 export type ResearchStage = string
 
+/** 一颗能力：一间房里的一件活，对助理就是一条命令。五栏是给人读的机制说明（纲领 P-18）。 */
 export interface Capability {
   name: string
-  /** 属于哪个科研阶段：标签，不定先后 */
+  /** 属于哪一间：标签，不定先后 */
   stage: ResearchStage
   level: 'task' | 'run' | 'project'
-  /** 给研究者看的名字与一句说明；`summary` 是给工程师与助理看的机制说明 */
+  /** 给研究者看的名字 */
   title: string
-  what: string
-  summary: string
-  inputs: CapabilityFile[]
-  outputs: CapabilityFile[]
+  does: string
+  does_not: string
+  brings: string
+  leaves: string
+  stops: string
   params: CapabilityParam[]
   needs_executor: boolean
   needs_compute: boolean
-  criteria: string[]
-  /** 用在哪几条工作流里：后端从工作流文件反查的，能力自己不写 */
+  /** 点名用在哪几条工作流里：后端从工作流文件反查的，能力自己不写 */
   used_by: string[]
 }
 
-export interface FlowCheck {
-  steps: string[]
-  covers: ResearchStage[]
-  remarks: string[]
-  problems: string[]
-}
+/** 流里的一项：一间房（可点名能力、带参数），或一个断点（停下来等人确认；发布 / 验收是出厂的两个）。 */
+export type FlowItem =
+  | { kind: 'room'; stage: ResearchStage; caps: { cap: string; with: Record<string, unknown> }[] }
+  | { kind: 'stop'; key: 'publish' | 'accept' | null; note: string }
 
-export interface WorkflowStep {
-  by: '人' | '助理'
-  does: string
-  cap: string | null
-  key: 'publish' | 'accept' | null
-  /** 能力步骤运行时带的参数（`with: {max_iters: 3}`），键是描述符里的参数名 */
-  with: Record<string, unknown>
-}
-
-/** 编辑台交给 `POST /workflows` 的一条流：形状同文件，`overwrite` 明说才覆盖同名 */
+/** 编辑台交给 `POST /workflows`（存）与 `POST /workflows/check`（只查）的一条流：形状同文件。
+ *  一项是房间名、`{房间: [能力]}`、`{房间: {能力: 参数}}`、`"断点"` 或 `{断点: 一句话}`。 */
+export type DraftItem = string | Record<string, string | string[] | Record<string, Record<string, unknown> | null>>
 export interface WorkflowDraft {
   name: string
   title: string
   summary: string
-  assumes?: string[]
-  steps: { by: '人' | '助理'; does: string; cap?: string; key?: 'publish' | 'accept'; with?: Record<string, unknown> }[]
+  rooms: DraftItem[]
   overwrite?: boolean
+}
+
+export interface WorkflowCheck {
+  covers: ResearchStage[]
+  remarks: string[]
+  problems: string[]
 }
 
 export interface Workflow {
   name: string
   title: string
   summary: string
-  steps: WorkflowStep[]
-  /** 覆盖哪几个科研阶段，按步骤顺序：从能力步骤算出来的 */
+  rooms: FlowItem[]
+  /** 走过哪几间，按出现顺序去重 */
   covers: ResearchStage[]
   /** 提醒，不是问题：比如做了实验没验证 */
   remarks: string[]

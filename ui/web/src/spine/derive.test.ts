@@ -1,80 +1,79 @@
 import { describe, expect, it } from 'vitest'
 
-import type { FlowState, RunSummary, Workflow } from '@/api/types'
+import type { FlowItem, FlowState, RunSummary, TaskSummary } from '@/api/types'
 
-import { deriveIntakeSteps, deriveRunSteps, synthesizeFlow, waitingSentence } from './derive'
+import { deriveRunItems, deriveTaskItems, synthesizeFlow, taskPart, waitingSentence } from './derive'
 
-const quick: Workflow = {
-  name: 'quick-look', title: '快速看一眼', summary: 's', covers: [], remarks: [], problems: [],
-  steps: [
-    { by: '助理', does: '开一次实验', cap: 'start', key: null, with: {} },
-    { by: '助理', does: '跑 3 轮', cap: 'experiment', key: null, with: { max_iters: 3 } },
-    { by: '助理', does: '写分析', cap: 'analysis', key: null, with: {} },
-    { by: '人', does: '看一眼结论', cap: null, key: null, with: {} },
-  ],
-}
-const auto: Workflow = {
-  ...quick, name: 'auto-research', title: '自动做实验',
-  steps: [...quick.steps.slice(0, 3),
-          { by: '助理', does: '验证', cap: 'verify', key: null, with: {} },
-          { by: '人', does: '验收', cap: null, key: 'accept', with: {} }],
-}
-const flow = (step: number, waiting: string, wf = quick): FlowState =>
-  ({ workflow: wf.name, title: wf.title, step, total: wf.steps.length, steps: wf.steps,
-     next: wf.steps[step] ?? null, waiting, updated_at: null })
+const room = (stage: string, caps: string[] = []): FlowItem =>
+  ({ kind: 'room', stage, caps: caps.map((cap) => ({ cap, with: {} })) })
+const stop = (note: string, key: 'publish' | 'accept' | null = null): FlowItem => ({ kind: 'stop', key, note })
+
+// 出厂那条：假设 →◆发布 → 设计 →◆核对 → 实验 → 分析 → 验证 →◆验收
+const research: FlowItem[] = [
+  room('假设'), stop('发布', 'publish'), room('设计'), stop('核对裁判'),
+  room('实验', ['auto-research']), room('分析'), room('验证'), stop('验收', 'accept'),
+]
+const titleOf = (cap: string) => (cap === 'auto-research' ? 'auto-research' : undefined)
+const flow = (step: number, waiting: string, rooms = research): FlowState =>
+  ({ workflow: 'research', title: '从课题到验证', step, total: rooms.length, rooms,
+     next: rooms[step] ?? null, waiting, updated_at: null })
+const accepted = { accepted_at: 't', by: '李', best_iter: 1, best_metric: 1, best_commit: 'c', verify: 'PASS', stale: false }
 
 describe('run 的脊柱', () => {
-  it('便条说到第几步：前面实心、当前按在等谁、后面虚线', () => {
-    const states = deriveRunSteps(flow(1, 'job:job-1'), { accept: null }).map((s) => s.state)
-    expect(states).toEqual(['done', 'running', 'todo', 'todo'])
-    expect(deriveRunSteps(flow(3, 'human'), { accept: null }).map((s) => s.state))
-      .toEqual(['done', 'done', 'done', 'wait-human'])
-    expect(waitingSentence(deriveRunSteps(flow(3, 'human'), { accept: null }))).toBe('第 4 步轮到你')
+  it('便条说到第几项：前面实心、当前按在等谁、后面虚线', () => {
+    expect(deriveRunItems(flow(4, 'job:job-1'), { accept: null }).map((s) => s.state))
+      .toEqual(['done', 'done', 'done', 'done', 'running', 'todo', 'todo', 'todo'])
+    expect(waitingSentence(deriveRunItems(flow(4, 'job:job-1'), { accept: null }), titleOf)).toBe('auto-research跑着')
+    const atAnalysis = deriveRunItems(flow(5, 'assistant'), { accept: null })
+    expect(atAnalysis[5].state).toBe('assistant')
+    expect(waitingSentence(atAnalysis, titleOf)).toBe('分析间，轮到助理')
   })
-  it('验收键按过就算完成，便条不会替键推进', () => {
-    const before = deriveRunSteps(flow(4, 'key:accept', auto), { accept: null })
-    expect(before[4].state).toBe('wait-key')
-    expect(waitingSentence(before)).toBe('第 5 步等你验收')
-    const after = deriveRunSteps(flow(4, 'key:accept', auto),
-      { accept: { accepted_at: 't', by: '李', best_iter: 1, best_metric: 1, best_commit: 'c', verify: 'PASS', stale: false } })
-    expect(after[4].state).toBe('done')
-    expect(waitingSentence(after)).toBe('走完了')
+  it('停在断点：出厂的两个说等你发布 / 验收，别的说等你确认什么', () => {
+    const items = [room('实验'), stop('看一眼结论'), room('分析')]
+    const parked = deriveRunItems(flow(1, 'human', items), { accept: null })
+    expect(parked.map((s) => s.state)).toEqual(['done', 'wait-human', 'todo'])
+    expect(waitingSentence(parked, titleOf)).toBe('等你确认：看一眼结论')
+    const before = deriveRunItems(flow(7, 'key:accept'), { accept: null })
+    expect(before[7].state).toBe('wait-key')
+    expect(waitingSentence(before, titleOf)).toBe('等你验收')
+  })
+  it('验收签过就算完成，便条不会替人的确认推进', () => {
+    const after = deriveRunItems(flow(7, 'key:accept'), { accept: accepted })
+    expect(after[7].state).toBe('done')
+    expect(waitingSentence(after, titleOf)).toBe('走完了')
   })
   it('没照流的老 run 从文件推一条出来', () => {
-    const run = { last_iter: 3, analysis: true, verify: null, job: null, updated_at: 't' } as unknown as RunSummary
-    const f = synthesizeFlow(run, auto)
-    expect(f.step).toBe(3)
+    const run = { last_iter: 3, analysis: true, verify: null, job: null, accept: null, updated_at: 't' } as unknown as RunSummary
+    const f = synthesizeFlow(run, research, 'research', '从课题到验证')
+    expect(f.step).toBe(6)
     expect(f.waiting).toBe('assistant')
-    expect(deriveRunSteps(f, { accept: null }).map((s) => s.state))
-      .toEqual(['done', 'done', 'done', 'assistant', 'todo'])
+    expect(deriveRunItems(f, { accept: null }).map((s) => s.state))
+      .toEqual(['done', 'done', 'done', 'done', 'done', 'done', 'assistant', 'todo'])
+    const done = { ...run, verify: { status: 'PASS' }, accept: accepted } as unknown as RunSummary
+    expect(synthesizeFlow(done, research, 'research', 't').waiting).toBe('done')
   })
 })
 
-describe('需求对齐的脊柱', () => {
-  const intake: Workflow = {
-    ...quick, name: 'intake', title: '接一个新课题',
-    steps: [
-      { by: '人', does: '说清楚', cap: null, key: null, with: {} },
-      { by: '助理', does: '起任务包', cap: 'init', key: null, with: {} },
-      { by: '助理', does: '填模板', cap: null, key: null, with: {} },
-      { by: '人', does: '发布', cap: null, key: 'publish', with: {} },
-      { by: '助理', does: '接任务', cap: 'design', key: null, with: {} },
-      { by: '人', does: '核对', cap: null, key: null, with: {} },
-      { by: '助理', does: '跑基线', cap: 'baseline', key: null, with: {} },
-    ],
-  }
+describe('任务包那一段的脊柱', () => {
   const task = (stage: 'drafting' | 'published' | 'designed' | 'baselined', ok: boolean) =>
-    ({ id: 't', stage, publish: { ok, state: ok ? 'ok' : 'missing', by: null, at: null, reason: null } }) as unknown as import('@/api/types').TaskSummary
-  it('没有任务包时轮到人说清楚，其余都是以后的事', () => {
-    expect(deriveIntakeSteps(intake, null, null).map((s) => s.state))
-      .toEqual(['wait-human', 'todo', 'todo', 'todo', 'todo', 'todo', 'todo'])
+    ({ id: 't', stage, publish: { ok, state: ok ? 'ok' : 'missing', by: null, at: null, reason: null } }) as unknown as TaskSummary
+  it('任务包那一段到第一间别的房间为止', () => {
+    expect(taskPart(research)).toEqual(research.slice(0, 4))
+    expect(taskPart([room('假设'), room('写作')])).toEqual([room('假设')])
+    expect(taskPart([room('假设'), stop('发布', 'publish'), room('设计')])).toHaveLength(3)
   })
-  it('模板填完就等发布键；发布后轮到助理接任务；基线跑完全部实心', () => {
-    expect(deriveIntakeSteps(intake, task('drafting', false), []).map((s) => s.state))
-      .toEqual(['done', 'done', 'done', 'wait-key', 'todo', 'todo', 'todo'])
-    expect(deriveIntakeSteps(intake, task('drafting', false), ['还有待填']).map((s) => s.state)[2]).toBe('assistant')
-    expect(deriveIntakeSteps(intake, task('published', true), []).map((s) => s.state))
-      .toEqual(['done', 'done', 'done', 'done', 'assistant', 'todo', 'todo'])
-    expect(deriveIntakeSteps(intake, task('baselined', true), []).every((s) => s.state === 'done')).toBe(true)
+  it('没有任务包时轮到助理起包，其余都是以后的事', () => {
+    expect(deriveTaskItems(taskPart(research), null, null).map((s) => s.state))
+      .toEqual(['assistant', 'todo', 'todo', 'todo'])
+  })
+  it('需求填好就等发布；发布后轮到助理写裁判；基线跑完等人核对', () => {
+    expect(deriveTaskItems(taskPart(research), task('drafting', false), []).map((s) => s.state))
+      .toEqual(['done', 'wait-key', 'todo', 'todo'])
+    expect(deriveTaskItems(taskPart(research), task('drafting', false), ['还有待填']).map((s) => s.state)[0]).toBe('assistant')
+    expect(deriveTaskItems(taskPart(research), task('published', true), []).map((s) => s.state))
+      .toEqual(['done', 'done', 'assistant', 'todo'])
+    const baselined = deriveTaskItems(taskPart(research), task('baselined', true), [])
+    expect(baselined.map((s) => s.state)).toEqual(['done', 'done', 'done', 'wait-human'])
+    expect(waitingSentence(baselined, titleOf)).toBe('等你确认：核对裁判')
   })
 })
