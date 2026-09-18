@@ -1,6 +1,6 @@
 // 输入框上两枚旋钮的取值规则（外层 #86）。三层：这次改过的 > 这段对话记着的 > 后端缺省。
 // 发出去、记进对话的只有前两层——后端缺省不抄成明选，换了环境里的缺省老对话也跟着换。
-import type { Tuning } from '@/api/types'
+import type { Choice, Tuning } from '@/api/types'
 
 /** 字段缺席 = 这次没碰过那枚旋钮 */
 export type Pick = Partial<Tuning>
@@ -16,4 +16,16 @@ export function storedTuning(pick: Pick, meta: Tuning | null): Tuning {
 /** 旋钮上显示哪一格：记着的 > 后端缺省 > ''（写「默认」，CLI 自己定、页面不猜） */
 export function shownValue(stored: string | null, fallback: string | null): string {
   return stored ?? fallback ?? ''
+}
+
+/** 助理想着的时候那个词（主人：别用复杂中文，一个英文词，文艺且直白）：按选的深度在清单里的位置，越深越用力；
+ * 没选、清单里没有、清单只有一档，都是 thinking */
+export function thinkingWord(effort: string, efforts: Choice[]): string {
+  const i = efforts.findIndex((c) => c.id === effort)
+  if (i < 0 || efforts.length < 2) return 'thinking'
+  const depth = i / (efforts.length - 1)
+  if (depth === 1) return 'ultra thinking'
+  if (depth >= 0.75) return 'deep thinking'
+  if (depth >= 0.5) return 'hard thinking'
+  return 'thinking'
 }

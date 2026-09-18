@@ -1,10 +1,13 @@
 import { CaretRight } from '@phosphor-icons/react'
+import { useReducedMotion } from 'motion/react'
 
 import { ErrorNote } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
+import ShinyText from '@/components/reactbits/ShinyText'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { seconds, splitLede, usd } from '@/lib/format'
 import { denialSentence, toolSentence, wakeSentence } from '@/lib/humanize'
+import { useToken } from '@/lib/tokens'
 import { cn } from '@/lib/utils'
 
 import { describeTool, type TraceItem, type TurnOutcome } from './trace'
@@ -20,7 +23,8 @@ export interface Turn {
   live: boolean
 }
 
-export function TurnView({ turn }: { turn: Turn }) {
+/** `thinking` 是助理想着时那个词（随选的思考深度变），只有跑着的那一轮用得上 */
+export function TurnView({ turn, thinking = 'thinking' }: { turn: Turn; thinking?: string }) {
   const hasReply = turn.reply !== null && turn.reply !== ''
   // 回答已经落盘的轮次，trace 里的最后一段文本就是回答本身，不重复显示
   const trace = hasReply && !turn.live ? withoutTrailingText(turn.trace) : turn.trace
@@ -29,7 +33,7 @@ export function TurnView({ turn }: { turn: Turn }) {
   const rows = (
     <ol className="space-y-0.5">
       {trace.map((item, i) => <TraceRow key={i} item={item} />)}
-      {turn.live && <Thinking />}
+      {turn.live && <Thinking word={thinking} />}
     </ol>
   )
   return (
@@ -81,14 +85,19 @@ function withoutTrailingText(items: TraceItem[]): TraceItem[] {
   return last && last.kind === 'text' ? items.slice(0, -1) : items
 }
 
-function Thinking() {
+/** 助理想着：一个英文词（thinking / hard thinking / …，随选的深度变），reactbits ShinyText 让光从字上扫过；减少动效时静态。 */
+function Thinking({ word }: { word: string }) {
+  const still = useReducedMotion()
+  const muted = useToken('--muted-foreground')
+  const indigo = useToken('--primary')
   return (
     <li className="flex items-center gap-2.5 px-1 py-1.5 text-sm text-muted-foreground">
       <span className="relative flex size-2">
-        <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/60" />
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/60 motion-reduce:animate-none" />
         <span className="relative inline-flex size-2 rounded-full bg-primary" />
       </span>
-      助理在想…
+      {still ? <span className="font-mono lowercase">{word}</span>
+             : <ShinyText text={word} color={muted} shineColor={indigo} speed={2} className="font-mono lowercase" />}
     </li>
   )
 }

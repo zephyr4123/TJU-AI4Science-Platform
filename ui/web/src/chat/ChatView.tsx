@@ -11,7 +11,7 @@ import { ErrorNote, Skeleton } from '@/components/bits'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
 import { usd } from '@/lib/format'
-import { type Pick, storedTuning } from '@/lib/tuning'
+import { type Pick, shownValue, storedTuning, thinkingWord } from '@/lib/tuning'
 import { useResource } from '@/lib/useResource'
 
 import { Composer } from './Composer'
@@ -62,6 +62,8 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
   // 输入框上这次改过的旋钮；没碰过就沿用对话上记的，随每条消息发出去（外层 #86）
   const [pick, setPick] = useState<Pick>({})
   const tuning = storedTuning(pick, current)
+  // 助理想着时那个词：按实际用的深度（记着的，或后端缺省）在清单里的位置
+  const thinking = thinkingWord(shownValue(tuning.effort, knobs?.effort ?? null), knobs?.efforts ?? [])
   // 本次打开页面期间跑过的轮次，按轮号留着它做过什么；刷新后只剩落盘的问答
   const [kept, setKept] = useState<Kept>({})
   const bottom = useRef<HTMLDivElement>(null)
@@ -146,7 +148,7 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
               </div>
             )}
             <div className="space-y-10">
-              {turns.map((turn) => <TurnView key={turn.n} turn={turn} />)}
+              {turns.map((turn) => <TurnView key={turn.n} turn={turn} thinking={thinking} />)}
             </div>
             {sendError && <ErrorNote text={sendError} className="mt-4" />}
             {/* 滚动锚点自带一段空档：最后一句和输入框之间要有呼吸，滚到底时这段也在视野里 */}
@@ -155,7 +157,7 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
         )}
       </div>
 
-      <Composer busy={live !== null || autoSend !== null} knobs={knobs} tuning={tuning}
+      <Composer busy={live !== null || autoSend !== null} thinking={thinking} knobs={knobs} tuning={tuning}
                 onTune={(next) => setPick(next)}
                 onSend={(text) => (chatId ? void send(text) : onStart(text, tuning))} />
     </div>

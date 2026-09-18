@@ -2,7 +2,7 @@
 // 上面写字（起步三行高，随内容长到十行），下面一排是工具位——左边两枚下拉片「模型」「思考」（reactbits GlideSelect 改装，
 // 清单是后端自报的，选了随下一条消息发出去、记进对话；外层 #86），上传以后排在它们后面；右边发送键。
 // 宽度与正文同一列（主人：矮胖显窄，要高一点瘦一点、大气一点）。空着的时候 placeholder 只写快捷键（主人：轮换的提示语没有信息量，删）；
-// 助理答着的时候只剩「助理回答中」、不许发。
+// 助理答着的时候 placeholder 是那个英文词（thinking…）、不许发。
 import { ArrowUp } from '@phosphor-icons/react'
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 
@@ -15,6 +15,8 @@ import { shownValue } from '@/lib/tuning'
 
 interface Props {
   busy: boolean
+  /** 助理想着时那个词（随选的深度变），忙着时写在 placeholder 里 */
+  thinking: string
   /** 后端的两个旋钮清单；还没拿到就先不摆 */
   knobs: Backend | null
   /** 这段对话记着的选；null 是后端缺省 */
@@ -27,7 +29,7 @@ const LINE = 24
 const MIN_LINES = 3
 const MAX_LINES = 10
 
-export function Composer({ busy, knobs, tuning, onTune, onSend }: Props) {
+export function Composer({ busy, thinking, knobs, tuning, onTune, onSend }: Props) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -65,7 +67,7 @@ export function Composer({ busy, knobs, tuning, onTune, onSend }: Props) {
             onChange={(event) => setText(event.target.value)}
             onKeyDown={onKeyDown}
             aria-label="给助理的消息"
-            placeholder={busy ? '助理回答中' : 'Enter 发送，Shift + Enter 换行'}
+            placeholder={busy ? `${thinking}…` : 'Enter 发送，Shift + Enter 换行'}
             className="min-h-[4.5rem] resize-none border-0 bg-transparent px-1 py-0 text-[1rem] leading-6 shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
           />
           <div className="mt-3 flex items-center gap-2">
