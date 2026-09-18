@@ -221,6 +221,15 @@
 
 @layer components {
   /* 四种字：结论（宋体）、步骤标题（宋体）、大数字、正文、标签（docs/DESIGN.md） */
+  /* 横幅的两种纱幕：wash 整条压成纸色（顶栏，封面只剩一抹颜色）；foot 图露着、脚下压成纸色给字站（抽屉、库） */
+  .veil-wash {
+    background: color-mix(in oklab, var(--background) 78%, transparent);
+  }
+  .veil-foot {
+    background: linear-gradient(180deg, color-mix(in oklab, var(--background) 12%, transparent) 0%,
+      color-mix(in oklab, var(--background) 40%, transparent) 50%, color-mix(in oklab, var(--background) 94%, transparent) 100%);
+  }
+
   /* 画面上的纱幕：左边压成纸色让字能读，右边留给画面；上下各压一点，顶栏与输入框才不飘 */
   .veil {
     background:

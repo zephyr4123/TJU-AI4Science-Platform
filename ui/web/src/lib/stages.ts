@@ -24,3 +24,27 @@ export function actorOf(cap: Pick<Capability, 'needs_executor'>): '助理' | '�
 export function coverageSentence(covers: ResearchStage[]): string {
   return covers.length === 0 ? '不含能力步骤' : `覆盖 ${covers.join(' → ')}`
 }
+
+// ── 图标：七段各一枚，两颗键各一枚，人的话与助理的填写各一枚（Phosphor，全站一套） ──
+import {
+  Books, ChartLineUp, ChatCircleText, Flask, type Icon, Lightbulb, NotePencil, PenNib, PencilRuler, SealCheck,
+  Signature, Stamp,
+} from '@phosphor-icons/react'
+
+/** 阶段名是后端给的中文；清单外的阶段用锥形瓶兜底 */
+export const STAGE_ICON: Record<string, Icon> = {
+  文献: Books, 假设: Lightbulb, 设计: PencilRuler, 实验: Flask, 分析: ChartLineUp, 写作: PenNib, 验证: SealCheck,
+}
+
+export function stageIcon(stage: ResearchStage): Icon {
+  return STAGE_ICON[stage] ?? Flask
+}
+
+/** 流里的一步配哪枚：能力按它的阶段，发布键盖章、验收键签名，人开口说话、助理提笔填写 */
+export function stepIcon(step: { by: string; cap: string | null; key: string | null },
+                         stageOfCap: (cap: string) => ResearchStage | undefined): Icon {
+  if (step.key === 'publish') return Stamp
+  if (step.key === 'accept') return Signature
+  if (step.cap) return stageIcon(stageOfCap(step.cap) ?? '')
+  return step.by === '人' ? ChatCircleText : NotePencil
+}

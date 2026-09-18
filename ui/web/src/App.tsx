@@ -1,10 +1,14 @@
 // 壳：顶栏（名字、工作区切换、主页面 / 编辑台胶囊）+ 两块看板（外层 #58 #64 #70）。
 // 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的对话 + 流程脊柱；
 // 编辑台改「库」：造流助理的对话 + 工作流墙、七段货架、拼流台。两位助理分权（P-16），页面只是 `ai4sci serve` 的客户端。
-import { useState } from 'react'
+import { Flask } from '@phosphor-icons/react'
+import { type ReactNode, useState } from 'react'
 
 import { api, inWorkspace, STUDIO } from '@/api/client'
+import { ASSETS, coverOf, type Picture } from '@/assets'
 import { ChatView } from '@/chat/ChatView'
+import { Band } from '@/components/Band'
+import { GlassIcon } from '@/components/reactbits/GlassIcon'
 import { PillNav } from '@/components/reactbits/PillNav'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -47,14 +51,17 @@ export default function App() {
   return (
     <TooltipProvider>
       <div className="flex h-dvh flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-card px-4 sm:gap-5 sm:px-5">
-          <span className="hidden font-serif text-[1.0625rem] font-semibold tracking-[0.02em] sm:inline">AI4Science</span>
+        <Top picture={view === 'studio' ? ASSETS.studio : wsId && !creating ? coverOf(wsId) : null}>
+          <span className="flex items-center gap-2.5">
+            <GlassIcon icon={<Flask weight="fill" className="size-[1.05em]" />} label="AI4Science" />
+            <span className="hidden font-serif text-[1.0625rem] font-semibold tracking-[0.02em] sm:inline">AI4Science</span>
+          </span>
           <WorkspaceSwitcher workspaces={workspaces.data} selected={wsId}
                              onPick={(id) => { setPicked(id); setCreating(false); setView('main') }}
                              onNew={() => { setCreating(true); setView('main') }} />
           <span className="flex-1" />
-          <PillNav items={VIEWS} active={view} onSelect={setView} />
-        </header>
+          <PillNav items={VIEWS} active={view} onSelect={setView} className="bg-background/70 backdrop-blur-sm" />
+        </Top>
 
         {view === 'studio'
           ? <StudioView healthy={healthy} />
@@ -63,15 +70,23 @@ export default function App() {
                             onCancel={wsId ? () => setCreating(false) : undefined}
                             onPick={(id) => { setPicked(id); setCreating(false) }} />
             : wsId
-              ? <MainView key={wsId} wsId={wsId} healthy={healthy} />
+              ? <MainView key={wsId} wsId={wsId} healthy={healthy}
+                          title={workspaces.data?.find((w) => w.id === wsId)?.title ?? wsId} />
               : <div className="flex-1" />}
       </div>
     </TooltipProvider>
   )
 }
 
+/** 顶栏：有封面时把封面糊成一抹颜色铺在底下（换工作区顶栏就换色，编辑台是库的横幅），没有时就是纸。 */
+function Top({ picture, children }: { picture: Picture | null; children: ReactNode }) {
+  const row = <header className="flex h-14 items-center gap-3 px-4 sm:gap-5 sm:px-5">{children}</header>
+  if (!picture) return <div className="shrink-0 border-b bg-card">{row}</div>
+  return <Band picture={picture} veil="wash" blur className="shrink-0 border-b">{row}</Band>
+}
+
 /** 主页面：这个工作区的对话 + 脊柱。换工作区时父组件用 key 重建，状态天然按工作区隔离。 */
-function MainView({ wsId, healthy }: { wsId: string; healthy: boolean | null }) {
+function MainView({ wsId, title, healthy }: { wsId: string; title: string; healthy: boolean | null }) {
   const scope = inWorkspace(wsId)
   const c = useChats(scope)
   const wide = useMediaQuery(WIDE)
@@ -94,7 +109,7 @@ function MainView({ wsId, healthy }: { wsId: string; healthy: boolean | null }) 
         drawer={
           <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                       creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
-                      description="这个工作区的对话" />
+                      cover={coverOf(wsId)} title={title} description="这个工作区的对话" />
         }
       />
       {wide ? (
@@ -136,7 +151,7 @@ function StudioView({ healthy }: { healthy: boolean | null }) {
           drawer={
             <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                         creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
-                        description="编辑台的对话" />
+                        cover={ASSETS.studio} title="编辑台" description="编辑台的对话" />
           }
         />
       </div>

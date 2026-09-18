@@ -2,6 +2,7 @@
 // 只读一个工作区（P-15）：有 run 就是当前 run 照的那条流，一步一个模块，模块的实心程度来自盘上真实的文件；
 // 没有 run 时就是需求对齐，看这个工作区的任务包。
 // 装什么流长什么样：这里不写死任何一条流，步骤从 run 的便条（或工作流文件）来，状态由 derive.ts 算。
+import type { Icon } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type ReactNode, useState } from 'react'
 
@@ -14,6 +15,7 @@ import { AcceptKey } from '@/keys/AcceptKey'
 import { PublishKey } from '@/keys/PublishKey'
 import { metric } from '@/lib/format'
 import { conclusionOf, stopSentence } from '@/lib/humanize'
+import { stepIcon } from '@/lib/stages'
 import { useToken } from '@/lib/tokens'
 import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
@@ -23,26 +25,32 @@ import { deriveIntakeSteps, deriveRunSteps, type StepView, synthesizeFlow, waiti
 export function Spine({ workspace, epoch }: { workspace: string; epoch: number }) {
   const doc = useResource(() => api.workspace(workspace), [workspace, epoch])
   const workflows = useResource(api.workflows, [])
+  // 能力清单只为一件事：每一步配哪枚阶段图标
+  const caps = useResource(api.capabilities, [])
   const [pickedRun, setPickedRun] = useState<string | null>(null)
 
-  const error = doc.error ?? workflows.error
+  const error = doc.error ?? workflows.error ?? caps.error
   if (error) return <div className="p-6"><ErrorNote text={error} /></div>
-  if (!doc.data || !workflows.data) return <div className="p-6"><Skeleton lines={6} /></div>
+  if (!doc.data || !workflows.data || !caps.data) return <div className="p-6"><Skeleton lines={6} /></div>
+  const catalog = caps.data
+  const stageOfCap = (name: string) => catalog.find((c) => c.name === name)?.stage
 
   const byRecent = [...doc.data.runs].sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
   const run = (pickedRun ? byRecent.find((r) => r.run_id === pickedRun) : undefined) ?? byRecent[0] ?? null
   if (run) {
     return <RunSpine workspace={workspace} run={run} runs={byRecent} onPick={setPickedRun}
-                     workflows={workflows.data} epoch={epoch} />
+                     workflows={workflows.data} epoch={epoch} stageOfCap={stageOfCap} />
   }
   const intake = workflows.data.find((w) => w.name === 'intake') ?? null
-  return <IntakeSpine workspace={doc.data} intake={intake} reload={doc.reload} />
+  return <IntakeSpine workspace={doc.data} intake={intake} reload={doc.reload} stageOfCap={stageOfCap} />
 }
 
 // ── run：照的那条流 ────────────────────────────────────────────────────────
-function RunSpine({ workspace, run, runs, onPick, workflows, epoch }: {
+type StageOfCap = (cap: string) => string | undefined
+
+function RunSpine({ workspace, run, runs, onPick, workflows, epoch, stageOfCap }: {
   workspace: string; run: RunSummary; runs: RunSummary[]; onPick: (id: string) => void; workflows: Workflow[]
-  epoch: number
+  epoch: number; stageOfCap: StageOfCap
 }) {
   const detail = useResource(() => api.run(workspace, run.run_id), [workspace, run.run_id, epoch])
   if (detail.error) return <div className="p-6"><ErrorNote text={detail.error} /></div>
@@ -61,7 +69,7 @@ function RunSpine({ workspace, run, runs, onPick, workflows, epoch }: {
       )}
     >
       {steps.map((step, i) => (
-        <StepModule key={step.n} step={step} last={i === steps.length - 1}
+        <StepModule key={step.n} step={step} icon={stepIcon(step, stageOfCap)} last={i === steps.length - 1}
                     ok={step.cap === 'verify' && doc.verify?.status === 'PASS'}>
           <RunStepContent workspace={workspace} step={step} run={doc} reload={detail.reload} />
         </StepModule>
@@ -120,8 +128,8 @@ function RunStepContent({ workspace, step, run, reload }: {
 }
 
 // ── 需求对齐：还没有 run ─────────────────────────────────────────────────
-function IntakeSpine({ workspace, intake, reload }: {
-  workspace: WorkspaceDetail; intake: Workflow | null; reload: () => Promise<void>
+function IntakeSpine({ workspace, intake, reload, stageOfCap }: {
+  workspace: WorkspaceDetail; intake: Workflow | null; reload: () => Promise<void>; stageOfCap: StageOfCap
 }) {
   if (!intake) return <div className="p-6"><ErrorNote text="库里没有 intake" /></div>
   const task = workspace.task
@@ -132,7 +140,7 @@ function IntakeSpine({ workspace, intake, reload }: {
       subtitle={task ? waitingSentence(steps) : '还没有需求'}
     >
       {steps.map((step, i) => (
-        <StepModule key={step.n} step={step} last={i === steps.length - 1}>
+        <StepModule key={step.n} step={step} icon={stepIcon(step, stageOfCap)} last={i === steps.length - 1}>
           <IntakeStepContent workspace={workspace.id} step={step} task={task} reload={reload} />
         </StepModule>
       ))}
@@ -224,8 +232,8 @@ function Live({ text }: { text: string }) {
   return <ShinyText text={text} color={muted} shineColor={indigo} speed={2.5} className="text-[0.8125rem]" />
 }
 
-function StepModule({ step, last, ok = false, children }: {
-  step: StepView; last: boolean; ok?: boolean; children: ReactNode
+function StepModule({ step, icon: Icon, last, ok = false, children }: {
+  step: StepView; icon: Icon; last: boolean; ok?: boolean; children: ReactNode
 }) {
   const indigo = useToken('--primary')
   const still = useReducedMotion()
@@ -237,7 +245,9 @@ function StepModule({ step, last, ok = false, children }: {
       waiting && 'border-wait/60 bg-wait-soft',
       step.state === 'running' && 'border-transparent')}>
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className={cn('t-step', step.state === 'todo' && 'text-muted-foreground', waiting && 'text-wait')}>
+        <h3 className={cn('t-step flex items-center gap-2', step.state === 'todo' && 'text-muted-foreground', waiting && 'text-wait')}>
+          <Icon weight={step.state === 'done' ? 'fill' : 'duotone'} aria-hidden="true"
+                className={cn('size-[1.125rem] shrink-0', step.state === 'done' ? 'text-foreground' : step.state === 'running' || step.state === 'assistant' ? 'text-primary' : waiting ? 'text-wait' : 'text-muted-foreground')} />
           {head(step.does)}
         </h3>
         {step.state === 'assistant' && <span className="text-[0.75rem] text-primary">轮到助理</span>}

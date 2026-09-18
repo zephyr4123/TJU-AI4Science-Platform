@@ -2,16 +2,18 @@
 // 点货架上的能力进拼流台，通不通当场问后端，存成 workflows/<name>.yaml。三张清单都从后端读，页面不写死。
 // 左边那位造流助理每说完一轮 epoch 加一，墙就重读——它可能刚存了一条。
 import { ArrowDown, ArrowUp, X } from '@phosphor-icons/react'
-import { type ReactNode, useState } from 'react'
+import { createElement, type ReactNode, useState } from 'react'
 
 import { api } from '@/api/client'
+import { ASSETS } from '@/assets'
 import type { Capability, Workflow, WorkflowDraft } from '@/api/types'
+import { Band } from '@/components/Band'
 import { Empty, ErrorNote, Problems, Skeleton } from '@/components/bits'
 import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { LEVEL_COPY } from '@/lib/humanize'
-import { actorOf, coverageSentence, groupByStage } from '@/lib/stages'
+import { actorOf, coverageSentence, groupByStage, stageIcon } from '@/lib/stages'
 import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 
@@ -29,11 +31,14 @@ export function Studio({ epoch }: { epoch: number }) {
   for (const cap of catalog.data ?? []) titles.set(cap.name, cap.title)
 
   return (
-    <div className="mx-auto max-w-[76rem] space-y-12 px-8 py-8">
-      <header>
-        <h1 className="font-serif text-[1.375rem] font-semibold">库</h1>
-        <p className="t-body mt-1 text-muted-foreground">能力拼成流，存进库。</p>
-      </header>
+    <div>
+      <Band picture={ASSETS.studio} veil="foot" className="h-44">
+        <header className="mx-auto flex h-full max-w-[76rem] flex-col justify-end px-8 pb-5">
+          <h1 className="font-serif text-[1.5rem] font-semibold">库</h1>
+          <p className="t-body mt-1 text-muted-foreground">能力拼成流，存进库。</p>
+        </header>
+      </Band>
+      <div className="mx-auto max-w-[76rem] space-y-12 px-8 py-8">
       {stages.error && <ErrorNote text={stages.error} />}
       {workflows.error && <ErrorNote text={workflows.error} />}
       {catalog.error && <ErrorNote text={catalog.error} />}
@@ -60,7 +65,7 @@ export function Studio({ epoch }: { epoch: number }) {
             <ol className="flex gap-3 overflow-x-auto pb-2">
               {groupByStage(stages.data, catalog.data).map(({ stage, caps }) => (
                 <li key={stage} className="w-[10.5rem] shrink-0 space-y-2">
-                  <h3 className="font-serif text-[0.9375rem] font-semibold">{stage}</h3>
+                  <h3 className="flex items-center gap-1.5 font-serif text-[0.9375rem] font-semibold"><StageMark stage={stage} className="text-primary" />{stage}</h3>
                   {caps.length === 0
                     ? <p className="rounded-xl border border-dashed px-3 py-4 text-[0.8125rem] text-muted-foreground">暂无</p>
                     : caps.map((cap) => (
@@ -75,15 +80,26 @@ export function Studio({ epoch }: { epoch: number }) {
                  onSaved={() => void workflows.reload()} />
         </section>
       )}
+      </div>
     </div>
   )
+}
+
+/** 一段的图标：货架的标题、能力卡、工作流卡上覆盖的几段都用它 */
+function StageMark({ stage, className }: { stage: string; className?: string }) {
+  return createElement(stageIcon(stage), { weight: 'duotone', 'aria-label': stage, className: cn('size-4 shrink-0', className) })
 }
 
 // ── 工作流墙 ──────────────────────────────────────────────────────────────
 function WorkflowCard({ workflow, titles, onLoad }: { workflow: Workflow; titles: Map<string, string>; onLoad: () => void }) {
   return (
     <SpotlightCard spotlight="color-mix(in oklab, var(--primary) 14%, transparent)" className="flex flex-col p-5">
-      <h3 className="font-serif text-[1.0625rem] font-semibold">{workflow.title}</h3>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-serif text-[1.0625rem] font-semibold">{workflow.title}</h3>
+        <span className="flex shrink-0 gap-1 pt-1 text-primary">
+          {workflow.covers.map((stage) => <StageMark key={stage} stage={stage} />)}
+        </span>
+      </div>
       <p className="mt-0.5 font-mono text-[0.75rem] text-muted-foreground">{workflow.name}</p>
       <p className="mt-2 text-[0.875rem] leading-relaxed">{workflow.summary}</p>
       <p className="t-label mt-2">{coverageSentence(workflow.covers)}，{workflow.steps.length} 步</p>
@@ -110,9 +126,12 @@ function WorkflowCard({ workflow, titles, onLoad }: { workflow: Workflow; titles
 function CapChip({ cap, onClick }: { cap: Capability; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick}
-            className="block w-full rounded-xl border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/60 hover:bg-accent/40">
-      <span className="block text-[0.9375rem] font-medium">{cap.title}</span>
-      <span className="mt-0.5 block text-[0.75rem] text-muted-foreground">{actorOf(cap)}，{LEVEL_COPY[cap.level]}</span>
+            className="flex w-full items-start gap-2 rounded-xl border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/60 hover:bg-accent/40">
+      <StageMark stage={cap.stage} className="mt-1 text-muted-foreground" />
+      <span className="min-w-0">
+        <span className="block text-[0.9375rem] font-medium">{cap.title}</span>
+        <span className="mt-0.5 block text-[0.75rem] text-muted-foreground">{actorOf(cap)}，{LEVEL_COPY[cap.level]}</span>
+      </span>
     </button>
   )
 }
