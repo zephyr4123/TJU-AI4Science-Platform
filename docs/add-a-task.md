@@ -96,8 +96,8 @@ env/requirements.lock   numpy==2.5.3
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-: "${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON：经 ai4sci cap baseline 起，不要手工跑}"
-: "${AI4SCI_BUDGET_S:?}"      # 框架与 ai4sci cap baseline 都会给
+: "${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON：经 ai4sci cap design 起，不要手工跑}"
+: "${AI4SCI_BUDGET_S:?}"      # 框架与 ai4sci cap design 都会给
 : "${AI4SCI_INNER_K:?}"
 TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$TASK_DIR"
@@ -108,14 +108,14 @@ export AI4SCI_START_EPOCH
 "$AI4SCI_PYTHON" harness/evaluate.py
 ```
 
-`code/` 从环境变量 `AI4SCI_SEED` 拿种子；同一 seed 必须复现同一结果。`make_run0.sh` 照抄 `mlp-regression` 的，只改指标名与种子列表；它由 `ai4sci cap baseline` 起，预算与 inner_k 从那里来。
+`code/` 从环境变量 `AI4SCI_SEED` 拿种子；同一 seed 必须复现同一结果。`make_run0.sh` 照抄 `mlp-regression` 的，只改指标名与种子列表；它由 `ai4sci cap design` 起，预算与 inner_k 从那里来。
 
 ## 4. 四条命令
 
 ```bash
 cd workspaces/<name>
 ai4sci sign task --by <你>        # 发布：签 manifest.yaml 与 design.md，写 publish.json
-ai4sci cap baseline               # 跑 make_run0.sh：基线 + repeat_k 次重复 + σ → run_0/，跑完预检
+ai4sci cap design               # 跑 make_run0.sh：基线 + repeat_k 次重复 + σ → run_0/，跑完预检
 ai4sci show task                  # 退 0 才算接进来了
 ```
 
