@@ -7,10 +7,11 @@ import { Textarea } from '@/components/ui/textarea'
 interface Props {
   disabled: boolean
   busy: boolean
+  placeholder: string
   onSend: (text: string) => void
 }
 
-export function Composer({ disabled, busy, onSend }: Props) {
+export function Composer({ disabled, busy, placeholder, onSend }: Props) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -47,7 +48,7 @@ export function Composer({ disabled, busy, onSend }: Props) {
           disabled={disabled}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={disabled ? '先开一段对话' : busy ? '助理回答中' : '说说你的课题'}
+          placeholder={disabled ? '先开一段对话' : busy ? '助理回答中' : placeholder}
           aria-label="给助理的消息"
           className="min-h-9 resize-none border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:ring-0"
         />

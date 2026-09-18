@@ -79,10 +79,8 @@ function MainView({ wsId, healthy }: { wsId: string; healthy: boolean | null }) 
         key={c.chatId ?? 'none'} scope={scope} chatId={c.chatId} current={c.current}
         boardOpen={boardOpen} onToggleBoard={() => setBoardOpen((v) => !v)}
         onNew={() => void c.newChat()} onTurnDone={c.turnDone}
-        intro={{
-          lede: '先说清课题。',
-          body: '想解决什么、数据在哪、什么算好。',
-        }}
+        intro={{ lede: '先说清课题。', body: '想解决什么、数据在哪、什么算好。' }}
+        placeholder="说说你的课题"
         welcome={{
           headline: '把实验交给助理。',
           body: '你只做两件事：发布需求，验收结果。',
@@ -113,10 +111,8 @@ function StudioView({ healthy }: { healthy: boolean | null }) {
         <ChatView
           key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current}
           onNew={() => void c.newChat()} onTurnDone={c.turnDone}
-          intro={{
-            lede: '说清要拼什么流。',
-            body: '给谁用、从哪步起、要不要验证。',
-          }}
+          intro={{ lede: '说清要拼什么流。', body: '给谁用、从哪步起、要不要验证。' }}
+          placeholder="说说要拼的流"
           welcome={{
             headline: '把能力拼成流。',
             body: '存进库，研究者取走就能跑。',
