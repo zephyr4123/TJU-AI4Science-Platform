@@ -1,6 +1,6 @@
 // 顶栏的工作区：一枚胶囊写着当前工作区的标题，点开是一张清单——每个工作区一行，说它走到哪了；
 // 末行「起一个新的」。工作区是页面认路的第一件事（纲领 P-15）。
-import { Check, ChevronDown, Plus } from 'lucide-react'
+import { CaretDown, Check, Plus } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import type { WorkspaceSummary } from '@/api/types'
@@ -38,7 +38,7 @@ export function WorkspaceSwitcher({ workspaces, selected, onPick, onNew }: Props
             {current ? current.title : ordered.length ? '选工作区' : '无工作区'}
           </span>
           {current && <span className="t-label hidden whitespace-nowrap sm:inline">{stageSentence(current)}</span>}
-          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+          <CaretDown className="size-4 shrink-0 text-muted-foreground" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={8} className="w-[24rem] p-2">

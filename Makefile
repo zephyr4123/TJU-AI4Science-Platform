@@ -42,7 +42,9 @@ UI := ui/web
 ui: $(UI)/node_modules/.stamp          ## 构建页面到 ui/web/dist，ai4sci serve 缺省端它
 	cd $(UI) && npm run build
 
-ui-check: $(UI)/node_modules/.stamp    ## 页面门禁：类型、lint、单测、构建
+ui-check: $(UI)/node_modules/.stamp    ## 页面门禁：素材不进仓（P-17）、类型、lint、单测、构建
+	@bad=$$(git ls-files ui | grep -E '\.(png|jpe?g|gif|webp|avif|mp4|webm|mov|ico)$$' || true); \
+	if [ -n "$$bad" ]; then echo "二进制素材不进仓（纲领 P-17），上 CDN 再在 ui/web/src/assets.ts 写 URL："; echo "$$bad"; exit 1; fi
 	cd $(UI) && npm run check
 
 $(UI)/node_modules/.stamp: $(UI)/package.json $(UI)/package-lock.json

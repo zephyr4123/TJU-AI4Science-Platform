@@ -1,4 +1,4 @@
-import { MessageSquarePlus, PanelLeft } from 'lucide-react'
+import { NotePencil, SidebarSimple } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import type { ChatMeta } from '@/api/types'
@@ -28,7 +28,7 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button variant="ghost" size="icon-sm" aria-label="打开对话列表">
-          <PanelLeft />
+          <SidebarSimple />
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-[20rem] gap-0 p-0">
@@ -39,7 +39,7 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
         <div className="px-4 pb-3">
           <Button variant="outline" size="sm" className="w-full justify-start"
                   disabled={creating} onClick={() => { onNew(); setOpen(false) }}>
-            <MessageSquarePlus data-icon="inline-start" />新对话
+            <NotePencil data-icon="inline-start" />新对话
           </Button>
         </div>
         <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-3">

@@ -1,7 +1,7 @@
 // 编辑台的库那一半（外层 #58 #68 #74）：上面是工作流墙（一流一卡），下面是七段能力货架 + 拼流台：
 // 点货架上的能力进拼流台，通不通当场问后端，存成 workflows/<name>.yaml。三张清单都从后端读，页面不写死。
 // 左边那位造流助理每说完一轮 epoch 加一，墙就重读——它可能刚存了一条。
-import { ArrowDown, ArrowUp, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, X } from '@phosphor-icons/react'
 import { type ReactNode, useState } from 'react'
 
 import { api } from '@/api/client'

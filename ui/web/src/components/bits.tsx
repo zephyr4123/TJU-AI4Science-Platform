@@ -1,6 +1,6 @@
 // 页面零件：状态点、空态、错误条、问题清单、骨架、键按过之后那一行。故意不做成"设计系统"，够用为止。
 
-import { AlertCircle, Check } from 'lucide-react'
+import { Check, WarningCircle } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -28,7 +28,7 @@ export function Empty({ title, hint, action }: { title: string; hint?: string; a
 export function ErrorNote({ text, className }: { text: string; className?: string }) {
   return (
     <div role="alert" className={cn('flex items-start gap-2 rounded-md bg-bad-soft px-3 py-2 text-sm text-bad', className)}>
-      <AlertCircle className="mt-0.5 size-4 shrink-0" />
+      <WarningCircle className="mt-0.5 size-4 shrink-0" />
       <span className="whitespace-pre-wrap break-words">{text}</span>
     </div>
   )

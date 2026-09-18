@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react'
+import { CaretRight } from '@phosphor-icons/react'
 
 import { ErrorNote } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
@@ -49,7 +49,7 @@ export function TurnView({ turn }: { turn: Turn }) {
       {foldable ? (
         <Collapsible>
           <CollapsibleTrigger className="group flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground hover:text-foreground">
-            <ChevronRight className="size-3.5 transition-transform duration-150 group-data-[state=open]:rotate-90" />
+            <CaretRight className="size-3.5 transition-transform duration-150 group-data-[state=open]:rotate-90" />
             助理做了 {tools} 件事
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-2 border-l-2 pl-3">{rows}</CollapsibleContent>
@@ -115,7 +115,7 @@ function TraceRow({ item }: { item: TraceItem }) {
           className={cn('group flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-muted',
                         item.denied ? 'text-bad' : item.isError ? 'text-warn' : 'text-muted-foreground')}
         >
-          <ChevronRight className="size-3.5 shrink-0 transition-transform duration-150 group-data-[state=open]:rotate-90" />
+          <CaretRight className="size-3.5 shrink-0 transition-transform duration-150 group-data-[state=open]:rotate-90" />
           <span className="min-w-0 flex-1 truncate">
             {toolSentence(item.tool, item.input)}
             {status && <span>{status}</span>}
