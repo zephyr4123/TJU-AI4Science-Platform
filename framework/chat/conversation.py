@@ -1,6 +1,7 @@
 """一段对话在磁盘上的样子，以及"发一轮"这个动作。
 
-    <域>/chats/<chat_id>/ meta.json          后端名、后端 session id、cwd、轮数、累计花费
+    <域>/chats/<chat_id>/ meta.json          后端名、后端 session id、cwd、轮数、累计花费、
+                                              上次选的模型与思考深度（None 是后端缺省）
                           transcript.md       人一句 agent 一句，给人翻
                           inflight.json       正在跑的那一轮；在就拒绝再发
                           turn-N/message.md   这一轮人说的
@@ -26,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from backends import Chat, ChatEvent
+from backends import Chat, ChatEvent, Tuning
 
 LOGGER = logging.getLogger("ai4sci.chat")
 META_NAME = "meta.json"
@@ -67,10 +68,23 @@ class Conversation:
     session_id: str | None = None
     turns: int = 0
     cost_usd: float = 0.0
+    # 这段对话上次选的模型与思考深度（外层 #86）：每轮可改、改了记住；None 是后端缺省
+    model: str | None = None
+    effort: str | None = None
 
     @property
     def dir(self) -> Path:
         return Path(self._dir)
+
+    @property
+    def tuning(self) -> Tuning:
+        return Tuning(model=self.model, effort=self.effort)
+
+    def tune(self, tuning: Tuning) -> None:
+        """换模型 / 思考深度：变了才落盘。合不合清单由调用方拿 `Chat.knobs()` 先查。"""
+        if tuning != self.tuning:
+            self.model, self.effort = tuning.model, tuning.effort
+            self.save()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -81,7 +95,7 @@ class Conversation:
 
 
 def new_conversation(chats_dir: Path, backend: str, cwd: Path,
-                     chat_id: str | None = None) -> Conversation:
+                     chat_id: str | None = None, tuning: Tuning | None = None) -> Conversation:
     """建 `<chats_dir>/<id>/`。id 缺省 `chat-<UTC 时间戳>-<4 位随机>`：同一秒开两段也不撞。"""
     stamp = datetime.now(UTC)
     chat_id = chat_id or f"chat-{stamp:%Y%m%dT%H%M%SZ}-{secrets.token_hex(2)}"
@@ -89,12 +103,15 @@ def new_conversation(chats_dir: Path, backend: str, cwd: Path,
     if directory.exists():
         raise FileExistsError(f"对话已存在，不覆盖：{directory}")
     directory.mkdir(parents=True)
+    picked = tuning or Tuning()
     conv = Conversation(chat_id=chat_id, backend=backend, cwd=str(Path(cwd).resolve()),
-                        created_at=stamp.isoformat(timespec="seconds"))
+                        created_at=stamp.isoformat(timespec="seconds"),
+                        model=picked.model, effort=picked.effort)
     conv._dir = directory
     (directory / TRANSCRIPT_NAME).write_text(f"# 对话 {chat_id}\n", encoding="utf-8")
     conv.save()
-    LOGGER.info("chat_new chat_id=%s backend=%s cwd=%s", chat_id, backend, conv.cwd)
+    LOGGER.info("chat_new chat_id=%s backend=%s cwd=%s model=%s effort=%s", chat_id, backend,
+                conv.cwd, conv.model or "-", conv.effort or "-")
     return conv
 
 
@@ -135,13 +152,14 @@ def read_turns(conv: Conversation) -> list[dict[str, Any]]:
 def send(
     conv: Conversation, chat: Chat, message: str, *, system_prompt: str,
     allowed_paths: list[Path], bash_rules: tuple[str, ...], readable_paths: list[Path] = (),
-    timeout_s: float | None = None, origin: str = "人",
+    timeout_s: float | None = None, origin: str = "人", tuning: Tuning | None = None,
 ) -> Iterator[ChatEvent]:
     """发一轮：写 message.md → 逐个事件落盘并往外吐 → done/error 时更新 meta 与 transcript。
 
     生成器：调用方边迭代边拿事件（CLI 逐行打、HTTP 逐条 SSE）。中途调用方不迭代到底，
     finally 也会摘掉 inflight 标记，但 meta 不会记这一轮——那是"没走完"的真实状态。
     `origin` 是谁开的口：缺省是人；框架叫醒 agent 时是「框架」，transcript 与 history 照实标。
+    `tuning` 给了就是这一轮起改用这个模型 / 思考深度（记进 meta，之后每轮沿用）；不给沿用上次的。
     """
     message = message.strip()
     if not message:
@@ -151,6 +169,8 @@ def send(
     inflight = conv.dir / INFLIGHT_NAME
     if inflight.exists():
         raise ConversationBusy(f"这段对话正有一轮在跑（{inflight}），等它结束再发")
+    if tuning is not None:
+        conv.tune(tuning)
     # 轮次编号取盘上下一个空号，不取 meta.turns + 1：半途放弃的一轮目录留着当证据，
     # 不计入 turns，下一轮也不能撞上它
     turn_n = _next_turn(conv.dir)
@@ -162,14 +182,14 @@ def send(
                         encoding="utf-8")
     events_path = turn_dir / "events.jsonl"
     timeout = coordinator_timeout_s() if timeout_s is None else timeout_s
-    LOGGER.info("chat_turn_start chat_id=%s turn=%d resume=%s", conv.chat_id, turn_n,
-                conv.session_id or "-")
+    LOGGER.info("chat_turn_start chat_id=%s turn=%d resume=%s model=%s effort=%s", conv.chat_id,
+                turn_n, conv.session_id or "-", conv.model or "-", conv.effort or "-")
     try:
         with events_path.open("a", encoding="utf-8") as fh:
             for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
                                    system_prompt=system_prompt, allowed_paths=allowed_paths,
                                    bash_rules=bash_rules, readable_paths=readable_paths,
-                                   chat_id=conv.chat_id):
+                                   chat_id=conv.chat_id, tuning=conv.tuning):
                 if event.kind != "delta":  # 逐字片段只往外吐不落盘：证据是完整的 text，不是碎片
                     fh.write(json.dumps(event.raw or _bare(event), ensure_ascii=False) + "\n")
                     fh.flush()

@@ -9,6 +9,7 @@
 的域，对话四个端点在两个前缀下共用一套实现；主页面的对话物理上到不了库。
 
     GET  /health                            {"ok": true}
+    GET  /backends                          每家 agent 后端的旋钮：模型清单、思考深度档位、缺省
     GET  /stages                            七个科研阶段，按清单顺序
     GET  /cap                               能力描述符清单，每颗带 stage 与 used_by
     GET  /workflows                         库：`workflows/*.yaml`，covers / remarks / problems
@@ -23,9 +24,11 @@
     POST /workspaces/<id>/runs/<rid>/accept {"by"} → 验收记录
     GET  /workspaces/<id>/jobs[/<jid>]      作业清单 / 一个作业
     GET  <域>/chats                         对话清单；<域> 是 /workspaces/<id> 或 /studio
-    POST <域>/chats                         {"backend"?} → 新对话的 meta
+    POST <域>/chats                         {"backend"?, "model"?, "effort"?} → 新对话的 meta
     GET  <域>/chats/<cid>                   meta + transcript + history
-    POST <域>/chats/<cid>/messages          {"text"} → text/event-stream，一个事件一条
+    POST <域>/chats/<cid>/messages          {"text", "model"?, "effort"?} → text/event-stream，
+                                            一个事件一条；model / effort 给了就记进对话
+                                            （null 是回到后端缺省）
     GET  /<其它>                            `ui_dir` 里的静态文件，找不到的回 index.html（单页应用）
 """
 
@@ -36,13 +39,14 @@ import logging
 import math
 import mimetypes
 from collections.abc import Callable
+from dataclasses import asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from backends import BackendNotFound, Chat, ChatEvent, get_chat
+from backends import BackendNotFound, Chat, ChatEvent, Tuning, available_backends, get_chat
 from framework.chat import boards, conversation, guide, scope
 from framework.contracts import publish
 from framework.contracts.capability import STAGES
@@ -53,7 +57,7 @@ LOGGER = logging.getLogger("ai4sci.serve")
 DEFAULT_BACKEND = "claude_code"
 MAX_BODY = 1 << 20
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
-API_ROOTS = ("health", "stages", "cap", "workflows", "flow", "workspaces", "studio")
+API_ROOTS = ("health", "backends", "stages", "cap", "workflows", "flow", "workspaces", "studio")
 INDEX_NAME = "index.html"
 
 
@@ -117,6 +121,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._static(url.path)
         if parts == ["health"]:
             return self._json({"ok": True})
+        if parts == ["backends"]:
+            return self._json([{"name": name, "default": name == DEFAULT_BACKEND,
+                                **asdict(self.server.chat_factory(name).knobs())}
+                               for name in available_backends()])
         if parts == ["stages"]:
             return self._json(list(STAGES))
         if parts == ["cap"]:
@@ -221,10 +229,13 @@ class Handler(BaseHTTPRequestHandler):
         if rest == ["chats"]:
             backend = str(body.get("backend") or DEFAULT_BACKEND)
             try:
-                self.server.chat_factory(backend)  # 名字不对现在就报，别等发消息
+                chat = self.server.chat_factory(backend)  # 名字不对现在就报，别等发消息
             except BackendNotFound as exc:
                 return self._error(HTTPStatus.BAD_REQUEST, str(exc))
-            conv = conversation.new_conversation(where.chats, backend, where.cwd)
+            tuning = self._tuning(body, Tuning(), chat)
+            if tuning is None:
+                return None
+            conv = conversation.new_conversation(where.chats, backend, where.cwd, tuning=tuning)
             return self._json(conv.to_dict(), HTTPStatus.CREATED)
         if len(rest) == 3 and rest[0] == "chats" and rest[2] == "messages":
             conv = self._conversation(where, rest[1])
@@ -233,7 +244,14 @@ class Handler(BaseHTTPRequestHandler):
             text = body.get("text")
             if not isinstance(text, str) or not text.strip():
                 return self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 text")
-            return self._stream(where, conv, text)
+            try:
+                chat = self.server.chat_factory(conv.backend)
+            except BackendNotFound as exc:
+                return self._error(HTTPStatus.BAD_REQUEST, str(exc))
+            tuning = self._tuning(body, conv.tuning, chat)
+            if tuning is None:
+                return None
+            return self._stream(where, conv, chat, text, tuning)
         ws = where.workspace
         if ws is None:
             return self._error(HTTPStatus.NOT_FOUND, f"编辑台下只有对话：{self.path}")
@@ -281,17 +299,35 @@ class Handler(BaseHTTPRequestHandler):
         self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
         return None
 
-    def _stream(self, where: scope.Scope, conv: conversation.Conversation, text: str) -> None:
+    def _tuning(self, body: dict[str, Any], current: Tuning, chat: Chat) -> Tuning | None:
+        """body 里的 model / effort：没给的键沿用 current，给 null 是回到后端缺省；
+        不是字符串或不在这家后端的清单上就 400。"""
+        picked: dict[str, str | None] = {}
+        for key in ("model", "effort"):
+            value = body.get(key, getattr(current, key))
+            if value is not None and not isinstance(value, str):
+                self._error(HTTPStatus.BAD_REQUEST, f"{key} 要是字符串或 null")
+                return None
+            picked[key] = value
+        tuning = Tuning(**picked)
         try:
-            chat = self.server.chat_factory(conv.backend)
+            chat.knobs().check(tuning)
+        except ValueError as exc:
+            self._error(HTTPStatus.BAD_REQUEST, str(exc))
+            return None
+        return tuning
+
+    def _stream(self, where: scope.Scope, conv: conversation.Conversation, chat: Chat,
+                text: str, tuning: Tuning) -> None:
+        try:
             events = conversation.send(
                 conv, chat, text, system_prompt=self.server.system_prompts[where.kind],
                 allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
-                readable_paths=list(where.readable_paths))
+                readable_paths=list(where.readable_paths), tuning=tuning)
             first = next(events)  # 忙、空消息这类错误在头响应之前就要报出来
         except conversation.ConversationBusy as exc:
             return self._error(HTTPStatus.CONFLICT, str(exc))
-        except (ValueError, BackendNotFound) as exc:
+        except ValueError as exc:
             return self._error(HTTPStatus.BAD_REQUEST, str(exc))
         except StopIteration:
             return self._error(HTTPStatus.BAD_GATEWAY, "适配器一个事件都没吐")

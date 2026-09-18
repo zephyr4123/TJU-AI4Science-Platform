@@ -381,6 +381,61 @@ def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path, m
     assert "sonnet" in chat.build_argv("x", tmp_path, session_id=None, **common)
 
 
+def test_chat_knobs_list_models_and_efforts_and_read_the_env_defaults(monkeypatch):
+    """外层 #86：适配器自报有哪些模型、哪几档思考深度；缺省是环境里给的，没给就 None（不猜）。"""
+    from backends import Knobs, Tuning
+    from backends.claude_code import EFFORT_ENV, EFFORTS, MODEL_ENV, MODELS
+
+    monkeypatch.delenv(MODEL_ENV, raising=False)
+    monkeypatch.delenv(EFFORT_ENV, raising=False)
+    knobs = ClaudeCodeChat().knobs()
+    assert isinstance(knobs, Knobs) and knobs.models == MODELS and knobs.efforts == EFFORTS
+    assert knobs.model is None and knobs.effort is None
+    assert [c.id for c in knobs.efforts] == ["low", "medium", "high", "xhigh", "max"]
+    knobs.check(Tuning(model="opus", effort="max"))
+    knobs.check(Tuning())
+    with pytest.raises(ValueError, match="模型 'gpt' 不在清单上；可选：sonnet, opus, fable"):
+        knobs.check(Tuning(model="gpt"))
+    with pytest.raises(ValueError, match="思考深度 'ultra' 不在清单上"):
+        knobs.check(Tuning(effort="ultra"))
+    # 环境里给了清单外的全名：照样是缺省，清单上多出那一项，页面才对得上号
+    monkeypatch.setenv(MODEL_ENV, "claude-haiku-4-5-20251001")
+    monkeypatch.setenv(EFFORT_ENV, "high")
+    knobs = ClaudeCodeChat().knobs()
+    assert knobs.model == "claude-haiku-4-5-20251001" and knobs.effort == "high"
+    assert knobs.models[-1].id == "claude-haiku-4-5-20251001" and knobs.models[-1].note
+    monkeypatch.setenv(MODEL_ENV, "sonnet")
+    assert ClaudeCodeChat().knobs().models == MODELS
+    monkeypatch.setenv(EFFORT_ENV, "ultra")
+    with pytest.raises(AssertionError, match="AI4SCI_COORDINATOR_EFFORT 只认"):
+        ClaudeCodeChat().knobs()
+
+
+def test_chat_argv_takes_model_and_effort_from_the_turn_over_the_env(tmp_path: Path, monkeypatch):
+    from backends import Tuning
+    from backends.claude_code import EFFORT_ENV, MODEL_ENV
+
+    chat = ClaudeCodeChat()
+    common = dict(session_id=None, system_prompt="", allowed_paths=[], bash_rules=())
+    monkeypatch.delenv(MODEL_ENV, raising=False)
+    monkeypatch.delenv(EFFORT_ENV, raising=False)
+    bare = chat.build_argv("x", tmp_path, **common)
+    assert "--model" not in bare and "--effort" not in bare  # 都没给：让 CLI 用它自己的
+    picked = chat.build_argv("x", tmp_path, tuning=Tuning(model="opus", effort="max"), **common)
+    assert picked[picked.index("--model") + 1] == "opus"
+    assert picked[picked.index("--effort") + 1] == "max"
+    monkeypatch.setenv(MODEL_ENV, "sonnet")
+    monkeypatch.setenv(EFFORT_ENV, "low")
+    by_env = chat.build_argv("x", tmp_path, **common)
+    assert by_env[by_env.index("--model") + 1] == "sonnet"
+    assert by_env[by_env.index("--effort") + 1] == "low"
+    half = chat.build_argv("x", tmp_path, tuning=Tuning(effort="high"), **common)
+    assert half[half.index("--model") + 1] == "sonnet"
+    assert half[half.index("--effort") + 1] == "high"
+    with pytest.raises(ValueError, match="思考深度只认"):
+        chat.build_argv("x", tmp_path, tuning=Tuning(effort="ultra"), **common)
+
+
 def test_translate_turns_the_sample_stream_into_chat_events():
     events = [e for e in map(_translate, CHAT_FIXTURE.read_text(encoding="utf-8").splitlines())
               if e is not None]
@@ -412,13 +467,17 @@ def test_chat_event_rejects_unknown_kind():
 
 @pytest.mark.skipif(os.environ.get("AI4SCI_LIVE") != "1", reason="真 CLI，AI4SCI_LIVE=1 才跑")
 def test_live_chat_two_turns_remember_across_resume(tmp_path: Path, monkeypatch):
+    from backends import Tuning
+
     monkeypatch.setenv("AI4SCI_COORDINATOR_MODEL", "claude-haiku-4-5-20251001")
     chat = ClaudeCodeChat()
     common = dict(system_prompt="你是测试助手，回答极短。", allowed_paths=[], bash_rules=())
     first = list(chat.turn("记住这个数字：17。只回“好”。", tmp_path, 120, session_id=None,
-                           **common))
+                           tuning=Tuning(effort="low"), **common))
     sid = first[0].session_id
     assert first[0].kind == "init" and sid and first[-1].kind == "done"
+    # 旋钮真拧到了 CLI 上：init 事件回报的模型就是环境里给的那个（外层 #86）
+    assert "haiku" in str(first[0].raw.get("model", ""))
     second = list(chat.turn("刚才的数字是多少？只回数字。", tmp_path, 120, session_id=sid,
                             **common))
     assert second[-1].kind == "done" and "17" in second[-1].text

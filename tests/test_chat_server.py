@@ -13,7 +13,7 @@ from backends import BackendNotFound
 from framework import paths
 from framework.chat.server import ChatServer
 from framework.run import workspace
-from tests.fixtures.scripted_chat import ScriptedChat, reply, with_tool
+from tests.fixtures.scripted_chat import KNOBS, ScriptedChat, reply, with_tool
 
 CATALOG = [{"name": "design", "level": "task"}, {"name": "experiment", "level": "run"}]
 WORKFLOWS = [{"name": "w", "title": "一条", "summary": "…", "assumes": [],
@@ -179,6 +179,57 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
     other = "/studio" if prefix != "/studio" else "/workspaces/w1"
     assert json.loads(call(base, f"{other}/chats")[2]) == []
     assert call(base, f"{other}/chats/{chat_id}")[0] == 404
+
+
+def test_backends_endpoint_reports_each_backends_knobs(served):
+    """外层 #86：页面照单渲染模型与思考深度两枚旋钮，清单是后端自报的。"""
+    base, _ = served
+    status, _, body = call(base, "/backends")
+    assert status == 200
+    [claude] = json.loads(body)
+    assert claude["name"] == "claude_code" and claude["default"] is True
+    assert claude["models"] == [{"id": "a", "label": "甲", "note": "快"},
+                                {"id": "b", "label": "乙", "note": ""}]
+    assert [e["id"] for e in claude["efforts"]] == ["low", "high"]
+    assert claude["model"] is None and claude["effort"] is None
+
+
+def test_chat_tuning_is_checked_against_the_knobs_and_remembered(served, tmp_path):
+    """外层 #86：开对话与发消息都能带 model / effort；不在清单上 400；给了记住、null 回缺省。"""
+    from backends import Tuning
+
+    base, chat = served
+    chat.turns.append(reply("三"))
+    status, _, body = call(base, "/studio/chats", {"model": "zz"})
+    assert status == 400 and "模型 'zz' 不在清单上" in json.loads(body)["error"]
+    status, _, body = call(base, "/studio/chats", {"effort": 3})
+    assert status == 400 and json.loads(body)["error"] == "effort 要是字符串或 null"
+    status, _, body = call(base, "/studio/chats", {"model": "a"})
+    assert status == 201
+    meta = json.loads(body)
+    assert meta["model"] == "a" and meta["effort"] is None
+    chat_id = meta["chat_id"]
+
+    # 发消息时改深度：模型沿用对话上记的，深度记进去
+    status, _, body = call(base, f"/studio/chats/{chat_id}/messages",
+                           {"text": "你好", "effort": "high"})
+    assert status == 200 and sse_events(body)[-1]["event"] == "done"
+    assert chat.calls[-1]["tuning"] == Tuning(model="a", effort="high")
+    doc = json.loads(call(base, f"/studio/chats/{chat_id}")[2])
+    assert doc["model"] == "a" and doc["effort"] == "high"
+    # 不在清单上的在头响应之前就拒，不开始流、不算一轮
+    status, _, body = call(base, f"/studio/chats/{chat_id}/messages",
+                           {"text": "再来", "effort": "ultra"})
+    assert status == 400
+    assert "思考深度 'ultra' 不在清单上；可选：low, high" in json.loads(body)["error"]
+    assert not (tmp_path / "studio" / "chats" / chat_id / "turn-2").exists()
+    # null 是回到后端缺省
+    status, _, body = call(base, f"/studio/chats/{chat_id}/messages",
+                           {"text": "再来", "model": None, "effort": None})
+    assert status == 200 and chat.calls[-1]["tuning"] == Tuning()
+    doc = json.loads(call(base, f"/studio/chats/{chat_id}")[2])
+    assert doc["model"] is None and doc["effort"] is None and doc["turns"] == 2
+    assert KNOBS.models[0].id == "a"  # 清单与剧本夹具对账
 
 
 def test_error_status_codes(served, tmp_path):

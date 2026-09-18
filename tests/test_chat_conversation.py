@@ -65,6 +65,29 @@ def test_framework_origin_turn_is_labelled_and_chat_id_reaches_the_adapter(tmp_p
         drain(conv, chat, "x", origin="机器人")
 
 
+def test_tuning_is_remembered_on_meta_and_reaches_the_adapter_every_turn(tmp_path):
+    """外层 #86：选了模型 / 思考深度就记进 meta，之后每轮沿用；给 None 是回到后端缺省。"""
+    from backends import Tuning
+
+    conv, chat = start(tmp_path, reply("一"), reply("二"), reply("三"))
+    assert conv.tuning == Tuning() and conv.to_dict()["model"] is None
+    drain(conv, chat, "第一句", tuning=Tuning(model="a", effort="high"))
+    assert chat.calls[0]["tuning"] == Tuning(model="a", effort="high")
+    meta = json.loads((conv.dir / "meta.json").read_text(encoding="utf-8"))
+    assert meta["model"] == "a" and meta["effort"] == "high"
+    drain(conv, chat, "第二句")  # 没给：沿用上次的
+    assert chat.calls[1]["tuning"] == Tuning(model="a", effort="high")
+    loaded = conv_mod.load_conversation(tmp_path / "chats", conv.chat_id)
+    assert loaded.tuning == Tuning(model="a", effort="high")
+    drain(loaded, chat, "第三句", tuning=Tuning())  # 回到缺省
+    assert chat.calls[2]["tuning"] == Tuning()
+    assert conv_mod.load_conversation(tmp_path / "chats", conv.chat_id).tuning == Tuning()
+    # 开对话时就能带上
+    fresh = conv_mod.new_conversation(tmp_path / "chats", "scripted", tmp_path,
+                                      tuning=Tuning(effort="low"))
+    assert fresh.tuning == Tuning(effort="low")
+
+
 def test_two_turns_resume_by_session_id_and_land_on_disk(tmp_path):
     listing = with_tool("有三个任务包", "Bash", {"command": "ai4sci task list"}, "a\nb\nc")
     conv, chat = start(tmp_path, reply("你好，研究者"), listing)

@@ -24,7 +24,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import ChatEvent, RunResult
+from backends import ChatEvent, Choice, Knobs, RunResult, Tuning
 from backends._snapshot import diff, snapshot
 
 # 不读 user/project/local 任何设置源：会话因此不继承本机的 CLAUDE.md、hook、plugin、
@@ -35,6 +35,15 @@ ISOLATION_ARGS = ("--setting-sources", "", "--strict-mcp-config", "--disable-sla
 # 名字抄一份，测试对账
 CHAT_ID_ENV = "AI4SCI_CHAT_ID"
 EXECUTOR_ISOLATION_ARGS = ("--no-session-persistence", *ISOLATION_ARGS)
+# 协调层的两个旋钮（外层 #86）。起服务的人在环境里给缺省，人在页面或终端上每轮可改。
+MODEL_ENV = "AI4SCI_COORDINATOR_MODEL"
+EFFORT_ENV = "AI4SCI_COORDINATOR_EFFORT"
+# 模型写 CLI 认的别名（`--model` 也收全名：环境里给了全名照样能用，清单上会多出那一项）
+MODELS = (Choice("sonnet", "Sonnet", "快"), Choice("opus", "Opus", "强"),
+          Choice("fable", "Fable", "最强"))
+# `--effort` 的五档，按 2.1.276 的 --help；顺序就是从浅到深
+EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
+           Choice("xhigh", "超高"), Choice("max", "最高"))
 _TAIL_CHARS = 4000
 # tool_result 进事件的正文上限：页面与 CLI 打印只要开头，全文在 raw 里落盘
 _RESULT_CHARS = 4000
@@ -46,6 +55,16 @@ def _env_num(name: str, default: float, cast: type) -> float:
     value = default if raw is None else cast(raw)
     assert isinstance(value, (int, float)) and value > 0, f"{name} 必须是正数，得到 {value!r}"
     return value
+
+
+def _default_effort() -> str | None:
+    """环境里给的缺省思考深度；没给就 None（CLI 自己定），给错就炸，不静默回落（P-7）。"""
+    raw = os.environ.get(EFFORT_ENV)
+    if not raw:
+        return None
+    assert raw in {c.id for c in EFFORTS}, \
+        f"{EFFORT_ENV} 只认 {', '.join(c.id for c in EFFORTS)}，得到 {raw!r}"
+    return raw
 
 
 def _abs_glob(path: Path) -> str:
@@ -220,6 +239,16 @@ class ClaudeCodeChat:
         self.cli = cli
 
     @staticmethod
+    def knobs() -> Knobs:
+        """有哪些模型、哪几档思考深度、不选时用什么。缺省模型是环境里给的那个（没给就 None：
+        CLI 自己定，我们不猜）；给的是清单外的全名就把它也列上，页面上才对得上号。"""
+        model = os.environ.get(MODEL_ENV) or None
+        models = MODELS
+        if model is not None and model not in {c.id for c in MODELS}:
+            models = (*MODELS, Choice(model, model, "环境里给的"))
+        return Knobs(models=models, efforts=EFFORTS, model=model, effort=_default_effort())
+
+    @staticmethod
     def build_env(timeout_s: float, chat_id: str | None = None) -> dict[str, str]:
         """子进程环境：继承本进程，外加 venv 的 bin 进 PATH、关后台、Bash 超时对齐本轮超时。
 
@@ -243,7 +272,7 @@ class ClaudeCodeChat:
     def build_argv(
         self, message: str, cwd: Path, *, session_id: str | None, system_prompt: str,
         allowed_paths: list[Path], bash_rules: tuple[str, ...],
-        readable_paths: list[Path] = (),
+        readable_paths: list[Path] = (), tuning: Tuning | None = None,
     ) -> list[str]:
         rules: list[str] = []
         for path in allowed_paths:
@@ -267,19 +296,28 @@ class ClaudeCodeChat:
             argv += ["--append-system-prompt", system_prompt]
         if session_id:
             argv += ["--resume", session_id]
-        model = os.environ.get("AI4SCI_COORDINATOR_MODEL")
+        # 这一轮选的压过环境里的缺省；都没有就不传，让 CLI 用它自己的
+        picked = tuning or Tuning()
+        model = picked.model or os.environ.get(MODEL_ENV)
         if model:
             argv += ["--model", model]
+        effort = picked.effort or _default_effort()
+        if effort:
+            if effort not in {c.id for c in EFFORTS}:
+                raise ValueError(
+                    f"思考深度只认 {', '.join(c.id for c in EFFORTS)}，得到 {effort!r}")
+            argv += ["--effort", effort]
         return argv
 
     def turn(
         self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
         system_prompt: str, allowed_paths: list[Path], bash_rules: tuple[str, ...],
         readable_paths: list[Path] = (), chat_id: str | None = None,
+        tuning: Tuning | None = None,
     ) -> Iterator[ChatEvent]:
         argv = self.build_argv(message, cwd, session_id=session_id, system_prompt=system_prompt,
                                allowed_paths=allowed_paths, bash_rules=bash_rules,
-                               readable_paths=readable_paths)
+                               readable_paths=readable_paths, tuning=tuning)
         err: list[str] = []
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,

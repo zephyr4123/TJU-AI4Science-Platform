@@ -9,9 +9,12 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
-from backends import ChatEvent
+from backends import ChatEvent, Choice, Knobs, Tuning
 
 SESSION = "sess-0001"
+# 剧本后端的两个旋钮：两个模型、两档深度，缺省都是「后端自己定」（None）
+KNOBS = Knobs(models=(Choice("a", "甲", "快"), Choice("b", "乙")),
+              efforts=(Choice("low", "低"), Choice("high", "高")))
 
 
 def reply(text: str, *, cost: float = 0.01, session: str = SESSION) -> list[ChatEvent]:
@@ -58,17 +61,22 @@ def failure(why: str) -> list[ChatEvent]:
 
 
 class ScriptedChat:
-    def __init__(self, turns: list[list[ChatEvent]]) -> None:
+    def __init__(self, turns: list[list[ChatEvent]], knobs: Knobs = KNOBS) -> None:
         self.turns = list(turns)
         self.calls: list[dict] = []
+        self._knobs = knobs
+
+    def knobs(self) -> Knobs:
+        return self._knobs
 
     def turn(self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
              system_prompt: str, allowed_paths: list[Path],
              bash_rules: tuple[str, ...], readable_paths: list[Path] = (),
-             chat_id: str | None = None) -> Iterator[ChatEvent]:
+             chat_id: str | None = None, tuning: Tuning | None = None) -> Iterator[ChatEvent]:
         assert self.turns, "剧本用完了还在调 turn()"
         self.calls.append({"message": message, "cwd": Path(cwd), "timeout_s": timeout_s,
                            "session_id": session_id, "system_prompt": system_prompt,
                            "allowed_paths": list(allowed_paths), "bash_rules": tuple(bash_rules),
-                           "readable_paths": list(readable_paths), "chat_id": chat_id})
+                           "readable_paths": list(readable_paths), "chat_id": chat_id,
+                           "tuning": tuning})
         yield from self.turns.pop(0)

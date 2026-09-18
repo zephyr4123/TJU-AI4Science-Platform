@@ -8,7 +8,7 @@
 |---|---|
 | `coordinator/` | 两位助理的指南（纲领 P-16）：`README.md` 主页面的研究助理——怎么当科研助理、怎么驱动框架、怎么从库里取一条流改参数照着跑，不造流；`studio.md` 编辑台的造流助理——怎么把能力拼成流存进 `workflows/`，不跑实验。人在终端当协调层时由 CLI 读进来；服务起的会话由 `framework/chat/guide.py` 按域塞进 system prompt；执行层会话不许加载 |
 | `framework/` | 框架：能力、runner、契约 schema、验证、裁判、`ai4sci` CLI。零模型调用，不随任务改 |
-| `backends/` | agent 适配器：一个 coding agent CLI 一个文件；两个端口都定义在 `backends/__init__.py`：`Runner`（执行层，一次会话）与 `Chat`（协调层，多轮续接、事件流；起会话时把本 venv 的 bin 追加进 PATH、关后台、Bash 超时对齐本轮、`AI4SCI_CHAT_ID` 告诉按钮自己属于哪段对话）。换一家 CLI 就是加一个文件，主人红线：涉及 agent 的一律可替换 |
+| `backends/` | agent 适配器：一个 coding agent CLI 一个文件；两个端口都定义在 `backends/__init__.py`：`Runner`（执行层，一次会话）与 `Chat`（协调层，多轮续接、事件流；起会话时把本 venv 的 bin 追加进 PATH、关后台、Bash 超时对齐本轮、`AI4SCI_CHAT_ID` 告诉按钮自己属于哪段对话；`knobs()` 自报有哪些模型、哪几档思考深度与缺省，每轮的 `tuning` 翻成 `--model` / `--effort`，页面与终端只许从清单里选）。换一家 CLI 就是加一个文件，主人红线：涉及 agent 的一律可替换 |
 | `compute/` | 算力适配器：一个后端一个文件；端口 `Compute` 定义在 `compute/__init__.py` |
 | `tools/` | 确定性脚本：文献 API、引用校验、出图、harness 基类 |
 | `domains/` | 领域包，按工具链命名，一个领域一个目录；`generic/` 兜底、`petab/` 参数估计；`prompts/<能力>.md` 与 `skills/*/SKILL.md` 由 `cap start` 快照进 run、随执行层提示的「领域约定」段注入（执行层的隔离参数关掉了 CLI 原生 skill 加载） |

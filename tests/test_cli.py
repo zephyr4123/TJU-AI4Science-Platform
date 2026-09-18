@@ -655,6 +655,40 @@ def test_chat_new_send_list_in_the_workspace_with_a_scripted_backend(tmp_path, m
     assert out[1] == "基线跑完了，均值 21.49。" and out[2].startswith("done\t")
 
 
+def test_chat_new_and_send_take_model_and_effort_from_the_backends_list(tmp_path, monkeypatch,
+                                                                         capsys):
+    """外层 #86：`--model` / `--effort` 只认后端自报的清单；选了记进对话，list 里看得见。"""
+    from backends import Tuning
+    from framework.chat import conversation, guide
+    from framework.cli import main
+    from framework.run import workspace
+    from tests.fixtures.scripted_chat import ScriptedChat, reply
+
+    chat = ScriptedChat([reply("好"), reply("好")])
+    monkeypatch.setattr("framework.cli.chat.get_chat", lambda name: chat)
+    monkeypatch.setitem(guide.GUIDE_PATHS, guide.WORKSPACE, tmp_path / "README.md")
+    (tmp_path / "README.md").write_text("# 指南\n", encoding="utf-8")
+    ws = workspace.create(tmp_path / "workspaces", "w")
+    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+
+    assert main(["chat", "new", "--model", "gpt"]) == EXIT_USAGE
+    assert "模型 'gpt' 不在清单上；可选：a, b" in capsys.readouterr().err
+    assert main(["chat", "new", "--model", "b", "--effort", "low"]) == EXIT_OK
+    chat_id = capsys.readouterr().out.split("\t")[0].split(" ")[1]
+    assert conversation.load_conversation(ws.chats, chat_id).tuning == Tuning("b", "low")
+
+    assert main(["chat", "send", chat_id, "一", "--effort", "ultra"]) == EXIT_USAGE
+    assert "思考深度 'ultra' 不在清单上" in capsys.readouterr().err and chat.calls == []
+    assert main(["chat", "send", chat_id, "一", "--effort", "high"]) == EXIT_OK
+    capsys.readouterr()
+    assert chat.calls[0]["tuning"] == Tuning("b", "high")  # 模型沿用开对话时选的
+    assert main(["chat", "send", chat_id, "二"]) == EXIT_OK
+    capsys.readouterr()
+    assert chat.calls[1]["tuning"] == Tuning("b", "high")
+    assert main(["chat", "list"]) == EXIT_OK
+    assert capsys.readouterr().out.rstrip().endswith("backend=claude_code\tmodel=b\teffort=high")
+
+
 def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_path, monkeypatch,
                                                                             capsys):
     """纲领 P-16：`--studio` 是编辑台的造流助理——另一份指南、对话在 studio/ 下、只能写库。"""

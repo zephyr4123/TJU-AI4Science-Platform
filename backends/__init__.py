@@ -20,8 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-__all__ = ["RunResult", "Runner", "ChatEvent", "Chat", "BackendNotFound", "get_backend",
-           "get_chat", "available_backends"]
+__all__ = ["RunResult", "Runner", "ChatEvent", "Choice", "Tuning", "Knobs", "Chat",
+           "BackendNotFound", "get_backend", "get_chat", "available_backends"]
 
 
 @dataclass
@@ -90,6 +90,46 @@ class ChatEvent:
         assert self.kind in CHAT_EVENT_KINDS, f"未知的事件种类 {self.kind!r}"
 
 
+@dataclass(frozen=True)
+class Choice:
+    """旋钮上的一个刻度：`id` 给 CLI 看，`label` 给人看，`note` 是一句提示（可空）。"""
+
+    id: str
+    label: str
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class Tuning:
+    """一轮用什么：模型与思考深度。`None` 是「后端自己的缺省」，适配器不替人猜一个。"""
+
+    model: str | None = None
+    effort: str | None = None
+
+
+@dataclass(frozen=True)
+class Knobs:
+    """一家 CLI 能拧的两个旋钮（外层 #86）：有哪些模型、有哪几档思考深度、不选时用什么。
+
+    清单由适配器自报（页面照单渲染，不写死哪家有什么）；`model` / `effort` 是不选时实际会用的值，
+    拿不准（CLI 自己的缺省）就 None——页面上写「默认」，不编一个。每家 CLI 都能换模型、
+    换思考深度，这是端口的要求；哪家真不能换就报空清单，页面上那枚旋钮不出现。
+    """
+
+    models: tuple[Choice, ...]
+    efforts: tuple[Choice, ...]
+    model: str | None = None
+    effort: str | None = None
+
+    def check(self, tuning: Tuning) -> None:
+        """人选的值要在清单上；不在就报一句带清单的话（ValueError：配置值非法，不静默回落）。"""
+        for name, picked, choices in (("模型", tuning.model, self.models),
+                                       ("思考深度", tuning.effort, self.efforts)):
+            if picked is not None and picked not in {c.id for c in choices}:
+                raise ValueError(
+                    f"{name} {picked!r} 不在清单上；可选：{', '.join(c.id for c in choices)}")
+
+
 @runtime_checkable
 class Chat(Protocol):
     """协调层适配器的唯一形状：一句话进、一串事件出，能按 session id 续。
@@ -99,7 +139,11 @@ class Chat(Protocol):
     的语义同 `Runner`：尽量收紧，各家 CLI 的权限模型对不齐；`readable_paths` 是工作目录之外
     「能读不能写」的目录（研究助理看工作流库用，P-16）。`chat_id` 是这段对话的名字：
     适配器要让 agent 按的按钮拿得到它（环境变量 `AI4SCI_CHAT_ID`），后台作业跑完才知道叫醒谁。
+    `tuning` 是这一轮用什么模型、什么思考深度（外层 #86）：None 或字段为 None 就用后端缺省；
+    `knobs()` 报这家 CLI 有哪些刻度，页面与终端只许从里面选。
     """
+
+    def knobs(self) -> Knobs: ...
 
     def turn(
         self,
@@ -113,6 +157,7 @@ class Chat(Protocol):
         bash_rules: tuple[str, ...],
         readable_paths: list[Path] = (),
         chat_id: str | None = None,
+        tuning: Tuning | None = None,
     ) -> Iterator[ChatEvent]: ...
 
 
@@ -157,4 +202,6 @@ def get_chat(name: str) -> Chat:
     assert hasattr(module, "make_chat"), f"后端 {name!r} 还没有协调层适配器（make_chat）"
     chat = module.make_chat()
     assert hasattr(chat, "turn"), f"后端 {name!r} 的 make_chat() 没有返回带 turn() 的对象"
+    assert hasattr(chat, "knobs"), \
+        f"后端 {name!r} 的协调层适配器没有 knobs()：得报有哪些模型与思考深度"
     return chat

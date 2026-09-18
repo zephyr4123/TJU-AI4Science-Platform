@@ -2,7 +2,8 @@
 
 在 cli 层，调 `framework.chat`。域由 `--studio` 定：给了就是编辑台的造流助理，不给就是当前工作区的
 研究助理（P-16）。`send` 把事件逐行打到 stdout：助理的话逐字打（delta），工具一行一个，
-最后一行 `done` 或 `error`；退出码照旧 0 / 1 / 2。
+最后一行 `done` 或 `error`；退出码照旧 0 / 1 / 2。`new` 与 `send` 的 `--model` / `--effort`
+选模型与思考深度（外层 #86）：只认后端自报的清单，选了记进对话、之后每轮沿用；页面同一套。
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 
-from backends import BackendNotFound, ChatEvent, get_chat
+from backends import BackendNotFound, ChatEvent, Tuning, get_chat
 from framework import paths
 from framework.chat import conversation, guide, scope
 from framework.cli._common import (
@@ -33,16 +34,39 @@ def _scope(args: argparse.Namespace) -> scope.Scope | int:
     return ws if isinstance(ws, int) else scope.for_workspace(ws)
 
 
+def _tuning(args: argparse.Namespace, current: Tuning, backend: str) -> Tuning | None | int:
+    """命令行上的 `--model` / `--effort`：没给的沿用 current；给了就对着后端的清单核，不对退 2。
+    两个都没给回 None（对话层沿用上次的，什么都不写）。"""
+    if args.model is None and args.effort is None:
+        return None
+    try:
+        chat = get_chat(backend)
+    except BackendNotFound as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    tuning = Tuning(model=args.model if args.model is not None else current.model,
+                    effort=args.effort if args.effort is not None else current.effort)
+    try:
+        chat.knobs().check(tuning)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    return tuning
+
+
 def cmd_new(args: argparse.Namespace) -> int:
     try:
         get_chat(args.backend)
     except BackendNotFound as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
+    tuning = _tuning(args, Tuning(), args.backend)
+    if isinstance(tuning, int):
+        return tuning
     where = _scope(args)
     if isinstance(where, int):
         return where
-    conv = conversation.new_conversation(where.chats, args.backend, where.cwd)
+    conv = conversation.new_conversation(where.chats, args.backend, where.cwd, tuning=tuning)
     studio = " --studio" if args.studio else ""
     print(f"ok {conv.chat_id}\t{conv.dir}\tnext=ai4sci chat send {conv.chat_id}{studio} \"<说话>\"")
     return EXIT_OK
@@ -69,6 +93,9 @@ def cmd_send(args: argparse.Namespace) -> int:
     except guide.GuideMissing as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
+    tuning = _tuning(args, conv.tuning, conv.backend)
+    if isinstance(tuning, int):
+        return tuning
     setup_logging()
     last: ChatEvent | None = None
     streaming = False  # 正在逐字打一段话：完整的 text 来了只补个换行，不再打一遍
@@ -76,7 +103,7 @@ def cmd_send(args: argparse.Namespace) -> int:
         for event in conversation.send(
             conv, get_chat(conv.backend), text, system_prompt=system_prompt,
             allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
-            readable_paths=list(where.readable_paths),
+            readable_paths=list(where.readable_paths), tuning=tuning,
         ):
             last = event
             if event.kind == "delta":
@@ -101,7 +128,7 @@ def cmd_list(args: argparse.Namespace) -> int:
         return where
     for conv in conversation.list_conversations(where.chats):
         print(f"{conv.chat_id}\tturns={conv.turns}\tcost_usd={conv.cost_usd:.4f}"
-              f"\tbackend={conv.backend}")
+              f"\tbackend={conv.backend}\tmodel={conv.model or '-'}\teffort={conv.effort or '-'}")
     return EXIT_OK
 
 
@@ -132,14 +159,22 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     creating = actions.add_parser("new", help="开一段对话：<域>/chats/<id>/")
     creating.add_argument("--backend", default=DEFAULT_BACKEND, help="agent 后端名")
     creating.add_argument("--studio", action="store_true", help="编辑台的造流助理，不看工作区")
+    _add_knobs(creating)
     creating.set_defaults(func=cmd_new)
 
     sending = actions.add_parser("send", help="发一句话，事件逐行打出，最后一行 done / error")
     sending.add_argument("chat_id")
     sending.add_argument("text", help="消息；写 @<文件> 就读那个文件")
     sending.add_argument("--studio", action="store_true", help="编辑台的对话")
+    _add_knobs(sending)
     sending.set_defaults(func=cmd_send)
 
     listing = actions.add_parser("list", help="列出这个域的全部对话")
     listing.add_argument("--studio", action="store_true", help="编辑台的对话")
     listing.set_defaults(func=cmd_list)
+
+
+def _add_knobs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--model", default=None,
+                        help="换模型：后端清单里的名字（GET /backends 看）")
+    parser.add_argument("--effort", default=None, help="换思考深度：后端清单里的档位")
