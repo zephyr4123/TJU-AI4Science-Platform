@@ -52,7 +52,7 @@ export function Composer({ busy, hints, onSend }: Props) {
 
   const texts = busy ? ['助理回答中'] : hints
   return (
-    <div className="relative z-10 px-6 pt-2 pb-5">
+    <div className="relative z-10 px-6 pt-3 pb-6">
       <GlassSurface borderRadius={24} className="mx-auto max-w-[44rem] focus-within:ring-3 focus-within:ring-ring/35">
         <div className="relative flex flex-col px-4 pt-4 pb-3">
           {text === '' && (

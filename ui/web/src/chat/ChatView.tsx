@@ -130,7 +130,7 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {!chatId && <Welcome copy={welcome} />}
         {chatId && (
-          <div className="mx-auto max-w-[44rem] px-6 py-8">
+          <div className="mx-auto max-w-[44rem] px-6 pt-8">
             {doc.loading && !doc.data && <Skeleton lines={4} />}
             {doc.error && <ErrorNote text={doc.error} />}
             {doc.data && turns.length === 0 && (
@@ -143,7 +143,8 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
               {turns.map((turn) => <TurnView key={turn.n} turn={turn} />)}
             </div>
             {sendError && <ErrorNote text={sendError} className="mt-4" />}
-            <div ref={bottom} />
+            {/* 滚动锚点自带一段空档：最后一句和输入框之间要有呼吸，滚到底时这段也在视野里 */}
+            <div ref={bottom} className="h-20" />
           </div>
         )}
       </div>
