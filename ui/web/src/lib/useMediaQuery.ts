@@ -15,3 +15,12 @@ export function useMediaQuery(query: string): boolean {
   }, [query])
   return matches
 }
+
+/** 深色与否：跟系统偏好，`<html data-theme>` 可强制——与 index.css 里的规则同一口径 */
+export const DARK = '(prefers-color-scheme: dark)'
+
+export function useDark(): boolean {
+  const system = useMediaQuery(DARK)
+  const forced = document.documentElement.dataset.theme
+  return forced === 'dark' || (forced !== 'light' && system)
+}

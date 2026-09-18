@@ -35,17 +35,18 @@ ai4sci serve       # 起后端并端出页面：http://127.0.0.1:8765
 ```
 
 开发时两个进程：`ai4sci serve`（接口，8765）+ `cd ui/web && npm run dev`（页面，5173，接口按前缀代理过去）。
-门禁 `make ui-check` = 类型检查 + oxlint + vitest + 构建，已并入 `make check` 与 CI。
+门禁 `make ui-check` = 素材不进仓的检查（`git ls-files ui/` 没有 png / jpg / mp4，纲领 P-17）+ 类型检查 + oxlint + vitest + 构建，已并入 `make check` 与 CI。
 
 ## 网页的结构
 
 设计口径在 `docs/PRODUCT.md`（给谁用、反例、原则）与 `docs/DESIGN.md`（色板、字阶、布局）。
-页面先认工作区：顶栏一个下拉切工作区、一个加号起新的；没有工作区时主页面是「起一个工作区」的欢迎屏。
+页面先认工作区：顶栏一个下拉切工作区、一个加号起新的；没有工作区时主页面是「新建工作区」那一屏（循环视频背景），有工作区还没对话时是配图 + 输入框，打字就开一段。
 主页面 = 这个工作区的对话 + 流程脊柱（当前 run 照的那条流，或需求对齐）；编辑台 = 造流助理的对话 + 库（工作流墙、货架、拼流台）。
 正文只许出现 `lib/humanize.ts` 翻译过的句子；状态码、哈希、命令只在折叠层。
 
 ```
 web/src/
+  assets.ts   页面里全部图片 / 视频的 CDN URL，仅此一处（纲领 P-17）；素材清单在 docs/DESIGN.md
   api/        契约：types.ts（响应体的类型）、client.ts（每个端点一个函数，Scope 定域前缀）、sse.ts（事件流）
   chat/       对话：trace.ts（事件流折成条目，纯函数、有单测）、ChatView（两个域共用，文案由父组件给）/ TurnView / Composer
   workspace/  WorkspaceSwitcher（顶栏下拉）、NewWorkspace（起一个工作区的欢迎屏与表单）
@@ -53,7 +54,7 @@ web/src/
   studio/     编辑台的库那一半：工作流墙、七段货架、拼流台
   keys/       发布、验收两颗键（StarBorder 改装）
   sidebar/    对话列表抽屉
-  components/ 零件 bits.tsx、Markdown.tsx、shadcn 生成的 ui/、reactbits 的改装件
+  components/ 零件 bits.tsx、Markdown.tsx、Backdrop（门口的视频背景）、shadcn 生成的 ui/、reactbits 的改装件
   lib/        humanize.ts（术语翻人话、能力的人话说法，有单测）、useChats（一个域的对话清单）、format、取数 hook、署名记忆
 ```
 
@@ -64,4 +65,3 @@ web/src/
 
 - 拖拽编排画布与「摆一串查通不通」：等套餐文件有了第二个用例（外层 #47 第 6 件）；第一版做过的检查工具已砍，CLI 的 `flow check` 还在
 - 多用户、鉴权、token 级流式：后端是本机单人服务
-- 深色主题：使用场景是白天实验室里读数字，先只做浅色

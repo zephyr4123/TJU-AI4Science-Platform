@@ -10,6 +10,8 @@ export function useChats(scope: Scope) {
   const chats = useResource(() => api.chats(scope), [key])
   const [picked, setPicked] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  // 输入框就是门：还没有对话时打的第一句话，先开一段，再由新对话的视图发出去
+  const [opening, setOpening] = useState<string | null>(null)
   // 每完成一轮对话加一：助理可能运行了什么，看板据此重读
   const [epoch, setEpoch] = useState(0)
 
@@ -30,10 +32,17 @@ export function useChats(scope: Scope) {
     }
   }, [chats, scope])
 
+  const start = useCallback(async (text: string) => {
+    setOpening(text)
+    await newChat()
+  }, [newChat])
+
+  const opened = useCallback(() => setOpening(null), [])
+
   const turnDone = useCallback(() => {
     void chats.reload()
     setEpoch((e) => e + 1)
   }, [chats])
 
-  return { chats, chatId, current, creating, epoch, newChat, pick: setPicked, turnDone }
+  return { chats, chatId, current, creating, epoch, newChat, opening, start, opened, pick: setPicked, turnDone }
 }

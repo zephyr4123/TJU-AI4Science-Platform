@@ -1,11 +1,13 @@
 // 新建工作区：一个工作区一份需求，也就是一个文件夹（外层 #70 #74）。
-// 这一屏没有表单：那句话本身就是要填的（记录本上的填空行），右边那只文件夹是全屏唯一放胆处，
+// 这一屏没有表单：那句话本身就是要填的（记录本上的填空行），底下铺一段循环视频（浅色云雾、深色光线汇聚），右边那只文件夹在上面，
 // 名字一边打、标签一边显，打好了它就打开，露出里面会有的三样：需求、流、实验。字要少（主人：简洁）。
 import { useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 
 import { api } from '@/api/client'
+import { ASSETS } from '@/assets'
 import type { WorkspaceSummary } from '@/api/types'
+import { Backdrop } from '@/components/Backdrop'
 import { ErrorNote } from '@/components/bits'
 import { Folder } from '@/components/reactbits/Folder'
 import ShinyText from '@/components/reactbits/ShinyText'
@@ -47,9 +49,10 @@ export function NewWorkspace({ existing, onCreated, onCancel, onPick }: {
   }
 
   return (
-    <div className="paper-grid paper-grid-faint relative flex-1 overflow-y-auto">
+    <div className="relative flex-1 overflow-y-auto">
+      <Backdrop clip={ASSETS.door} />
       <form
-        className="mx-auto grid min-h-full max-w-[72rem] gap-12 px-8 py-16 lg:grid-cols-[1fr_26rem] lg:items-center"
+        className="relative mx-auto grid min-h-full max-w-[72rem] gap-12 px-8 py-16 lg:grid-cols-[1fr_26rem] lg:items-center"
         onSubmit={(e) => { e.preventDefault(); if (valid && !taken && !busy) void create() }}
       >
         <div className="min-w-0">

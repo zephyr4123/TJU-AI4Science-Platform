@@ -221,9 +221,13 @@
 
 @layer components {
   /* 四种字：结论（宋体）、步骤标题（宋体）、大数字、正文、标签（docs/DESIGN.md） */
-  /* 满铺的方格纸淡一档：只在起工作区那一屏用，字要压得住 */
-  .paper-grid-faint {
-    --grid: color-mix(in oklab, var(--grid) 55%, var(--background));
+  /* 画面上的纱幕：左边压成纸色让字能读，右边留给画面；上下各压一点，顶栏与输入框才不飘 */
+  .veil {
+    background:
+      linear-gradient(90deg, var(--background) 0%, color-mix(in oklab, var(--background) 78%, transparent) 48%,
+        color-mix(in oklab, var(--background) 30%, transparent) 100%),
+      linear-gradient(180deg, color-mix(in oklab, var(--background) 55%, transparent) 0%, transparent 28%,
+        transparent 72%, color-mix(in oklab, var(--background) 55%, transparent) 100%);
   }
 
   /* 记录本上的填空线：没有框，底线一条；聚焦变靛，填错变红 */

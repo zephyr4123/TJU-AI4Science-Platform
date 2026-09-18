@@ -1,14 +1,14 @@
-import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { SidebarSimple } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { api, type Scope } from '@/api/client'
+import { ASSETS } from '@/assets'
 import { streamTurn } from '@/api/sse'
 import type { ChatEvent, ChatMeta } from '@/api/types'
 import BlurText from '@/components/BlurText'
 import { ErrorNote, Skeleton } from '@/components/bits'
 import { Button } from '@/components/ui/button'
-import Waves from '@/components/Waves'
 import { usd } from '@/lib/format'
 import { useResource } from '@/lib/useResource'
 
@@ -27,14 +27,18 @@ interface Props {
   /** 有看板可收的页面才给这两个 */
   boardOpen?: boolean
   onToggleBoard?: () => void
-  onNew: () => void
+  /** 还没有对话时在输入框里打的第一句：对话一建好就发出去 */
+  autoSend: string | null
+  onAutoSent: () => void
+  /** 没有对话时按下回车：开一段，第一句话由 autoSend 带回来 */
+  onStart: (text: string) => void
   /** 一轮结束：助理可能运行了命令、改了需求或 run，看板要重读 */
   onTurnDone: () => void
   drawer: ReactNode
   /** 对话还没开口时的两句引导 */
   intro: { lede: string; body: string }
-  /** 输入框里的提示 */
-  placeholder: string
+  /** 输入框里轮换的提示语 */
+  hints: string[]
   /** 还没有对话时的欢迎屏文案 */
   welcome: Copy
 }
@@ -48,8 +52,8 @@ interface LiveTurn {
 
 type Kept = Record<number, { trace: TraceItem[]; outcome: TurnOutcome }>
 
-export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onNew, onTurnDone, drawer,
-                           intro, placeholder, welcome }: Props) {
+export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, autoSend, onAutoSent, onStart, onTurnDone,
+                           drawer, intro, hints, welcome }: Props) {
   const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId])
   const [live, setLive] = useState<LiveTurn | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -97,9 +101,18 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onN
     onTurnDone()
   }, [chatId, doc, onTurnDone, scope])
 
+  // 门里带进来的第一句：对话建好、本视图挂上来，就替它发出去。只发一次——send 的身份会随取数变，靠 ref 拦住重放
+  const opened = useRef(false)
+  useEffect(() => {
+    if (!autoSend || !chatId || opened.current) return
+    opened.current = true
+    queueMicrotask(() => { onAutoSent(); void send(autoSend) })
+  }, [autoSend, chatId, onAutoSent, send])
+
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
-      <header className="flex h-11 shrink-0 items-center gap-2 px-3">
+    <div className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
+      {!chatId && <Photo />}
+      <header className="relative flex h-11 shrink-0 items-center gap-2 px-3">
         {drawer}
         <span className="min-w-0 flex-1 truncate text-[0.875rem] text-muted-foreground">
           {current?.title ?? (chatId ? '新对话' : '')}
@@ -109,13 +122,13 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onN
         )}
         {onToggleBoard && (
           <Button variant="ghost" size="icon-sm" onClick={onToggleBoard} aria-label={boardOpen ? '收起看板' : '展开看板'}>
-            {boardOpen ? <PanelRightClose /> : <PanelRightOpen />}
+            <SidebarSimple weight={boardOpen ? 'fill' : 'regular'} className="-scale-x-100" />
           </Button>
         )}
       </header>
 
       <div className="relative min-h-0 flex-1 overflow-y-auto">
-        {!chatId && <Welcome copy={welcome} onNew={onNew} />}
+        {!chatId && <Welcome copy={welcome} />}
         {chatId && (
           <div className="mx-auto max-w-[44rem] px-6 py-8">
             {doc.loading && !doc.data && <Skeleton lines={4} />}
@@ -135,31 +148,34 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onN
         )}
       </div>
 
-      <Composer disabled={!chatId} busy={live !== null} placeholder={placeholder} onSend={(text) => void send(text)} />
+      <Composer busy={live !== null || autoSend !== null} hints={hints}
+                onSend={(text) => (chatId ? void send(text) : onStart(text))} />
     </div>
   )
 }
 
-/** 还没有对话：一句话说清这一边的助理管什么；背景是安静的波纹，动的是线不是字。 */
-function Welcome({ copy, onNew }: { copy: Copy; onNew: () => void }) {
-  const still = useReducedMotion()  // 系统要求减少动效：没有波纹，标题直接出现
+/** 还没有对话：配图铺在整列底下（顶栏、正文、输入框都浮在上面），一有对话画面就让位。 */
+function Photo() {
   return (
-    <div className="relative h-full min-h-[24rem]">
-      {/* Waves 自带一个跟随光标的小圆点，这里不需要，藏掉 */}
-      {!still && (
-        <Waves lineColor="oklch(0.9 0.02 80)" backgroundColor="transparent" waveSpeedX={0.01} waveSpeedY={0.004}
-               waveAmpX={28} waveAmpY={14} xGap={14} yGap={36} className="[&>div]:hidden" />
-      )}
-      <div className="relative mx-auto flex h-full max-w-[36rem] flex-col justify-center px-6">
-        {still
-          ? <h2 className="text-[1.75rem] leading-[1.25] font-semibold tracking-tight text-balance">{copy.headline}</h2>
-          : <BlurText text={copy.headline} delay={50} animateBy="words"
-                      direction="top" className="text-[1.75rem] leading-[1.25] font-semibold tracking-tight text-balance" />}
-        <p className="t-body mt-5 text-muted-foreground">{copy.body}</p>
-        <div className="mt-8">
-          <Button size="lg" onClick={onNew}>开始对话</Button>
-        </div>
-      </div>
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      {/* 原图器皿在左、空面在右；镜像一下让器皿落到纱幕薄的右边，字那边只剩空面 */}
+      <img src={ASSETS.welcome.src} srcSet={ASSETS.welcome.srcSet} sizes="100vw" alt="" decoding="async"
+           className="absolute inset-0 size-full -scale-x-100 object-cover" />
+      <div className="veil absolute inset-0" />
+    </div>
+  )
+}
+
+/** 还没有对话：一句话说清这一边的助理管什么；门就是下面的输入框，不另设按钮。 */
+function Welcome({ copy }: { copy: Copy }) {
+  const still = useReducedMotion()  // 系统要求减少动效：标题直接出现
+  return (
+    <div className="relative mx-auto flex h-full min-h-[24rem] max-w-[36rem] flex-col justify-center px-6">
+      {still
+        ? <h2 className="font-serif text-[1.75rem] leading-[1.25] font-semibold tracking-tight text-balance">{copy.headline}</h2>
+        : <BlurText text={copy.headline} delay={50} animateBy="words" direction="top"
+                    className="font-serif text-[1.75rem] leading-[1.25] font-semibold tracking-tight text-balance" />}
+      <p className="t-body mt-5 text-muted-foreground">{copy.body}</p>
     </div>
   )
 }
