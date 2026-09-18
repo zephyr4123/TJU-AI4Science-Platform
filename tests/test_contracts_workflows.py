@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from framework import paths
 from framework.capabilities import discover
-from framework.chat.guide import REPO_ROOT
 from framework.contracts import workflows
 
 GOOD = """\
@@ -31,7 +31,7 @@ def catalog():
 
 
 def test_shipped_workflows_load_and_connect():
-    found = workflows.load_workflows(workflows.workflows_root(REPO_ROOT))
+    found = workflows.load_workflows(paths.workflows_root())
     # quick-look 是协调 agent 在实验 #55 / #56 里自己拼出来存下的第三条（外层 #56）
     assert [wf.name for wf in found] == ["auto-research", "intake", "quick-look"]
     for wf in found:
@@ -47,7 +47,7 @@ def test_shipped_workflows_load_and_connect():
 
 
 def test_shipped_workflows_cover_stages_and_are_looked_up_from_capabilities():
-    found = workflows.load_workflows(workflows.workflows_root(REPO_ROOT))
+    found = workflows.load_workflows(paths.workflows_root())
     described = {d["name"]: d for d in workflows.describe(found, catalog())}
     assert described["intake"]["covers"] == ["设计"] and described["intake"]["remarks"] == []
     assert described["auto-research"]["covers"] == ["实验", "分析", "验证"]

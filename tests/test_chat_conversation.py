@@ -20,7 +20,7 @@ GUIDE = "# 指南\n你是协调 agent。"
 
 
 def start(tmp_path, *turns):
-    conv = conv_mod.new_conversation(tmp_path / "runs", "scripted", tmp_path)
+    conv = conv_mod.new_conversation(tmp_path / "chats", "scripted", tmp_path)
     return conv, ScriptedChat(list(turns))
 
 
@@ -31,15 +31,15 @@ def drain(conv, chat, text, **kw):
 
 def test_new_load_list_round_trip(tmp_path):
     conv, _ = start(tmp_path)
-    assert conv.dir == tmp_path / "runs" / "chats" / conv.chat_id
+    assert conv.dir == tmp_path / "chats" / conv.chat_id
     assert conv.chat_id.startswith("chat-") and conv.session_id is None and conv.turns == 0
-    loaded = conv_mod.load_conversation(tmp_path / "runs", conv.chat_id)
+    loaded = conv_mod.load_conversation(tmp_path / "chats", conv.chat_id)
     assert loaded.to_dict() == conv.to_dict() and loaded.dir == conv.dir
-    assert [c.chat_id for c in conv_mod.list_conversations(tmp_path / "runs")] == [conv.chat_id]
+    assert [c.chat_id for c in conv_mod.list_conversations(tmp_path / "chats")] == [conv.chat_id]
     with pytest.raises(conv_mod.ConversationNotFound):
-        conv_mod.load_conversation(tmp_path / "runs", "nope")
+        conv_mod.load_conversation(tmp_path / "chats", "nope")
     with pytest.raises(FileExistsError):
-        conv_mod.new_conversation(tmp_path / "runs", "scripted", tmp_path, chat_id=conv.chat_id)
+        conv_mod.new_conversation(tmp_path / "chats", "scripted", tmp_path, chat_id=conv.chat_id)
 
 
 def test_deltas_stream_through_but_only_the_full_text_lands_on_disk(tmp_path):
@@ -78,7 +78,7 @@ def test_two_turns_resume_by_session_id_and_land_on_disk(tmp_path):
     assert chat.calls[1]["session_id"] == SESSION, "第二轮要带上第一轮的 session id"
     assert conv.turns == 2 and conv.cost_usd == pytest.approx(0.02)
 
-    reloaded = conv_mod.load_conversation(tmp_path / "runs", conv.chat_id)
+    reloaded = conv_mod.load_conversation(tmp_path / "chats", conv.chat_id)
     assert reloaded.session_id == SESSION and reloaded.turns == 2
     lines = (conv.dir / "turn-2" / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 5 and json.loads(lines[1])["type"] == "assistant"

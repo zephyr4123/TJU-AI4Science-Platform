@@ -1,4 +1,4 @@
-"""HTTP 后端：端点形状、SSE 事件流、忙与错误的状态码。真 server 起在随机端口，剧本适配器。"""
+"""HTTP 后端：端点形状、按域分前缀、SSE 事件流、忙与错误的状态码。真 server 起在随机端口。"""
 
 from __future__ import annotations
 
@@ -10,13 +10,16 @@ import urllib.request
 import pytest
 
 from backends import BackendNotFound
+from framework import paths
 from framework.chat.server import ChatServer
+from framework.run import workspace
 from tests.fixtures.scripted_chat import ScriptedChat, reply, with_tool
 
 CATALOG = [{"name": "design", "level": "task"}, {"name": "experiment", "level": "run"}]
 WORKFLOWS = [{"name": "w", "title": "一条", "summary": "…", "assumes": [],
               "steps": [{"by": "助理", "does": "接", "cap": "design", "key": None}],
               "problems": []}]
+PROMPTS = {"workspace": "研究助理指南", "studio": "造流助理指南"}
 
 
 def flow_check(steps: list[str]) -> dict:
@@ -24,6 +27,11 @@ def flow_check(steps: list[str]) -> dict:
     known = {c["name"] for c in CATALOG}
     unknown = [s for s in steps if s not in known]
     return {"steps": steps, "problems": [f"没有这些能力：{unknown}"] if unknown else []}
+
+
+def flows(ws: workspace.Workspace) -> list[dict]:
+    """剧本版：工作区里有几个 yaml 就回几条。"""
+    return [{"name": p.stem} for p in sorted(ws.flows.glob("*.yaml"))]
 
 
 def ui_dir(tmp_path):
@@ -51,10 +59,10 @@ def served(tmp_path):
             raise ValueError("x.yaml: steps 要是非空列表")
         return {**doc, "covers": ["实验"], "remarks": [], "problems": []}
 
-    server = ChatServer(("127.0.0.1", 0), runs_root=tmp_path / "runs", cwd=tmp_path,
-                        catalog=lambda: CATALOG, workflows=lambda: WORKFLOWS,
-                        flow_check=flow_check, save_workflow=save_workflow, chat_factory=factory,
-                        system_prompt="指南", ui_dir=ui_dir(tmp_path))
+    server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
+                        workflows=lambda: WORKFLOWS, flows=flows, flow_check=flow_check,
+                        save_workflow=save_workflow, chat_factory=factory,
+                        system_prompts=PROMPTS, ui_dir=ui_dir(tmp_path))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -83,6 +91,12 @@ def sse_events(text: str) -> list[dict]:
     return out
 
 
+def new_workspace(base, ws_id="w1", title=""):
+    status, _, body = call(base, "/workspaces", {"id": ws_id, "title": title})
+    assert status == 201, body
+    return json.loads(body)
+
+
 def test_health_and_catalog(served):
     base, _ = served
     assert call(base, "/health")[2] == '{"ok": true}'
@@ -95,54 +109,97 @@ def test_health_and_catalog(served):
     assert status == 200 and json.loads(body) == WORKFLOWS
 
 
-def test_chat_lifecycle_over_http(served):
+def test_workspaces_are_created_listed_and_read(served, tmp_path):
+    """工作区（纲领 P-15）：起、列、读一整份；名字规矩与重名的状态码；URL 片段拼不出路径。"""
+    base, _ = served
+    assert json.loads(call(base, "/workspaces")[2]) == []
+    made = new_workspace(base, "rahman-nll", "Rahman 稳定性")
+    assert made["id"] == "rahman-nll" and made["title"] == "Rahman 稳定性"
+    assert made["task"] is None and made["runs"] == 0
+    assert (tmp_path / "workspaces" / "rahman-nll" / "workspace.yaml").is_file()
+    assert call(base, "/workspaces", {"id": "rahman-nll"})[0] == 409
+    assert call(base, "/workspaces", {"id": "Bad Name"})[0] == 400
+    assert call(base, "/workspaces", {})[0] == 400
+    status, _, body = call(base, "/workspaces/rahman-nll")
+    doc = json.loads(body)
+    assert status == 200 and doc["task"] is None and doc["runs"] == [] and doc["flows"] == []
+    assert [w["id"] for w in json.loads(call(base, "/workspaces")[2])] == ["rahman-nll"]
+    assert call(base, "/workspaces/nope")[0] == 404
+    assert call(base, "/workspaces/../etc")[0] == 404
+    assert call(base, "/workspaces/rahman-nll/nothing")[0] == 404
+
+
+@pytest.mark.parametrize("prefix", ["/workspaces/w1", "/studio"])
+def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
+    """对话四个端点在两个域下共用一套：工作区的对话落在工作区里，编辑台的落在 studio/ 里；
+    两位助理各拿各的指南、各写各的目录（P-16）。"""
     base, chat = served
-    status, _, body = call(base, "/chats", {})
+    new_workspace(base, "w1")
+    status, _, body = call(base, f"{prefix}/chats", {})
     assert status == 201
     meta = json.loads(body)
     chat_id = meta["chat_id"]
     assert meta["backend"] == "claude_code" and meta["turns"] == 0
+    where = tmp_path / ("studio" if prefix == "/studio" else "workspaces/w1")
+    assert (where / "chats" / chat_id / "meta.json").is_file()
 
-    status, ctype, body = call(base, f"/chats/{chat_id}/messages", {"text": "你好"})
+    status, ctype, body = call(base, f"{prefix}/chats/{chat_id}/messages", {"text": "你好"})
     assert status == 200 and ctype.startswith("text/event-stream")
     events = sse_events(body)
     assert [e["event"] for e in events] == ["init", "text", "done"]
     assert events[-1]["cost_usd"] == pytest.approx(0.01) and events[-1]["session_id"]
+    call_ = chat.calls[-1]
+    if prefix == "/studio":
+        assert call_["system_prompt"] == "造流助理指南"
+        assert call_["cwd"] == paths.workflows_root().parent
+        assert call_["allowed_paths"] == [paths.workflows_root()]
+    else:
+        ws = workspace.load(tmp_path / "workspaces" / "w1")
+        assert call_["system_prompt"] == "研究助理指南" and call_["cwd"] == ws.root
+        assert call_["allowed_paths"] == [ws.task, ws.flows, ws.runs]
 
-    status, _, body = call(base, f"/chats/{chat_id}/messages", {"text": "有几个？"})
+    status, _, body = call(base, f"{prefix}/chats/{chat_id}/messages", {"text": "有几个？"})
     events = sse_events(body)
     assert [e["event"] for e in events] == ["init", "tool_use", "tool_result", "text", "done"]
     assert events[1]["tool"] == "Bash" and events[1]["tool_input"] == {"command": "ls"}
-    assert chat.calls[1]["session_id"] == chat.calls[0]["session_id"] or chat.calls[1]["session_id"]
 
-    status, _, body = call(base, f"/chats/{chat_id}")
+    status, _, body = call(base, f"{prefix}/chats/{chat_id}")
     doc = json.loads(body)
     assert status == 200 and doc["turns"] == 2 and doc["history"] == [
         {"turn": 1, "origin": "人", "message": "你好", "reply": "你好"},
         {"turn": 2, "origin": "人", "message": "有几个？", "reply": "三个"}]
     assert "## 第 2 轮" in doc["transcript"]
-    status, _, body = call(base, "/chats")
+    status, _, body = call(base, f"{prefix}/chats")
     assert status == 200 and [(c["chat_id"], c["title"]) for c in json.loads(body)] == [
         (chat_id, "你好")]
+    # 另一个域看不到这段对话
+    other = "/studio" if prefix != "/studio" else "/workspaces/w1"
+    assert json.loads(call(base, f"{other}/chats")[2]) == []
+    assert call(base, f"{other}/chats/{chat_id}")[0] == 404
 
 
 def test_error_status_codes(served, tmp_path):
     base, _ = served
-    assert call(base, "/chats/nope")[0] == 404
-    assert call(base, "/chats/nope/messages", {"text": "x"})[0] == 404
-    status, _, body = call(base, "/chats", {"backend": "nope"})
+    new_workspace(base, "w1")
+    assert call(base, "/workspaces/w1/chats/nope")[0] == 404
+    assert call(base, "/workspaces/w1/chats/nope/messages", {"text": "x"})[0] == 404
+    assert call(base, "/workspaces/nope/chats", {})[0] == 404
+    status, _, body = call(base, "/workspaces/w1/chats", {"backend": "nope"})
     assert status == 400 and "nope" in json.loads(body)["error"]
-    chat_id = json.loads(call(base, "/chats", {})[2])["chat_id"]
-    assert call(base, f"/chats/{chat_id}/messages", {"text": "  "})[0] == 400
-    assert call(base, f"/chats/{chat_id}/messages", {})[0] == 400
-    (tmp_path / "runs" / "chats" / chat_id / "inflight.json").write_text("{}", encoding="utf-8")
-    status, _, body = call(base, f"/chats/{chat_id}/messages", {"text": "插队"})
+    chat_id = json.loads(call(base, "/workspaces/w1/chats", {})[2])["chat_id"]
+    assert call(base, f"/workspaces/w1/chats/{chat_id}/messages", {"text": "  "})[0] == 400
+    assert call(base, f"/workspaces/w1/chats/{chat_id}/messages", {})[0] == 400
+    (tmp_path / "workspaces" / "w1" / "chats" / chat_id / "inflight.json").write_text(
+        "{}", encoding="utf-8")
+    status, _, body = call(base, f"/workspaces/w1/chats/{chat_id}/messages", {"text": "插队"})
     assert status == 409 and "在跑" in json.loads(body)["error"]
+    assert call(base, "/studio/runs")[0] == 404  # 编辑台下只有对话
+    assert call(base, "/studio/publish", {"by": "x"})[0] == 404
 
 
 def test_bad_json_body_is_400(served):
     base, _ = served
-    req = urllib.request.Request(base + "/chats", data=b"{not json", method="POST",
+    req = urllib.request.Request(base + "/workspaces", data=b"{not json", method="POST",
                                  headers={"Content-Type": "application/json"})
     with pytest.raises(urllib.error.HTTPError) as exc:
         urllib.request.urlopen(req, timeout=10)
@@ -150,24 +207,27 @@ def test_bad_json_body_is_400(served):
 
 
 # ── 看板端点、两颗键、静态页 ──────────────────────────────────────────────
-def test_task_board_and_publish_key(served, tmp_path):
+def test_workspace_board_and_publish_key(served, tmp_path):
     from tests.fixtures.packs_factory import make_pack
 
     base, _ = served
-    pack = make_pack(tmp_path, published=False)
-    status, _, body = call(base, "/tasks")
+    pack = make_pack(tmp_path, published=False)  # 夹具的工作区 toy 落在同一个 home 下
+    status, _, body = call(base, "/workspaces")
     rows = json.loads(body)
     assert status == 200 and [r["id"] for r in rows] == ["toy"]
-    assert rows[0]["stage"] == "drafting" and rows[0]["publish"]["ok"] is False
+    assert rows[0]["task"]["stage"] == "drafting" and rows[0]["task"]["publish"]["ok"] is False
 
-    status, _, body = call(base, "/tasks/toy")
+    status, _, body = call(base, "/workspaces/toy")
     doc = json.loads(body)
-    assert status == 200 and doc["design"] and doc["headroom"]["metric"] == "val_mse"
-    assert call(base, "/tasks/nope")[0] == 404
-    assert call(base, "/tasks/../etc")[0] == 404
+    assert status == 200 and doc["task"]["design"]
+    assert doc["task"]["headroom"]["metric"] == "val_mse"
+    (pack.workspace.flows).mkdir()
+    (pack.workspace.flows / "mine.yaml").write_text("name: mine\n", encoding="utf-8")
+    assert json.loads(call(base, "/workspaces/toy/flows")[2]) == [{"name": "mine"}]
+    assert json.loads(call(base, "/workspaces/toy")[2])["flows"] == [{"name": "mine"}]
 
-    assert call(base, "/tasks/toy/publish", {})[0] == 400  # 不署名不发
-    status, _, body = call(base, "/tasks/toy/publish", {"by": "张三"})
+    assert call(base, "/workspaces/toy/publish", {})[0] == 400  # 不署名不发
+    status, _, body = call(base, "/workspaces/toy/publish", {"by": "张三"})
     doc = json.loads(body)
     assert status == 201
     assert doc["publish"] == {"ok": True, "state": "ok", "by": "张三", "at": doc["publish"]["at"],
@@ -175,7 +235,7 @@ def test_task_board_and_publish_key(served, tmp_path):
     assert doc["stage"] == "baselined" and (pack.task_dir / "publish.json").is_file()
 
     (pack.task_dir / "design.md").write_text("", encoding="utf-8")  # 空 design 发不了
-    status, _, body = call(base, "/tasks/toy/publish", {"by": "张三"})
+    status, _, body = call(base, "/workspaces/toy/publish", {"by": "张三"})
     assert status == 422 and "design.md" in json.loads(body)["error"]
 
 
@@ -183,24 +243,24 @@ def test_run_board_and_accept_key(served, tmp_path):
     from tests.fixtures.runs_factory import make_run
 
     base, _ = served
-    assert json.loads(call(base, "/runs")[2]) == []
     run_dir = make_run(tmp_path)
-    assert run_dir.parent == tmp_path / "runs"
-    status, _, body = call(base, "/runs")
+    assert run_dir.parent.parent == tmp_path / "workspaces" / "toy"
+    status, _, body = call(base, "/workspaces/toy/runs")
     rows = json.loads(body)
     assert status == 200 and rows[0]["run_id"] == run_dir.name and rows[0]["accept"] is None
-    status, _, body = call(base, f"/runs/{run_dir.name}")
+    assert json.loads(call(base, "/workspaces/toy")[2])["runs"][0]["run_id"] == run_dir.name
+    status, _, body = call(base, f"/workspaces/toy/runs/{run_dir.name}")
     doc = json.loads(body)
     assert status == 200 and len(doc["ledger"]) == 3
-    assert call(base, "/runs/nope")[0] == 404
-    assert call(base, "/runs/../runs")[0] == 404
+    assert call(base, "/workspaces/toy/runs/nope")[0] == 404
+    assert call(base, "/workspaces/toy/runs/../runs")[0] == 404
 
-    assert call(base, f"/runs/{run_dir.name}/accept", {"by": ""})[0] == 400
-    status, _, body = call(base, f"/runs/{run_dir.name}/accept", {"by": "李四"})
+    assert call(base, f"/workspaces/toy/runs/{run_dir.name}/accept", {"by": ""})[0] == 400
+    status, _, body = call(base, f"/workspaces/toy/runs/{run_dir.name}/accept", {"by": "李四"})
     doc = json.loads(body)
     assert status == 201 and doc["accept"]["by"] == "李四" and doc["accept"]["stale"] is False
     (run_dir / "experiment" / "inflight.json").write_text("{}", encoding="utf-8")
-    status, _, body = call(base, f"/runs/{run_dir.name}/accept", {"by": "李四"})
+    status, _, body = call(base, f"/workspaces/toy/runs/{run_dir.name}/accept", {"by": "李四"})
     assert status == 422 and "正在跑" in json.loads(body)["error"]
 
 
@@ -212,17 +272,17 @@ def test_jobs_endpoints(served, tmp_path):
     from tests.fixtures.runs_factory import make_run
 
     base, _ = served
-    assert json.loads(call(base, "/jobs")[2]) == []
-    assert call(base, "/jobs/nope")[0] == 404
     run_dir = make_run(tmp_path)
+    assert json.loads(call(base, "/workspaces/toy/jobs")[2]) == []
+    assert call(base, "/workspaces/toy/jobs/nope")[0] == 404
     job = jobs.Job(job_id="job-1", cap="experiment", level="run", target=run_dir.name,
                    argv=["cap", "experiment", run_dir.name], pid=os.getpid(), started_at="t")
-    jobs._save(tmp_path / "runs", job)
-    status, _, body = call(base, "/jobs/job-1")
+    jobs._save(tmp_path / "workspaces" / "toy" / "jobs", job)
+    status, _, body = call(base, "/workspaces/toy/jobs/job-1")
     assert status == 200 and json.loads(body)["effective_status"] == "running"
-    doc = json.loads(call(base, f"/runs/{run_dir.name}")[2])
+    doc = json.loads(call(base, f"/workspaces/toy/runs/{run_dir.name}")[2])
     assert doc["job"]["job_id"] == "job-1" and [j["job_id"] for j in doc["jobs"]] == ["job-1"]
-    assert json.loads(call(base, "/runs")[2])[0]["job"]["job_id"] == "job-1"
+    assert json.loads(call(base, "/workspaces/toy/runs")[2])[0]["job"]["job_id"] == "job-1"
 
 
 def test_flow_check_endpoint(served):
@@ -243,13 +303,13 @@ def test_static_page_and_spa_fallback(served):
     status, ctype, body = call(base, "/some/client/route")  # 单页应用的路由回 index.html
     assert status == 200 and ctype.startswith("text/html")
     assert call(base, "/nothing")[0] == 200  # 同上：不是接口前缀的路径都归页面
-    assert call(base, "/chats/x/y/z")[0] == 404  # 接口前缀下的怪路径还是 404
+    assert call(base, "/studio/x/y/z")[0] == 404  # 接口前缀下的怪路径还是 404
 
 
 def test_no_ui_dir_says_how_to_build(tmp_path):
-    server = ChatServer(("127.0.0.1", 0), runs_root=tmp_path / "runs", cwd=tmp_path,
-                        catalog=lambda: CATALOG, workflows=lambda: WORKFLOWS,
-                        flow_check=flow_check, system_prompt="指南")
+    server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
+                        workflows=lambda: WORKFLOWS, flows=flows, flow_check=flow_check,
+                        system_prompts=PROMPTS)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

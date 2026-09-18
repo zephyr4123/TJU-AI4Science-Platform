@@ -1,29 +1,32 @@
 """网页的后端：HTTP 端点包住 conversation.py 与 boards.py，事件用 SSE 推，页面本身也从这里端出去。
 
-标准库 ThreadingHTTPServer：十来个端点不值得引一个 web 框架。零模型：模型在适配器的子进程里。
-能力清单（`/cap`）、工作流清单（`/workflows`）与流通不通检查（`/flow/check`）由调用方以函数
-传入——这一层不认识 capabilities，依赖方向不能反过来。页面是这些端点的客户端，换一种 UI 也是
-同一套（`ui/README.md`）。
+标准库 ThreadingHTTPServer：二十个端点不值得引一个 web 框架。零模型：模型在适配器的子进程里。
+能力清单（`/cap`）、工作流库（`/workflows`）、流实例（`/workspaces/<id>/flows`）与流通不通检查
+（`/flow/check`）由调用方以函数传入——这一层不认识 capabilities，依赖方向不能反过来。
+页面是这些端点的客户端，换一种 UI 也是同一套（`ui/README.md`）。
 
-    GET  /health                   {"ok": true}
-    GET  /stages                   七个科研阶段，按清单顺序（能力描述符的 stage 取值）
-    GET  /cap                      能力描述符清单：平台的全部按钮，每颗带 stage 与 used_by
-    GET  /workflows                工作流清单（`workflows/*.yaml`）：covers / remarks / problems
-    POST /workflows                {name, title, summary, steps[, assumes, overwrite]} → 存成文件
-    GET  /flow/check?steps=a,b     {"steps", "covers", "remarks", "problems"}：这串能力通不通，不跑
-    GET  /chats                    全部对话的 meta + title（第一句话）
-    POST /chats                    {"backend"?} → 新对话的 meta
-    GET  /chats/<id>               meta + transcript + history（一轮一条 message / reply）
-    POST /chats/<id>/messages      {"text"} → text/event-stream，每个事件一条 `event: <kind>`
-    GET  /tasks                    需求看板：任务包清单（阶段、钥匙）
-    GET  /tasks/<id>               manifest、design.md、发布前检查、预检
-    POST /tasks/<id>/publish       {"by"} → 发布记录；这是人按的键，agent 不该替人按
-    GET  /runs                     结果验收：run 清单（best、账本花费、验证、验收）
-    GET  /runs/<id>                账本全部行、journal、分析全文、验证报告、这个 run 的作业
-    GET  /jobs                     作业清单（`cap ... --detach` 起的进程：状态、结论行）
-    GET  /jobs/<id>                一个作业
-    POST /runs/<id>/accept         {"by"} → 验收记录
-    GET  /<其它>                   `ui_dir` 里的静态文件，找不到的路径回 index.html（单页应用）
+端点按域分前缀（纲领 P-16）：工作区 `/workspaces/<id>/…` 是研究助理的域，`/studio/…` 是造流助理
+的域，对话四个端点在两个前缀下共用一套实现；主页面的对话物理上到不了库。
+
+    GET  /health                            {"ok": true}
+    GET  /stages                            七个科研阶段，按清单顺序
+    GET  /cap                               能力描述符清单，每颗带 stage 与 used_by
+    GET  /workflows                         库：`workflows/*.yaml`，covers / remarks / problems
+    POST /workflows                         {name, title, summary, steps[, assumes, overwrite]}
+    GET  /flow/check?steps=a,b              这串能力通不通，不跑
+    GET  /workspaces                        工作区清单：标题、任务包走到哪、几个 run
+    POST /workspaces                        {"id", "title"?} → 新工作区
+    GET  /workspaces/<id>                   工作区 + 任务包细节 + 流实例 + run 清单
+    POST /workspaces/<id>/publish           {"by"} → 发布记录；人按的键，agent 不替人按
+    GET  /workspaces/<id>/flows             流实例：covers / remarks / problems
+    GET  /workspaces/<id>/runs[/<rid>]      run 摘要清单 / 一个 run 的账本、分析、验证、作业
+    POST /workspaces/<id>/runs/<rid>/accept {"by"} → 验收记录
+    GET  /workspaces/<id>/jobs[/<jid>]      作业清单 / 一个作业
+    GET  <域>/chats                         对话清单；<域> 是 /workspaces/<id> 或 /studio
+    POST <域>/chats                         {"backend"?} → 新对话的 meta
+    GET  <域>/chats/<cid>                   meta + transcript + history
+    POST <域>/chats/<cid>/messages          {"text"} → text/event-stream，一个事件一条
+    GET  /<其它>                            `ui_dir` 里的静态文件，找不到的回 index.html（单页应用）
 """
 
 from __future__ import annotations
@@ -40,16 +43,17 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from backends import BackendNotFound, Chat, ChatEvent, get_chat
-from framework.chat import boards, conversation, guide
-from framework.contracts import packs, publish
+from framework.chat import boards, conversation, guide, scope
+from framework.contracts import publish
 from framework.contracts.capability import STAGES
-from framework.run import accept, jobs, layout
+from framework.run import accept, jobs, layout, workspace
+from framework.run.workspace import Workspace
 
 LOGGER = logging.getLogger("ai4sci.serve")
 DEFAULT_BACKEND = "claude_code"
 MAX_BODY = 1 << 20
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
-API_ROOTS = ("health", "stages", "cap", "workflows", "flow", "chats", "tasks", "runs", "jobs")
+API_ROOTS = ("health", "stages", "cap", "workflows", "flow", "workspaces", "studio")
 INDEX_NAME = "index.html"
 
 
@@ -58,26 +62,33 @@ class ChatServer(ThreadingHTTPServer):
 
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], *, runs_root: Path, cwd: Path,
+    def __init__(self, address: tuple[str, int], *, home: Path,
                  catalog: Callable[[], list[dict[str, Any]]],
                  workflows: Callable[[], list[dict[str, Any]]],
+                 flows: Callable[[Workspace], list[dict[str, Any]]],
                  flow_check: Callable[[list[str]], dict[str, Any]],
                  save_workflow: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  chat_factory: Callable[[str], Chat] = get_chat,
-                 system_prompt: str | None = None, ui_dir: Path | None = None) -> None:
+                 system_prompts: dict[str, str] | None = None,
+                 ui_dir: Path | None = None) -> None:
         super().__init__(address, Handler)
-        self.runs_root = Path(runs_root)
-        self.cwd = Path(cwd).resolve()
+        self.home = Path(home).resolve()
         self.catalog = catalog
         self.workflows = workflows
+        self.flows = flows
         self.flow_check = flow_check
         # 编辑台存流：cli 注入（要对着能力清单核对，chat 层不认识 capabilities）；None 是不让存
         self.save_workflow = save_workflow
         self.chat_factory = chat_factory
         # 页面构建目录；None 就是没构建，根路径回一句怎么构建，接口照常
         self.ui_dir = None if ui_dir is None else Path(ui_dir).resolve()
-        # 指南在起服务时读一次：文件不在当场炸，不等第一条消息才发现
-        self.system_prompt = guide.system_prompt() if system_prompt is None else system_prompt
+        # 两份指南在起服务时各读一次：文件不在当场炸，不等第一条消息才发现
+        self.system_prompts = ({kind: guide.system_prompt(kind) for kind in guide.KINDS}
+                               if system_prompts is None else system_prompts)
+
+    @property
+    def workspaces_root(self) -> Path:
+        return workspace.workspaces_root(self.home)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -106,39 +117,49 @@ class Handler(BaseHTTPRequestHandler):
             if not steps:
                 return self._error(HTTPStatus.BAD_REQUEST, "要有 steps=能力名,能力名")
             return self._json(self.server.flow_check(steps))
-        if parts == ["chats"]:
+        if parts == ["workspaces"]:
+            return self._json([boards.workspace_summary(ws) for ws in
+                               workspace.list_workspaces(self.server.workspaces_root)])
+        found = self._scope(parts)
+        if found is None:
+            return None
+        where, rest = found
+        if rest[:1] == ["chats"]:
+            return self._get_chat(where, rest[1:])
+        ws = where.workspace
+        if ws is None:
+            return self._error(HTTPStatus.NOT_FOUND, f"编辑台下只有对话：{url.path}")
+        if rest == []:
+            return self._json({**boards.workspace_detail(ws), "flows": self.server.flows(ws)})
+        if rest == ["flows"]:
+            return self._json(self.server.flows(ws))
+        if rest == ["runs"]:
+            return self._json(boards.list_runs(ws))
+        if len(rest) == 2 and rest[0] == "runs":
+            run_dir = self._run_dir(ws, rest[1])
+            return None if run_dir is None else self._json(boards.run_detail(ws, run_dir))
+        if rest == ["jobs"]:
+            return self._json([job.to_dict() for job in jobs.list_jobs(ws.jobs)])
+        if len(rest) == 2 and rest[0] == "jobs":
+            try:
+                return self._json(jobs.load(ws.jobs, rest[1]).to_dict())
+            except jobs.JobNotFound as exc:
+                return self._error(HTTPStatus.NOT_FOUND, str(exc))
+        return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{url.path}")
+
+    def _get_chat(self, where: scope.Scope, rest: list[str]) -> None:
+        if rest == []:
             return self._json([{**c.to_dict(), "title": conversation.title(c)} for c in
-                               conversation.list_conversations(self.server.runs_root)])
-        if len(parts) == 2 and parts[0] == "chats":
-            conv = self._conversation(parts[1])
+                               conversation.list_conversations(where.chats)])
+        if len(rest) == 1:
+            conv = self._conversation(where, rest[0])
             if conv is None:
                 return None
             transcript = (conv.dir / conversation.TRANSCRIPT_NAME).read_text(encoding="utf-8")
             return self._json({**conv.to_dict(), "title": conversation.title(conv),
                                "transcript": transcript,
                                "history": conversation.read_turns(conv)})
-        if parts == ["tasks"]:
-            try:
-                return self._json(boards.list_tasks(self.server.cwd))
-            except (ValueError, NotADirectoryError) as exc:
-                # 发现阶段的拓扑错误（id 重复、目录名对不上）是仓的毛病，说清楚，不静默跳过坏包
-                return self._error(HTTPStatus.CONFLICT, str(exc))
-        if len(parts) == 2 and parts[0] == "tasks":
-            task_dir = self._task_dir(parts[1])
-            return None if task_dir is None else self._json(boards.task_detail(task_dir))
-        if parts == ["runs"]:
-            return self._json(boards.list_runs(self.server.runs_root))
-        if len(parts) == 2 and parts[0] == "runs":
-            run_dir = self._run_dir(parts[1])
-            return None if run_dir is None else self._json(boards.run_detail(run_dir))
-        if parts == ["jobs"]:
-            return self._json([job.to_dict() for job in jobs.list_jobs(self.server.runs_root)])
-        if len(parts) == 2 and parts[0] == "jobs":
-            try:
-                return self._json(jobs.load(self.server.runs_root, parts[1]).to_dict())
-            except jobs.JobNotFound as exc:
-                return self._error(HTTPStatus.NOT_FOUND, str(exc))
-        return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{url.path}")
+        return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
 
     # ── POST ─────────────────────────────────────────────────────────────
     def do_POST(self) -> None:
@@ -146,14 +167,6 @@ class Handler(BaseHTTPRequestHandler):
         body = self._body()
         if body is None:
             return None
-        if parts == ["chats"]:
-            backend = str(body.get("backend") or DEFAULT_BACKEND)
-            try:
-                self.server.chat_factory(backend)  # 名字不对现在就报，别等发消息
-            except BackendNotFound as exc:
-                return self._error(HTTPStatus.BAD_REQUEST, str(exc))
-            conv = conversation.new_conversation(self.server.runs_root, backend, self.server.cwd)
-            return self._json(conv.to_dict(), HTTPStatus.CREATED)
         if parts == ["workflows"]:
             if self.server.save_workflow is None:
                 return self._error(HTTPStatus.NOT_IMPLEMENTED, "这个服务没开存流")
@@ -163,28 +176,51 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
             except FileExistsError as exc:
                 return self._error(HTTPStatus.CONFLICT, str(exc))
-        if len(parts) == 3 and parts[0] == "chats" and parts[2] == "messages":
-            conv = self._conversation(parts[1])
+        if parts == ["workspaces"]:
+            ws_id = body.get("id")
+            if not isinstance(ws_id, str) or not ws_id.strip():
+                return self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 id：工作区名")
+            try:
+                ws = workspace.create(self.server.workspaces_root, ws_id.strip(),
+                                      title=str(body.get("title") or ""))
+            except workspace.WorkspaceInvalid as exc:
+                status = HTTPStatus.CONFLICT if "已经有" in str(exc) else HTTPStatus.BAD_REQUEST
+                return self._error(status, str(exc))
+            return self._json(boards.workspace_summary(ws), HTTPStatus.CREATED)
+        found = self._scope(parts)
+        if found is None:
+            return None
+        where, rest = found
+        if rest == ["chats"]:
+            backend = str(body.get("backend") or DEFAULT_BACKEND)
+            try:
+                self.server.chat_factory(backend)  # 名字不对现在就报，别等发消息
+            except BackendNotFound as exc:
+                return self._error(HTTPStatus.BAD_REQUEST, str(exc))
+            conv = conversation.new_conversation(where.chats, backend, where.cwd)
+            return self._json(conv.to_dict(), HTTPStatus.CREATED)
+        if len(rest) == 3 and rest[0] == "chats" and rest[2] == "messages":
+            conv = self._conversation(where, rest[1])
             if conv is None:
                 return None
             text = body.get("text")
             if not isinstance(text, str) or not text.strip():
                 return self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 text")
-            return self._stream(conv, text)
-        if len(parts) == 3 and parts[0] == "tasks" and parts[2] == "publish":
-            task_dir = self._task_dir(parts[1])
-            if task_dir is None:
-                return None
+            return self._stream(where, conv, text)
+        ws = where.workspace
+        if ws is None:
+            return self._error(HTTPStatus.NOT_FOUND, f"编辑台下只有对话：{self.path}")
+        if rest == ["publish"]:
             by = self._by(body)
             if by is None:
                 return None
             try:
-                publish.publish_task(task_dir, by=by)
+                publish.publish_task(ws.task, by=by)
             except publish.PublishRefused as exc:
                 return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
-            return self._json(boards.task_detail(task_dir), HTTPStatus.CREATED)
-        if len(parts) == 3 and parts[0] == "runs" and parts[2] == "accept":
-            run_dir = self._run_dir(parts[1])
+            return self._json(boards.task_detail(ws.task), HTTPStatus.CREATED)
+        if len(rest) == 3 and rest[0] == "runs" and rest[2] == "accept":
+            run_dir = self._run_dir(ws, rest[1])
             if run_dir is None:
                 return None
             by = self._by(body)
@@ -194,16 +230,36 @@ class Handler(BaseHTTPRequestHandler):
                 accept.accept_run(run_dir, by=by)
             except accept.AcceptRefused as exc:
                 return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
-            return self._json(boards.run_detail(run_dir), HTTPStatus.CREATED)
+            return self._json(boards.run_detail(ws, run_dir), HTTPStatus.CREATED)
         return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
 
     # ── 内部 ─────────────────────────────────────────────────────────────
-    def _stream(self, conv: conversation.Conversation, text: str) -> None:
+    def _scope(self, parts: list[str]) -> tuple[scope.Scope, list[str]] | None:
+        """路径前缀定域：`/studio/…` 是编辑台，`/workspaces/<id>/…` 是那个工作区；剩下的路径交回去。
+
+        工作区只按名字从清单目录下取，不拿 URL 片段拼路径：`..` 之类先被名字规矩拒掉。"""
+        if parts[0] == "studio":
+            return scope.studio(self.server.home), parts[1:]
+        if parts[0] == "workspaces" and len(parts) >= 2:
+            ws_id = parts[1]
+            if not workspace.ID_RE.fullmatch(ws_id):
+                self._error(HTTPStatus.NOT_FOUND, f"没有这个工作区：{ws_id}")
+                return None
+            try:
+                ws = workspace.load(self.server.workspaces_root / ws_id)
+            except workspace.WorkspaceNotFound:
+                self._error(HTTPStatus.NOT_FOUND, f"没有这个工作区：{ws_id}")
+                return None
+            return scope.for_workspace(ws), parts[2:]
+        self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
+        return None
+
+    def _stream(self, where: scope.Scope, conv: conversation.Conversation, text: str) -> None:
         try:
             chat = self.server.chat_factory(conv.backend)
             events = conversation.send(
-                conv, chat, text, system_prompt=self.server.system_prompt,
-                allowed_paths=guide.allowed_paths(self.server.cwd), bash_rules=guide.BASH_RULES)
+                conv, chat, text, system_prompt=self.server.system_prompts[where.kind],
+                allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES)
             first = next(events)  # 忙、空消息这类错误在头响应之前就要报出来
         except conversation.ConversationBusy as exc:
             return self._error(HTTPStatus.CONFLICT, str(exc))
@@ -258,27 +314,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _conversation(self, chat_id: str) -> conversation.Conversation | None:
+    def _conversation(self, where: scope.Scope, chat_id: str) -> conversation.Conversation | None:
         try:
-            return conversation.load_conversation(self.server.runs_root, chat_id)
+            return conversation.load_conversation(where.chats, chat_id)
         except conversation.ConversationNotFound as exc:
             self._error(HTTPStatus.NOT_FOUND, str(exc))
             return None
 
-    def _task_dir(self, task_id: str) -> Path | None:
-        """任务目录只从发现结果里取，不拿 URL 片段拼路径：`..` 之类根本走不到文件系统。"""
-        try:
-            found = packs.discover_tasks(self.server.cwd)
-        except (ValueError, NotADirectoryError) as exc:
-            self._error(HTTPStatus.CONFLICT, str(exc))
-            return None
-        task_dir = found.get(task_id)
-        if task_dir is None:
-            self._error(HTTPStatus.NOT_FOUND, f"没有这个任务包：{task_id}")
-        return task_dir
-
-    def _run_dir(self, run_id: str) -> Path | None:
-        run_dir = self.server.runs_root / run_id
+    def _run_dir(self, ws: Workspace, run_id: str) -> Path | None:
+        run_dir = ws.runs / run_id
         if run_id in ("", ".", "..") or "/" in run_id or not layout.checkpoint(run_dir).is_file():
             self._error(HTTPStatus.NOT_FOUND, f"run 不存在或没有 checkpoint：{run_id}")
             return None

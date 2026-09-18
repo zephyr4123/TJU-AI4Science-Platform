@@ -5,7 +5,7 @@
 
     DESCRIPTOR: Capability                       机器可读的自我描述（contracts/capability.py）
     run(run_dir: Path, ports: Ports, *, <params>) -> str   统一入口；失败 raise CapabilityFailed
-    （task 级能力的第一个参数叫 task_dir：它动的是任务包，那时还没有 run）
+    （task 级能力的第一个参数叫 workspace：它动的是工作区里的任务包，那时还没有 run；纲领 P-15）
 
 签名与描述符对不上在这里就断言炸掉，而不是等 CLI 起来才发现某个参数没人读（P-8）。
 `discover()` 是 CLI 与 UI 后端拿能力的唯一入口，测试也走它。
@@ -29,8 +29,8 @@ from framework.contracts.flow import RUN_SEEDS, TASK_SEEDS
 ENTRYPOINT = "run"
 # 每个级别里"一开始就有"的名字：输入不必有生产者的那几样
 SEEDS_BY_LEVEL = {"task": TASK_SEEDS, "run": RUN_SEEDS}
-# 前两个参数按 level 定：第一个参数的名字就说明了这个能力动的是什么目录
-LEADING_PARAMS_BY_LEVEL = {"task": ("task_dir", "ports"), "run": ("run_dir", "ports")}
+# 前两个参数按 level 定：第一个参数的名字就说明了这个能力动的是什么（工作区 / run 目录）
+LEADING_PARAMS_BY_LEVEL = {"task": ("workspace", "ports"), "run": ("run_dir", "ports")}
 
 
 def discover() -> dict[str, ModuleType]:

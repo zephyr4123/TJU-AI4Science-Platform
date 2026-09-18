@@ -1,4 +1,4 @@
-"""看板读盘：任务包的阶段与钥匙、预检、run 的摘要与账本；全是页面要直接显示的字段。"""
+"""看板读盘：工作区一行与一整份、任务包的阶段与钥匙、预检、run 的摘要与账本；页面直接显示。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 
 from framework.chat import boards
 from framework.contracts import publish
-from framework.run import accept, layout
+from framework.run import accept, layout, workspace
 from tests.fixtures.packs_factory import make_pack
 from tests.fixtures.runs_factory import make_run
 
@@ -53,32 +53,41 @@ def test_task_detail_has_design_intake_and_headroom(tmp_path):
     assert boards.task_detail(pack.task_dir)["headroom"] is None
 
 
-def test_list_tasks_reads_repo_root_or_tasks_root(tmp_path):
-    pack = make_pack(tmp_path)
-    make_pack(tmp_path, task_id="other")
-    assert [t["id"] for t in boards.list_tasks(pack.root)] == ["other", "toy"]
-    assert [t["id"] for t in boards.list_tasks(pack.tasks_root)] == ["other", "toy"]
+def test_workspace_summary_and_detail(tmp_path):
+    """工作区一行：标题、任务包走到哪、几个 run；还没起任务包时 task 是 None。"""
+    empty = workspace.create(tmp_path / "workspaces", "fresh", title="刚起的")
+    row = boards.workspace_summary(empty)
+    assert row["id"] == "fresh" and row["title"] == "刚起的" and row["task"] is None
+    assert row["runs"] == 0 and boards.workspace_detail(empty)["runs"] == []
+    run_dir = make_run(tmp_path)
+    ws = workspace.load(run_dir.parent.parent)
+    row = boards.workspace_summary(ws)
+    assert row["id"] == "toy" and row["task"]["stage"] == "baselined" and row["runs"] == 1
+    detail = boards.workspace_detail(ws)
+    assert detail["task"]["design"].startswith("code/ 写") and detail["runs"][0]["run_id"] == "r1"
 
 
 def test_run_summary_and_detail(tmp_path):
     run_dir = make_run(tmp_path)
-    found = boards.run_summary(run_dir)
+    ws = workspace.load(run_dir.parent.parent)
+    found = boards.run_summary(ws, run_dir)
     assert found["run_id"] == run_dir.name and found["metric"]["name"] == "val_mse"
     assert found["baseline"] == pytest.approx(0.03) and found["last_iter"] == 3
     assert found["best_metric"] == pytest.approx(0.001)
     assert found["running"] is False and found["verify"] is None and found["accept"] is None
-    detail = boards.run_detail(run_dir)
+    detail = boards.run_detail(ws, run_dir)
     assert [row["status"] for row in detail["ledger"]] == ["keep", "discard", "keep"]
     assert detail["analysis_text"] is None
     accept.accept_run(run_dir, by="张三")
-    assert boards.run_summary(run_dir)["accept"]["by"] == "张三"
+    assert boards.run_summary(ws, run_dir)["accept"]["by"] == "张三"
 
 
 def test_list_runs_skips_non_run_dirs(tmp_path):
     run_dir = make_run(tmp_path)
-    (run_dir.parent / "chats").mkdir()
-    assert [r["run_id"] for r in boards.list_runs(run_dir.parent)] == [run_dir.name]
-    assert boards.list_runs(tmp_path / "nowhere") == []
+    ws = workspace.load(run_dir.parent.parent)
+    (ws.runs / "design").mkdir()  # 接任务的执行层日志不是 run
+    assert [r["run_id"] for r in boards.list_runs(ws)] == [run_dir.name]
+    assert boards.list_runs(workspace.create(tmp_path / "workspaces", "empty")) == []
 
 
 def test_verify_state_reports_broken_report(tmp_path):

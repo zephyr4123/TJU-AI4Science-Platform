@@ -1,13 +1,15 @@
-"""子命令之间共用的那点东西：退出码、runs 根、日志、`--runs-root`、开 run 目录、按名字取端口。
+"""子命令之间共用的那点东西：退出码、日志、当前工作区、开 run 目录、按名字取端口。
 
-为什么不放在 `__init__.py`：`__init__` 要 import 四个子命令模块来装配 parser，子命令
+为什么不放在 `__init__.py`：`__init__` 要 import 各子命令模块来装配 parser，子命令
 再回头 import `__init__` 就成了循环。共用的东西沉到一个谁都能 import 的小模块，方向
 就还是单向的。
+
+当前工作区（纲领 P-15）：命令不带工作区路径，从 cwd 往上找 `workspace.yaml`（`AI4SCI_WORKSPACE`
+可指定），找不到退 2 并说清怎么办。协调 agent 的工作目录就是工作区，所以它敲的命令一个路径都不带。
 """
 
 from __future__ import annotations
 
-import argparse
 import logging
 import sys
 from pathlib import Path
@@ -15,8 +17,8 @@ from pathlib import Path
 from backends import BackendNotFound, get_backend
 from compute import ComputeNotFound, get_compute
 from framework.contracts.capability import Ports
-from framework.run import layout
-from framework.run.context import default_runs_root
+from framework.run import layout, workspace
+from framework.run.workspace import Workspace
 
 EXIT_OK = 0
 EXIT_INVALID = 1
@@ -29,18 +31,17 @@ def setup_logging() -> None:
                         format="%(asctime)s %(name)s %(message)s")
 
 
-def runs_root(args: argparse.Namespace) -> Path:
-    return Path(args.runs_root) if getattr(args, "runs_root", None) else default_runs_root()
+def current_workspace() -> Workspace | int:
+    try:
+        return workspace.find()
+    except workspace.WorkspaceNotFound as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
 
 
-def add_runs_root(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--runs-root", default=None,
-                        help="runs 根目录，缺省读环境变量 AI4SCI_RUNS_ROOT，再缺省 <仓根>/runs")
-
-
-def open_run_dir(args: argparse.Namespace) -> Path | int:
-    """`<runs_root>/<run_id>`；没有 checkpoint 就是"run 不存在"，退 2。"""
-    run_dir = runs_root(args) / args.run_id
+def open_run_dir(ws: Workspace, run_id: str) -> Path | int:
+    """`<工作区>/runs/<run_id>`；没有 checkpoint 就是"run 不存在"，退 2。"""
+    run_dir = ws.runs / run_id
     if not layout.checkpoint(run_dir).is_file():
         print(f"run 不存在或没有 checkpoint：{run_dir}", file=sys.stderr)
         return EXIT_USAGE

@@ -12,8 +12,10 @@
 
 ## 目录
 
+先起一个工作区（`ai4sci workspace new <name>`，或页面上「新建工作区」），任务包住在它的 `task/` 下（纲领 P-15：一个工作区一份需求）。下面的命令都在工作区目录里跑，不带路径。
+
 ```
-tasks/<name>/
+workspaces/<name>/task/
 ├── manifest.yaml        任务声明：问题、指标、预算、验收
 ├── design.md            产物契约与「怎么算好」；发布签它，ai4sci cap design 照它写
 ├── publish.json         发布记录：ai4sci sign task 写，后面的按钮都查它
@@ -30,7 +32,7 @@ tasks/<name>/
 └── run_0/               make_run0.sh 生成：基线成绩 + 重复 + σ
 ```
 
-`<name>` 只用小写字母、数字、连字符，manifest 的 `id` 必须与它相同。
+`<name>` 只用小写字母、数字、连字符，是工作区名，manifest 的 `id` 必须与它相同。
 
 ## 1. manifest.yaml
 
@@ -86,10 +88,10 @@ env/requirements.lock   numpy==2.5.3
    产物缺失、长度不对、NaN：打一句话到 stderr，`SystemExit(非零)`，**不写 results.json**。没有 results.json 就是没有成绩，这是防假成功的最后一道。
 3. **`SHA256SUMS` 与磁盘一致。** 改了任何 harness 文件就重新生成：
    ```bash
-   cd tasks/<name>/harness && shasum -a 256 launcher.sh evaluate.py make_run0.sh > SHA256SUMS
+   cd workspaces/<name>/task/harness && shasum -a 256 launcher.sh evaluate.py make_run0.sh > SHA256SUMS
    ```
 
-`launcher.sh` 的骨架（照抄 `tasks/mlp-regression/harness/launcher.sh`）：
+`launcher.sh` 的骨架（照抄 `workspaces/mlp-regression/task/harness/launcher.sh`）：
 
 ```bash
 #!/usr/bin/env bash
@@ -111,24 +113,25 @@ export AI4SCI_START_EPOCH
 ## 4. 四条命令
 
 ```bash
-.venv/bin/ai4sci sign task tasks/<name> --by <你>   # 发布：签 manifest.yaml 与 design.md，写 publish.json
-.venv/bin/ai4sci cap baseline tasks/<name>       # 跑 make_run0.sh：基线 + repeat_k 次重复 + σ → run_0/，跑完预检
-.venv/bin/ai4sci show task tasks/<name>           # 退 0 才算接进来了
+cd workspaces/<name>
+ai4sci sign task --by <你>        # 发布：签 manifest.yaml 与 design.md，写 publish.json
+ai4sci cap baseline               # 跑 make_run0.sh：基线 + repeat_k 次重复 + σ → run_0/，跑完预检
+ai4sci show task                  # 退 0 才算接进来了
 ```
 
-没发布，`cap baseline` 与 `run new` 都不开；发布后改了 manifest 或 design.md 要重新发布。预检退 1 说"无解"是门太高或题太浅（manifest 主指标可写 `attainable` 尽头值），改题或松门，别硬跑。
+没发布，`cap baseline` 与 `cap start` 都不开；发布后改了 manifest 或 design.md 要重新发布。预检退 1 说"无解"是门太高或题太浅（manifest 主指标可写 `attainable` 尽头值），改题或松门，别硬跑。
 
 `validate` 退 1 时 stderr 一行一条告诉你哪个文件哪个字段期望什么、实际什么。
 
 ## 5. 跑起来
 
 ```bash
-.venv/bin/ai4sci cap start tasks/<name> --run-id demo
-.venv/bin/ai4sci cap experiment demo --max-iters 5
-.venv/bin/ai4sci show run demo
+ai4sci cap start --run-id demo
+ai4sci cap experiment demo --max-iters 5
+ai4sci show run demo
 ```
 
-`run new` 会按你的 `env/` 给这个 run 单独建一份环境（`runs/demo/.venv`），跑起来后不再回头看任务目录。
+`cap start` 会按你的 `env/` 给这个 run 单独建一份环境（`runs/demo/.venv`，在工作区里），跑起来后不再回头看任务目录。
 
 ## 常见报错
 
@@ -146,4 +149,4 @@ export AI4SCI_START_EPOCH
 
 ## 谁做什么
 
-真实任务通常不是一个人手写全部文件：协调层（人 + agent）填 `manifest.yaml`、把产物契约与基线策略写进 `tasks/<name>/design.md`；人看过这两个文件后 `ai4sci sign task` 发布；然后 `ai4sci cap design tasks/<name>` 起执行层 agent 在只放行 `harness/` `code/` 的会话里写基线与评测草稿，框架替你加执行位、写 SHA256SUMS、跑 lint 与校验；协调 agent 把 `evaluate.py` 和 design.md 的「怎么算好」逐条对过，再跑第 4 节的后两条命令。分工与理由见外层纲领 `docs/architecture/packs.md` §2，协调层的操作步骤见 `coordinator/README.md` 固定流之二。第一个真任务 `tasks/boehm-nll/` 就是这么接进来的，它的 `design.md` 是样本。
+真实任务通常不是一个人手写全部文件：协调层（人 + agent）填 `manifest.yaml`、把产物契约与基线策略写进 `task/design.md`；人看过这两个文件后 `ai4sci sign task` 发布；然后 `ai4sci cap design` 起执行层 agent 在只放行 `harness/` `code/` 的会话里写基线与评测草稿，框架替你加执行位、写 SHA256SUMS、跑 lint 与校验；协调 agent 把 `evaluate.py` 和 design.md 的「怎么算好」逐条对过，再跑第 4 节的后两条命令。分工与理由见外层纲领 `docs/architecture/packs.md` §2，协调层的操作步骤见 `coordinator/README.md` 固定流之二。第一个真任务 `workspaces/boehm-nll/` 就是这么接进来的，它的 `design.md` 是样本。

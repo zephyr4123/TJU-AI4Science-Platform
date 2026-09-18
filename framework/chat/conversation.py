@@ -1,10 +1,12 @@
 """一段对话在磁盘上的样子，以及"发一轮"这个动作。
 
-    runs/chats/<chat_id>/ meta.json           后端名、后端 session id、cwd、轮数、累计花费
-                         transcript.md        人一句 agent 一句，给人翻
-                         inflight.json        正在跑的那一轮；在就拒绝再发
-                         turn-N/message.md    这一轮人说的
-                         turn-N/events.jsonl  这一轮 CLI 的原生事件流，一行一个
+    <域>/chats/<chat_id>/ meta.json          后端名、后端 session id、cwd、轮数、累计花费
+                          transcript.md       人一句 agent 一句，给人翻
+                          inflight.json       正在跑的那一轮；在就拒绝再发
+                          turn-N/message.md   这一轮人说的
+                          turn-N/events.jsonl 这一轮 CLI 的原生事件流，一行一个
+
+域是工作区（研究助理）或编辑台（造流助理），由 chat/scope.py 定；这里只拿到对话目录。
 
 会话内容存在 CLI 自己的目录里（`--resume` 靠它），我们只记 session id；但事件流自己留一份：
 它是"agent 那一轮到底按了什么"的唯一证据（P-3）。
@@ -27,7 +29,6 @@ from typing import Any
 from backends import Chat, ChatEvent
 
 LOGGER = logging.getLogger("ai4sci.chat")
-CHATS_DIRNAME = "chats"
 META_NAME = "meta.json"
 TRANSCRIPT_NAME = "transcript.md"
 INFLIGHT_NAME = "inflight.json"
@@ -79,16 +80,12 @@ class Conversation:
             json.dumps(self.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def chats_root(runs_root: Path) -> Path:
-    return Path(runs_root) / CHATS_DIRNAME
-
-
-def new_conversation(runs_root: Path, backend: str, cwd: Path,
+def new_conversation(chats_dir: Path, backend: str, cwd: Path,
                      chat_id: str | None = None) -> Conversation:
-    """建 `runs/chats/<id>/`。id 缺省 `chat-<UTC 时间戳>-<4 位随机>`：同一秒开两段也不撞。"""
+    """建 `<chats_dir>/<id>/`。id 缺省 `chat-<UTC 时间戳>-<4 位随机>`：同一秒开两段也不撞。"""
     stamp = datetime.now(UTC)
     chat_id = chat_id or f"chat-{stamp:%Y%m%dT%H%M%SZ}-{secrets.token_hex(2)}"
-    directory = chats_root(runs_root) / chat_id
+    directory = Path(chats_dir) / chat_id
     if directory.exists():
         raise FileExistsError(f"对话已存在，不覆盖：{directory}")
     directory.mkdir(parents=True)
@@ -101,8 +98,8 @@ def new_conversation(runs_root: Path, backend: str, cwd: Path,
     return conv
 
 
-def load_conversation(runs_root: Path, chat_id: str) -> Conversation:
-    directory = chats_root(runs_root) / chat_id
+def load_conversation(chats_dir: Path, chat_id: str) -> Conversation:
+    directory = Path(chats_dir) / chat_id
     meta = directory / META_NAME
     if not meta.is_file():
         raise ConversationNotFound(f"对话不存在或没有 {META_NAME}：{directory}")
@@ -111,11 +108,11 @@ def load_conversation(runs_root: Path, chat_id: str) -> Conversation:
     return conv
 
 
-def list_conversations(runs_root: Path) -> list[Conversation]:
-    root = chats_root(runs_root)
+def list_conversations(chats_dir: Path) -> list[Conversation]:
+    root = Path(chats_dir)
     if not root.is_dir():
         return []
-    return [load_conversation(runs_root, p.name) for p in sorted(root.iterdir())
+    return [load_conversation(chats_dir, p.name) for p in sorted(root.iterdir())
             if (p / META_NAME).is_file()]
 
 

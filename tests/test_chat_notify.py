@@ -10,8 +10,12 @@ import pytest
 from backends import BackendNotFound
 from framework.chat import conversation as conv_mod
 from framework.chat import notify
-from framework.run import jobs
+from framework.run import jobs, workspace
 from tests.fixtures.scripted_chat import ScriptedChat, failure, reply
+
+
+def _ws(tmp_path: Path) -> workspace.Workspace:
+    return workspace.create(tmp_path / "workspaces", "w1")
 
 
 def _job(chat_id: str | None, exit_code: int = 0) -> jobs.Job:
@@ -26,35 +30,39 @@ def _job(chat_id: str | None, exit_code: int = 0) -> jobs.Job:
 def scripted(monkeypatch):
     chat = ScriptedChat([])
     monkeypatch.setattr(notify, "get_chat", lambda name: chat)
-    monkeypatch.setattr(notify.guide, "system_prompt", lambda: "指南")
+    monkeypatch.setattr(notify.guide, "system_prompt", lambda kind: "指南")
     return chat
 
 
 def test_wake_sends_a_framework_turn_with_the_job_result(tmp_path: Path, scripted):
-    conv = conv_mod.new_conversation(tmp_path / "runs", "claude_code", tmp_path)
+    ws = _ws(tmp_path)
+    conv = conv_mod.new_conversation(ws.chats, "claude_code", ws.root)
     scripted.turns.append(reply("收到，第 2 轮有改进"))
-    assert notify.wake(tmp_path / "runs", _job(conv.chat_id)) == "done"
+    assert notify.wake(ws, _job(conv.chat_id)) == "done"
     call = scripted.calls[0]
     assert call["chat_id"] == conv.chat_id and call["system_prompt"] == "指南"
+    assert call["allowed_paths"] == [ws.task, ws.flows, ws.runs]  # 叫醒的一轮也只在工作区里写
     head = "作业 job-7（`ai4sci cap experiment r1 --max-iters 2`）跑完了"
     assert call["message"].startswith(head)
     assert "ok r1\tstop=batch_exhausted" in call["message"] and "--detach" in call["message"]
-    turns = conv_mod.read_turns(conv_mod.load_conversation(tmp_path / "runs", conv.chat_id))
+    turns = conv_mod.read_turns(conv_mod.load_conversation(ws.chats, conv.chat_id))
     assert turns[0]["origin"] == "框架" and turns[0]["reply"] == "收到，第 2 轮有改进"
     transcript = (conv.dir / "transcript.md").read_text(encoding="utf-8")
     assert "**框架**：作业 job-7" in transcript
 
 
 def test_wake_reports_a_failed_job_and_an_unfinished_turn(tmp_path: Path, scripted):
-    conv = conv_mod.new_conversation(tmp_path / "runs", "claude_code", tmp_path)
+    ws = _ws(tmp_path)
+    conv = conv_mod.new_conversation(ws.chats, "claude_code", ws.root)
     scripted.turns.append(failure("超时"))
-    status = notify.wake(tmp_path / "runs", _job(conv.chat_id, exit_code=1))
+    status = notify.wake(ws, _job(conv.chat_id, exit_code=1))
     assert status == "error: 超时"
     assert "没跑成，退出码 1" in scripted.calls[0]["message"]
 
 
 def test_wake_waits_while_the_conversation_is_busy_then_gives_up(tmp_path: Path, scripted):
-    conv = conv_mod.new_conversation(tmp_path / "runs", "claude_code", tmp_path)
+    ws = _ws(tmp_path)
+    conv = conv_mod.new_conversation(ws.chats, "claude_code", ws.root)
     inflight = conv.dir / conv_mod.INFLIGHT_NAME
     inflight.write_text("{}", encoding="utf-8")
     scripted.turns.append(reply("醒了"))
@@ -65,27 +73,28 @@ def test_wake_waits_while_the_conversation_is_busy_then_gives_up(tmp_path: Path,
         if len(naps) == 2:
             inflight.unlink()  # 第二次等完人说完了
 
-    assert notify.wake(tmp_path / "runs", _job(conv.chat_id), retry_s=1.0, max_wait_s=60.0,
+    assert notify.wake(ws, _job(conv.chat_id), retry_s=1.0, max_wait_s=60.0,
                        sleep=sleep) == "done"
     assert naps == [1.0, 1.0]
     inflight.write_text("{}", encoding="utf-8")
-    status = notify.wake(tmp_path / "runs", _job(conv.chat_id), retry_s=5.0, max_wait_s=10.0,
+    status = notify.wake(ws, _job(conv.chat_id), retry_s=5.0, max_wait_s=10.0,
                          sleep=lambda s: None)
     assert status.startswith("busy: 等了 10 秒")
 
 
 def test_wake_records_missing_conversation_or_backend_instead_of_raising(tmp_path, monkeypatch):
-    status = notify.wake(tmp_path / "runs", _job("chat-nope"))
+    ws = _ws(tmp_path)
+    status = notify.wake(ws, _job("chat-nope"))
     assert status.startswith("failed: 对话不存在")
-    conv = conv_mod.new_conversation(tmp_path / "runs", "nope", tmp_path)
+    conv = conv_mod.new_conversation(ws.chats, "nope", ws.root)
     monkeypatch.setattr(notify, "get_chat",
                         lambda name: (_ for _ in ()).throw(BackendNotFound(f"未知 {name}")))
-    assert notify.wake(tmp_path / "runs", _job(conv.chat_id)) == "failed: 未知 nope"
+    assert notify.wake(ws, _job(conv.chat_id)) == "failed: 未知 nope"
     with pytest.raises(AssertionError):
-        notify.wake(tmp_path / "runs", _job(None))
+        notify.wake(ws, _job(None))
 
 
 def test_mark_wake_lands_in_the_job_record(tmp_path: Path):
-    jobs._save(tmp_path, _job("chat-x"))
-    assert jobs.mark_wake(tmp_path, "job-7", "busy: 等了 1800 秒").wake.startswith("busy")
+    jobs._save(tmp_path / "jobs", _job("chat-x"))
+    assert jobs.mark_wake(tmp_path / "jobs", "job-7", "busy: 等了 1800 秒").wake.startswith("busy")
     assert json.loads((tmp_path / "jobs" / "job-7.json").read_text())["wake"].startswith("busy")

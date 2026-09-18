@@ -13,21 +13,25 @@ from tests.fixtures.packs_factory import make_pack
 
 def test_start_builds_a_run_and_points_at_experiment(tmp_path, monkeypatch):
     pack = make_pack(tmp_path)
-    monkeypatch.setenv("AI4SCI_RUNS_ROOT", str(tmp_path / "runs"))
-    line = start.run(pack.task_dir, Ports(), run_id="r1")
+    monkeypatch.setenv("AI4SCI_DOMAINS_ROOT", str(pack.domains_root))
+    line = start.run(pack.workspace, Ports(), run_id="r1")
     assert line.startswith("ok r1\t") and line.endswith("next=ai4sci cap experiment r1")
-    state = read_checkpoint(tmp_path / "runs" / "r1")
+    state = read_checkpoint(pack.workspace.runs / "r1")
     assert state["run_id"] == "r1" and state["last_iter"] == 0
     with pytest.raises(CapabilityFailed, match="不覆盖"):
-        start.run(pack.task_dir, Ports(), run_id="r1")
+        start.run(pack.workspace, Ports(), run_id="r1")
+    # --workflow 只认工作区里的实例：库里有也不行，得先取
+    with pytest.raises(CapabilityFailed, match="flow take quick-look"):
+        start.run(pack.workspace, Ports(), run_id="r2", workflow="quick-look")
+    assert not (pack.workspace.runs / "r2").exists()
 
 
 def test_start_refuses_unpublished_pack(tmp_path, monkeypatch):
     pack = make_pack(tmp_path, published=False)
-    monkeypatch.setenv("AI4SCI_RUNS_ROOT", str(tmp_path / "runs"))
+    monkeypatch.setenv("AI4SCI_DOMAINS_ROOT", str(pack.domains_root))
     with pytest.raises(CapabilityFailed, match="还没发布"):
-        start.run(pack.task_dir, Ports(), run_id="r1")
-    assert not (tmp_path / "runs" / "r1").exists()
+        start.run(pack.workspace, Ports(), run_id="r1")
+    assert not (pack.workspace.runs / "r1").exists()
 
 
 def test_start_is_the_bridge_in_a_flow():

@@ -5,7 +5,8 @@ task 级，不起执行层。为什么要有它（纲领 P-14 CLI 主导封装�
 路是歪的。按钮把"任务包长什么样"收回框架：目录表在纲领 packs §2，模板在这个子包里，agent 只填内容。
 
 模板里没定的数写「待填」（`packs.PLACEHOLDER`），发布键看到它不给签：模板不能被当成需求签走。
-它是唯一一颗目标目录还不存在的能力（描述符 `creates_target`），CLI 据此不查目录在不在。
+它建的是工作区里的 `task/`，工作区本身由 `ai4sci workspace new` 或页面先起好（纲领 P-15）；
+任务包已经在了就拒绝，不覆盖。
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from framework.contracts import env, packs
 from framework.contracts.capability import Artifact, Capability, CapabilityFailed, Param, Ports
+from framework.run.workspace import Workspace
 
 LOGGER = logging.getLogger("ai4sci.init")
 NAME = "init"
@@ -54,7 +56,6 @@ DESCRIPTOR = Capability(
         "目标目录原本不存在，跑完有 manifest.yaml、design.md、data/、env/ 四样",
         "data/ 里的文件与材料逐字节一致",
     ),
-    creates_target=True,
 )
 
 
@@ -68,14 +69,12 @@ def _render(name: str, fill: dict[str, str]) -> str:
     return text
 
 
-def run(task_dir: Path, ports: Ports, *, domain: str = packs.DEFAULT_DOMAIN, materials: str = "",
-        python: str = "", lock: str = "") -> str:
-    task_dir = Path(task_dir)
+def run(workspace: Workspace, ports: Ports, *, domain: str = packs.DEFAULT_DOMAIN,
+        materials: str = "", python: str = "", lock: str = "") -> str:
+    task_dir = workspace.task
     if task_dir.exists():
         raise CapabilityFailed(
-            f"任务包已存在：{task_dir}。起新任务换个目录名；改现有任务直接改它的文件")
-    if not task_dir.parent.is_dir():
-        raise CapabilityFailed(f"上级目录不存在：{task_dir.parent}（任务包放 tasks/ 下）")
+            f"这个工作区已经有任务包了：{task_dir}。改需求直接改它的文件；另一份需求另起一个工作区")
     if not python.strip() or not lock.strip():
         raise CapabilityFailed(
             "要 --python 与 --lock：问研究者脚本用哪个 Python、pip freeze 存在哪个文件")
@@ -99,13 +98,13 @@ def run(task_dir: Path, ports: Ports, *, domain: str = packs.DEFAULT_DOMAIN, mat
     env_dir.mkdir()
     (env_dir / env.PYTHON_VERSION_NAME).write_text(python.strip() + "\n", encoding="utf-8")
     shutil.copyfile(lock_path, env_dir / env.REQUIREMENTS_NAME)
-    fill = {"id": task_dir.name, "domain": domain, "todo": packs.PLACEHOLDER,
+    fill = {"id": workspace.id, "domain": domain, "todo": packs.PLACEHOLDER,
             "source": materials.strip() or packs.PLACEHOLDER}
     for name in (packs.MANIFEST_NAME, packs.BRIEF_NAME):
         (task_dir / name).write_text(_render(name, fill), encoding="utf-8")
     n_files = sum(1 for p in data.rglob("*") if p.is_file())
-    LOGGER.info("init_done task=%s domain=%s data_files=%d materials=%s",
-                task_dir.name, domain, n_files, source)
-    return (f"ok {task_dir.name}\tdomain={domain}\tdata={n_files} 个文件"
-            f"\tnext=填 {packs.MANIFEST_NAME} 与 {packs.BRIEF_NAME} 里的「{packs.PLACEHOLDER}」，"
-            f"然后 ai4sci show task {task_dir}")
+    LOGGER.info("init_done workspace=%s domain=%s data_files=%d materials=%s",
+                workspace.id, domain, n_files, source)
+    return (f"ok {workspace.id}\tdomain={domain}\tdata={n_files} 个文件"
+            f"\tnext=填 task/{packs.MANIFEST_NAME} 与 task/{packs.BRIEF_NAME} 里的"
+            f"「{packs.PLACEHOLDER}」，然后 ai4sci show task")

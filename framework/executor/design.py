@@ -36,7 +36,7 @@ LINT_SELECT = "E,F,W,B,I,BLE,UP"
 LINT_LINE_LENGTH = 100
 # 第二个会话把现状文件贴回去；单个文件超过这个长度就截断（草稿都很短，超了本身就是问题）
 FILE_MAX_CHARS = 20_000
-LOG_DIR_PREFIX = "design-"
+LOG_DIRNAME = "design"
 
 
 class DesignFailed(RuntimeError):
@@ -71,7 +71,8 @@ def design_task(
 
     validate 这一步不查 run_0：签字前不跑基线。
 
-    `log_root` 下按 `design-<task_id>/executor/session-N/` 留档：提示原文、事件流、stderr。
+    `log_root` 下按 `design/executor/session-N/` 留档：提示原文、事件流、stderr（一个工作区一个
+    任务包，目录名不用再带任务名）。
     `feedback` 非空或磁盘上已有草稿时，提示带上现状文件，让执行层照着改而不是重写。
     """
     task_dir = Path(task_dir).resolve()
@@ -98,7 +99,7 @@ def design_task(
     }
     prompt = prompting.build_prompt(TEMPLATE, values)
 
-    log_dir, number = _next_session_dir(Path(log_root) / f"{LOG_DIR_PREFIX}{task_dir.name}")
+    log_dir, number = _next_session_dir(Path(log_root) / LOG_DIRNAME)
     log_dir.mkdir(parents=True)
     (log_dir / "prompt.md").write_text(prompt, encoding="utf-8")  # 先落盘：会话死了也知道喂了什么
     result = session.run_session(

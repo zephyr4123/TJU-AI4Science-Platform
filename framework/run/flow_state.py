@@ -58,7 +58,7 @@ def record_press(run_dir: Path, cap: str) -> dict[str, Any] | None:
     return state
 
 
-def status(run_dir: Path, runs_root: Path) -> dict[str, Any] | None:
+def status(run_dir: Path, jobs_dir: Path) -> dict[str, Any] | None:
     """便条的完整读法：哪条流、第几步、下一步是什么、在等谁。没照流就是 None。"""
     run_dir = Path(run_dir)
     state = _load(run_dir)
@@ -67,7 +67,7 @@ def status(run_dir: Path, runs_root: Path) -> dict[str, Any] | None:
     workflow = _snapshot(run_dir, state["workflow"])
     step = state["step"]
     following = workflow.steps[step] if step < len(workflow.steps) else None
-    job = jobs.running_for(runs_root, run_dir.name)
+    job = jobs.running_for(jobs_dir, run_dir.name)
     if job is not None:
         waiting = f"job:{job.job_id}"
     elif following is None:

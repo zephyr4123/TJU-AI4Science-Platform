@@ -55,7 +55,7 @@ def test_attach_snapshots_the_file_and_counts_start_as_pressed(tmp_path: Path):
     assert snapshot.read_text(encoding="utf-8") == FLOW
     path.write_text(FLOW.replace("跑几轮", "改了"), encoding="utf-8")  # 仓里的流改了不影响 run
     assert workflows.load_workflow(snapshot).steps[1].does == "跑几轮"
-    doc = flow_state.status(run_dir, tmp_path / "runs")
+    doc = flow_state.status(run_dir, tmp_path / "jobs")
     assert doc["step"] == 1 and doc["total"] == 6 and doc["waiting"] == "assistant"
     assert doc["next"]["cap"] == "experiment"
 
@@ -67,7 +67,7 @@ def test_presses_advance_along_the_flow_and_offpath_presses_do_not_move(tmp_path
     assert flow_state.record_press(run_dir, "experiment")["step"] == 2  # 再跑一批：流里后面没有它
     assert flow_state.record_press(run_dir, "verify")["step"] == 5  # 跳过分析直接验证：记到验证那步
     assert flow_state.record_press(run_dir, "analysis")["step"] == 5  # 回头补分析：流外，不动
-    doc = flow_state.status(run_dir, tmp_path / "runs")
+    doc = flow_state.status(run_dir, tmp_path / "jobs")
     assert doc["waiting"] == "key:accept" and doc["next"]["key"] == "accept"
 
 
@@ -76,24 +76,24 @@ def test_waiting_is_derived_from_jobs_and_the_next_step(tmp_path: Path):
     flow_state.attach(run_dir, _flow_file(tmp_path))
     flow_state.record_press(run_dir, "experiment")
     flow_state.record_press(run_dir, "analysis")
-    assert flow_state.status(run_dir, tmp_path / "runs")["waiting"] == "human"  # 下一步是人看
-    jobs._save(tmp_path / "runs", jobs.Job(job_id="job-1", cap="verify", level="run",
+    assert flow_state.status(run_dir, tmp_path / "jobs")["waiting"] == "human"  # 下一步是人看
+    jobs._save(tmp_path / "jobs", jobs.Job(job_id="job-1", cap="verify", level="run",
                                            target="r1", argv=[], pid=os.getpid(), started_at="t"))
-    assert flow_state.status(run_dir, tmp_path / "runs")["waiting"] == "job:job-1"
-    jobs.finish(tmp_path / "runs", "job-1", exit_code=0, result="ok")
+    assert flow_state.status(run_dir, tmp_path / "jobs")["waiting"] == "job:job-1"
+    jobs.finish(tmp_path / "jobs", "job-1", exit_code=0, result="ok")
     flow_state.record_press(run_dir, "verify")
-    assert flow_state.status(run_dir, tmp_path / "runs")["waiting"] == "key:accept"
+    assert flow_state.status(run_dir, tmp_path / "jobs")["waiting"] == "key:accept"
     (run_dir / "flow.json").write_text('{"workflow": "demo", "step": 6}', encoding="utf-8")
-    assert flow_state.status(run_dir, tmp_path / "runs")["waiting"] == "done"
+    assert flow_state.status(run_dir, tmp_path / "jobs")["waiting"] == "done"
 
 
 def test_no_flow_means_none_and_missing_snapshot_is_loud(tmp_path: Path):
     run_dir = _run_dir(tmp_path)
-    assert flow_state.status(run_dir, tmp_path / "runs") is None
+    assert flow_state.status(run_dir, tmp_path / "jobs") is None
     assert flow_state.record_press(run_dir, "experiment") is None
     (run_dir / "flow.json").write_text('{"workflow": "gone", "step": 0}', encoding="utf-8")
     with pytest.raises(FileNotFoundError, match="快照却不在"):
-        flow_state.status(run_dir, tmp_path / "runs")
+        flow_state.status(run_dir, tmp_path / "jobs")
     bad = tmp_path / "workflows" / "bad.yaml"
     bad.parent.mkdir()
     bad.write_text("name: bad\n", encoding="utf-8")

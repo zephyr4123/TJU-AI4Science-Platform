@@ -19,6 +19,9 @@ __pycache__/
 .venv/
 node_modules/
 
-# ── 运行产物：runs/ 里的东西按纲领不进 git ──
-runs/
+# ── 运行产物：工作区里跑出来的东西不进 git，需求（task/）与流实例（flows/）进；编辑台的对话不进 ──
+workspaces/*/runs/
+workspaces/*/chats/
+workspaces/*/jobs/
+studio/
 *.egg-info/

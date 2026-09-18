@@ -65,7 +65,7 @@ def test_good_draft_is_sealed_lint_clean_and_validates(pack):
     listed = [ln.split("  ")[1] for ln in (hdir / "SHA256SUMS").read_text().splitlines()]
     assert listed == outcome.sealed
     # 证据都在：提示原文、事件流搬到了会话目录，任务目录里不留 .ai4sci
-    assert outcome.log_dir == pack.root / "runs" / "design-toy" / "executor" / "session-1"
+    assert outcome.log_dir == pack.root / "runs" / "design" / "executor" / "session-1"
     assert (outcome.log_dir / "prompt.md").read_text(encoding="utf-8") == runner.prompts[0]
     assert list(outcome.log_dir.glob("executor-*.jsonl"))
     assert not (pack.task_dir / ".ai4sci").exists()

@@ -19,6 +19,7 @@ from typing import Any
 
 import yaml
 
+from framework import paths
 from framework.contracts import env, headroom, packs, publish
 from framework.run import gitwork, layout
 from framework.run.checkpoint import read_checkpoint, write_checkpoint
@@ -46,7 +47,7 @@ def new_run(
     """
     task_dir = Path(task_dir).resolve()
     publish.require_published(task_dir)
-    domains_root = Path(domains_root) if domains_root else packs.default_domains_root(task_dir)
+    domains_root = Path(domains_root) if domains_root else paths.domains_root()
     problems = packs.validate_task(task_dir, domains_root)
     if problems:
         raise TaskInvalid("任务包不合契约，不开跑：\n" + "\n".join(problems))

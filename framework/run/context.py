@@ -21,8 +21,6 @@ import yaml
 
 from framework.run import layout
 
-RUNS_ROOT_ENV = "AI4SCI_RUNS_ROOT"
-WORKFLOWS_ROOT_ENV = "AI4SCI_WORKFLOWS_ROOT"
 EXECUTOR_TIMEOUT_ENV = "AI4SCI_EXECUTOR_TIMEOUT_S"
 DEFAULT_EXECUTOR_TIMEOUT_S = 900.0
 DEFAULT_PATIENCE = 5  # manifest 不写 budget.patience 时的缺省（读取点在 load_context）
@@ -62,27 +60,6 @@ class RunContext:
 # --------------------------------------------------------------------------
 # 配置读取点：每个都在这里断言一次，非法值就抛，不静默回落默认（P-7 / P-8）
 # --------------------------------------------------------------------------
-def default_runs_root() -> Path:
-    """runs 根目录：环境变量 AI4SCI_RUNS_ROOT 优先，否则 <仓根>/runs。
-
-    `parents[2]` 是 framework/run/context.py 往上三级，即仓根——搬包时这个数字要跟着改，
-    所以它只在这一处出现。
-    """
-    raw = os.environ.get(RUNS_ROOT_ENV)
-    root = Path(raw) if raw else Path(__file__).resolve().parents[2] / "runs"
-    root.mkdir(parents=True, exist_ok=True)
-    assert root.is_dir(), f"{RUNS_ROOT_ENV} 指向的不是目录：{root}"
-    return root
-
-
-def default_workflows_root() -> Path:
-    """预装工作流的目录：AI4SCI_WORKFLOWS_ROOT 优先，否则 <仓根>/workflows（同上的 parents[2]）。"""
-    raw = os.environ.get(WORKFLOWS_ROOT_ENV)
-    root = Path(raw) if raw else Path(__file__).resolve().parents[2] / "workflows"
-    assert root.is_dir(), f"{WORKFLOWS_ROOT_ENV} 指向的不是目录：{root}"
-    return root
-
-
 def executor_timeout_s() -> float:
     """执行层单轮墙钟上限（秒）。它与 harness 的预算是两根轴：改代码慢不等于跑得慢。"""
     raw = os.environ.get(EXECUTOR_TIMEOUT_ENV)

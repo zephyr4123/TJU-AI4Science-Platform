@@ -18,7 +18,6 @@ import ast
 import hashlib
 import json
 import math
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -35,10 +34,6 @@ MANIFEST_NAME = "manifest.yaml"
 BRIEF_NAME = "design.md"
 # `cap init` 的模板里没定的值都写它；发布前看到它就不给签，模板不能被当成需求签走
 PLACEHOLDER = "待填"
-TASKS_DIRNAME = "tasks"
-DOMAINS_DIRNAME = "domains"
-# 领域根的覆盖入口：测试与搬了目录的部署用；缺省是任务包同一个仓里的 domains/
-DOMAINS_ROOT_ENV = "AI4SCI_DOMAINS_ROOT"
 PROFILE_NAME = "profile.yaml"
 
 # manifest 不写 domain 时的兜底领域（packs.md §2）。
@@ -116,12 +111,9 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def default_domains_root(task_dir: Path) -> Path:
-    """`AI4SCI_DOMAINS_ROOT`，缺省 `<task_dir>/../../domains`（任务包同一个仓里的 domains/）。"""
-    override = os.environ.get(DOMAINS_ROOT_ENV)
-    if override:
-        return Path(override).resolve()
-    return Path(task_dir).resolve().parent.parent / DOMAINS_DIRNAME
+def task_id_of(task_dir: Path) -> str:
+    """任务包的 id 就是它所在工作区的名字：包住在 `workspaces/<id>/task/`（纲领 P-15）。"""
+    return Path(task_dir).resolve().parent.name
 
 
 def intake_problems(task_dir: Path) -> list[str]:
@@ -147,49 +139,10 @@ def intake_problems(task_dir: Path) -> list[str]:
 
 
 # --------------------------------------------------------------------------
-# 发现
-# --------------------------------------------------------------------------
-def discover_tasks(root: Path) -> dict[str, Path]:
-    """扫 `tasks/*/manifest.yaml`，返回 {id: 任务目录}。
-
-    root 既可以是仓根（下面有 `tasks/`），也可以直接是 `tasks/` 本身——协调层调
-    CLI 时手里通常是仓根，框架内部调用时手里通常是 tasks 根，两种都放行，规则写死
-    在这里：root 下有 `tasks/` 子目录就下潜一层。
-
-    冲突直接抛（packs.md §4「同名冲突直接报错」）：发现阶段的重名是拓扑错误，
-    不是某一个包的毛病，摊在问题清单里会让人以为跳过它就能跑。
-    """
-    root = Path(root)
-    if not root.is_dir():
-        raise NotADirectoryError(f"任务搜索路径不存在：{root}")
-    tasks_root = root / TASKS_DIRNAME if (root / TASKS_DIRNAME).is_dir() else root
-
-    found: dict[str, Path] = {}
-    for manifest_path in sorted(tasks_root.glob(f"*/{MANIFEST_NAME}")):
-        task_dir = manifest_path.parent
-        try:
-            raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-        except yaml.YAMLError as exc:
-            raise ValueError(f"{manifest_path}: YAML 语法错误：{_one_line(exc)}") from exc
-        if not isinstance(raw, dict) or not isinstance(raw.get("id"), str):
-            raise ValueError(f"{manifest_path}: 缺少字符串字段 id，无法发现该任务包")
-        task_id = raw["id"]
-        # 先判重复再判目录名：两个包抢同一个 id 时，"id 重复"比"目录名对不上"更接近病根。
-        if task_id in found:
-            raise ValueError(f"任务 id 重复：{task_id!r} 同时出现在 {found[task_id]} 与 {task_dir}")
-        if task_id != task_dir.name:
-            raise ValueError(
-                f"{manifest_path}: 字段 id: 期望等于目录名 {task_dir.name!r}，实际 {task_id!r}"
-            )
-        found[task_id] = task_dir
-    return found
-
-
-# --------------------------------------------------------------------------
 # 逐条校验：每条一个小函数，manifest 读不出来时后续检查各自安全退场
 # --------------------------------------------------------------------------
 def _check_manifest(task_dir: Path) -> tuple[dict[str, Any] | None, list[str]]:
-    """schema 校验，外加两条 JSON Schema 表达不了的：id 等于目录名、恰好一个 primary。"""
+    """schema 校验，外加两条 JSON Schema 表达不了的：id 等于工作区名、恰好一个 primary。"""
     label = f"{task_dir.name}/{MANIFEST_NAME}"
     path = task_dir / MANIFEST_NAME
     if not path.is_file():
@@ -210,9 +163,9 @@ def _check_manifest(task_dir: Path) -> tuple[dict[str, Any] | None, list[str]]:
         )
 
     task_id = raw.get("id")
-    if isinstance(task_id, str) and task_id != task_dir.name:
+    if isinstance(task_id, str) and task_id != task_id_of(task_dir):
         problems.append(
-            f"{label}: 字段 id: 期望等于目录名 {task_dir.name!r}，实际 {task_id!r}"
+            f"{label}: 字段 id: 期望等于工作区名 {task_id_of(task_dir)!r}，实际 {task_id!r}"
         )
 
     metrics = raw.get("metrics")

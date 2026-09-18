@@ -1,6 +1,6 @@
-"""在 tmp_path 里造一个最小合法任务包，供 packs / cli 测试逐条破坏。
+"""在 tmp_path 里造一个最小合法任务包（住在一个工作区里），供 packs / cli 测试逐条破坏。
 
-为什么不复用仓里的 tasks/mlp-regression：CI 门禁要求删掉全部任务包后框架测试照过
+为什么不复用仓里的 workspaces/mlp-regression：CI 门禁要求删掉全部任务包后框架测试照过
 （纲领 P-5），夹具一旦指向真实包，这条门禁就成了摆设。
 """
 
@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from framework.contracts import publish
+from framework.run import workspace as ws_mod
+from framework.run.workspace import Workspace
 
 # 夹具 harness：形状与真任务一致（清产物 → 训练 → 评分），但只有几行。
 LAUNCHER_SH = """#!/usr/bin/env bash
@@ -74,7 +76,7 @@ DEFAULT_VALUES = (0.50, 0.52, 0.48)
 @dataclass
 class Pack:
     root: Path
-    tasks_root: Path
+    workspace: Workspace
     task_dir: Path
     domains_root: Path
 
@@ -126,12 +128,15 @@ def make_pack(
 ) -> Pack:
     """造一个默认合法的任务包；每个参数对应一处可被单独破坏的地方。
 
+    包住在 `<root>/workspaces/<dir_name or task_id>/task/`（纲领 P-15）：`dir_name` 与 `task_id`
+    不一致就是"manifest 的 id 与工作区名对不上"那条路。
+
     默认已发布（design.md + publish.json）：夹具代表"接任务那一刻已经过了需求看板"，
     `run new` 与 task 级能力开门前查的钥匙都在。`published=False` 是没发布那条路的入口。
     """
     root = tmp_path
-    tasks_root = root / "tasks"
-    task_dir = tasks_root / (dir_name or task_id)
+    workspace = ws_mod.create(ws_mod.workspaces_root(root), dir_name or task_id)
+    task_dir = workspace.task
     domains_root = root / "domains"
     (task_dir / "code").mkdir(parents=True, exist_ok=True)
     (task_dir / "harness").mkdir(exist_ok=True)
@@ -156,7 +161,7 @@ def make_pack(
     if published:
         # 直接写钥匙不过检查：夹具要能造"发布过的坏包"，坏在哪由各测试自己破坏
         publish.write_record(task_dir, by=PUBLISHED_BY)
-    return Pack(root=root, tasks_root=tasks_root, task_dir=task_dir, domains_root=domains_root)
+    return Pack(root=root, workspace=workspace, task_dir=task_dir, domains_root=domains_root)
 
 
 def write_env(task_dir: Path, python_version: str = PYTHON_VERSION,

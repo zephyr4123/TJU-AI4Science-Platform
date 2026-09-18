@@ -1,7 +1,8 @@
-"""`ai4sci show tasks | task <dir> | run <id> | caps | workflows | flow <能力>...`：只读查询。
+"""`ai4sci show workspaces | task | run <id> | jobs | job <id> | flows | caps | workflows | flow`
 
 在 cli 层。这一组只看不做：不产出文件、不起会话、不改任何东西。与 `ai4sci serve` 的 GET
-端点读的是同一批函数——页面和终端是同一份数据的两张脸。
+端点读的是同一批函数——页面和终端是同一份数据的两张脸。task / run / jobs / flows 看的是
+当前工作区（P-15）；caps / workflows / flow 看的是库。
 """
 
 from __future__ import annotations
@@ -11,63 +12,56 @@ import json
 import sys
 from pathlib import Path
 
+from framework import paths
 from framework.capabilities import discover
-from framework.chat.guide import REPO_ROOT
 from framework.cli._common import (
     EXIT_INVALID,
     EXIT_OK,
     EXIT_USAGE,
-    add_runs_root,
+    current_workspace,
     open_run_dir,
-    runs_root,
 )
 from framework.contracts import packs, workflows
 from framework.contracts.capability import STAGES
 from framework.contracts.flow import check_flow, stage_remarks, stages_of
 from framework.contracts.report import read_report
 from framework.memory import ledger
-from framework.run import flow_state, jobs, layout
+from framework.run import flow_state, jobs, layout, workspace
 from framework.run.checkpoint import read_checkpoint
 from framework.run.context import load_manifest
 
 
-def cmd_tasks(args: argparse.Namespace) -> int:
-    """列出搜索路径下的任务包：id 与目录。"""
-    root = Path(args.root) if args.root else REPO_ROOT
-    if not root.is_dir():
-        print(f"搜索路径不存在：{root}", file=sys.stderr)
-        return EXIT_USAGE
-    try:
-        found = packs.discover_tasks(root)
-    except (ValueError, NotADirectoryError) as exc:
-        # 发现阶段的冲突是拓扑错误：报清楚并退非零，不静默跳过坏包（P-7）
-        print(str(exc), file=sys.stderr)
-        return EXIT_USAGE
-    for task_id in sorted(found):
-        print(f"{task_id}\t{found[task_id]}")
+def cmd_workspaces(args: argparse.Namespace) -> int:
+    """全部工作区：id、标题、在哪。"""
+    for ws in workspace.list_workspaces(workspace.workspaces_root(paths.home())):
+        meta = ws.meta()
+        print(f"{ws.id}\t{meta.get('title') or ws.id}\t{ws.root}")
     return EXIT_OK
 
 
 def cmd_task(args: argparse.Namespace) -> int:
-    """校验一个任务包合不合契约：问题一行一条到 stderr，通就打 ok。"""
-    task_dir = Path(args.task_dir)
-    if not task_dir.is_dir():
-        print(f"任务目录不存在：{task_dir}", file=sys.stderr)
-        return EXIT_USAGE
-    domains_root = Path(args.domains) if args.domains else packs.default_domains_root(task_dir)
-    problems = packs.validate_task(task_dir, domains_root)
+    """当前工作区的任务包合不合契约：问题一行一条到 stderr，通就打 ok。"""
+    ws = current_workspace()
+    if isinstance(ws, int):
+        return ws
+    if not ws.task.is_dir():
+        print(f"这个工作区还没有任务包：先 ai4sci cap init（{ws.task}）", file=sys.stderr)
+        return EXIT_INVALID
+    problems = packs.validate_task(ws.task, paths.domains_root())
     if problems:
         for problem in problems:
             print(problem, file=sys.stderr)
         return EXIT_INVALID
-    # 校验通过意味着 manifest.id 已经和目录名对上，这里可以直接拿目录名当 id
-    print(f"ok {task_dir.resolve().name}")
+    print(f"ok {ws.id}")
     return EXIT_OK
 
 
 def cmd_run(args: argparse.Namespace) -> int:
     """一个 run 的状态：best、账本尾部、停止原因、分析与验证有没有；末尾账本 × git 对账。"""
-    run_dir = open_run_dir(args)
+    ws = current_workspace()
+    if isinstance(ws, int):
+        return ws
+    run_dir = open_run_dir(ws, args.run_id)
     if isinstance(run_dir, int):
         return run_dir
     state = read_checkpoint(run_dir)
@@ -93,9 +87,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         # 报告不合约就当没有报告：打出来退 1，别把坏报告的 status 当结论
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
-    for job in jobs.jobs_for(runs_root(args), state["run_id"]):
+    for job in jobs.jobs_for(ws.jobs, state["run_id"]):
         print(f"job\t{job.job_id}\t{jobs.effective_status(job)}\t{job.cap}\t{job.result}")
-    flow = flow_state.status(run_dir, runs_root(args))
+    flow = flow_state.status(run_dir, ws.jobs)
     if flow is not None:
         following = flow["next"]
         print(f"workflow\t{flow['workflow']}\tstep={flow['step']}/{flow['total']}"
@@ -112,14 +106,20 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_jobs(args: argparse.Namespace) -> int:
     """作业清单：每个 `--detach` 起的进程一条；状态探过 pid（running / done / failed / lost）。"""
-    for job in jobs.list_jobs(runs_root(args)):
+    ws = current_workspace()
+    if isinstance(ws, int):
+        return ws
+    for job in jobs.list_jobs(ws.jobs):
         print(_job_line(job))
     return EXIT_OK
 
 
 def cmd_job(args: argparse.Namespace) -> int:
+    ws = current_workspace()
+    if isinstance(ws, int):
+        return ws
     try:
-        job = jobs.load(runs_root(args), args.job_id)
+        job = jobs.load(ws.jobs, args.job_id)
     except jobs.JobNotFound as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
@@ -137,10 +137,10 @@ def _job_line(job: jobs.Job) -> str:
 
 def cmd_caps(args: argparse.Namespace) -> int:
     """能力清单：平台的全部按钮，按七个科研阶段列，空着的阶段也列出来。每颗带"用在哪几条流"，
-    那是从工作流文件反查的，能力自己不知道。"""
+    那是从库里的工作流文件反查的，能力自己不知道。"""
     descriptors = [module.DESCRIPTOR for module in discover().values()]
     try:
-        uses = workflows.used_by(workflows.load_workflows(workflows.workflows_root(REPO_ROOT)))
+        uses = workflows.used_by(workflows.load_workflows(paths.workflows_root()))
     except workflows.WorkflowInvalid as exc:
         # 坏掉的工作流文件不静默跳过：清单里"用在哪"会是错的
         print(str(exc), file=sys.stderr)
@@ -166,14 +166,25 @@ def _catalog():
 
 
 def cmd_workflows(args: argparse.Namespace) -> int:
-    """预装的工作流：每条一行带覆盖的阶段，能力步骤对不上吃吐文件的退 1；提醒只打不退。"""
+    """库里的工作流：每条一行带覆盖的阶段，能力步骤对不上吃吐文件的退 1；提醒只打不退。"""
+    return _print_flows(paths.workflows_root(), args.json)
+
+
+def cmd_flows(args: argparse.Namespace) -> int:
+    """当前工作区里的流实例：从库里取来、改过参数的那几条，同一套形状检查。"""
+    ws = current_workspace()
+    if isinstance(ws, int):
+        return ws
+    return _print_flows(ws.flows, args.json)
+
+
+def _print_flows(root: Path, as_json: bool) -> int:
     try:
-        found = workflows.describe(
-            workflows.load_workflows(workflows.workflows_root(REPO_ROOT)), _catalog())
+        found = workflows.describe(workflows.load_workflows(root), _catalog())
     except workflows.WorkflowInvalid as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
-    if args.json:
+    if as_json:
         print(json.dumps(found, ensure_ascii=False, indent=2))
     else:
         for wf in found:
@@ -214,40 +225,36 @@ def cmd_flow(args: argparse.Namespace) -> int:
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
-    show = groups.add_parser("show", help="只读查询：任务包、run、能力清单、工作流、流通不通")
+    show = groups.add_parser("show", help="只读查询：工作区、任务包、run、作业、流、能力清单")
     what = show.add_subparsers(dest="what", required=True)
 
-    tasks = what.add_parser("tasks", help="列出搜索路径下的任务包")
-    tasks.add_argument("--root", default=None, help="仓根或 tasks/ 目录，缺省为本仓根")
-    tasks.set_defaults(func=cmd_tasks)
+    spaces = what.add_parser("workspaces", help="列出全部工作区：id、标题、在哪")
+    spaces.set_defaults(func=cmd_workspaces)
 
-    task = what.add_parser("task", help="校验一个任务包合不合契约")
-    task.add_argument("task_dir", help="任务包目录")
-    task.add_argument(
-        "--domains", default=None,
-        help=f"领域包根目录，缺省 ${packs.DOMAINS_ROOT_ENV} 或 <task_dir>/../../domains")
+    task = what.add_parser("task", help="校验当前工作区的任务包合不合契约")
     task.set_defaults(func=cmd_task)
 
     run = what.add_parser("run", help="一个 run 的 best、账本尾部与停止原因；顺带账本 × git 对账")
     run.add_argument("run_id")
     run.add_argument("--tail", type=int, default=5, help="账本尾部行数，缺省 5")
-    add_runs_root(run)
     run.set_defaults(func=cmd_run)
 
-    listing = what.add_parser("jobs", help="作业清单：--detach 起的每个进程的状态与结论")
-    add_runs_root(listing)
+    listing = what.add_parser("jobs", help="当前工作区的作业清单：每个后台作业的状态与结论")
     listing.set_defaults(func=cmd_jobs)
 
     one = what.add_parser("job", help="一个作业：状态、命令、结论行、日志在哪")
     one.add_argument("job_id")
-    add_runs_root(one)
     one.set_defaults(func=cmd_job)
+
+    flows = what.add_parser("flows", help="当前工作区的流实例（flows/*.yaml）：覆盖的阶段、通不通")
+    flows.add_argument("--json", action="store_true", help="打 JSON（给页面）")
+    flows.set_defaults(func=cmd_flows)
 
     caps = what.add_parser("caps", help="能力清单：按七个科研阶段列全部按钮，带用在哪几条流")
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     caps.set_defaults(func=cmd_caps)
 
-    wfs = what.add_parser("workflows", help="预装的工作流（workflows/*.yaml）：覆盖的阶段、通不通")
+    wfs = what.add_parser("workflows", help="库里的工作流（workflows/*.yaml）：覆盖的阶段、通不通")
     wfs.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     wfs.set_defaults(func=cmd_workflows)
 

@@ -10,6 +10,7 @@ from framework.capabilities import discover
 from framework.capabilities import init as cap_init
 from framework.contracts import env, packs, publish
 from framework.contracts.capability import CapabilityFailed, Ports
+from framework.run import workspace
 
 
 def _materials(root: Path) -> Path:
@@ -29,18 +30,17 @@ def _lock(root: Path) -> Path:
     return lock
 
 
-def test_descriptor_is_the_only_capability_that_creates_its_target():
+def test_descriptor_needs_nothing_and_starts_the_design_stage():
     catalog = {name: module.DESCRIPTOR for name, module in discover().items()}
-    assert catalog["init"].creates_target and catalog["init"].stage == "设计"
-    assert [name for name, d in catalog.items() if d.creates_target] == ["init"]
+    assert catalog["init"].stage == "设计" and catalog["init"].level == "task"
     assert catalog["init"].inputs == () and not catalog["init"].needs_executor
 
 
 def test_init_copies_materials_verbatim_and_lays_out_the_skeleton(tmp_path: Path):
     src, lock = _materials(tmp_path), _lock(tmp_path)
-    (tmp_path / "tasks").mkdir()
-    task = tmp_path / "tasks" / "demo"
-    line = cap_init.run(task, Ports(), domain="petab", materials=str(src), python="3.14",
+    ws = workspace.create(tmp_path / "workspaces", "demo")
+    task = ws.task
+    line = cap_init.run(ws, Ports(), domain="petab", materials=str(src), python="3.14",
                         lock=str(lock))
     assert line.startswith("ok demo\tdomain=petab\tdata=3 个文件") and "待填" in line
     # 材料逐字节一致，杂物不搬，README 存根补上
@@ -61,9 +61,9 @@ def test_init_copies_materials_verbatim_and_lays_out_the_skeleton(tmp_path: Path
 
 def test_template_passes_schema_but_placeholders_block_publishing(tmp_path: Path):
     """模板的形状要合 schema（agent 只填内容），但「待填」还在就不给签：模板不能当需求发布。"""
-    (tmp_path / "tasks").mkdir()
-    task = tmp_path / "tasks" / "demo"
-    cap_init.run(task, Ports(), python="3.12", lock=str(_lock(tmp_path)))
+    ws = workspace.create(tmp_path / "workspaces", "demo")
+    task = ws.task
+    cap_init.run(ws, Ports(), python="3.12", lock=str(_lock(tmp_path)))
     assert sorted(p.name for p in (task / "data").iterdir()) == ["README.md"]  # 没给材料就只有存根
     problems = packs.intake_problems(task)
     assert problems and all(packs.PLACEHOLDER in p for p in problems), problems
@@ -78,18 +78,15 @@ def test_template_passes_schema_but_placeholders_block_publishing(tmp_path: Path
 
 def test_init_refuses_bad_inputs_instead_of_guessing(tmp_path: Path):
     lock = _lock(tmp_path)
-    (tmp_path / "tasks").mkdir()
-    existing = tmp_path / "tasks" / "old"
-    existing.mkdir()
-    with pytest.raises(CapabilityFailed, match="已存在"):
-        cap_init.run(existing, Ports(), python="3.12", lock=str(lock))
-    with pytest.raises(CapabilityFailed, match="上级目录不存在"):
-        cap_init.run(tmp_path / "nowhere" / "t", Ports(), python="3.12", lock=str(lock))
+    old = workspace.create(tmp_path / "workspaces", "old")
+    old.task.mkdir()
+    with pytest.raises(CapabilityFailed, match="已经有任务包"):
+        cap_init.run(old, Ports(), python="3.12", lock=str(lock))
+    ws = workspace.create(tmp_path / "workspaces", "t")
     with pytest.raises(CapabilityFailed, match="--python 与 --lock"):
-        cap_init.run(tmp_path / "tasks" / "t", Ports(), python="", lock=str(lock))
+        cap_init.run(ws, Ports(), python="", lock=str(lock))
     with pytest.raises(CapabilityFailed, match="--lock 指的文件不存在"):
-        cap_init.run(tmp_path / "tasks" / "t", Ports(), python="3.12", lock=str(tmp_path / "no"))
+        cap_init.run(ws, Ports(), python="3.12", lock=str(tmp_path / "no"))
     with pytest.raises(CapabilityFailed, match="--materials 指的文件夹不存在"):
-        cap_init.run(tmp_path / "tasks" / "t", Ports(), materials=str(tmp_path / "no"),
-                     python="3.12", lock=str(lock))
-    assert not (tmp_path / "tasks" / "t").exists()  # 拒绝在动盘之前
+        cap_init.run(ws, Ports(), materials=str(tmp_path / "no"), python="3.12", lock=str(lock))
+    assert not ws.task.exists()  # 拒绝在动盘之前

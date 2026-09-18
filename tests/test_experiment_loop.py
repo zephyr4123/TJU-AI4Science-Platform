@@ -1,6 +1,6 @@
 """实验内环的验收测试（A-4 到 A-9）。
 
-全部用 tmp_path 造的夹具任务包与剧本执行层，删掉仓里的 tasks/ 与 domains/ 照过（P-5）。
+全部用 tmp_path 造的夹具任务包与剧本执行层，删掉仓里的 workspaces/ 与 domains/ 照过（P-5）。
 剧本覆盖九种执行层行为：真改进、假改进、改坏、假成功、动 harness、崩溃、超时、
 缺依赖、什么都不改——内环是确定性代码，它的正确性不该由模型的发挥来证明。
 
@@ -34,7 +34,7 @@ from framework.contracts import publish
 from framework.memory import ledger
 from framework.run import gitwork
 from framework.run.checkpoint import read_checkpoint, write_checkpoint
-from framework.run.context import TaskInvalid, default_runs_root, load_context
+from framework.run.context import TaskInvalid, load_context
 from framework.run.lifecycle import NotPublished, extend_run, new_run
 from tests.fixtures import packs_factory as pf
 from tests.fixtures.scripted_backend import ScriptedRunner, ScriptExhausted, write_train
@@ -138,8 +138,7 @@ def _write_score_run0(task_dir: Path) -> None:
 
 def start_run(tmp_path: Path, **budget: object) -> tuple[Path, pf.Pack]:
     pack = make_loop_pack(tmp_path, **budget)
-    run_dir = new_run(pack.task_dir, tmp_path / "runs", "r1",
-                           domains_root=pack.domains_root)
+    run_dir = new_run(pack.task_dir, pack.workspace.runs, "r1", domains_root=pack.domains_root)
     return run_dir, pack
 
 
@@ -606,16 +605,17 @@ def test_new_run_lays_out_the_disk_and_rejects_broken_packs(tmp_path):
     assert (run_dir / "experiment" / "runs").is_dir()
     assert gitwork.is_clean(run_dir / "work")
     assert read_checkpoint(run_dir)["best_metric"] == 0.030
+    runs = pack.workspace.runs
     with pytest.raises(FileExistsError):
-        new_run(pack.task_dir, tmp_path / "runs", "r1", domains_root=pack.domains_root)
+        new_run(pack.task_dir, runs, "r1", domains_root=pack.domains_root)
 
     # 发布后改了 manifest：先撞钥匙（需求变了要人重新看），重新签了钥匙才轮到契约校验
     (pack.task_dir / "manifest.yaml").write_text("id: toy\n", encoding="utf-8")
     with pytest.raises(NotPublished, match="改过了"):
-        new_run(pack.task_dir, tmp_path / "runs", "r2", domains_root=pack.domains_root)
+        new_run(pack.task_dir, runs, "r2", domains_root=pack.domains_root)
     publish.write_record(pack.task_dir, by="t")
     with pytest.raises(TaskInvalid):
-        new_run(pack.task_dir, tmp_path / "runs", "r2", domains_root=pack.domains_root)
+        new_run(pack.task_dir, runs, "r2", domains_root=pack.domains_root)
 
 
 def test_prompt_is_constant_size_and_carries_the_fix_hint(tmp_path):
@@ -638,11 +638,6 @@ def test_domain_prompt_is_appended_when_present(tmp_path):
     runner = ScriptedRunner([NOOP])
     run_loop(run_dir, runner, LocalCompute(), max_iters=1)
     assert "本领域：先看数据再动模型。" in runner.prompts[0]
-
-
-def test_runs_root_env_override(tmp_path, monkeypatch):
-    monkeypatch.setenv("AI4SCI_RUNS_ROOT", str(tmp_path / "elsewhere"))
-    assert default_runs_root() == tmp_path / "elsewhere"
 
 
 def test_script_exhausted_is_loud(tmp_path):

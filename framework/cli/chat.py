@@ -1,7 +1,8 @@
-"""`ai4sci chat new|send|list`：在终端里和协调 agent 聊，网页没来之前的入口，也是排障入口。
+"""`ai4sci chat new|send|list [--studio]`：在终端里和助理聊，网页没来之前的入口，也是排障入口。
 
-在 cli 层，调 `framework.chat`。`send` 把事件逐行打到 stdout：助理的话逐字打（delta），
-工具一行一个，最后一行 `done` 或 `error`；退出码照旧 0 / 1 / 2。
+在 cli 层，调 `framework.chat`。域由 `--studio` 定：给了就是编辑台的造流助理，不给就是当前工作区的
+研究助理（P-16）。`send` 把事件逐行打到 stdout：助理的话逐字打（delta），工具一行一个，
+最后一行 `done` 或 `error`；退出码照旧 0 / 1 / 2。
 """
 
 from __future__ import annotations
@@ -12,17 +13,24 @@ import sys
 from pathlib import Path
 
 from backends import BackendNotFound, ChatEvent, get_chat
-from framework.chat import conversation, guide
+from framework import paths
+from framework.chat import conversation, guide, scope
 from framework.cli._common import (
     EXIT_INVALID,
     EXIT_OK,
     EXIT_USAGE,
-    add_runs_root,
-    runs_root,
+    current_workspace,
     setup_logging,
 )
 
 DEFAULT_BACKEND = "claude_code"
+
+
+def _scope(args: argparse.Namespace) -> scope.Scope | int:
+    if args.studio:
+        return scope.studio(paths.home())
+    ws = current_workspace()
+    return ws if isinstance(ws, int) else scope.for_workspace(ws)
 
 
 def cmd_new(args: argparse.Namespace) -> int:
@@ -31,18 +39,21 @@ def cmd_new(args: argparse.Namespace) -> int:
     except BackendNotFound as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
-    cwd = Path(args.cwd) if args.cwd else guide.REPO_ROOT
-    if not cwd.is_dir():
-        print(f"工作目录不存在：{cwd}", file=sys.stderr)
-        return EXIT_USAGE
-    conv = conversation.new_conversation(runs_root(args), args.backend, cwd)
-    print(f"ok {conv.chat_id}\t{conv.dir}\tnext=ai4sci chat send {conv.chat_id} \"<说话>\"")
+    where = _scope(args)
+    if isinstance(where, int):
+        return where
+    conv = conversation.new_conversation(where.chats, args.backend, where.cwd)
+    studio = " --studio" if args.studio else ""
+    print(f"ok {conv.chat_id}\t{conv.dir}\tnext=ai4sci chat send {conv.chat_id}{studio} \"<说话>\"")
     return EXIT_OK
 
 
 def cmd_send(args: argparse.Namespace) -> int:
+    where = _scope(args)
+    if isinstance(where, int):
+        return where
     try:
-        conv = conversation.load_conversation(runs_root(args), args.chat_id)
+        conv = conversation.load_conversation(where.chats, args.chat_id)
     except conversation.ConversationNotFound as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
@@ -54,7 +65,7 @@ def cmd_send(args: argparse.Namespace) -> int:
             return EXIT_USAGE
         text = path.read_text(encoding="utf-8")
     try:
-        system_prompt = guide.system_prompt()
+        system_prompt = where.system_prompt()
     except guide.GuideMissing as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
@@ -64,7 +75,7 @@ def cmd_send(args: argparse.Namespace) -> int:
     try:
         for event in conversation.send(
             conv, get_chat(conv.backend), text, system_prompt=system_prompt,
-            allowed_paths=guide.allowed_paths(Path(conv.cwd)), bash_rules=guide.BASH_RULES,
+            allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
         ):
             last = event
             if event.kind == "delta":
@@ -84,7 +95,10 @@ def cmd_send(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    for conv in conversation.list_conversations(runs_root(args)):
+    where = _scope(args)
+    if isinstance(where, int):
+        return where
+    for conv in conversation.list_conversations(where.chats):
         print(f"{conv.chat_id}\tturns={conv.turns}\tcost_usd={conv.cost_usd:.4f}"
               f"\tbackend={conv.backend}")
     return EXIT_OK
@@ -110,21 +124,21 @@ def render(event: ChatEvent) -> str:
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
-    chat = groups.add_parser("chat", help="和协调 agent 聊（终端入口）")
+    chat = groups.add_parser(
+        "chat", help="和助理聊（终端入口）：当前工作区的研究助理，或 --studio 造流助理")
     actions = chat.add_subparsers(dest="action", required=True)
 
-    creating = actions.add_parser("new", help="开一段对话：runs/chats/<id>/")
+    creating = actions.add_parser("new", help="开一段对话：<域>/chats/<id>/")
     creating.add_argument("--backend", default=DEFAULT_BACKEND, help="agent 后端名")
-    creating.add_argument("--cwd", default=None, help="agent 的工作目录，缺省平台仓根")
-    add_runs_root(creating)
+    creating.add_argument("--studio", action="store_true", help="编辑台的造流助理，不看工作区")
     creating.set_defaults(func=cmd_new)
 
     sending = actions.add_parser("send", help="发一句话，事件逐行打出，最后一行 done / error")
     sending.add_argument("chat_id")
     sending.add_argument("text", help="消息；写 @<文件> 就读那个文件")
-    add_runs_root(sending)
+    sending.add_argument("--studio", action="store_true", help="编辑台的对话")
     sending.set_defaults(func=cmd_send)
 
-    listing = actions.add_parser("list", help="列出全部对话")
-    add_runs_root(listing)
+    listing = actions.add_parser("list", help="列出这个域的全部对话")
+    listing.add_argument("--studio", action="store_true", help="编辑台的对话")
     listing.set_defaults(func=cmd_list)

@@ -41,37 +41,9 @@ def test_domain_defaults_to_generic_when_absent(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# 发现
-# --------------------------------------------------------------------------
-def test_discover_tasks_accepts_repo_root_and_tasks_root(tmp_path):
-    pack = pf.make_pack(tmp_path)
-    assert packs.discover_tasks(pack.root) == {"toy": pack.task_dir}
-    assert packs.discover_tasks(pack.tasks_root) == {"toy": pack.task_dir}
-
-
-def test_discover_tasks_raises_on_duplicate_id(tmp_path):
-    pack = pf.make_pack(tmp_path)
-    pf.make_pack(tmp_path, task_id="toy", dir_name="toy-copy")
-    with pytest.raises(ValueError, match="id 重复"):
-        packs.discover_tasks(pack.root)
-
-
-def test_discover_tasks_raises_on_dir_name_mismatch(tmp_path):
-    pack = pf.make_pack(tmp_path, task_id="other", dir_name="toy")
-    with pytest.raises(ValueError, match="目录名"):
-        packs.discover_tasks(pack.root)
-
-
-def test_discover_tasks_raises_on_broken_yaml(tmp_path):
-    pack = pf.make_pack(tmp_path, manifest_text="id: [unclosed\n")
-    with pytest.raises(ValueError, match="YAML"):
-        packs.discover_tasks(pack.root)
-
-
-# --------------------------------------------------------------------------
 # manifest
 # --------------------------------------------------------------------------
-def test_id_must_equal_dir_name(tmp_path):
+def test_id_must_equal_workspace_name(tmp_path):
     pack = pf.make_pack(tmp_path, task_id="not-toy", dir_name="toy")
     report = problems_of(pack)
     assert "manifest.yaml" in report
@@ -341,9 +313,9 @@ def test_fake_success_is_caught_by_harness(tmp_path):
 # 仓里的真实任务包：在就校验，不在就跳过（P-5：删掉 tasks/ 测试照过）
 # --------------------------------------------------------------------------
 def test_real_task_pack_if_present():
-    task_dir = REPO_ROOT / "tasks" / "mlp-regression"
+    task_dir = REPO_ROOT / "workspaces" / "mlp-regression" / "task"
     if not task_dir.is_dir():
-        pytest.skip("仓里没有 tasks/mlp-regression，框架测试不依赖它")
+        pytest.skip("仓里没有 workspaces/mlp-regression，框架测试不依赖它")
     assert packs.validate_task(task_dir, REPO_ROOT / "domains") == []
 
 
@@ -353,9 +325,9 @@ def test_real_task_pack_runs_end_to_end_if_present(tmp_path):
     先整包拷到 tmp_path 再跑：产物（predictions.json / results.json / timing.json）不许
     落在仓里，否则跑一次测试就脏一次工作区。
     """
-    source = REPO_ROOT / "tasks" / "mlp-regression"
+    source = REPO_ROOT / "workspaces" / "mlp-regression" / "task"
     if not source.is_dir():
-        pytest.skip("仓里没有 tasks/mlp-regression，框架测试不依赖它")
+        pytest.skip("仓里没有 workspaces/mlp-regression，框架测试不依赖它")
     task_dir = tmp_path / "mlp-regression"
     shutil.copytree(source, task_dir, ignore=shutil.ignore_patterns(env.VENV_DIRNAME))
     # 任务自带环境：按它的 env/ 建一个 venv，launcher 只经 $AI4SCI_PYTHON 起解释器

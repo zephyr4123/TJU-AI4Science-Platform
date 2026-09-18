@@ -12,10 +12,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from framework import paths
 from framework.contracts import packs, publish
 from framework.contracts.capability import Artifact, Capability, CapabilityFailed, Param, Ports
 from framework.executor.design import DesignFailed, design_task
-from framework.run.context import default_runs_root
+from framework.run.workspace import Workspace
 
 NAME = "design"
 DESCRIPTOR = Capability(
@@ -49,8 +50,8 @@ DESCRIPTOR = Capability(
 )
 
 
-def run(task_dir: Path, ports: Ports, *, feedback: str = "") -> str:
-    task_dir = Path(task_dir).resolve()
+def run(workspace: Workspace, ports: Ports, *, feedback: str = "") -> str:
+    task_dir = workspace.task
     assert ports.runner is not None, "design 需要执行层端口"
     publish.require_published(task_dir)
     if feedback.startswith("@"):
@@ -59,8 +60,9 @@ def run(task_dir: Path, ports: Ports, *, feedback: str = "") -> str:
             raise CapabilityFailed(f"--feedback 指的文件不存在：{path}")
         feedback = path.read_text(encoding="utf-8")
     try:
-        outcome = design_task(task_dir, packs.default_domains_root(task_dir), ports.runner,
-                              default_runs_root(), feedback=feedback)
+        # 执行层的日志落在工作区的 runs/design/ 下：和 run 一样是这份需求的产物
+        outcome = design_task(task_dir, paths.domains_root(), ports.runner, workspace.runs,
+                              feedback=feedback)
     except DesignFailed as exc:
         raise CapabilityFailed(str(exc)) from exc
     head = (f"session={outcome.session}\tchanged={len(outcome.changed_files)}"
@@ -71,6 +73,6 @@ def run(task_dir: Path, ports: Ports, *, feedback: str = "") -> str:
         # 草稿已经封在盘上，问题一行一条：协调层决定喂回执行层改第二版还是找人
         raise CapabilityFailed(
             f"design draft\t{head}\n" + "\n".join(outcome.problems)
-            + f"\nnext=把上面的问题喂回：ai4sci cap design {task_dir} --feedback @<文件>")
+            + "\nnext=把上面的问题喂回：ai4sci cap design --feedback @<文件>")
     return (f"design ok\t{head}\tnext=对照 {packs.BRIEF_NAME}「怎么算好」核对 harness/evaluate.py"
-            f"（一致 / 有出入报给人）→ ai4sci cap baseline {task_dir}")
+            "（一致 / 有出入报给人）→ ai4sci cap baseline")

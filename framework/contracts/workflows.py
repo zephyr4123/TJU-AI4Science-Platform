@@ -1,7 +1,7 @@
 """工作流：一串步骤，有的步骤是能力（助理按），有的是键（人按），有的只是人要做的事。
 
-一个工作流一个 YAML，放在仓根 `workflows/`。它是预装的拼法，不是平台本身：平台是能力清单，
-协调 agent 可以照工作流走，也可以自己拼单点。这里只管读文件、查形状、把能力步骤交给
+一个工作流一个 YAML。库在仓根 `workflows/`（通用，编辑台的造流助理改），工作区 `flows/` 里的是取来
+改过参数的实例（研究助理用），两处同一套形状检查。它是预装的拼法，不是平台本身：平台是能力清单。这里只管读文件、查形状、把能力步骤交给
 `flow.check_flow` 核对吃吐文件通不通；不跑任何东西。
 
     name: intake                 # 目录里唯一，等于文件名去掉 .yaml
@@ -28,7 +28,6 @@ import yaml
 from framework.contracts.capability import PARAM_TYPES, Capability
 from framework.contracts.flow import check_flow, stage_remarks, stages_of
 
-WORKFLOWS_DIRNAME = "workflows"
 ACTORS = ("人", "助理")
 KEYS = ("publish", "accept")
 # 文件名就是流的名字（P-13）：小写英文加连字符，页面存流时也按这个拒
@@ -68,10 +67,6 @@ class Workflow:
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "title": self.title, "summary": self.summary,
                 "assumes": list(self.assumes), "steps": [step.to_dict() for step in self.steps]}
-
-
-def workflows_root(repo_root: Path) -> Path:
-    return Path(repo_root) / WORKFLOWS_DIRNAME
 
 
 def load_workflows(root: Path) -> list[Workflow]:

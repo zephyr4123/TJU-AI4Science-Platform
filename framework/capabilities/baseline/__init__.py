@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import os
 import subprocess
-from pathlib import Path
 
 import yaml
 
 from framework.contracts import env, headroom, packs, publish
 from framework.contracts.capability import Artifact, Capability, CapabilityFailed, Ports
+from framework.run.workspace import Workspace
 
 NAME = "baseline"
 DESCRIPTOR = Capability(
@@ -45,13 +45,13 @@ DESCRIPTOR = Capability(
 )
 
 
-def run(task_dir: Path, ports: Ports) -> str:
-    task_dir = Path(task_dir).resolve()
+def run(workspace: Workspace, ports: Ports) -> str:
+    task_dir = workspace.task
     publish.require_published(task_dir)
     script = task_dir / "harness" / "make_run0.sh"
     if not script.is_file():
         raise CapabilityFailed(
-            f"缺 harness/make_run0.sh：先 ai4sci cap design {task_dir} 写出 harness")
+            "缺 task/harness/make_run0.sh：先 ai4sci cap design 写出 harness")
     python = env.venv_python(task_dir / env.VENV_DIRNAME)
     if not python.is_file():
         # 环境是基线的一部分，不是人要记得先按的另一颗键；建不出来就是基线跑不了
@@ -63,7 +63,7 @@ def run(task_dir: Path, ports: Ports) -> str:
     budget = manifest.get("budget") if isinstance(manifest, dict) else None
     if not isinstance(budget, dict) or not isinstance(budget.get("wall_clock_s"), (int, float)):
         raise CapabilityFailed(
-            f"{packs.MANIFEST_NAME} 缺 budget.wall_clock_s，先 ai4sci show task {task_dir}")
+            f"{packs.MANIFEST_NAME} 缺 budget.wall_clock_s，先 ai4sci show task")
     inner_k = budget.get("inner_k", 1)
     if not isinstance(inner_k, int) or inner_k < 1:
         raise CapabilityFailed(
@@ -82,5 +82,5 @@ def run(task_dir: Path, ports: Ports) -> str:
     if problems:
         raise CapabilityFailed("基线跑完了，预检没过：\n" + "\n".join(problems)
                                + f"\n{room.summary()}")
-    return (f"ok {task_dir.name}\tinner_k={inner_k}\t{room.summary()}"
-            f"\tnext=ai4sci show task {task_dir}")
+    return (f"ok {workspace.id}\tinner_k={inner_k}\t{room.summary()}"
+            "\tnext=ai4sci show task")

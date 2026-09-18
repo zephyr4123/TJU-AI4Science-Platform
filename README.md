@@ -22,38 +22,41 @@ platform/
 ├── compute/       算力适配器：local.py …
 ├── tools/         确定性脚本
 ├── domains/       领域包，按工具链命名（generic/ 兜底、petab/ 参数估计）；prompts/ 与 skills/ 随 run 快照进执行层提示
-├── tasks/         任务包（mlp-regression/ 玩具、boehm-nll/ 第一个真任务）；每个自带 env/
+├── workflows/     工作流库：通用的拼法，编辑台改；工作区取实例
+├── workspaces/    一个工作区一份需求：<id>/{workspace.yaml, task/, flows/, chats/, runs/, jobs/}；样例 mlp-regression 玩具、boehm-nll、rahman-nll
+├── studio/        编辑台的对话，不进 git
 ├── docs/          add-a-task.md：十分钟接一个任务
-├── runs/          运行产物，不进 git；每个 run 自带 .venv/
 ├── tests/         框架测试
 ├── Makefile       check / venv / lock / package / release
 └── CHANGELOG.md
 ```
 
-命令行上就四类东西：`cap` 能力、`sign` 键、`show` 查询、`chat` / `serve` 入口。依赖只许自上而下：`cli → capabilities → chat → executor → memory → run → contracts`；`backends/` 与 `compute/` 是端口，framework 用它们、它们不认识 framework。这条规矩由 `tests/test_layering.py` 用 ast 逐条查。
+命令行上就五类东西：`cap` 能力、`sign` 键、`show` 查询、`flow take` 取流、`workspace` / `chat` / `serve` 入口。命令不带工作区路径：cd 进 `workspaces/<id>/`，CLI 往上找 `workspace.yaml`（纲领 P-15）。两位助理分权（P-16）：主页面的研究助理只用流，编辑台的造流助理只造流。依赖只许自上而下：`cli → capabilities → chat → executor → memory → run → contracts`；`backends/` 与 `compute/` 是端口，framework 用它们、它们不认识 framework。这条规矩由 `tests/test_layering.py` 用 ast 逐条查。
 
 ## 怎么跑
 
 ```bash
 make venv                                   # 建 .venv，按 requirements.lock 装依赖（含 uv）
 make check                                  # 门禁：CHANGELOG 校验 + ruff + pytest
-.venv/bin/ai4sci show task tasks/mlp-regression        # 校验任务包合不合契约
+cd workspaces/mlp-regression && ../../.venv/bin/ai4sci show task   # 校验这个工作区的任务包合不合契约
 AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会花钱，CI 不跑
 ```
 
-一条 auto-research 流，四条命令由协调层手工串（框架不连跑，见 `coordinator/README.md`）：
+一条 auto-research 流，在工作区里由协调层手工串（框架不连跑，见 `coordinator/README.md`；下面省略 `.venv/bin/` 前缀）：
 
 ```bash
-.venv/bin/ai4sci cap start tasks/mlp-regression --run-id demo --workflow auto-research  # 开一次实验：建 run，记住照哪条流
-.venv/bin/ai4sci cap experiment demo --max-iters 5 --detach   # 实验内环起成后台作业，立刻返回作业号；show job 看进度
-.venv/bin/ai4sci cap analysis demo                            # 执行层写 analysis/analysis.md
-.venv/bin/ai4sci cap verify demo                              # 零模型验证，退出码就是 PASS / FAIL
-.venv/bin/ai4sci show caps                                    # 按七个科研阶段列全部能力（--json 带描述符与 used_by）；show workflows 列工作流与覆盖的阶段
+cd workspaces/mlp-regression
+ai4sci flow take auto-research                                # 把库里的流取成这个工作区的实例 flows/auto-research.yaml
+ai4sci cap start --run-id demo --workflow auto-research       # 开一次实验：建 runs/demo/，记住照哪条流
+ai4sci cap experiment demo --max-iters 5 --detach   # 实验内环起成后台作业，立刻返回作业号；show job 看进度
+ai4sci cap analysis demo                            # 执行层写 analysis/analysis.md
+ai4sci cap verify demo                              # 零模型验证，退出码就是 PASS / FAIL
+ai4sci show caps                                    # 按七个科研阶段列全部能力（--json 带描述符与 used_by）；show workflows 列工作流与覆盖的阶段
 ```
 
 执行层用哪个模型、超时多久走环境变量：`AI4SCI_EXECUTOR_MODEL=sonnet`、`AI4SCI_EXECUTOR_TIMEOUT_S=600`；协调层同理 `AI4SCI_COORDINATOR_MODEL` / `_TIMEOUT_S` / `_MAX_BUDGET_USD`。这些是起 `ai4sci serve` 或 `ai4sci chat` 的人在环境里配的，协调 agent 敲的命令上不带（纲领 P-14：它面前只有裸 `ai4sci`）。
 
-任务跑在自己的环境里：`cap start` 按任务包的 `env/` 建 `runs/<id>/.venv`，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新任务看 [`docs/add-a-task.md`](docs/add-a-task.md)。
+任务跑在自己的环境里：`cap start` 按任务包的 `env/` 建 `<工作区>/runs/<id>/.venv`，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新任务看 [`docs/add-a-task.md`](docs/add-a-task.md)。
 
 ## 版本与发布
 

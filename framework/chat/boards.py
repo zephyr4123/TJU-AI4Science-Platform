@@ -1,4 +1,4 @@
-"""看板读盘：需求看板看任务包，结果验收看 run。纯读盘、零模型。
+"""看板读盘：工作区（需求 = 任务包、run 清单）与 run 的细节。纯读盘、零模型。
 
 页面是 `ai4sci serve` 的客户端（`ui/README.md`）：这里每个函数就是一个端点的响应体，
 server 只做路由；换一种 UI（TUI）读的也是同一份东西。每个响应体都是能直接 `json.dumps`
@@ -21,22 +21,33 @@ from framework.memory import ledger
 from framework.run import accept, flow_state, jobs, layout
 from framework.run.checkpoint import read_checkpoint
 from framework.run.context import load_manifest, primary_metric
+from framework.run.workspace import Workspace
 
 # 任务包走到哪一步。看板按它决定该亮哪颗键、说哪句「下一步」。
 STAGES = ("drafting", "published", "designed", "baselined")
 
 
-# ── 需求看板 ─────────────────────────────────────────────────────────────
-def list_tasks(root: Path) -> list[dict[str, Any]]:
-    """`discover_tasks` 的拓扑错误（id 重复、目录名对不上）原样抛：那是仓的毛病，不是某个包的。"""
-    return [task_summary(task_dir) for _, task_dir in sorted(packs.discover_tasks(root).items())]
+# ── 工作区 ───────────────────────────────────────────────────────────────
+def workspace_summary(workspace: Workspace) -> dict[str, Any]:
+    """顶栏切换用的一行：标题、任务包走到哪、几个 run。还没起任务包时 task 是 None。"""
+    has_task = (workspace.task / packs.MANIFEST_NAME).is_file()
+    return {**workspace.to_dict(), "task": task_summary(workspace.task) if has_task else None,
+            "runs": len(_run_dirs(workspace))}
 
 
+def workspace_detail(workspace: Workspace) -> dict[str, Any]:
+    """主页面要的一整份：任务包的细节 + 全部 run 的摘要；流实例由 server 从 cli 注入的函数补。"""
+    summary = workspace_summary(workspace)
+    task = task_detail(workspace.task) if summary["task"] is not None else None
+    return {**summary, "task": task, "runs": list_runs(workspace)}
+
+
+# ── 需求 ─────────────────────────────────────────────────────────────────
 def task_summary(task_dir: Path) -> dict[str, Any]:
     task_dir = Path(task_dir)
     manifest = _read_manifest(task_dir)
     return {
-        "id": task_dir.name,
+        "id": packs.task_id_of(task_dir),
         "title": manifest.get("title") or task_dir.name,
         "question": manifest.get("question") or "",
         "domain": manifest.get("domain") or packs.DEFAULT_DOMAIN,
@@ -106,16 +117,18 @@ def headroom_state(task_dir: Path) -> dict[str, Any] | None:
 
 
 # ── 结果验收 ─────────────────────────────────────────────────────────────
-def list_runs(runs_root: Path) -> list[dict[str, Any]]:
-    """有 checkpoint 的才算 run；`runs/chats/`、`runs/design-*/` 这些同级目录不是。"""
-    runs_root = Path(runs_root)
-    if not runs_root.is_dir():
+def list_runs(workspace: Workspace) -> list[dict[str, Any]]:
+    return [run_summary(workspace, run_dir) for run_dir in _run_dirs(workspace)]
+
+
+def _run_dirs(workspace: Workspace) -> list[Path]:
+    """有 checkpoint 的才算 run；`runs/design/`（接任务的执行层日志）不是。"""
+    if not workspace.runs.is_dir():
         return []
-    return [run_summary(run_dir) for run_dir in sorted(runs_root.iterdir())
-            if layout.checkpoint(run_dir).is_file()]
+    return [p for p in sorted(workspace.runs.iterdir()) if layout.checkpoint(p).is_file()]
 
 
-def run_summary(run_dir: Path) -> dict[str, Any]:
+def run_summary(workspace: Workspace, run_dir: Path) -> dict[str, Any]:
     run_dir = Path(run_dir)
     state = read_checkpoint(run_dir)
     manifest = load_manifest(run_dir)
@@ -133,23 +146,23 @@ def run_summary(run_dir: Path) -> dict[str, Any]:
         "updated_at": state.get("updated_at"),
         "cost_usd": ledger.total_cost(layout.ledger(run_dir)),
         "running": layout.inflight(run_dir).is_file(),
-        "job": _job_dict(jobs.running_for(run_dir.parent, state["run_id"])),
-        "flow": flow_state.status(run_dir, run_dir.parent),
+        "job": _job_dict(jobs.running_for(workspace.jobs, state["run_id"])),
+        "flow": flow_state.status(run_dir, workspace.jobs),
         "analysis": layout.analysis_doc(run_dir).is_file(),
         "verify": verify_state(run_dir),
         "accept": accept.read_acceptance(run_dir),
     }
 
 
-def run_detail(run_dir: Path) -> dict[str, Any]:
+def run_detail(workspace: Workspace, run_dir: Path) -> dict[str, Any]:
     run_dir = Path(run_dir)
     analysis = layout.analysis_doc(run_dir)
     journal = layout.journal(run_dir)
-    summary = run_summary(run_dir)
+    summary = run_summary(workspace, run_dir)
     return {
         **summary,
         "ledger": [asdict(row) for row in ledger.read(layout.ledger(run_dir))],
-        "jobs": [job.to_dict() for job in jobs.jobs_for(run_dir.parent, summary["run_id"])],
+        "jobs": [job.to_dict() for job in jobs.jobs_for(workspace.jobs, summary["run_id"])],
         "journal": journal.read_text(encoding="utf-8") if journal.is_file() else "",
         "analysis_text": analysis.read_text(encoding="utf-8") if analysis.is_file() else None,
     }
