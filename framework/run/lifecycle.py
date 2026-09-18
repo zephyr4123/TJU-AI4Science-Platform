@@ -37,13 +37,17 @@ IGNORED_DIRS = (".git", layout.EXECUTOR_SCRATCH, "__pycache__", env.VENV_DIRNAME
 
 
 def new_run(
-    task_dir: Path, runs_root: Path, run_id: str, *, domains_root: Path | None = None
+    task_dir: Path, runs_root: Path, run_id: str, *, domains_root: Path | None = None,
+    chat_id: str | None = None,
 ) -> Path:
     """建 runs/<run_id>/：钥匙 → 校验 → 预检 → 拷 work/ → 快照领域包 → 建环境 → git init → 基线。
 
     开跑是花钱的第一步，所以三道门都在这：需求没发布不开（`NotPublished`）、包不合约不开、
     预检说这道题无解不开（都是 `TaskInvalid`）。环境建不出来就把半截的 run 目录删掉再抛：
     一个没有环境的 run 跑不了任何一轮，留着只会让 `loop run` 在更晚的地方以更难懂的方式失败。
+
+    `chat_id` 是哪段对话开的这个 run（外层 #82 #83）：页面靠它知道当前对话最近碰的是哪条流；
+    记在 checkpoint 里是因为它是 run 唯一一份状态、内环改写时会保留原有的键。
     """
     task_dir = Path(task_dir).resolve()
     publish.require_published(task_dir)
@@ -76,7 +80,7 @@ def new_run(
     best_commit = gitwork.init_repo(work, f"任务包基线：{manifest['id']}")
     write_checkpoint(run_dir, {
         "run_id": run_id, "last_iter": 0, "best_iter": 0, "best_metric": best_metric,
-        "best_commit": best_commit, "stop_reason": None,
+        "best_commit": best_commit, "stop_reason": None, "chat_id": chat_id,
     })
     LOGGER.info("run_new run_dir=%s best_metric=%s", run_dir, best_metric)
     return run_dir

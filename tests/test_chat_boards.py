@@ -11,6 +11,7 @@ import pytest
 from framework.chat import boards
 from framework.contracts import publish
 from framework.run import accept, layout, workspace
+from framework.run.checkpoint import read_checkpoint, write_checkpoint
 from tests.fixtures.packs_factory import make_pack
 from tests.fixtures.runs_factory import make_run
 
@@ -75,6 +76,9 @@ def test_run_summary_and_detail(tmp_path):
     assert found["baseline"] == pytest.approx(0.03) and found["last_iter"] == 3
     assert found["best_metric"] == pytest.approx(0.001)
     assert found["running"] is False and found["verify"] is None and found["accept"] is None
+    assert found["chat_id"] is None  # 老 run / 终端里开的：不知道是谁开的
+    write_checkpoint(run_dir, {**read_checkpoint(run_dir), "chat_id": "chat-7"})
+    assert boards.run_summary(ws, run_dir)["chat_id"] == "chat-7"
     detail = boards.run_detail(ws, run_dir)
     assert [row["status"] for row in detail["ledger"]] == ["keep", "discard", "keep"]
     assert detail["analysis_text"] is None

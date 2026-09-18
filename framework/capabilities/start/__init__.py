@@ -10,12 +10,13 @@ run 落在工作区的 `runs/` 下；`--workflow` 只认工作区 `flows/` 里�
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
 from framework.contracts import packs, publish
 from framework.contracts.capability import Artifact, Capability, CapabilityFailed, Param, Ports
-from framework.run import flow_state
+from framework.run import flow_state, jobs
 from framework.run.lifecycle import EnvBuildError, NotPublished, TaskInvalid, new_run
 from framework.run.workspace import Workspace
 
@@ -37,7 +38,8 @@ DESCRIPTOR = Capability(
     ),
     outputs=(
         Artifact("run", "runs/<run_id>/",
-                 "独立工作目录：manifest 快照、work/（任务包的副本，起 git）、checkpoint.json；"
+                 "独立工作目录：manifest 快照、work/（任务包的副本，起 git）、"
+                 "checkpoint.json（含是哪段对话开的）；"
                  "给了 --workflow 就多 flow.json 与 workflow/ 里那条流的快照"),
     ),
     params=(
@@ -57,7 +59,9 @@ def run(workspace: Workspace, ports: Ports, *, run_id: str = "", workflow: str =
     # 名字不对在开 run 之前就拒
     workflow_path = _flow_file(workspace, workflow) if workflow else None
     try:
-        run_dir = new_run(workspace.task, workspace.runs, run_id)
+        # 在对话里按的：记下是哪段对话开的（适配器起会话时给的环境变量，与 --detach 记作业同一来源）
+        run_dir = new_run(workspace.task, workspace.runs, run_id,
+                          chat_id=os.environ.get(jobs.CHAT_ID_ENV))
     except (NotPublished, TaskInvalid, EnvBuildError) as exc:
         # 没发布、不合约、预检没过、环境建不出来：都停在门口，不留半截 run（P-7）
         raise CapabilityFailed(str(exc)) from exc

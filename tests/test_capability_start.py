@@ -24,6 +24,16 @@ def test_start_builds_a_run_and_points_at_experiment(tmp_path, monkeypatch):
     with pytest.raises(CapabilityFailed, match="flow take quick-look"):
         start.run(pack.workspace, Ports(), run_id="r2", workflow="quick-look")
     assert not (pack.workspace.runs / "r2").exists()
+    # 终端里开的：不知道是哪段对话
+    assert state["chat_id"] is None
+
+
+def test_start_records_which_chat_opened_the_run(tmp_path, monkeypatch):
+    pack = make_pack(tmp_path)
+    monkeypatch.setenv("AI4SCI_DOMAINS_ROOT", str(pack.domains_root))
+    monkeypatch.setenv("AI4SCI_CHAT_ID", "chat-7")
+    start.run(pack.workspace, Ports(), run_id="r1")
+    assert read_checkpoint(pack.workspace.runs / "r1")["chat_id"] == "chat-7"
 
 
 def test_start_refuses_unpublished_pack(tmp_path, monkeypatch):

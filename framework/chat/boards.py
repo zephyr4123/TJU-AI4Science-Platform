@@ -146,6 +146,8 @@ def run_summary(workspace: Workspace, run_dir: Path) -> dict[str, Any]:
         "updated_at": state.get("updated_at"),
         "cost_usd": ledger.total_cost(layout.ledger(run_dir)),
         "running": layout.inflight(run_dir).is_file(),
+        # 哪段对话开的（老 run 没有）：页面靠它知道当前对话最近碰的是哪条流
+        "chat_id": state.get("chat_id"),
         "job": _job_dict(jobs.running_for(workspace.jobs, state["run_id"])),
         "flow": flow_state.status(run_dir, workspace.jobs),
         "analysis": layout.analysis_doc(run_dir).is_file(),
