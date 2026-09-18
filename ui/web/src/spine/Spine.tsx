@@ -1,10 +1,11 @@
-// 流程脊柱：主页面右边那一列，全页唯一放胆的地方（外层 #64 #67）。
-// 当前 run 照的那条流，一步一个模块，模块的实心程度来自盘上真实的文件；没有 run 时就是需求对齐。
+// 流程脊柱：主页面右边那一列，全页唯一放胆的地方（外层 #64 #67 #74）。
+// 只读一个工作区（P-15）：有 run 就是当前 run 照的那条流，一步一个模块，模块的实心程度来自盘上真实的文件；
+// 没有 run 时就是需求对齐，看这个工作区的任务包。
 // 装什么流长什么样：这里不写死任何一条流，步骤从 run 的便条（或工作流文件）来，状态由 derive.ts 算。
 import { type ReactNode, useState } from 'react'
 
 import { api } from '@/api/client'
-import type { FlowState, RunDetail, RunSummary, TaskDetail, TaskSummary, Workflow } from '@/api/types'
+import type { FlowState, RunDetail, RunSummary, TaskDetail, Workflow, WorkspaceDetail } from '@/api/types'
 import { ErrorNote, Problems, Skeleton } from '@/components/bits'
 import ElectricBorder from '@/components/reactbits/ElectricBorder'
 import ShinyText from '@/components/reactbits/ShinyText'
@@ -18,33 +19,31 @@ import { cn } from '@/lib/utils'
 
 import { deriveIntakeSteps, deriveRunSteps, type StepView, synthesizeFlow, waitingSentence } from './derive'
 
-export function Spine({ epoch }: { epoch: number }) {
-  const runs = useResource(api.runs, [epoch])
-  const tasks = useResource(api.tasks, [epoch])
+export function Spine({ workspace, epoch }: { workspace: string; epoch: number }) {
+  const doc = useResource(() => api.workspace(workspace), [workspace, epoch])
   const workflows = useResource(api.workflows, [])
   const [pickedRun, setPickedRun] = useState<string | null>(null)
-  const [pickedTask, setPickedTask] = useState<string | null>(null)
 
-  const error = runs.error ?? tasks.error ?? workflows.error
+  const error = doc.error ?? workflows.error
   if (error) return <div className="p-6"><ErrorNote text={error} /></div>
-  if (!runs.data || !tasks.data || !workflows.data) return <div className="p-6"><Skeleton lines={6} /></div>
+  if (!doc.data || !workflows.data) return <div className="p-6"><Skeleton lines={6} /></div>
 
-  const byRecent = [...runs.data].sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
+  const byRecent = [...doc.data.runs].sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
   const run = (pickedRun ? byRecent.find((r) => r.run_id === pickedRun) : undefined) ?? byRecent[0] ?? null
   if (run) {
-    return <RunSpine run={run} runs={byRecent} onPick={setPickedRun} workflows={workflows.data} epoch={epoch} />
+    return <RunSpine workspace={workspace} run={run} runs={byRecent} onPick={setPickedRun}
+                     workflows={workflows.data} epoch={epoch} />
   }
-  const task = (pickedTask ? tasks.data.find((t) => t.id === pickedTask) : undefined)
-    ?? tasks.data.find((t) => t.stage !== 'baselined') ?? tasks.data[tasks.data.length - 1] ?? null
   const intake = workflows.data.find((w) => w.name === 'intake') ?? null
-  return <IntakeSpine task={task} tasks={tasks.data} onPick={setPickedTask} intake={intake} epoch={epoch} />
+  return <IntakeSpine workspace={doc.data} intake={intake} reload={doc.reload} />
 }
 
 // ── run：照的那条流 ────────────────────────────────────────────────────────
-function RunSpine({ run, runs, onPick, workflows, epoch }: {
-  run: RunSummary; runs: RunSummary[]; onPick: (id: string) => void; workflows: Workflow[]; epoch: number
+function RunSpine({ workspace, run, runs, onPick, workflows, epoch }: {
+  workspace: string; run: RunSummary; runs: RunSummary[]; onPick: (id: string) => void; workflows: Workflow[]
+  epoch: number
 }) {
-  const detail = useResource(() => api.run(run.run_id), [run.run_id, epoch])
+  const detail = useResource(() => api.run(workspace, run.run_id), [workspace, run.run_id, epoch])
   if (detail.error) return <div className="p-6"><ErrorNote text={detail.error} /></div>
   if (!detail.data) return <div className="p-6"><Skeleton lines={6} /></div>
   const doc = detail.data
@@ -63,22 +62,24 @@ function RunSpine({ run, runs, onPick, workflows, epoch }: {
       {steps.map((step, i) => (
         <StepModule key={step.n} step={step} last={i === steps.length - 1}
                     ok={step.cap === 'verify' && doc.verify?.status === 'PASS'}>
-          <RunStepContent step={step} run={doc} reload={detail.reload} />
+          <RunStepContent workspace={workspace} step={step} run={doc} reload={detail.reload} />
         </StepModule>
       ))}
     </Column>
   )
 }
 
-function RunStepContent({ step, run, reload }: { step: StepView; run: RunDetail; reload: () => Promise<void> }) {
+function RunStepContent({ workspace, step, run, reload }: {
+  workspace: string; step: StepView; run: RunDetail; reload: () => Promise<void>
+}) {
   const indigo = useToken('--primary')
   const muted = useToken('--muted-foreground')
   const delta = run.baseline !== null ? run.baseline - run.best_metric : null
   if (step.state === 'todo') return <Hint>{tail(step.does)}</Hint>
-  if (step.key === 'accept') return <AcceptKey run={run} reload={reload} />
+  if (step.key === 'accept') return <AcceptKey workspace={workspace} run={run} reload={reload} />
   switch (step.cap) {
     case 'start':
-      return <Fact>工作区 <code className="font-mono text-[0.8125rem]">{run.run_id}</code>，起点 {metric(run.baseline)}</Fact>
+      return <Fact>实验 <code className="font-mono text-[0.8125rem]">{run.run_id}</code>，起点 {metric(run.baseline)}</Fact>
     case 'experiment':
       if (step.state === 'running') {
         return (
@@ -121,38 +122,36 @@ function RunStepContent({ step, run, reload }: { step: StepView; run: RunDetail;
 }
 
 // ── 需求对齐：还没有 run ─────────────────────────────────────────────────
-function IntakeSpine({ task, tasks, onPick, intake, epoch }: {
-  task: TaskSummary | null; tasks: TaskSummary[]; onPick: (id: string) => void; intake: Workflow | null; epoch: number
+function IntakeSpine({ workspace, intake, reload }: {
+  workspace: WorkspaceDetail; intake: Workflow | null; reload: () => Promise<void>
 }) {
-  const detail = useResource(() => (task ? api.task(task.id) : Promise.resolve(null)), [task?.id, epoch])
-  if (!intake) return <div className="p-6"><ErrorNote text="仓里没有 intake 这条流，没法画需求对齐。" /></div>
-  if (detail.error) return <div className="p-6"><ErrorNote text={detail.error} /></div>
-  if (task && !detail.data) return <div className="p-6"><Skeleton lines={6} /></div>
-  const doc = detail.data
-  const steps = deriveIntakeSteps(intake, task, doc?.intake_problems ?? null)
+  if (!intake) return <div className="p-6"><ErrorNote text="库里没有 intake 这条流，没法画需求对齐。" /></div>
+  const task = workspace.task
+  const steps = deriveIntakeSteps(intake, task, task?.intake_problems ?? null)
   return (
     <Column
       title={`这条流：${intake.title}`}
-      subtitle={task ? `${task.id}，${waitingSentence(steps)}` : '还没有任务包。在对话里把课题说清楚，助理来起。'}
-      picker={tasks.length > 1 && task && (
-        <Picker value={task.id} options={tasks.map((t) => t.id)} onChange={onPick} label="换一个任务" />
-      )}
+      subtitle={task ? `${workspace.title}，${waitingSentence(steps)}` : `${workspace.title}：还没有需求。在对话里把课题说清楚，助理来起。`}
     >
       {steps.map((step, i) => (
         <StepModule key={step.n} step={step} last={i === steps.length - 1}>
-          <IntakeStepContent step={step} task={doc} reload={detail.reload} />
+          <IntakeStepContent workspace={workspace.id} step={step} task={task} reload={reload} />
         </StepModule>
       ))}
     </Column>
   )
 }
 
-function IntakeStepContent({ step, task, reload }: { step: StepView; task: TaskDetail | null; reload: () => Promise<void> }) {
-  if (step.key === 'publish' && task && step.state !== 'todo') return <PublishKey task={task} reload={reload} />
+function IntakeStepContent({ workspace, step, task, reload }: {
+  workspace: string; step: StepView; task: TaskDetail | null; reload: () => Promise<void>
+}) {
+  if (step.key === 'publish' && task && step.state !== 'todo') {
+    return <PublishKey workspace={workspace} task={task} reload={reload} />
+  }
   if (step.state === 'todo' || !task) {
     return <Hint>{step.state === 'wait-human' ? `轮到你：${tail(step.does)}` : tail(step.does)}</Hint>
   }
-  if (step.cap === 'init') return <Fact>任务包 <code className="font-mono text-[0.8125rem]">{task.id}</code></Fact>
+  if (step.cap === 'init') return <Fact>需求已经起好，材料在 task/data/ 里。</Fact>
   if (step.by === '助理' && step.cap === null) {
     return (
       <>

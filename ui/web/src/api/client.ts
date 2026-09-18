@@ -1,9 +1,21 @@
 // 页面唯一的取数入口：每个端点一个函数，路径与 `framework/chat/server.py` 顶部的清单一致。
 // 组件不直接 fetch——换一种 UI（TUI）时这一层就是要照抄的契约。
+// 端点按域分前缀（纲领 P-16）：工作区 `/workspaces/<id>` 是研究助理的域，`/studio` 是造流助理的域；
+// 对话四个端点在两个域下共用，`Scope` 决定前缀。
 
 import type {
-  Capability, ChatDoc, ChatMeta, FlowCheck, ResearchStage, RunDetail, RunSummary, TaskDetail, TaskSummary,
-  Workflow, WorkflowDraft,} from './types'
+  Capability, ChatDoc, ChatMeta, FlowCheck, ResearchStage, RunDetail, RunSummary, TaskDetail,
+  Workflow, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
+} from './types'
+
+export type Scope = { kind: 'workspace'; id: string } | { kind: 'studio' }
+
+export const STUDIO: Scope = { kind: 'studio' }
+export const inWorkspace = (id: string): Scope => ({ kind: 'workspace', id })
+
+export function scopePath(scope: Scope): string {
+  return scope.kind === 'studio' ? '/studio' : `/workspaces/${encodeURIComponent(scope.id)}`
+}
 
 export class ApiError extends Error {
   readonly status: number
@@ -39,6 +51,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) })
+const ws = (id: string) => scopePath(inWorkspace(id))
 
 export const api = {
   health: () => request<{ ok: boolean }>('/health'),
@@ -49,17 +62,19 @@ export const api = {
   flowCheck: (steps: string[]) =>
     request<FlowCheck>(`/flow/check?steps=${encodeURIComponent(steps.join(','))}`),
 
-  chats: () => request<ChatMeta[]>('/chats'),
-  chat: (id: string) => request<ChatDoc>(`/chats/${encodeURIComponent(id)}`),
-  newChat: () => request<ChatMeta>('/chats', post({})),
+  workspaces: () => request<WorkspaceSummary[]>('/workspaces'),
+  newWorkspace: (id: string, title: string) =>
+    request<WorkspaceSummary>('/workspaces', post({ id, title })),
+  workspace: (id: string) => request<WorkspaceDetail>(ws(id)),
+  publish: (id: string, by: string) => request<TaskDetail>(`${ws(id)}/publish`, post({ by })),
+  runs: (id: string) => request<RunSummary[]>(`${ws(id)}/runs`),
+  run: (id: string, runId: string) =>
+    request<RunDetail>(`${ws(id)}/runs/${encodeURIComponent(runId)}`),
+  accept: (id: string, runId: string, by: string) =>
+    request<RunDetail>(`${ws(id)}/runs/${encodeURIComponent(runId)}/accept`, post({ by })),
 
-  tasks: () => request<TaskSummary[]>('/tasks'),
-  task: (id: string) => request<TaskDetail>(`/tasks/${encodeURIComponent(id)}`),
-  publish: (id: string, by: string) =>
-    request<TaskDetail>(`/tasks/${encodeURIComponent(id)}/publish`, post({ by })),
-
-  runs: () => request<RunSummary[]>('/runs'),
-  run: (id: string) => request<RunDetail>(`/runs/${encodeURIComponent(id)}`),
-  accept: (id: string, by: string) =>
-    request<RunDetail>(`/runs/${encodeURIComponent(id)}/accept`, post({ by })),
+  chats: (scope: Scope) => request<ChatMeta[]>(`${scopePath(scope)}/chats`),
+  chat: (scope: Scope, chatId: string) =>
+    request<ChatDoc>(`${scopePath(scope)}/chats/${encodeURIComponent(chatId)}`),
+  newChat: (scope: Scope) => request<ChatMeta>(`${scopePath(scope)}/chats`, post({})),
 }

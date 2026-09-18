@@ -157,13 +157,16 @@ const CLI_SENTENCE: [RegExp, string][] = [
   [/ai4sci cap verify/, '验证了分析里的数字'],
   [/ai4sci sign task/, '替人发布了需求（这件事应该由人做）'],
   [/ai4sci sign run/, '替人验收了结果（这件事应该由人做）'],
-  [/ai4sci show tasks/, '查了有哪些任务包'],
-  [/ai4sci show task\b/, '检查了任务包'],
+  [/ai4sci show workspaces/, '查了有哪些工作区'],
+  [/ai4sci show task\b/, '检查了需求'],
   [/ai4sci show runs?\b/, '查了实验进度'],
   [/ai4sci show jobs?\b/, '查了后台作业'],
+  [/ai4sci show flows\b/, '看了这个工作区里的流'],
   [/ai4sci show caps/, '查了有哪些能力'],
-  [/ai4sci show workflows/, '查了有哪些工作流'],
-  [/ai4sci show flow/, '检查了这样拼通不通'],
+  [/ai4sci show workflows/, '查了库里有哪些流'],
+  [/ai4sci show flow\b/, '检查了这样拼通不通'],
+  [/ai4sci flow take/, '从库里取了一条流'],
+  [/ai4sci workspace new/, '起了一个工作区'],
   [/^\s*(ls|find|tree)\b/, '看了目录'],
   [/^\s*(cat|head|tail|sed -n)\b/, '读了文件'],
   [/^\s*(grep|rg)\b/, '搜了文件内容'],
@@ -195,7 +198,7 @@ function num(value: unknown): number | null {
 /** 被拒的命令，原因翻成一句话；不是认识的拒绝原因就原样给。 */
 export function denialSentence(text: string): string {
   if (/Permission to use \w+ has been denied/.test(text)) {
-    return '这条命令不在放行范围里。助理只能运行 ai4sci 开头的命令，读写也只限任务包、实验和工作流目录。'
+    return '这条命令不在放行范围里。助理只能运行 ai4sci 开头的命令，读写也只限自己那一边的目录。'
   }
   return text
 }

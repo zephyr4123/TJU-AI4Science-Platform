@@ -16,10 +16,12 @@ interface Props {
   creating: boolean
   onSelect: (chatId: string) => void
   onNew: () => void
+  /** 这一边的对话是干什么的，一句话 */
+  description: string
 }
 
 /** 对话列表收在左侧抽屉里：平时只占一个按钮的位置，对话本身才是主角。 */
-export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect, onNew }: Props) {
+export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect, onNew, description }: Props) {
   const [open, setOpen] = useState(false)
   const ordered = chats ? [...chats].sort((a, b) => b.chat_id.localeCompare(a.chat_id)) : null
   return (
@@ -32,7 +34,7 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
       <SheetContent side="left" className="w-[20rem] gap-0 p-0">
         <SheetHeader className="px-5 pt-5 pb-3">
           <SheetTitle className="text-base">对话</SheetTitle>
-          <SheetDescription>每段对话对应一个课题。</SheetDescription>
+          <SheetDescription>{description}</SheetDescription>
         </SheetHeader>
         <div className="px-4 pb-3">
           <Button variant="outline" size="sm" className="w-full justify-start"

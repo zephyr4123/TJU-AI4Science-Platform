@@ -13,7 +13,7 @@ import { useSigner } from '@/lib/useSigner'
 import { KeyPanel } from './KeyPanel'
 import { SignerField } from './SignerField'
 
-export function AcceptKey({ run, reload }: { run: RunDetail; reload: () => Promise<void> }) {
+export function AcceptKey({ workspace, run, reload }: { workspace: string; run: RunDetail; reload: () => Promise<void> }) {
   const [signer, setSigner] = useSigner()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,7 +23,7 @@ export function AcceptKey({ run, reload }: { run: RunDetail; reload: () => Promi
     setBusy(true)
     setError(null)
     try {
-      await api.accept(run.run_id, signer)
+      await api.accept(workspace, run.run_id, signer)
       await reload()
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc))

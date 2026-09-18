@@ -3,16 +3,17 @@
 
 import { createParser } from 'eventsource-parser'
 
-import { ApiError, errorMessage } from './client'
+import { ApiError, errorMessage, type Scope, scopePath } from './client'
 import type { ChatEvent } from './types'
 
 export async function streamTurn(
+  scope: Scope,
   chatId: string,
   text: string,
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`/chats/${encodeURIComponent(chatId)}/messages`, {
+  const res = await fetch(`${scopePath(scope)}/chats/${encodeURIComponent(chatId)}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),

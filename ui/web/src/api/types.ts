@@ -48,6 +48,24 @@ export interface TaskDetail extends TaskSummary {
   headroom: Headroom | null
 }
 
+/** 一个工作区 = 一份需求（`GET /workspaces`）：任务包还没起时 `task` 是 null。 */
+export interface WorkspaceSummary {
+  id: string
+  title: string
+  created_at: string | null
+  root: string
+  task: TaskSummary | null
+  /** 几个 run */
+  runs: number
+}
+
+/** `GET /workspaces/<id>`：任务包细节、从库里取来的流实例、全部 run 的摘要。 */
+export interface WorkspaceDetail extends Omit<WorkspaceSummary, 'task' | 'runs'> {
+  task: TaskDetail | null
+  flows: Workflow[]
+  runs: RunSummary[]
+}
+
 export interface Acceptance {
   accepted_at: string
   by: string
@@ -219,8 +237,6 @@ export interface Capability {
   needs_executor: boolean
   needs_compute: boolean
   criteria: string[]
-  /** 目标目录由它新建（起任务包）；其余能力要求目标已存在 */
-  creates_target: boolean
   /** 用在哪几条工作流里：后端从工作流文件反查的，能力自己不写 */
   used_by: string[]
 }

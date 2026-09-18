@@ -1,5 +1,6 @@
-// 编辑台：改「库」的地方（外层 #58 #68）。上面是工作流墙（一流一卡），下面是七段能力货架 + 拼流台：
+// 编辑台的库那一半（外层 #58 #68 #74）：上面是工作流墙（一流一卡），下面是七段能力货架 + 拼流台：
 // 点货架上的能力进拼流台，通不通当场问后端，存成 workflows/<name>.yaml。三张清单都从后端读，页面不写死。
+// 左边那位造流助理每说完一轮 epoch 加一，墙就重读——它可能刚存了一条。
 import { ArrowDown, ArrowUp, X } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
@@ -18,9 +19,9 @@ type DraftStep = WorkflowDraft['steps'][number]
 interface Draft { name: string; title: string; summary: string; steps: DraftStep[] }
 const EMPTY: Draft = { name: '', title: '', summary: '', steps: [] }
 
-export function Studio() {
+export function Studio({ epoch }: { epoch: number }) {
   const stages = useResource(api.stages, [])
-  const workflows = useResource(api.workflows, [])
+  const workflows = useResource(api.workflows, [epoch])
   const catalog = useResource(api.capabilities, [])
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const loading = [stages, workflows, catalog].some((r) => r.loading && !r.data)
@@ -30,9 +31,9 @@ export function Studio() {
   return (
     <div className="mx-auto max-w-[76rem] space-y-12 px-8 py-8">
       <header>
-        <h1 className="font-serif text-[1.375rem] font-semibold">编辑台</h1>
+        <h1 className="font-serif text-[1.375rem] font-semibold">库</h1>
         <p className="t-body mt-1 text-muted-foreground">
-          这里改的是库：平台是一盒能力，工作流是预装好的拼法。拼一条自己的，存成文件，主页面就能照着跑。
+          平台是一盒能力，工作流是预装好的拼法，不认识具体课题。拼一条通用的存进来，研究者在主页面把它取到自己的工作区，改改参数就能跑。
         </p>
       </header>
       {stages.error && <ErrorNote text={stages.error} />}
@@ -147,7 +148,7 @@ function Bench({ draft, setDraft, titles, onSaved }: {
     setNote(null)
     try {
       const saved = await api.saveWorkflow({ ...draft, overwrite })
-      setNote({ ok: true, text: `存好了：workflows/${saved.name}.yaml。主页面开实验时带 --workflow ${saved.name} 就照它跑。` })
+      setNote({ ok: true, text: `存好了：${saved.name}。研究者在主页面让助理取它（flow take ${saved.name}），改改参数就能照着跑。` })
       onSaved()
     } catch (exc) {
       setNote({ ok: false, text: exc instanceof Error ? exc.message : String(exc) })

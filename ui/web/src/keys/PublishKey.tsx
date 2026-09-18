@@ -13,7 +13,7 @@ import { useSigner } from '@/lib/useSigner'
 import { KeyPanel } from './KeyPanel'
 import { SignerField } from './SignerField'
 
-export function PublishKey({ task, reload }: { task: TaskDetail; reload: () => Promise<void> }) {
+export function PublishKey({ workspace, task, reload }: { workspace: string; task: TaskDetail; reload: () => Promise<void> }) {
   const [signer, setSigner] = useSigner()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,7 +23,7 @@ export function PublishKey({ task, reload }: { task: TaskDetail; reload: () => P
     setBusy(true)
     setError(null)
     try {
-      await api.publish(task.id, signer)
+      await api.publish(workspace, signer)
       await reload()
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc))

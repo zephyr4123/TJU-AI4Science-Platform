@@ -13,17 +13,19 @@
 
 端点定义在 `framework/chat/server.py` 顶部的清单里，响应体在 `framework/chat/boards.py`。
 `web/src/api/client.ts` 是网页对这份契约的照抄，写 TUI 时照它再抄一份即可。
+端点按域分前缀（纲领 P-16）：`/workspaces/<id>/…` 是研究助理的域，`/studio/…` 是造流助理的域；对话四个端点两个域共用。
 
 | 看板 | 端点 | 人在这里做什么 |
 |---|---|---|
-| 对话 | `POST /chats`、`POST /chats/<id>/messages`（SSE）、`GET /chats[/<id>]` | 和协调 agent 说话；agent 按的每个按钮以 `tool_use` / `tool_result` 事件流回来 |
-| 需求 | `GET /tasks[/<id>]`、`POST /tasks/<id>/publish` | 看 manifest、设计说明、预检；按**发布**。发布是钥匙（`publish.json`），后面的按钮没它不开 |
-| 工作流 | `GET /workflows`、`GET /cap` | 平台是一盒能力，工作流是预装的拼法：列出现在有几条工作流（每步谁做、做什么）、几颗能力（吃什么吐什么、机器还是助理做）。不写死顺序 |
-| 结果 | `GET /runs[/<id>]`、`POST /runs/<id>/accept` | 看 best、账本、分析、验证；按**验收**（`accept.json`，签这一版 best 与验证结论） |
+| 工作区 | `GET /workspaces`、`POST /workspaces`、`GET /workspaces/<id>` | 顶栏选一个工作区，或起一个（一个工作区一份需求，P-15）；一整份里有需求、流实例、全部 run |
+| 对话 | `POST <域>/chats`、`POST <域>/chats/<id>/messages`（SSE）、`GET <域>/chats[/<id>]` | 主页面和研究助理说话、编辑台和造流助理说话；助理运行的每条命令以 `tool_use` / `tool_result` 事件流回来 |
+| 需求 | `GET /workspaces/<id>`（里面的 `task`）、`POST /workspaces/<id>/publish` | 脊柱上的需求对齐：看 manifest、设计说明、预检；按**发布**。发布是钥匙（`publish.json`），后面的按钮没它不开 |
+| 库 | `GET /workflows`、`POST /workflows`、`GET /cap`、`GET /stages`、`GET /flow/check` | 编辑台：工作流墙、七段货架、拼流台；存进库。研究者不改库 |
+| 结果 | `GET /workspaces/<id>/runs[/<rid>]`、`POST …/runs/<rid>/accept`、`GET …/jobs[/<jid>]` | 脊柱上的 run：看 best、账本、分析、验证、后台作业；按**验收**（`accept.json`，签这一版 best 与验证结论） |
 
 两颗键（发布、验收）是产品形态里仅有的两个人工停点（外层 `docs/vision.md`「两个发布键、一次验收」）。
 界面上的键是"只有人能按"的唯一保证——CLI 里的 `ai4sci sign task` / `ai4sci sign run`
-是给在终端里当协调层的人用的，协调 agent 的指南写明它不该替人按。
+是给在终端里当协调层的人用的，研究助理的指南写明它不该替人按。
 
 ## 网页怎么跑
 
@@ -38,20 +40,24 @@ ai4sci serve       # 起后端并端出页面：http://127.0.0.1:8765
 ## 网页的结构
 
 设计口径在 `docs/PRODUCT.md`（给谁用、反例、原则）与 `docs/DESIGN.md`（色板、字阶、布局）。
-每张看板是助理写给研究者的一页纸：一句话结论 → 三个大数字 → 几段人话 → 细节折叠 → 键在文末。
+页面先认工作区：顶栏一个下拉切工作区、一个加号起新的；没有工作区时主页面是「起一个工作区」的欢迎屏。
+主页面 = 这个工作区的对话 + 流程脊柱（当前 run 照的那条流，或需求对齐）；编辑台 = 造流助理的对话 + 库（工作流墙、货架、拼流台）。
 正文只许出现 `lib/humanize.ts` 翻译过的句子；状态码、哈希、命令只在折叠层。
 
 ```
 web/src/
-  api/        契约：types.ts（响应体的类型）、client.ts（每个端点一个函数）、sse.ts（事件流）
-  chat/       对话：trace.ts（事件流折成条目，纯函数、有单测）、ChatView（含欢迎屏）/ TurnView / Composer
-  boards/     三页：TaskBoard（需求 + 发布键）、WorkflowBoard（工作流 + 能力清单）、RunBoard（结果 + 验收键）
+  api/        契约：types.ts（响应体的类型）、client.ts（每个端点一个函数，Scope 定域前缀）、sse.ts（事件流）
+  chat/       对话：trace.ts（事件流折成条目，纯函数、有单测）、ChatView（两个域共用，文案由父组件给）/ TurnView / Composer
+  workspace/  WorkspaceSwitcher（顶栏下拉）、NewWorkspace（起一个工作区的欢迎屏与表单）
+  spine/      流程脊柱：derive.ts（从便条、作业、两颗键算每一步的状态，纯函数、有单测）、Spine（按工作区读）
+  studio/     编辑台的库那一半：工作流墙、七段货架、拼流台
+  keys/       发布、验收两颗键（StarBorder 改装）
   sidebar/    对话列表抽屉
-  components/ 一页纸的零件 bits.tsx、Markdown.tsx、shadcn 生成的 ui/、reactbits 的 Waves / BlurText / ClickSpark
-  lib/        humanize.ts（术语翻人话、能力的人话说法，有单测）、format、取数 hook、署名记忆
+  components/ 零件 bits.tsx、Markdown.tsx、shadcn 生成的 ui/、reactbits 的改装件
+  lib/        humanize.ts（术语翻人话、能力的人话说法，有单测）、useChats（一个域的对话清单）、format、取数 hook、署名记忆
 ```
 
-依赖方向：`App → boards / chat / sidebar → components → api`；`api/` 不 import 任何组件。
+依赖方向：`App → workspace / spine / studio / chat / sidebar → keys / components → api`；`api/` 不 import 任何组件。
 组件不直接 `fetch`，都经 `api/client.ts`。
 
 ## 不做（第一版）
