@@ -1,14 +1,15 @@
-// 流程脊柱：主页面右边那一列，全页唯一放胆的地方（外层 #64 #67 #74）。
-// 只读一个工作区（P-15）：有 run 就是当前 run 照的那条流，一步一个模块，模块的实心程度来自盘上真实的文件；
-// 没有 run 时就是需求对齐，看这个工作区的任务包。
+// 流程脊柱：主页面右边那一列（外层 #64 #67 #74 #82）。只读一个工作区（P-15），一块板几条泳道：
+// 顶上一条需求对齐，下面每个 run 一条（照的那条流），取了还没开跑的流一行薄的「备着」。默认全部收着，只给流的目录；
+// 只有助理正在承接的那条——作业在跑，或当前对话开的、还没走完——自动展开，展开才拉详情、一步一个模块，模块的实心程度来自
+// 盘上真实的文件。人点哪条展开哪条，点过的以人为准。对话不绑流：流走到哪写在盘上，谁驱动的都一样。
 // 装什么流长什么样：这里不写死任何一条流，步骤从 run 的便条（或工作流文件）来，状态由 derive.ts 算。
-import type { Icon } from '@phosphor-icons/react'
-import { useReducedMotion } from 'motion/react'
-import { type ReactNode, useState } from 'react'
+import { CaretDown, type Icon } from '@phosphor-icons/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { api } from '@/api/client'
-import type { FlowState, RunDetail, RunSummary, TaskDetail, Workflow, WorkspaceDetail } from '@/api/types'
-import { ErrorNote, Problems, Skeleton } from '@/components/bits'
+import type { RunDetail, RunSummary, TaskDetail, Workflow, WorkspaceDetail } from '@/api/types'
+import { Dot, ErrorNote, Problems, Skeleton } from '@/components/bits'
 import ElectricBorder from '@/components/reactbits/ElectricBorder'
 import ShinyText from '@/components/reactbits/ShinyText'
 import { AcceptKey } from '@/keys/AcceptKey'
@@ -22,59 +23,132 @@ import { cn } from '@/lib/utils'
 
 import { deriveIntakeSteps, deriveRunSteps, type StepView, synthesizeFlow, waitingSentence } from './derive'
 
-export function Spine({ workspace, epoch }: { workspace: string; epoch: number }) {
+/** 有作业在跑时多久重拉一次摘要：别的对话起的作业跑完，这边才看得见 */
+const POLL_MS = 10_000
+
+type StageOfCap = (cap: string) => string | undefined
+
+export function Spine({ workspace, epoch, chatId }: { workspace: string; epoch: number; chatId: string | null }) {
   const doc = useResource(() => api.workspace(workspace), [workspace, epoch])
   const workflows = useResource(api.workflows, [])
   // 能力清单只为一件事：每一步配哪枚阶段图标
   const caps = useResource(api.capabilities, [])
-  const [pickedRun, setPickedRun] = useState<string | null>(null)
+  // 人点过的以人为准；没点过的按「承接中」自动
+  const [manual, setManual] = useState<Record<string, boolean>>({})
+
+  const busy = doc.data?.runs.some((r) => r.job !== null) ?? false
+  const reload = doc.reload
+  useEffect(() => {
+    if (!busy) return
+    const timer = setInterval(() => { void reload() }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [busy, reload])
 
   const error = doc.error ?? workflows.error ?? caps.error
   if (error) return <div className="p-6"><ErrorNote text={error} /></div>
   if (!doc.data || !workflows.data || !caps.data) return <div className="p-6"><Skeleton lines={6} /></div>
   const catalog = caps.data
-  const stageOfCap = (name: string) => catalog.find((c) => c.name === name)?.stage
-
-  const byRecent = [...doc.data.runs].sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
-  const run = (pickedRun ? byRecent.find((r) => r.run_id === pickedRun) : undefined) ?? byRecent[0] ?? null
-  if (run) {
-    return <RunSpine workspace={workspace} run={run} runs={byRecent} onPick={setPickedRun}
-                     workflows={workflows.data} epoch={epoch} stageOfCap={stageOfCap} />
-  }
+  const stageOfCap: StageOfCap = (name) => catalog.find((c) => c.name === name)?.stage
+  const template = workflows.data.find((w) => w.name === 'auto-research') ?? workflows.data[0] ?? null
   const intake = workflows.data.find((w) => w.name === 'intake') ?? null
-  return <IntakeSpine workspace={doc.data} intake={intake} reload={doc.reload} stageOfCap={stageOfCap} />
+  const runs = [...doc.data.runs].sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
+  const spare = doc.data.flows.filter((f) => !runs.some((r) => r.flow?.workflow === f.name))
+  const task = doc.data.task
+
+  const isOpen = (id: string, auto: boolean) => manual[id] ?? auto
+  const toggle = (id: string, auto: boolean) => setManual((m) => ({ ...m, [id]: !isOpen(id, auto) }))
+  // 需求对齐：起了任务包、还没跑到基线，就是助理正在承接的
+  const intakeAuto = task !== null && task.stage !== 'baselined'
+  // 某个 run：作业在跑，或当前对话开的、还没验收
+  const runAuto = (run: RunSummary) =>
+    run.job !== null || (chatId !== null && run.chat_id === chatId && !(run.accept !== null && !run.accept.stale))
+
+  return (
+    <div className="h-full space-y-3 overflow-y-auto px-5 pt-5 pb-8">
+      {intake && (
+        <IntakeLane workspace={doc.data} intake={intake} reload={doc.reload} stageOfCap={stageOfCap}
+                    open={isOpen('intake', intakeAuto)} onToggle={() => toggle('intake', intakeAuto)} />
+      )}
+      {runs.map((run) => (
+        <RunLane key={run.run_id} workspace={workspace} run={run} template={template} epoch={epoch} stageOfCap={stageOfCap}
+                 open={isOpen(run.run_id, runAuto(run))} onToggle={() => toggle(run.run_id, runAuto(run))} />
+      ))}
+      {spare.map((flow) => (
+        <p key={flow.name} className="flex flex-wrap items-baseline gap-x-2 px-4 py-2 text-[0.8125rem] text-muted-foreground">
+          <span className="font-serif font-semibold text-foreground/80">{flow.title}</span>
+          <span>备着，{flow.steps.length} 步，还没开跑</span>
+        </p>
+      ))}
+    </div>
+  )
+}
+
+// ── 泳道 ─────────────────────────────────────────────────────────────────
+/** 一条流一行：收着只有标题与「走到哪、在等谁」，展开是一步一个模块。 */
+function Lane({ title, note, live = false, open, onToggle, children }: {
+  title: string; note: string; live?: boolean; open: boolean; onToggle: () => void; children: ReactNode
+}) {
+  const still = useReducedMotion() === true
+  return (
+    <section className="rounded-2xl border bg-card/80 backdrop-blur-sm">
+      <button type="button" onClick={onToggle} aria-expanded={open}
+              className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring">
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            {live && <Dot tone="primary" pulse />}
+            <span className="truncate font-serif text-[1rem] leading-snug font-semibold">{title}</span>
+          </span>
+          <span className="mt-0.5 block truncate text-[0.8125rem] text-muted-foreground">{note}</span>
+        </span>
+        <CaretDown aria-hidden="true"
+                   className={cn('size-4 shrink-0 text-muted-foreground transition-transform duration-200', open && 'rotate-180')} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div key="body" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }} transition={{ duration: still ? 0 : 0.22 }} className="overflow-hidden">
+            <ol className="space-y-3.5 px-4 pt-1 pb-4">{children}</ol>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  )
 }
 
 // ── run：照的那条流 ────────────────────────────────────────────────────────
-type StageOfCap = (cap: string) => string | undefined
-
-function RunSpine({ workspace, run, runs, onPick, workflows, epoch, stageOfCap }: {
-  workspace: string; run: RunSummary; runs: RunSummary[]; onPick: (id: string) => void; workflows: Workflow[]
-  epoch: number; stageOfCap: StageOfCap
+function RunLane({ workspace, run, template, epoch, stageOfCap, open, onToggle }: {
+  workspace: string; run: RunSummary; template: Workflow | null; epoch: number; stageOfCap: StageOfCap
+  open: boolean; onToggle: () => void
 }) {
-  const detail = useResource(() => api.run(workspace, run.run_id), [workspace, run.run_id, epoch])
-  if (detail.error) return <div className="p-6"><ErrorNote text={detail.error} /></div>
-  if (!detail.data) return <div className="p-6"><Skeleton lines={6} /></div>
-  const doc = detail.data
-  const template = workflows.find((w) => w.name === 'auto-research') ?? workflows[0] ?? null
-  const flow: FlowState | null = doc.flow ?? (template ? synthesizeFlow(doc, template) : null)
-  if (!flow) return <div className="p-6"><ErrorNote text="没有流可对照" /></div>
-  const steps = deriveRunSteps(flow, doc)
+  // 老 run 没便条：按 auto-research 的样子从摘要推一条出来
+  const flow = run.flow ?? (template ? synthesizeFlow(run, template) : null)
+  const steps = flow ? deriveRunSteps(flow, run) : []
+  const where = waitingSentence(steps) || (flow ? `第 ${flow.step} 步` : '没有流可对照')
   return (
-    <Column
-      title={flow.title}
-      subtitle={`${run.run_id}，${waitingSentence(steps) || `第 ${flow.step} 步`}`}
-      picker={runs.length > 1 && (
-        <Picker value={run.run_id} options={runs.map((r) => r.run_id)} onChange={onPick} label="换 run" />
-      )}
-    >
+    <Lane title={flow?.title ?? run.title} note={`${run.run_id}，${where}`} live={run.job !== null} open={open} onToggle={onToggle}>
+      {open && <RunLaneBody workspace={workspace} run={run} steps={steps} epoch={epoch} stageOfCap={stageOfCap} />}
+    </Lane>
+  )
+}
+
+/** 展开才拉 run 详情：分析的结论、账本这些收着时用不上。 */
+function RunLaneBody({ workspace, run, steps, epoch, stageOfCap }: {
+  workspace: string; run: RunSummary; steps: StepView[]; epoch: number; stageOfCap: StageOfCap
+}) {
+  const detail = useResource(() => api.run(workspace, run.run_id), [workspace, run.run_id, epoch, run.updated_at])
+  if (detail.error) return <li><ErrorNote text={detail.error} /></li>
+  if (!detail.data) return <li><Skeleton lines={4} /></li>
+  if (steps.length === 0) return <li><ErrorNote text="没有流可对照" /></li>
+  const doc = detail.data
+  return (
+    <>
       {steps.map((step, i) => (
         <StepModule key={step.n} step={step} icon={stepIcon(step, stageOfCap)} last={i === steps.length - 1}
                     ok={step.cap === 'verify' && doc.verify?.status === 'PASS'}>
           <RunStepContent workspace={workspace} step={step} run={doc} reload={detail.reload} />
         </StepModule>
       ))}
-    </Column>
+    </>
   )
 }
 
@@ -127,24 +201,21 @@ function RunStepContent({ workspace, step, run, reload }: {
   }
 }
 
-// ── 需求对齐：还没有 run ─────────────────────────────────────────────────
-function IntakeSpine({ workspace, intake, reload, stageOfCap }: {
-  workspace: WorkspaceDetail; intake: Workflow | null; reload: () => Promise<void>; stageOfCap: StageOfCap
+// ── 需求对齐 ────────────────────────────────────────────────────────────
+function IntakeLane({ workspace, intake, reload, stageOfCap, open, onToggle }: {
+  workspace: WorkspaceDetail; intake: Workflow; reload: () => Promise<void>; stageOfCap: StageOfCap
+  open: boolean; onToggle: () => void
 }) {
-  if (!intake) return <div className="p-6"><ErrorNote text="库里没有 intake" /></div>
   const task = workspace.task
   const steps = deriveIntakeSteps(intake, task, task?.intake_problems ?? null)
   return (
-    <Column
-      title={intake.title}
-      subtitle={task ? waitingSentence(steps) : '还没有需求'}
-    >
+    <Lane title={intake.title} note={task ? waitingSentence(steps) : '还没有需求'} open={open} onToggle={onToggle}>
       {steps.map((step, i) => (
         <StepModule key={step.n} step={step} icon={stepIcon(step, stageOfCap)} last={i === steps.length - 1}>
           <IntakeStepContent workspace={workspace.id} step={step} task={task} reload={reload} />
         </StepModule>
       ))}
-    </Column>
+    </Lane>
   )
 }
 
@@ -186,34 +257,6 @@ function IntakeStepContent({ workspace, step, task, reload }: {
 }
 
 // ── 零件 ──────────────────────────────────────────────────────────────────
-function Column({ title, subtitle, picker, children }: {
-  title: string; subtitle: string; picker?: ReactNode; children: ReactNode
-}) {
-  return (
-    <div className="relative flex h-full flex-col">
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-10 bg-gradient-to-b from-background to-transparent" />
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-10 bg-gradient-to-t from-background to-transparent" />
-      <div className="px-6 pt-6 pb-4">
-        <h2 className="font-serif text-[1.125rem] leading-snug font-semibold">{title}</h2>
-        <p className="mt-1 text-[0.8125rem] text-muted-foreground">{subtitle}</p>
-        {picker}
-      </div>
-      <ol className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-6 pb-8">{children}</ol>
-    </div>
-  )
-}
-
-function Picker({ value, options, onChange, label }: {
-  value: string; options: string[]; onChange: (v: string) => void; label: string
-}) {
-  return (
-    <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}
-            className="mt-2 h-7 max-w-full rounded-md border bg-card px-2 font-mono text-[0.75rem] text-muted-foreground">
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
-    </select>
-  )
-}
-
 const BUBBLE: Record<StepView['state'], string> = {
   done: 'bg-foreground text-background',
   running: 'bg-primary text-primary-foreground',

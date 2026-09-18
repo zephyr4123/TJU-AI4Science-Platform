@@ -22,7 +22,7 @@ describe('素材清单', () => {
       expect(ASSETS.door[theme].video.endsWith('.mp4')).toBe(true)
       expect(ASSETS.door[theme].poster.endsWith('.jpg')).toBe(true)
     }
-    expect(ASSETS.welcome.src.endsWith('.jpg')).toBe(true)
+    for (const pic of [ASSETS.welcome, ASSETS.studio, ASSETS.chat, ASSETS.board]) expect(pic.src.endsWith('.jpg')).toBe(true)
   })
 
   it('封面按名字稳定地挑，六张都挑得到', () => {

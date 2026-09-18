@@ -15,14 +15,14 @@ const cover = (key: string, alt: string): Cover => ({
   key, alt, src: `${CDN}/image/cover-${key}-800.jpg`, thumb: `${CDN}/image/cover-${key}-240.jpg`,
 })
 
-/** 六张封面：一个工作区按名字稳定地挑一张，顶栏、切换清单、对话抽屉认的是同一张 */
+/** 六张封面：风景，按色调分开好认（主人：别用玻璃瓶、实验室味的图）；一个工作区按名字稳定地挑一张，地方栏、清单、抽屉认同一张 */
 export const COVERS: readonly Cover[] = [
-  cover('microscope', '显微镜的物镜'),
-  cover('petri', '培养皿里的紫色液体'),
-  cover('crystal', '白底上的晶洞'),
-  cover('chalk', '黑板上的公式'),
-  cover('flask', '蓝色液体的锥形瓶'),
-  cover('notebook', '方格本与一支笔'),
+  cover('ridge', '雾里的山脊'),
+  cover('forest', '雾中的松林'),
+  cover('dunes', '晨光里的沙丘'),
+  cover('sea', '黎明的海面'),
+  cover('lake', '湖上的雾与倒影'),
+  cover('snow', '雪原上的一棵树'),
 ]
 
 /** FNV-1a 取模：同一个名字永远同一张，换台电脑也一样；六张之间撞车难免，只求散得开 */
@@ -38,17 +38,28 @@ export const ASSETS = {
     light: { video: `${CDN}/video/door-light.mp4`, poster: `${CDN}/image/door-light.jpg` },
     dark: { video: `${CDN}/video/door-dark.mp4`, poster: `${CDN}/image/door-dark.jpg` },
   } satisfies Record<'light' | 'dark', Clip>,
-  /** 对话欢迎屏的配图：实验室玻璃器皿，高调 */
+  /** 对话欢迎屏的配图：云雾里的山，高调 */
   welcome: {
-    src: `${CDN}/image/welcome-2400.jpg`,
-    srcSet: `${CDN}/image/welcome-1200.jpg 1200w, ${CDN}/image/welcome-2400.jpg 2400w`,
-    alt: '实验室的玻璃器皿',
+    src: `${CDN}/image/welcome-mist-2400.jpg`,
+    srcSet: `${CDN}/image/welcome-mist-1200.jpg 1200w, ${CDN}/image/welcome-mist-2400.jpg 2400w`,
+    alt: '云雾里的山',
   } satisfies Picture,
-  /** 编辑台「库」的横幅与造流助理抽屉的封面：白架子上的玻璃器皿 */
+  /** 编辑台「库」的横幅与造流助理抽屉的封面：晨光下的山脊线 */
   studio: {
-    src: `${CDN}/image/studio-2000.jpg`,
-    srcSet: `${CDN}/image/studio-1000.jpg 1000w, ${CDN}/image/studio-2000.jpg 2000w`,
-    alt: '白架子上的玻璃器皿',
+    src: `${CDN}/image/studio-dawn-2000.jpg`,
+    srcSet: `${CDN}/image/studio-dawn-1000.jpg 1000w, ${CDN}/image/studio-dawn-2000.jpg 2000w`,
+    alt: '晨光下的山脊线',
+  } satisfies Picture,
+  /** 对话正文底下的一层：淡彩的云，纱幕压到只剩氛围 */
+  chat: {
+    src: `${CDN}/image/chat-clouds-2400.jpg`,
+    srcSet: `${CDN}/image/chat-clouds-1200.jpg 1200w, ${CDN}/image/chat-clouds-2400.jpg 2400w`,
+    alt: '淡彩的云',
+  } satisfies Picture,
+  /** 脊柱那一列底下的一层：层层山影，黑白 */
+  board: {
+    src: `${CDN}/image/board-ridges-1200.jpg`,
+    alt: '层层的山影',
   } satisfies Picture,
 } as const
 

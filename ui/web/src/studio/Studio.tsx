@@ -176,7 +176,7 @@ function Bench({ draft, setDraft, titles, onSaved }: {
     && draft.steps.length > 0 && problems.length === 0 && !busy
 
   return (
-    <aside className="paper-grid self-start rounded-2xl border p-5 lg:sticky lg:top-6">
+    <aside className="self-start rounded-2xl border bg-card p-5 lg:sticky lg:top-6">
       <h2 className="font-serif text-[1.0625rem] font-semibold">拼流台</h2>
       <div className="mt-3 space-y-2">
         <Input value={draft.name} placeholder="名字（小写英文、连字符）" aria-label="工作流名字"

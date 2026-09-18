@@ -55,7 +55,6 @@
   --color-warn-soft: var(--wait-soft);
   --color-bad: var(--bad);
   --color-bad-soft: var(--bad-soft);
-  --color-grid: var(--grid);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -113,7 +112,6 @@
   --wait-soft: #FBF0DC;
   --bad: #A83A2E;
   --bad-soft: #F8E6E3;
-  --grid: #E1E4EA;
 }
 
 /* 深色：同一套语义反过来。靛、铜绿、琥珀提亮到能压住深底 */
@@ -151,7 +149,6 @@
     --wait-soft: #3A2C16;
     --bad: #E07A6E;
     --bad-soft: #3B1F1B;
-    --grid: #242932;
   }
 }
 :root[data-theme="dark"] {
@@ -187,7 +184,6 @@
   --wait-soft: #3A2C16;
   --bad: #E07A6E;
   --bad-soft: #3B1F1B;
-  --grid: #242932;
 }
 
 @layer base {
@@ -239,6 +235,11 @@
         transparent 72%, color-mix(in oklab, var(--background) 55%, transparent) 100%);
   }
 
+  /* 铺整块面板的画面上的纱幕：压到只剩一点氛围，字照常读（对话正文、脊柱那一列） */
+  .veil-mist {
+    background: color-mix(in oklab, var(--background) 70%, transparent);
+  }
+
   /* 记录本上的填空线：没有框，底线一条；聚焦变靛，填错变红 */
   .blank {
     display: inline-block;
@@ -272,13 +273,6 @@
     @apply text-[0.8125rem] leading-[1.4] text-muted-foreground;
   }
   /* 脊柱那一列的方格纸：只铺在这一列，上下淡出 */
-  .paper-grid {
-    background-color: var(--background);
-    background-image: linear-gradient(var(--grid) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: 20px 20px;
-    background-position: -1px -1px;
-  }
   /* 页面里所有 markdown 用同一套排版：设计说明、分析、助理回复 */
   .prose-ai4sci {
     @apply prose prose-sm max-w-[68ch] text-foreground prose-headings:font-serif prose-headings:font-semibold

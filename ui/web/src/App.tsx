@@ -7,6 +7,7 @@ import { api, inWorkspace, STUDIO } from '@/api/client'
 import { ASSETS, coverOf } from '@/assets'
 import { ChatView } from '@/chat/ChatView'
 import { Band } from '@/components/Band'
+import { Scene } from '@/components/Scene'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { stageSentence } from '@/lib/humanize'
@@ -101,7 +102,7 @@ function MainView({ wsId, title, healthy }: { wsId: string; title: string; healt
   // 没点过：宽屏常开、窄屏收着；窄屏上脊柱是一张从右边拉出来的抽屉
   const [boardOpen, setBoardOpen] = useState<boolean | null>(null)
   const open = boardOpen ?? wide
-  const spine = <Spine workspace={wsId} epoch={c.epoch} />
+  const spine = <Spine workspace={wsId} epoch={c.epoch} chatId={c.chatId} />
   return (
     <div className="flex min-h-0 flex-1">
       <ChatView
@@ -122,18 +123,20 @@ function MainView({ wsId, title, healthy }: { wsId: string; title: string; healt
       />
       {wide ? (
         <aside
-          className={cn('paper-grid relative h-full shrink-0 border-l transition-[width] duration-200',
+          className={cn('relative h-full shrink-0 border-l transition-[width] duration-200',
                         open ? 'w-[27.5rem]' : 'w-0 overflow-hidden border-l-0')}
-          aria-label="这条流" aria-hidden={!open}
+          aria-label="流" aria-hidden={!open}
         >
-          <div className="h-full w-[27.5rem]">{spine}</div>
+          <Scene picture={ASSETS.board} veil="mist" />
+          <div className="relative h-full w-[27.5rem]">{spine}</div>
         </aside>
       ) : (
         <Sheet open={open} onOpenChange={setBoardOpen}>
           <SheetContent side="right"
-                        className="paper-grid gap-0 p-0 data-[side=right]:w-[100vw] data-[side=right]:sm:w-[27.5rem] data-[side=right]:sm:max-w-[27.5rem]">
-            <SheetHeader className="sr-only"><SheetTitle>这条流</SheetTitle></SheetHeader>
-            <div className="h-full">{spine}</div>
+                        className="gap-0 p-0 data-[side=right]:w-[100vw] data-[side=right]:sm:w-[27.5rem] data-[side=right]:sm:max-w-[27.5rem]">
+            <SheetHeader className="sr-only"><SheetTitle>流</SheetTitle></SheetHeader>
+            <Scene picture={ASSETS.board} veil="mist" />
+            <div className="relative h-full">{spine}</div>
           </SheetContent>
         </Sheet>
       )}

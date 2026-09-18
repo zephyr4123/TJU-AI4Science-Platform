@@ -44,7 +44,7 @@
 
 最左一条**地方栏**，先选世界再选世界里的东西（宽屏常驻 4.5rem：顶上一枚玻璃标记，最底下两块是双向开关——工作区 / 编辑台，两个平行的世界，放底下不抢视觉；开关上面那段只属于当前世界：工作区世界里是一块块封面，靠近放大、点即切换，末尾「新建」；编辑台世界里这段收掉，那里没有可切的东西，从结构上就切不了工作区。编辑台是全局一个库、有自己的对话，不跟着工作区换；窄屏收进页眉左端的玻璃标记，点开是一张清单，同样先两个世界再列内容，[#79](https://github.com/zephyr4123/TJU-AI4Science/issues/79)）。页眉只属于当前地方：工作区的标题 + 走到哪，底下铺封面糊成一抹颜色，换工作区就换色；编辑台是库的横幅、注一句「不分工作区」；门口那一屏宽屏没有页眉（画面铺满），窄屏留一条放入口。下面两块看板以可写目录划界（[#58](https://github.com/zephyr4123/TJU-AI4Science/issues/58)）；页面先认工作区（[#70](https://github.com/zephyr4123/TJU-AI4Science/issues/70)）：
 
-- **主页面**（改实例）：没有工作区（或点了「新建」）时是门口那一屏：一句「要解决什么？」、一只和对话输入框同款的玻璃输入框，写下课题回车即建；文件夹名从标题里推（拉丁词小写连字符相连，没有就按日期），小字里可改；右边一张封面卡随名字换（封面本来就按名字挑，名字一变封面就换）、跟着鼠标歪；底下铺一段循环视频：浅色云雾、深色光线汇聚，纱幕压到字能读；有了工作区还没对话是欢迎屏（一张配图铺在整列底下，玻璃输入框浮在上面，打字回车就开一段；输入框与正文同一列宽、分两层：上面写字起步三行、随内容长到十行，下面一排工具位——左边留给模型切换、思考深度、上传，现在站着快捷键提示，右边发送键）；有了对话就是这个工作区的对话（左，内容列 ≤ 44rem）与右边 **流程脊柱**——当前 run 照的那条流，一步一个模块，编号是真序列，每一步左侧一枚阶段图标（能力按阶段，发布键盖章、验收键签名，人开口、助理提笔）；模块的实心程度来自盘上真实的文件（没产出虚线框，产出了实心，作业在跑有微光边，等你按键用琥珀）。没有 run 时脊柱就是需求对齐（起任务包 → 填需求 → 发布 → 接任务 → 核对 → 跑基线）。两颗键在脊柱末尾。这一列铺极淡的方格纸（`.paper-grid`）。全页放胆的只有两处画面：门口那一屏的视频、欢迎屏的配图，一有内容画面就让位。
+- **主页面**（改实例）：没有工作区（或点了「新建」）时是门口那一屏：一句「要解决什么？」、一只和对话输入框同款的玻璃输入框，写下课题回车即建；文件夹名从标题里推（拉丁词小写连字符相连，没有就按日期），小字里可改；右边一张封面卡随名字换（封面本来就按名字挑，名字一变封面就换）、跟着鼠标歪；底下铺一段循环视频：浅色云雾、深色光线汇聚，纱幕压到字能读；有了工作区还没对话是欢迎屏（一张配图铺在整列底下，玻璃输入框浮在上面，打字回车就开一段；输入框与正文同一列宽、分两层：上面写字起步三行、随内容长到十行，下面一排工具位——左边留给模型切换、思考深度、上传，现在站着快捷键提示，右边发送键）；有了对话就是这个工作区的对话（左，内容列 ≤ 44rem，底下一层淡彩的云压到只剩氛围）与右边 **流程脊柱**——一块板几条泳道（[#82](https://github.com/zephyr4123/TJU-AI4Science/issues/82)）：顶上一条需求对齐，下面每个 run 一条（照的那条流），取了还没开跑的流一行薄的「备着」；默认全部收着、只给流的目录，只有助理正在承接的那条（作业在跑，或当前对话开的、还没验收）自动展开，人点哪条展开哪条、点过的以人为准；对话不绑流，流走到哪写在盘上，谁驱动的都一样。展开的那条一步一个模块，编号是真序列，每一步左侧一枚阶段图标（能力按阶段，发布键盖章、验收键签名，人开口、助理提笔）；模块的实心程度来自盘上真实的文件（没产出虚线框，产出了实心，作业在跑有微光边，等你按键用琥珀）。需求对齐那条（起任务包 → 填需求 → 发布 → 接任务 → 核对 → 跑基线）起了任务包、没跑到基线就自动展开，跑到基线就收起。两颗键在各自那条的末尾。这一列底下一层黑白的层层山影。有作业在跑时每 10 秒重拉一次摘要，别的对话起的作业跑完这边才看得见。画面全是风景（主人：别用玻璃瓶、实验室味的图）：门口那一屏的视频与欢迎屏的雾山放胆，对话与脊柱底下的只是氛围（`.veil-mist` 压七成）。
 - **对话抽屉**：入口是对话列顶上一枚带字的圆角按钮「对话 · N」（hover 扫过一道淡靛光）；顶上是这个工作区的封面（编辑台是库的横幅），字站在脚下压成纸色的那一段；清单逐条浮现，当前那段的气泡图标填实。
 - **编辑台**（改库）：左边造流助理的对话（窄一列，库才是主角），右边顶上一条库的横幅（白架子上的玻璃器皿），下面工作流墙（一流一卡：名字、覆盖的几段各一枚图标、一句话、几步），下面七段能力货架（空的留空位）+ 拼流台（点能力进来，通不通当场说，存成文件）。
 
@@ -52,7 +52,7 @@
 
 ## Components
 
-shadcn（radix-nova 预设）作基础件。reactbits 只用在承担信息的地方，从 registry 捞来改装、走 tokens：Dock（地方栏：横改竖、块是真按钮、名字靠右提示、减少动效不放大）、ElectricBorder（正在跑的那一步）、CountUp（结果三个大数字）、SpotlightCard（工作流墙）、SpecularButton / StarBorder（发布、验收两颗键，全页只有它们有这种质感）、ShinyText（作业跑着时的状态字）、GlassSurface（输入框的壳，跟 `data-theme`）、RotatingText（输入框里轮换的提示语）、TiltedCard（门口那张封面卡，换名字换图）、GlareHover（对话抽屉的入口按钮，改成真按钮）、GlassIcon（顶栏那枚标记，GlassIcons 只留一枚）、AnimatedList（工作区清单与对话清单逐条浮现）。`components/Band` 是自家的：一张图 + 一层纱幕，顶栏（wash，糊成颜色）、抽屉与库（foot，脚下压纸色）都用它。图标 Phosphor（regular；看板开着那颗用 fill），全站一套，`components.json` 的 `iconLibrary` 也是它，shadcn 再生成的件不会带回 lucide。
+shadcn（radix-nova 预设）作基础件。reactbits 只用在承担信息的地方，从 registry 捞来改装、走 tokens：Dock（地方栏：横改竖、块是真按钮、名字靠右提示、减少动效不放大）、ElectricBorder（正在跑的那一步）、CountUp（结果三个大数字）、SpotlightCard（工作流墙）、SpecularButton / StarBorder（发布、验收两颗键，全页只有它们有这种质感）、ShinyText（作业跑着时的状态字）、GlassSurface（输入框的壳，跟 `data-theme`）、RotatingText（输入框里轮换的提示语）、TiltedCard（门口那张封面卡，换名字换图）、GlareHover（对话抽屉的入口按钮，改成真按钮）、GlassIcon（顶栏那枚标记，GlassIcons 只留一枚）、AnimatedList（工作区清单与对话清单逐条浮现）。`components/Band` 是自家的：一张图 + 一层纱幕，顶栏（wash，糊成颜色）、抽屉与库（foot，脚下压纸色）都用它；`components/Scene` 也是自家的：铺满整块面板的画面，欢迎屏（side，左边压纸色给字站）、对话正文与脊柱那列（mist，压七成只剩氛围）用它。图标 Phosphor（regular；看板开着那颗用 fill），全站一套，`components.json` 的 `iconLibrary` 也是它，shadcn 再生成的件不会带回 lucide。
 
 ## Motion
 
@@ -72,8 +72,10 @@ CDN：`https://media.zephyrxiang.com/ai4science/v1/`（腾讯云 COS + CDN，`Ca
 |---|---|---|---|---|---|
 | 门口背景（浅色） | `video/door-light.mp4`、`image/door-light.jpg` | motionsites「Vectrus Energy」的背景片 | motionsites（AI 生成） | 站上没有许可条款页，prompt 原文要求原样引用其 URL；镜像是主人（终身会员）的决定 | 取前 6.5 秒，末尾 1 秒淡回开头，5.5 秒无缝循环；H.264 CRF 24、无音轨、faststart；首帧出海报 |
 | 门口背景（深色） | `video/door-dark.mp4`、`image/door-dark.jpg` | motionsites「Neural Pathway」的背景片 | 同上 | 同上 | 末尾 0.7 秒淡回开头，9.4 秒循环；其余同上 |
-| 欢迎屏配图 | `image/welcome-2400.jpg`、`image/welcome-1200.jpg` | Pexels 7722915 | Tara Winstead | Pexels 许可：可免费商用、不强制署名 | 缩到 2400 / 1200 宽，JPEG |
-| 工作区封面（六张，按名字稳定地挑） | `image/cover-<key>-800.jpg`、`-240.jpg` | microscope：Pexels 18952655；petri：10188003；crystal：11434879；chalk：22690751；flask：7722958；notebook：159746 | indra projects；Ron Lach；Alina Vilchenko；Vitaly Gariev；Tara Winstead；Pixabay | 同上 | 居中裁成 8:5，800 与 240 宽 |
-| 库的横幅（编辑台、造流助理抽屉） | `image/studio-2000.jpg`、`-1000.jpg` | Pexels 3735704 | Polina Tankilevitch | 同上 | 竖图取中段裁成 20:7 |
+| 欢迎屏配图 | `image/welcome-mist-2400.jpg`、`-1200.jpg` | Pexels 5493069 | Chengxin Zhao | Pexels 许可：可免费商用、不强制署名 | 缩到 2400 / 1200 宽，JPEG |
+| 工作区封面（六张风景，按名字稳定地挑） | `image/cover-<key>-800.jpg`、`-240.jpg` | ridge：Pexels 11089921；forest：9076763；dunes：28638786；sea：30923399；lake：34713459；snow：15343980 | 6th Era Photography；JacobS JS；Stephen Leonardi；Marianna Sigov；Rino Adamo；mitbg000 | 同上 | 居中裁成 8:5，800×500 与 240×150，JPEG |
+| 库的横幅（编辑台、造流助理抽屉） | `image/studio-dawn-2000.jpg`、`-1000.jpg` | Pexels 34742289 | Septimiu Lupea | 同上 | 居中裁成 20:7，2000×700 与 1000×350 |
+| 对话正文底下 | `image/chat-clouds-2400.jpg`、`-1200.jpg` | Pexels 1367080 | eberhard grossgasteiger | 同上 | 缩到 2400 / 1200 宽 |
+| 脊柱那列底下 | `image/board-ridges-1200.jpg` | Pexels 28203085 | Lisá Yakurím | 同上 | 缩到 1200 宽（竖图） |
 
 再加素材照这张表补一行。找素材用 stock-images / iconify / motionsites 这几个 MCP，别让模型手绘。

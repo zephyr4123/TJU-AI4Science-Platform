@@ -127,6 +127,8 @@ export interface RunSummary {
   updated_at: string | null
   cost_usd: number | null
   running: boolean
+  /** 哪段对话开的；终端里开的或老 run 是 null */
+  chat_id: string | null
   /** 正在跑的后台作业；没有就是 null */
   job: Job | null
   /** 照的流与步序；没照流就是 null */

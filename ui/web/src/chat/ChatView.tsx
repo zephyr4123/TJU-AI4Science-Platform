@@ -8,6 +8,7 @@ import { streamTurn } from '@/api/sse'
 import type { ChatEvent, ChatMeta } from '@/api/types'
 import BlurText from '@/components/BlurText'
 import { ErrorNote, Skeleton } from '@/components/bits'
+import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
 import { usd } from '@/lib/format'
 import { useResource } from '@/lib/useResource'
@@ -111,7 +112,8 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
 
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
-      {!chatId && <Photo />}
+      {/* 没有对话：一张风景铺在整列底下、左边压纸色给字站；有了对话：淡彩的云压到只剩氛围 */}
+      <Scene picture={chatId ? ASSETS.chat : ASSETS.welcome} veil={chatId ? 'mist' : 'side'} />
       <header className="relative flex h-12 shrink-0 items-center gap-2 px-3">
         {drawer}
         <span className="min-w-0 flex-1 truncate text-[0.875rem] text-muted-foreground">
@@ -151,18 +153,6 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
 
       <Composer busy={live !== null || autoSend !== null} hints={hints}
                 onSend={(text) => (chatId ? void send(text) : onStart(text))} />
-    </div>
-  )
-}
-
-/** 还没有对话：配图铺在整列底下（顶栏、正文、输入框都浮在上面），一有对话画面就让位。 */
-function Photo() {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      {/* 原图器皿在左、空面在右；镜像一下让器皿落到纱幕薄的右边，字那边只剩空面 */}
-      <img src={ASSETS.welcome.src} srcSet={ASSETS.welcome.srcSet} sizes="100vw" alt="" decoding="async"
-           className="absolute inset-0 size-full -scale-x-100 object-cover" />
-      <div className="veil absolute inset-0" />
     </div>
   )
 }
