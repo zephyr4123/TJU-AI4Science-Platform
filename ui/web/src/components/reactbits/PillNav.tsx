@@ -77,7 +77,7 @@ export function PillNav<K extends string>({ items, active, onSelect, className, 
   }
 
   return (
-    <div role="tablist" className={cn('flex h-9 items-center gap-0.5 rounded-full border bg-background p-[3px]', className)}>
+    <div role="tablist" className={cn('flex h-9 shrink-0 items-center gap-0.5 rounded-full border bg-background p-[3px]', className)}>
       {items.map((item, i) => {
         const on = item.id === active
         return (
@@ -90,7 +90,7 @@ export function PillNav<K extends string>({ items, active, onSelect, className, 
             onMouseEnter={() => enter(i)}
             onMouseLeave={() => leave(i)}
             className={cn(
-              'relative inline-flex h-full items-center justify-center overflow-hidden rounded-full px-4 text-[0.875rem] font-medium',
+              'relative inline-flex h-full items-center justify-center overflow-hidden rounded-full px-3 text-[0.875rem] font-medium whitespace-nowrap sm:px-4',
               on ? 'bg-foreground text-background' : 'text-muted-foreground',
             )}
           >

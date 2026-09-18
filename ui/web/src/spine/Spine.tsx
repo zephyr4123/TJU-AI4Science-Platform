@@ -246,7 +246,7 @@ function StepModule({ step, last, ok = false, children }: {
     </div>
   )
   return (
-    <li className="relative grid grid-cols-[28px_1fr] gap-3">
+    <li className="relative grid grid-cols-[28px_minmax(0,1fr)] gap-3">
       <span className={cn('grid size-7 place-items-center rounded-full text-[0.8125rem] font-semibold',
                           BUBBLE[step.state], ok && step.state === 'done' && 'bg-ok text-white')}>
         {step.n}
@@ -261,7 +261,7 @@ function StepModule({ step, last, ok = false, children }: {
 
 function Pair({ from, to }: { from: number | null; to: number }) {
   return (
-    <p className="t-big flex items-baseline gap-2">
+    <p className="t-big flex flex-wrap items-baseline gap-x-2">
       <span className="text-muted-foreground">{metric(from, 4)}</span>
       <span aria-hidden className="text-muted-foreground">→</span>
       <span>{metric(to, 4)}</span>

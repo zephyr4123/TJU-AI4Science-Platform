@@ -107,7 +107,8 @@ function MainView({ wsId, healthy }: { wsId: string; healthy: boolean | null }) 
         </aside>
       ) : (
         <Sheet open={open} onOpenChange={setBoardOpen}>
-          <SheetContent side="right" className="paper-grid w-full gap-0 p-0 sm:max-w-[27.5rem]">
+          <SheetContent side="right"
+                        className="paper-grid gap-0 p-0 data-[side=right]:w-[100vw] data-[side=right]:sm:w-[27.5rem] data-[side=right]:sm:max-w-[27.5rem]">
             <SheetHeader className="sr-only"><SheetTitle>这条流</SheetTitle></SheetHeader>
             <div className="h-full">{spine}</div>
           </SheetContent>
