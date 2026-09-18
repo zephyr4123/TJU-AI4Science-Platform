@@ -1,45 +1,48 @@
-// 新建工作区：一个工作区一份需求，也就是一个文件夹（外层 #70 #74）。
-// 这一屏没有表单：那句话本身就是要填的（记录本上的填空行），底下铺一段循环视频（浅色云雾、深色光线汇聚），右边那只文件夹在上面，
-// 名字一边打、标签一边显，打好了它就打开，露出里面会有的三样：需求、流、实验。字要少（主人：简洁）。
+// 起一个工作区：一句话就够（外层 #79 #80，主人：别像表单）。玻璃输入框（和对话输入框同一只壳）里写要解决什么，回车即建；
+// 文件夹名从标题里推（lib/slug），小字里可以改；右边一张封面（reactbits TiltedCard 改装）随名字换——封面本来就是按名字挑的
+// （assets.coverOf），名字一变封面就换，让人看见这就是自己的工作区。底下铺循环视频（浅色云雾、深色光线汇聚）。字要少。
+import { ArrowRight, PencilSimple } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
-import { useState } from 'react'
+import { type KeyboardEvent, useState } from 'react'
 
 import { api } from '@/api/client'
-import { ASSETS } from '@/assets'
 import type { WorkspaceSummary } from '@/api/types'
+import { ASSETS, coverOf } from '@/assets'
 import { Backdrop } from '@/components/Backdrop'
 import { ErrorNote } from '@/components/bits'
-import { Folder } from '@/components/reactbits/Folder'
+import GlassSurface from '@/components/reactbits/GlassSurface'
 import ShinyText from '@/components/reactbits/ShinyText'
+import { TiltedCard } from '@/components/reactbits/TiltedCard'
 import { Button } from '@/components/ui/button'
+import { ID_RE, suggestId } from '@/lib/slug'
 import { useToken } from '@/lib/tokens'
 import { cn } from '@/lib/utils'
 
-const ID_RE = /^[a-z][a-z0-9-]*$/
-
-export function NewWorkspace({ existing, onCreated, onCancel, onPick }: {
+export function NewWorkspace({ existing, onCreated, onCancel }: {
   existing: WorkspaceSummary[]
   onCreated: (id: string) => void
   onCancel?: () => void
-  onPick: (id: string) => void
 }) {
-  const [id, setId] = useState('')
   const [title, setTitle] = useState('')
+  // 研究者自己改过的文件夹名；清空就回到按标题推
+  const [named, setNamed] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const indigo = useToken('--primary')
   const muted = useToken('--muted-foreground')
   const still = useReducedMotion()
-  const slug = id.trim()
-  const valid = ID_RE.test(slug)
-  const taken = existing.some((w) => w.id === slug)
-  const first = existing.length === 0
+
+  const taken = existing.map((w) => w.id)
+  const id = named.trim() || suggestId(title, taken, new Date())
+  const wellFormed = ID_RE.test(id)
+  const dup = taken.includes(id)
+  const ready = title.trim() !== '' && wellFormed && !dup && !busy
 
   const create = async () => {
     setBusy(true)
     setError(null)
     try {
-      const made = await api.newWorkspace(slug, title.trim())
+      const made = await api.newWorkspace(id, title.trim())
       onCreated(made.id)
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc))
@@ -47,99 +50,71 @@ export function NewWorkspace({ existing, onCreated, onCancel, onPick }: {
       setBusy(false)
     }
   }
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    // 中文输入法组词时的回车是选词，不是新建
+    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+      event.preventDefault()
+      if (ready) void create()
+    }
+  }
 
   return (
     <div className="relative flex-1 overflow-y-auto">
       <Backdrop clip={ASSETS.door} />
-      <form
-        className="relative mx-auto grid min-h-full max-w-[72rem] gap-12 px-8 py-16 lg:grid-cols-[1fr_26rem] lg:items-center"
-        onSubmit={(e) => { e.preventDefault(); if (valid && !taken && !busy) void create() }}
-      >
+      <div className="relative mx-auto grid min-h-full max-w-[72rem] items-center gap-12 px-6 py-16 sm:px-8 lg:grid-cols-[1fr_22rem]">
         <div className="min-w-0">
-          <h1 className="font-serif text-[2.25rem] leading-[1.2] font-semibold tracking-tight text-balance">
-            新建工作区
-          </h1>
-          <p className="t-body mt-3 text-muted-foreground">一个工作区，一份需求。</p>
+          <h1 className="font-serif text-[2.25rem] leading-[1.2] font-semibold tracking-tight text-balance">要解决什么？</h1>
+          <p className="t-body mt-3 text-muted-foreground">一句话就够。一个工作区，一份需求。</p>
 
-          <p className="mt-12 font-serif text-[1.375rem] leading-[2.4] font-medium">
-            <span>叫</span>
-            <Blank
-              value={id} onChange={setId} mono autoFocus width="17ch" placeholder="rahman-stability"
-              label="工作区名" invalid={id !== '' && (!valid || taken)}
-            />
-            <span>，</span>
-            <br />
-            <span>解决</span>
-            <Blank value={title} onChange={setTitle} width="32ch" placeholder="Rahman 模型多起点估计的稳定性" label="标题" />
-            <span>。</span>
-          </p>
-          <p className="mt-2 min-h-[1.5rem] text-[0.8125rem] text-muted-foreground">
-            {id === '' ? '小写英文、数字、连字符'
-              : taken ? '重名了'
-                : !valid ? '只能小写英文、数字、连字符，字母开头'
-                  : <span className="font-mono">workspaces/{slug}/</span>}
-          </p>
-          {error && <ErrorNote text={error} className="mt-3" />}
+          <GlassSurface borderRadius={22} className="mt-10 max-w-[36rem] focus-within:ring-3 focus-within:ring-ring/35">
+            <div className="flex items-center gap-2 p-2">
+              <input
+                value={title} onChange={(event) => setTitle(event.target.value)} onKeyDown={onKeyDown}
+                autoFocus spellCheck={false} autoComplete="off" aria-label="要解决什么"
+                placeholder="Rahman 模型多起点估计的稳定性"
+                className="h-9 min-w-0 flex-1 bg-transparent px-2 text-[1rem] outline-none placeholder:text-muted-foreground/60"
+              />
+              <Button size="icon" className="rounded-full" onClick={() => void create()} disabled={!ready} aria-label="新建">
+                <ArrowRight weight="bold" />
+              </Button>
+            </div>
+          </GlassSurface>
 
-          <div className="mt-8 flex items-center gap-4">
-            <Button size="lg" type="submit" disabled={!valid || taken || busy}>{busy ? '新建中' : '新建'}</Button>
-            {onCancel && <Button variant="ghost" type="button" onClick={onCancel}>取消</Button>}
-            {busy && (still ? <span className="text-[0.8125rem] text-muted-foreground">建目录</span>
-              : <ShinyText text="建目录" color={muted} shineColor={indigo} speed={2} className="text-[0.8125rem]" />)}
+          <div className="mt-3 flex min-h-7 max-w-[36rem] flex-wrap items-center gap-x-4 gap-y-1 text-[0.8125rem] text-muted-foreground">
+            <label className="flex items-center gap-1.5">
+              <PencilSimple className="size-3.5" />
+              <span>文件夹</span>
+              <input
+                value={id} onChange={(event) => setNamed(event.target.value)} spellCheck={false} autoComplete="off" aria-label="文件夹名"
+                style={{ width: `${Math.max(id.length, 4) + 1}ch` }}
+                className={cn('blank font-mono text-[0.8125rem]', (!wellFormed || dup) && 'blank-invalid')}
+              />
+            </label>
+            {!wellFormed ? <span className="text-bad">只能小写英文、数字、连字符，字母开头</span>
+              : dup ? <span className="text-bad">重名了</span>
+                : busy ? (still ? <span>建目录</span> : <ShinyText text="建目录" color={muted} shineColor={indigo} speed={2} />)
+                  : null}
+            {onCancel && (
+              <button type="button" onClick={onCancel}
+                      className="ml-auto underline decoration-border underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+                取消
+              </button>
+            )}
           </div>
-
-          {!first && (
-            <p className="mt-12 text-[0.875rem] text-muted-foreground">
-              已有：
-              {existing.map((w, i) => (
-                <span key={w.id}>
-                  {i > 0 && '、'}
-                  <button type="button" onClick={() => onPick(w.id)}
-                          className="text-foreground underline decoration-border underline-offset-4 hover:decoration-primary focus-visible:outline-2 focus-visible:outline-ring">
-                    {w.title}
-                  </button>
-                </span>
-              ))}
-            </p>
-          )}
+          {error && <ErrorNote text={error} className="mt-3" />}
         </div>
 
-        <div className="hidden justify-center overflow-visible pt-16 lg:flex">
-          <Folder
-            color={indigo} label={slug ? `workspaces/${slug}` : ''} open={valid && !taken} width={236}
-            papers={[
-              <Sheet key="task" title="需求" lines={['问题', '数据', '怎么算好']} />,
-              <Sheet key="flow" title="流" lines={['从库取', '改参数', '照着跑']} />,
-              <Sheet key="runs" title="实验" lines={['账本', '分析', '验收']} />,
-            ]}
-          />
+        <div className="hidden lg:block">
+          <TiltedCard cover={coverOf(id)} className="aspect-[8/5] w-full">
+            <div className="px-5 pb-4">
+              <p className={cn('font-serif text-[1.25rem] leading-snug font-semibold text-balance', !title.trim() && 'text-muted-foreground')}>
+                {title.trim() || '你的课题'}
+              </p>
+              <p className="mt-1 font-mono text-[0.75rem] text-muted-foreground">{id}</p>
+            </div>
+          </TiltedCard>
         </div>
-      </form>
-    </div>
-  )
-}
-
-/** 记录本上的一条填空线：没有框，只有底线；聚焦时底线变靛，填错变红。 */
-function Blank({ value, onChange, placeholder, label, width, mono = false, invalid = false, autoFocus = false }: {
-  value: string; onChange: (v: string) => void; placeholder: string; label: string; width: string
-  mono?: boolean; invalid?: boolean; autoFocus?: boolean
-}) {
-  return (
-    <input
-      value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label}
-      autoFocus={autoFocus} spellCheck={false} autoComplete="off"
-      style={{ width: `max(${width}, ${Math.max(value.length, 1) * (mono ? 1 : 2.2) + 3}ch)` }}
-      className={cn('blank mx-2 max-w-full', mono ? 'font-mono text-[1.0625rem]' : 'font-serif',
-                    invalid && 'blank-invalid')}
-    />
-  )
-}
-
-function Sheet({ title, lines }: { title: string; lines: string[] }) {
-  return (
-    <div className="space-y-1">
-      <p className="font-serif text-[0.8125rem] font-semibold leading-tight">{title}</p>
-      {lines.map((line) => <p key={line} className="text-[0.6875rem] leading-snug text-muted-foreground">{line}</p>)}
+      </div>
     </div>
   )
 }

@@ -17,7 +17,7 @@
 
 | 看板 | 端点 | 人在这里做什么 |
 |---|---|---|
-| 工作区 | `GET /workspaces`、`POST /workspaces`、`GET /workspaces/<id>` | 顶栏选一个工作区，或起一个（一个工作区一份需求，P-15）；一整份里有需求、流实例、全部 run |
+| 工作区 | `GET /workspaces`、`POST /workspaces`、`GET /workspaces/<id>` | 地方栏选一个工作区，或起一个（一个工作区一份需求，P-15）；一整份里有需求、流实例、全部 run |
 | 对话 | `POST <域>/chats`、`POST <域>/chats/<id>/messages`（SSE）、`GET <域>/chats[/<id>]` | 主页面和研究助理说话、编辑台和造流助理说话；助理运行的每条命令以 `tool_use` / `tool_result` 事件流回来 |
 | 需求 | `GET /workspaces/<id>`（里面的 `task`）、`POST /workspaces/<id>/publish` | 脊柱上的需求对齐：看 manifest、设计说明、预检；按**发布**。发布是钥匙（`publish.json`），后面的按钮没它不开 |
 | 库 | `GET /workflows`、`POST /workflows`、`GET /cap`、`GET /stages`、`GET /flow/check` | 编辑台：工作流墙、七段货架、拼流台；存进库。研究者不改库 |
@@ -40,7 +40,7 @@ ai4sci serve       # 起后端并端出页面：http://127.0.0.1:8765
 ## 网页的结构
 
 设计口径在 `docs/PRODUCT.md`（给谁用、反例、原则）与 `docs/DESIGN.md`（色板、字阶、布局）。
-页面先认工作区：顶栏一个下拉切工作区、一个加号起新的；没有工作区时主页面是「新建工作区」那一屏（循环视频背景），有工作区还没对话时是配图 + 输入框，打字就开一段。
+页面先认工作区：最左一条地方栏（工作区封面块、新建、底下编辑台——编辑台不分工作区）；没有工作区时主页面是门口那一屏（一句话起工作区，循环视频背景），有工作区还没对话时是配图 + 输入框，打字就开一段。
 主页面 = 这个工作区的对话 + 流程脊柱（当前 run 照的那条流，或需求对齐）；编辑台 = 造流助理的对话 + 库（工作流墙、货架、拼流台）。
 正文只许出现 `lib/humanize.ts` 翻译过的句子；状态码、哈希、命令只在折叠层。
 
@@ -49,7 +49,8 @@ web/src/
   assets.ts   页面里全部图片 / 视频的 CDN URL，仅此一处（纲领 P-17）；素材清单在 docs/DESIGN.md
   api/        契约：types.ts（响应体的类型）、client.ts（每个端点一个函数，Scope 定域前缀）、sse.ts（事件流）
   chat/       对话：trace.ts（事件流折成条目，纯函数、有单测）、ChatView（两个域共用，文案由父组件给）/ TurnView / Composer
-  workspace/  WorkspaceSwitcher（顶栏下拉）、NewWorkspace（起一个工作区的欢迎屏与表单）
+  places/     Rail（宽屏的地方栏）、PlacesSheet（窄屏的清单）、place.ts（页面此刻在哪）
+  workspace/  NewWorkspace（门口那一屏：一句话起工作区）
   spine/      流程脊柱：derive.ts（从便条、作业、两颗键算每一步的状态，纯函数、有单测）、Spine（按工作区读）
   studio/     编辑台的库那一半：工作流墙、七段货架、拼流台
   keys/       发布、验收两颗键（StarBorder 改装）

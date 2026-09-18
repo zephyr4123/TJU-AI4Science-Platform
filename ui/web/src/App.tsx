@@ -1,86 +1,94 @@
-// 壳：顶栏（名字、工作区切换、主页面 / 编辑台胶囊）+ 两块看板（外层 #58 #64 #70）。
-// 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的对话 + 流程脊柱；
-// 编辑台改「库」：造流助理的对话 + 工作流墙、七段货架、拼流台。两位助理分权（P-16），页面只是 `ai4sci serve` 的客户端。
-import { Flask } from '@phosphor-icons/react'
+// 壳：左边地方栏（工作区 / 新建 / 编辑台），右边页眉 + 当前地方的内容（外层 #58 #64 #70 #79）。
+// 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的对话 + 流程脊柱。编辑台是全局一个库：造流助理的对话 + 工作流墙、
+// 七段货架、拼流台，不在任何工作区里，所以在地方栏上单独一块、页眉也不跟着工作区换（P-16）。页面只是 `ai4sci serve` 的客户端。
 import { type ReactNode, useState } from 'react'
 
 import { api, inWorkspace, STUDIO } from '@/api/client'
-import { ASSETS, coverOf, type Picture } from '@/assets'
+import { ASSETS, coverOf } from '@/assets'
 import { ChatView } from '@/chat/ChatView'
 import { Band } from '@/components/Band'
-import { GlassIcon } from '@/components/reactbits/GlassIcon'
-import { PillNav } from '@/components/reactbits/PillNav'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { stageSentence } from '@/lib/humanize'
 import { useChats } from '@/lib/useChats'
 import { useMediaQuery, WIDE } from '@/lib/useMediaQuery'
 import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
+import type { Place } from '@/places/place'
+import { PlacesSheet } from '@/places/PlacesSheet'
+import { Rail } from '@/places/Rail'
 import { ChatDrawer } from '@/sidebar/ChatDrawer'
 import { Spine } from '@/spine/Spine'
 import { Studio } from '@/studio/Studio'
 import { NewWorkspace } from '@/workspace/NewWorkspace'
-import { WorkspaceSwitcher } from '@/workspace/WorkspaceSwitcher'
-
-type View = 'main' | 'studio'
-
-const VIEWS: { id: View; label: string }[] = [
-  { id: 'main', label: '主页面' },
-  { id: 'studio', label: '编辑台' },
-]
 
 export default function App() {
   const workspaces = useResource(api.workspaces, [])
   const health = useResource(api.health, [])
   const [picked, setPicked] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [view, setView] = useState<View>('main')
+  const [studio, setStudio] = useState(false)
+  const wide = useMediaQuery(WIDE)
 
   const newest = workspaces.data?.length
     ? [...workspaces.data].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))[0].id : null
   const wsId = picked && workspaces.data?.some((w) => w.id === picked) ? picked : newest
+  const current = wsId ? workspaces.data?.find((w) => w.id === wsId) ?? null : null
   const healthy = health.loading && !health.data ? null : health.data?.ok === true
+
+  // 此刻在哪：编辑台 > 门口（正在新建，或一个工作区都没有）> 某个工作区；工作区清单还没回来时哪儿也不在
+  const place: Place | null = studio ? { kind: 'studio' }
+    : creating || (workspaces.data && !wsId) ? { kind: 'door' }
+      : wsId ? { kind: 'workspace', id: wsId } : null
 
   const created = async (id: string) => {
     await workspaces.reload()
     setPicked(id)
     setCreating(false)
-    setView('main')
+  }
+  const places = {
+    workspaces: workspaces.data,
+    place: place ?? { kind: 'door' as const },
+    onPick: (id: string) => { setPicked(id); setCreating(false); setStudio(false) },
+    onNew: () => { setCreating(true); setStudio(false) },
+    onStudio: () => setStudio(true),
   }
 
   return (
     <TooltipProvider>
-      <div className="flex h-dvh flex-col overflow-hidden">
-        <Top picture={view === 'studio' ? ASSETS.studio : wsId && !creating ? coverOf(wsId) : null}>
-          <span className="flex items-center gap-2.5">
-            <GlassIcon icon={<Flask weight="fill" className="size-[1.05em]" />} label="AI4Science" />
-            <span className="hidden font-serif text-[1.0625rem] font-semibold tracking-[0.02em] sm:inline">AI4Science</span>
-          </span>
-          <WorkspaceSwitcher workspaces={workspaces.data} selected={wsId}
-                             onPick={(id) => { setPicked(id); setCreating(false); setView('main') }}
-                             onNew={() => { setCreating(true); setView('main') }} />
-          <span className="flex-1" />
-          <PillNav items={VIEWS} active={view} onSelect={setView} className="bg-background/70 backdrop-blur-sm" />
-        </Top>
-
-        {view === 'studio'
-          ? <StudioView healthy={healthy} />
-          : creating || (workspaces.data && !wsId)
-            ? <NewWorkspace existing={workspaces.data ?? []} onCreated={(id) => void created(id)}
-                            onCancel={wsId ? () => setCreating(false) : undefined}
-                            onPick={(id) => { setPicked(id); setCreating(false) }} />
-            : wsId
-              ? <MainView key={wsId} wsId={wsId} healthy={healthy}
-                          title={workspaces.data?.find((w) => w.id === wsId)?.title ?? wsId} />
-              : <div className="flex-1" />}
+      <div className="flex h-dvh overflow-hidden">
+        {wide && <Rail {...places} />}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {place && (
+            <Top place={place} menu={wide ? null : <PlacesSheet {...places} />}
+                 title={place.kind === 'studio' ? '编辑台' : place.kind === 'door' ? '新建工作区' : current?.title ?? place.id}
+                 note={place.kind === 'studio' ? '不分工作区' : current && place.kind === 'workspace' ? stageSentence(current) : null} />
+          )}
+          {place?.kind === 'studio'
+            ? <StudioView healthy={healthy} />
+            : place?.kind === 'door'
+              ? <NewWorkspace existing={workspaces.data ?? []} onCreated={(id) => void created(id)}
+                              onCancel={wsId ? () => setCreating(false) : undefined} />
+              : place
+                ? <MainView key={place.id} wsId={place.id} healthy={healthy} title={current?.title ?? place.id} />
+                : <div className="flex-1" />}
+        </div>
       </div>
     </TooltipProvider>
   )
 }
 
-/** 顶栏：有封面时把封面糊成一抹颜色铺在底下（换工作区顶栏就换色，编辑台是库的横幅），没有时就是纸。 */
-function Top({ picture, children }: { picture: Picture | null; children: ReactNode }) {
-  const row = <header className="flex h-14 items-center gap-3 px-4 sm:gap-5 sm:px-5">{children}</header>
+/** 页眉只属于当前地方：工作区的标题 + 走到哪，底下封面糊成一抹颜色（换工作区就换色）；编辑台是库的横幅；门口宽屏不要页眉（画面铺满），窄屏留一条放入口。 */
+function Top({ place, title, note, menu }: { place: Place; title: string; note: string | null; menu: ReactNode }) {
+  if (place.kind === 'door' && !menu) return null
+  const picture = place.kind === 'studio' ? ASSETS.studio : place.kind === 'workspace' ? coverOf(place.id) : null
+  const row = (
+    <header className="flex h-14 items-center gap-3 px-4 sm:px-5">
+      {menu}
+      <span className="min-w-0 truncate font-serif text-[1.0625rem] font-semibold tracking-[0.02em]">{title}</span>
+      {note && <span className="t-label hidden whitespace-nowrap sm:inline">{note}</span>}
+    </header>
+  )
   if (!picture) return <div className="shrink-0 border-b bg-card">{row}</div>
   return <Band picture={picture} veil="wash" blur className="shrink-0 border-b">{row}</Band>
 }

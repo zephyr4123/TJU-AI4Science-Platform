@@ -112,7 +112,7 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
       {!chatId && <Photo />}
-      <header className="relative flex h-11 shrink-0 items-center gap-2 px-3">
+      <header className="relative flex h-12 shrink-0 items-center gap-2 px-3">
         {drawer}
         <span className="min-w-0 flex-1 truncate text-[0.875rem] text-muted-foreground">
           {current?.title ?? (chatId ? '新对话' : '')}

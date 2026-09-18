@@ -1,11 +1,18 @@
 // 把框架的状态码、判决、命令翻成研究者看得懂的短句。页面正文只许用这里的输出；
 // 原始值（状态码、哈希、命令）只在展开层出现。字要少：一句话一件事（主人 2026-09-18）。纯函数，有单测。
 
-import type { Stage } from '@/api/types'
+import type { Stage, WorkspaceSummary } from '@/api/types'
 
 // ── 需求走到哪 ───────────────────────────────────────────────────────────
 export const STAGE_LABEL: Record<Stage, string> = {
   drafting: '还没发布', published: '已发布', designed: '已接任务', baselined: '基线已跑',
+}
+
+/** 一行里说这份需求走到哪：还没有需求、需求还在聊、已发布…、跑了几次实验 */
+export function stageSentence(w: WorkspaceSummary): string {
+  if (!w.task) return '还没有需求'
+  if (w.task.stage === 'baselined' && w.runs > 0) return `跑了 ${w.runs} 次实验`
+  return STAGE_LABEL[w.task.stage]
 }
 
 // ── run ──────────────────────────────────────────────────────────────────

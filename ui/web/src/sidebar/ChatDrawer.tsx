@@ -1,6 +1,6 @@
-// 对话列表收在左侧抽屉里：平时只占一个按钮的位置，对话本身才是主角。
-// 抽屉顶上是这个工作区的封面（编辑台是库的横幅），清单逐条浮现（reactbits AnimatedList 改装）。
-import { ChatCenteredText, NotePencil, SidebarSimple } from '@phosphor-icons/react'
+// 对话列表收在左侧抽屉里，对话本身才是主角；入口是一枚带字的大圆角按钮「对话 · N」（reactbits GlareHover 改装，外层 #79 #80：
+// 原来一个小图标谁都看不见）。抽屉顶上是这个工作区的封面（编辑台是库的横幅），清单逐条浮现（reactbits AnimatedList 改装）。
+import { ChatCenteredText, ChatsCircle, NotePencil } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import type { ChatMeta } from '@/api/types'
@@ -8,6 +8,7 @@ import type { Picture } from '@/assets'
 import { Band } from '@/components/Band'
 import { Dot } from '@/components/bits'
 import { AnimatedList } from '@/components/reactbits/AnimatedList'
+import { GlareHover } from '@/components/reactbits/GlareHover'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { chatTitle, usd, when } from '@/lib/format'
@@ -35,9 +36,12 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="打开对话列表">
-          <SidebarSimple />
-        </Button>
+        <GlareHover aria-label="打开对话列表"
+                    className="h-9 rounded-full border bg-background/70 px-3.5 text-[0.875rem] font-medium backdrop-blur-sm transition-colors hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-ring">
+          <ChatsCircle weight="fill" className="size-[1.125rem] text-primary" />
+          <span>对话</span>
+          {ordered && ordered.length > 0 && <span className="tabular text-muted-foreground">{ordered.length}</span>}
+        </GlareHover>
       </SheetTrigger>
       <SheetContent side="left" className="w-[20rem] gap-0 p-0">
         <Band picture={cover} veil="foot" className="h-36 shrink-0">
