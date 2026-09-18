@@ -18,7 +18,7 @@
 workspaces/<name>/task/
 ├── manifest.yaml        任务声明：问题、指标、预算、验收
 ├── design.md            产物契约与「怎么算好」；发布签它，ai4sci cap design 照它写
-├── publish.json         发布记录：ai4sci sign task 写，后面的按钮都查它
+├── publish.json         发布记录：ai4sci sign task 写，后面的能力都查它
 ├── env/                 任务自带环境
 │   ├── python-version   一行，如 3.14
 │   └── requirements.lock  逐行 name==version；零依赖就留空文件
@@ -115,23 +115,22 @@ export AI4SCI_START_EPOCH
 ```bash
 cd workspaces/<name>
 ai4sci sign task --by <你>        # 发布：签 manifest.yaml 与 design.md，写 publish.json
-ai4sci cap design               # 跑 make_run0.sh：基线 + repeat_k 次重复 + σ → run_0/，跑完预检
+ai4sci cap design                 # 执行层写裁判与基线代码、框架封 harness，接着跑 make_run0.sh 出 run_0/、预检
 ai4sci show task                  # 退 0 才算接进来了
 ```
 
-没发布，`cap baseline` 与 `cap start` 都不开；发布后改了 manifest 或 design.md 要重新发布。预检退 1 说"无解"是门太高或题太浅（manifest 主指标可写 `attainable` 尽头值），改题或松门，别硬跑。
+没发布，`cap design` 与 `cap auto-research` 都不开；发布后改了 manifest 或 design.md 要重新发布。预检退 1 说"无解"是门太高或题太浅（manifest 主指标可写 `attainable` 尽头值），改题或松门，别硬跑。
 
 `validate` 退 1 时 stderr 一行一条告诉你哪个文件哪个字段期望什么、实际什么。
 
 ## 5. 跑起来
 
 ```bash
-ai4sci cap start --run-id demo
-ai4sci cap experiment demo --max-iters 5
+ai4sci cap auto-research --run-id demo --max-iters 5    # 开 run、一轮一轮改
 ai4sci show run demo
 ```
 
-`cap start` 会按你的 `env/` 给这个 run 单独建一份环境（`runs/demo/.venv`，在工作区里），跑起来后不再回头看任务目录。
+`cap auto-research` 开 run 时会按你的 `env/` 给这个 run 单独建一份环境（`runs/demo/.venv`，在工作区里），跑起来后不再回头看任务目录。
 
 ## 常见报错
 

@@ -19,13 +19,13 @@
 |---|---|---|
 | 工作区 | `GET /workspaces`、`POST /workspaces`、`GET /workspaces/<id>` | 地方栏选一个工作区，或起一个（一个工作区一份需求，P-15）；一整份里有需求、流实例、全部 run |
 | 对话 | `POST <域>/chats`、`POST <域>/chats/<id>/messages`（SSE）、`GET <域>/chats[/<id>]`、`GET /backends` | 主页面和研究助理说话、编辑台和造流助理说话；助理运行的每条命令以 `tool_use` / `tool_result` 事件流回来；输入框上「模型」「思考」两枚旋钮的清单来自 `GET /backends`（后端自报），选了随消息的 `model` / `effort` 发出去、记进对话 |
-| 需求 | `GET /workspaces/<id>`（里面的 `task`）、`POST /workspaces/<id>/publish` | 脊柱上的需求对齐：看 manifest、设计说明、预检；按**发布**。发布是钥匙（`publish.json`），后面的按钮没它不开 |
-| 库 | `GET /workflows`、`POST /workflows`、`GET /cap`、`GET /stages`、`GET /flow/check` | 编辑台：工作流墙、七段货架、拼流台；存进库。研究者不改库 |
-| 结果 | `GET /workspaces/<id>/runs[/<rid>]`、`POST …/runs/<rid>/accept`、`GET …/jobs[/<jid>]` | 脊柱上的 run：看 best、账本、分析、验证、后台作业；按**验收**（`accept.json`，签这一版 best 与验证结论） |
+| 需求 | `GET /workspaces/<id>`（里面的 `task`）、`POST /workspaces/<id>/publish` | 脊柱上任务包那一段：看 manifest、设计说明、预检；人确认**发布**（`publish.json`），写裁判与开跑没它不动 |
+| 库 | `GET /workflows`、`POST /workflows`、`POST /workflows/check`、`GET /cap`、`GET /stages` | 编辑台：工作流墙、七间房的货架、拼流台（排房间、挂能力、插断点，边拼边查）；存进库。研究者不改库 |
+| 结果 | `GET /workspaces/<id>/runs[/<rid>]`、`POST …/runs/<rid>/accept`、`GET …/jobs[/<jid>]` | 脊柱上的 run：一间一格看 best、账本、分析、验证、后台作业；人确认**验收**（`accept.json`，签这一版 best 与验证结论） |
 
-两颗键（发布、验收）是产品形态里仅有的两个人工停点（外层 `docs/vision.md`「两个发布键、一次验收」）。
-界面上的键是"只有人能按"的唯一保证——CLI 里的 `ai4sci sign task` / `ai4sci sign run`
-是给在终端里当协调层的人用的，研究助理的指南写明它不该替人按。
+发布、验收是出厂的两个断点（外层 `docs/vision.md`「两个发布键、一次验收」），机器守着记录；流里别的断点是助理停下来等人说「继续」。
+界面上的发布 / 验收是"只有人能确认"的唯一保证——CLI 里的 `ai4sci sign task` / `ai4sci sign run`
+是给在终端里当协调层的人用的，研究助理的指南写明它不该替人签。
 
 ## 网页怎么跑
 
@@ -51,9 +51,9 @@ web/src/
   chat/       对话：trace.ts（事件流折成条目，纯函数、有单测）、ChatView（两个域共用，文案由父组件给）/ TurnView / Composer
   places/     Rail（宽屏的地方栏）、PlacesSheet（窄屏的清单）、place.ts（页面此刻在哪）
   workspace/  NewWorkspace（门口那一屏：一句话起工作区）
-  spine/      流程脊柱：derive.ts（从便条、作业、两颗键算每一步的状态，纯函数、有单测）、Spine（按工作区读，几条泳道；有作业在跑时轮询）
-  studio/     编辑台的库那一半：工作流墙、七段货架、拼流台
-  keys/       发布、验收两颗键（StarBorder 改装）
+  spine/      流程脊柱：derive.ts（从便条、作业、发布 / 验收记录、任务包阶段算每一项——房间或断点——的状态，纯函数、有单测）、Spine（按工作区读，几条泳道；有作业在跑时轮询）
+  studio/     编辑台的库那一半：工作流墙、七间房的货架（能力卡展开五栏）、拼流台（排房间、挂能力、插断点）
+  keys/       发布、验收两处人的确认（StarBorder 改装）
   sidebar/    对话列表抽屉
   components/ 零件 bits.tsx、Markdown.tsx、Backdrop（门口的视频背景）、shadcn 生成的 ui/、reactbits 的改装件
   lib/        humanize.ts（术语翻人话、能力的人话说法，有单测）、useChats（一个域的对话清单）、format、取数 hook、署名记忆
@@ -64,5 +64,5 @@ web/src/
 
 ## 不做（第一版）
 
-- 拖拽编排画布与「摆一串查通不通」：等套餐文件有了第二个用例（外层 #47 第 6 件）；第一版做过的检查工具已砍，CLI 的 `flow check` 还在
+- 拖拽编排画布：现在是点选排房间；能力的参数在页面上还没有位置（照着拼时只带名字，参数由取走的研究助理在实例里改）
 - 多用户、鉴权、token 级流式：后端是本机单人服务
