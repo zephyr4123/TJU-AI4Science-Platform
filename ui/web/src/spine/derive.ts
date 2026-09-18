@@ -82,9 +82,9 @@ export function deriveIntakeSteps(intake: Workflow, task: TaskSummary | null,
 /** 脊柱标题下那句话：走到哪、在等谁。 */
 export function waitingSentence(steps: StepView[]): string {
   const open = steps.find((s) => s.state !== 'done' && s.state !== 'todo')
-  if (!open) return steps.length > 0 && steps.every((s) => s.state === 'done') ? '这条流走完了' : ''
+  if (!open) return steps.length > 0 && steps.every((s) => s.state === 'done') ? '走完了' : ''
   switch (open.state) {
-    case 'running': return `第 ${open.n} 步跑着，跑完助理会来说`
+    case 'running': return `第 ${open.n} 步跑着`
     case 'assistant': return `第 ${open.n} 步轮到助理`
     case 'wait-key': return `第 ${open.n} 步等你${open.key === 'publish' ? '发布' : '验收'}`
     case 'wait-human': return `第 ${open.n} 步轮到你`

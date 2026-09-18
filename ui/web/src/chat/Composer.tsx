@@ -47,7 +47,7 @@ export function Composer({ disabled, busy, onSend }: Props) {
           disabled={disabled}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={disabled ? '先在左边开一段对话' : busy ? '助理在回答，稍等…' : '想做什么实验？数据在哪、想要什么效果'}
+          placeholder={disabled ? '先开一段对话' : busy ? '助理回答中' : '说说你的课题'}
           aria-label="给助理的消息"
           className="min-h-9 resize-none border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:ring-0"
         />
@@ -57,7 +57,7 @@ export function Composer({ disabled, busy, onSend }: Props) {
         </Button>
       </div>
       <p className="mx-auto mt-1.5 max-w-3xl px-1 text-xs text-muted-foreground">
-        Enter 发送，Shift + Enter 换行。助理做了什么，回答上方折着。
+        Enter 发送，Shift + Enter 换行
       </p>
     </div>
   )

@@ -35,15 +35,14 @@ export function WorkspaceSwitcher({ workspaces, selected, onPick, onNew }: Props
                         'text-left transition-colors hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-ring')}
         >
           <span className={cn('truncate font-serif text-[0.9375rem] font-semibold', !current && 'text-muted-foreground')}>
-            {current ? current.title : ordered.length ? '选一个工作区' : '还没有工作区'}
+            {current ? current.title : ordered.length ? '选工作区' : '无工作区'}
           </span>
           {current && <span className="t-label hidden whitespace-nowrap sm:inline">{stageSentence(current)}</span>}
           <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={8} className="w-[24rem] p-2">
-        <p className="px-3 pt-2 pb-1 font-serif text-[0.9375rem] font-semibold">工作区</p>
-        <p className="px-3 pb-2 text-[0.75rem] text-muted-foreground">一个工作区，一份需求。</p>
+        <p className="px-3 pt-2 pb-2 font-serif text-[0.9375rem] font-semibold">工作区</p>
         <ul className="max-h-[22rem] overflow-y-auto">
           {ordered.map((w) => (
             <li key={w.id}>
@@ -71,7 +70,7 @@ export function WorkspaceSwitcher({ workspaces, selected, onPick, onNew }: Props
           type="button" onClick={() => { onNew(); setOpen(false) }}
           className="mt-1 flex w-full items-center gap-2 rounded-lg border-t px-3 py-2.5 text-left text-[0.875rem] text-primary hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
         >
-          <Plus className="size-4" />起一个新的
+          <Plus className="size-4" />新建
         </button>
       </PopoverContent>
     </Popover>

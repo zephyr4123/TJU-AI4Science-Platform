@@ -80,17 +80,17 @@ function MainView({ wsId, healthy }: { wsId: string; healthy: boolean | null }) 
         boardOpen={boardOpen} onToggleBoard={() => setBoardOpen((v) => !v)}
         onNew={() => void c.newChat()} onTurnDone={c.turnDone}
         intro={{
-          lede: '先把课题说清楚。',
-          body: '三件事：想解决什么问题、数据或模型在哪、什么样的结果算好。助理会整理成一份需求，摆在右边那条流上，你看过再发布。',
+          lede: '先说清课题。',
+          body: '想解决什么、数据在哪、什么算好。',
         }}
         welcome={{
-          headline: '把实验交给助理。你只管两件事：发布需求，验收结果。',
-          body: '在对话里说清课题、数据和「怎么算好」，助理会整理成一份需求。你看过、署名发布，它才能接任务、跑基线、开实验。右边那条流告诉你走到哪、在等谁，结果也在那儿验收。',
+          headline: '把实验交给助理。',
+          body: '你只做两件事：发布需求，验收结果。',
         }}
         drawer={
           <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                       creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
-                      description="这个工作区里的对话。" />
+                      description="这个工作区的对话" />
         }
       />
       <aside
@@ -114,17 +114,17 @@ function StudioView({ healthy }: { healthy: boolean | null }) {
           key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current}
           onNew={() => void c.newChat()} onTurnDone={c.turnDone}
           intro={{
-            lede: '说清要拼一条什么样的流。',
-            body: '给谁用、从哪一步开始、要不要机器验证。助理会看能力清单，拼好、查通不通、存进库；主页面的助理取来就能照着跑。',
+            lede: '说清要拼什么流。',
+            body: '给谁用、从哪步起、要不要验证。',
           }}
           welcome={{
-            headline: '把能力拼成流。库里的流是通用的，不认识具体课题。',
-            body: '在这里和造流助理说清一条流该长什么样，它拼好存进库。研究者在主页面把它取到自己的工作区，改改参数就能跑。',
+            headline: '把能力拼成流。',
+            body: '存进库，研究者取走就能跑。',
           }}
           drawer={
             <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                         creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
-                        description="编辑台的对话：拼流、存流。" />
+                        description="编辑台的对话" />
           }
         />
       </div>

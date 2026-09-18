@@ -35,16 +35,16 @@ export function PublishKey({ workspace, task, reload }: { workspace: string; tas
   if (task.publish.ok) {
     return (
       <DoneBlock title={`${task.publish.by} 已发布`}
-                 detail={<>{when(task.publish.at)}。改了需求或设计说明就要重新发布。</>} />
+                 detail={<>{when(task.publish.at)}，改了要重发</>} />
     )
   }
   const blocked = task.intake_problems.length > 0
   return (
     <KeyPanel
-      title="发布这份需求"
+      title="发布需求"
       hint={task.publish.state === 'invalid' && task.publish.reason
         ? task.publish.reason
-        : '确认上面写的就是你要的，署名发布；之后助理才能接任务。这颗键只有人能按。'}
+        : '署名后发布'}
     >
       {blocked && <div className="mb-3"><Problems items={task.intake_problems} tone="warn" /></div>}
       {error && <div className="mb-3"><ErrorNote text={error} /></div>}
@@ -52,7 +52,7 @@ export function PublishKey({ workspace, task, reload }: { workspace: string; tas
         <SignerField id="publish-signer" value={signer} onChange={setSigner} />
         <ClickSpark sparkColor={amber} sparkRadius={20} sparkCount={8} duration={420}>
           <StarBorder glow={amber} onClick={press} disabled={busy || blocked || !signer.trim()}>
-            {busy ? '发布中…' : '发布需求'}
+            {busy ? '发布中' : '发布'}
           </StarBorder>
         </ClickSpark>
       </div>

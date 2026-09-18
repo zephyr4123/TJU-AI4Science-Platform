@@ -49,7 +49,7 @@ export function TurnView({ turn }: { turn: Turn }) {
       {hasReply && <Reply text={turn.reply!} />}
       {turn.outcome && (
         <p className="t-label tabular">
-          {turn.outcome.failed ? '这一轮没走完，' : '这一轮'}花了 {usd(turn.outcome.costUsd)}，用了 {seconds(turn.outcome.durationS)}
+          {turn.outcome.failed ? '没走完，' : ''}{usd(turn.outcome.costUsd)}，{seconds(turn.outcome.durationS)}
         </p>
       )}
     </article>
@@ -98,7 +98,7 @@ function TraceRow({ item }: { item: TraceItem }) {
     )
   }
   const pending = item.result === null
-  const status = item.denied ? '，没让运行' : pending ? '…' : item.isError ? '，出错了' : ''
+  const status = item.denied ? '（被拒）' : pending ? '…' : item.isError ? '（出错）' : ''
   return (
     <li>
       <Collapsible>

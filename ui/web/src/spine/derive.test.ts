@@ -38,7 +38,7 @@ describe('run 的脊柱', () => {
     const after = deriveRunSteps(flow(4, 'key:accept', auto),
       { accept: { accepted_at: 't', by: '李', best_iter: 1, best_metric: 1, best_commit: 'c', verify: 'PASS', stale: false } })
     expect(after[4].state).toBe('done')
-    expect(waitingSentence(after)).toBe('这条流走完了')
+    expect(waitingSentence(after)).toBe('走完了')
   })
   it('没照流的老 run 从文件推一条出来', () => {
     const run = { last_iter: 3, analysis: true, verify: null, job: null, updated_at: 't' } as unknown as RunSummary

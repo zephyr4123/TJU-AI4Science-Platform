@@ -45,7 +45,7 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
         <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-3">
           {error && <li className="px-2 py-1 text-xs text-bad">{error}</li>}
           {ordered?.length === 0 && (
-            <li className="px-2 py-3 text-sm leading-relaxed text-muted-foreground">还没有对话。</li>
+            <li className="px-2 py-3 text-sm leading-relaxed text-muted-foreground">没有对话</li>
           )}
           {ordered?.map((chat) => (
             <li key={chat.chat_id}>
@@ -69,7 +69,7 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
         </ul>
         <div className="flex items-center gap-2 border-t px-5 py-3 text-xs text-muted-foreground">
           <Dot tone={healthy === null ? 'neutral' : healthy ? 'ok' : 'bad'} />
-          {healthy === null ? '连接中…' : healthy ? '服务在线' : '服务不可达，先起 ai4sci serve'}
+          {healthy === null ? '连接中' : healthy ? '服务在线' : '服务不可达'}
         </div>
       </SheetContent>
     </Sheet>

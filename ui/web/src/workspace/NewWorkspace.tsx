@@ -1,6 +1,6 @@
-// 起一个工作区：一个工作区就是一份需求，也就是一个文件夹——整个打包能交给同事（外层 #70 #74）。
-// 这一屏没有表单：那句话本身就是要填的东西（记录本上的填空行），右边那只文件夹是全屏唯一放胆处，
-// 名字一边打、标签一边显，打好了它就打开，露出里面会有的三样：需求、这条流、实验。
+// 新建工作区：一个工作区一份需求，也就是一个文件夹（外层 #70 #74）。
+// 这一屏没有表单：那句话本身就是要填的（记录本上的填空行），右边那只文件夹是全屏唯一放胆处，
+// 名字一边打、标签一边显，打好了它就打开，露出里面会有的三样：需求、流、实验。字要少（主人：简洁）。
 import { useState } from 'react'
 
 import { api } from '@/api/client'
@@ -52,41 +52,39 @@ export function NewWorkspace({ existing, onCreated, onCancel, onPick }: {
       >
         <div className="min-w-0">
           <h1 className="font-serif text-[2.25rem] leading-[1.2] font-semibold tracking-tight text-balance">
-            {first ? '一个工作区，就是一份需求。' : '再起一份需求。'}
+            新建工作区
           </h1>
-          <p className="t-body mt-4 max-w-[34rem] text-muted-foreground">
-            它是一个文件夹：这份需求本身、为它取来的流、围绕它的对话、跑出来的每一次实验，都住在里面，整个能交给同事。
-          </p>
+          <p className="t-body mt-3 text-muted-foreground">一个工作区，一份需求。</p>
 
           <p className="mt-12 font-serif text-[1.375rem] leading-[2.4] font-medium">
-            <span>起一个工作区，叫</span>
+            <span>叫</span>
             <Blank
               value={id} onChange={setId} mono autoFocus width="17ch" placeholder="rahman-stability"
               label="工作区名" invalid={id !== '' && (!valid || taken)}
             />
             <span>，</span>
             <br />
-            <span>它要解决的是</span>
+            <span>解决</span>
             <Blank value={title} onChange={setTitle} width="32ch" placeholder="Rahman 模型多起点估计的稳定性" label="标题" />
             <span>。</span>
           </p>
           <p className="mt-2 min-h-[1.5rem] text-[0.8125rem] text-muted-foreground">
-            {id === '' ? '名字用小写英文、数字、连字符，它也是这份需求在盘上的目录名。'
-              : taken ? '已经有一个叫这个的工作区了，换个名字。'
-                : !valid ? '只能用小写英文、数字、连字符，字母开头。'
+            {id === '' ? '小写英文、数字、连字符'
+              : taken ? '重名了'
+                : !valid ? '只能小写英文、数字、连字符，字母开头'
                   : <span className="font-mono">workspaces/{slug}/</span>}
           </p>
           {error && <ErrorNote text={error} className="mt-3" />}
 
           <div className="mt-8 flex items-center gap-4">
-            <Button size="lg" type="submit" disabled={!valid || taken || busy}>{busy ? '起着…' : '起这个工作区'}</Button>
-            {onCancel && <Button variant="ghost" type="button" onClick={onCancel}>先不起</Button>}
-            {busy && <ShinyText text="正在建目录" color={muted} shineColor={indigo} speed={2} className="text-[0.8125rem]" />}
+            <Button size="lg" type="submit" disabled={!valid || taken || busy}>{busy ? '新建中' : '新建'}</Button>
+            {onCancel && <Button variant="ghost" type="button" onClick={onCancel}>取消</Button>}
+            {busy && <ShinyText text="建目录" color={muted} shineColor={indigo} speed={2} className="text-[0.8125rem]" />}
           </div>
 
           {!first && (
             <p className="mt-12 text-[0.875rem] text-muted-foreground">
-              已有的：
+              已有：
               {existing.map((w, i) => (
                 <span key={w.id}>
                   {i > 0 && '、'}
@@ -104,9 +102,9 @@ export function NewWorkspace({ existing, onCreated, onCancel, onPick }: {
           <Folder
             color={indigo} label={slug ? `workspaces/${slug}` : ''} open={valid && !taken} width={236}
             papers={[
-              <Sheet key="task" title="需求" lines={['想解决什么', '数据在哪', '怎么算好']} />,
-              <Sheet key="flow" title="这条流" lines={['从库里取一条', '按需要改参数', '照着跑']} />,
-              <Sheet key="runs" title="实验" lines={['每一轮的账本', '分析', '验证与验收']} />,
+              <Sheet key="task" title="需求" lines={['问题', '数据', '怎么算好']} />,
+              <Sheet key="flow" title="流" lines={['从库取', '改参数', '照着跑']} />,
+              <Sheet key="runs" title="实验" lines={['账本', '分析', '验收']} />,
             ]}
           />
         </div>

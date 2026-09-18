@@ -32,9 +32,7 @@ export function Studio({ epoch }: { epoch: number }) {
     <div className="mx-auto max-w-[76rem] space-y-12 px-8 py-8">
       <header>
         <h1 className="font-serif text-[1.375rem] font-semibold">库</h1>
-        <p className="t-body mt-1 text-muted-foreground">
-          平台是一盒能力，工作流是预装好的拼法，不认识具体课题。拼一条通用的存进来，研究者在主页面把它取到自己的工作区，改改参数就能跑。
-        </p>
+        <p className="t-body mt-1 text-muted-foreground">能力拼成流，存进库。</p>
       </header>
       {stages.error && <ErrorNote text={stages.error} />}
       {workflows.error && <ErrorNote text={workflows.error} />}
@@ -43,8 +41,8 @@ export function Studio({ epoch }: { epoch: number }) {
 
       {workflows.data && (
         <section className="space-y-4">
-          <h2 className="t-lede">工作流墙：{workflows.data.length} 条</h2>
-          {workflows.data.length === 0 && <Empty title="还没有工作流。" hint="workflows/ 目录里一个文件一条。" />}
+          <h2 className="t-lede">工作流 {workflows.data.length}</h2>
+          {workflows.data.length === 0 && <Empty title="还没有工作流" />}
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {workflows.data.map((wf) => (
               <WorkflowCard key={wf.name} workflow={wf} titles={titles}
@@ -57,16 +55,14 @@ export function Studio({ epoch }: { epoch: number }) {
       {catalog.data && stages.data && (
         <section className="grid gap-8 lg:grid-cols-[1fr_24rem]">
           <div className="min-w-0 space-y-4">
-            <h2 className="t-lede">七段货架：{catalog.data.length} 颗能力</h2>
-            <p className="t-body text-muted-foreground">
-              每颗能力属于做科研的某一段，段只是标签不定先后。点一颗，它就进右边的拼流台。
-            </p>
+            <h2 className="t-lede">能力 {catalog.data.length}</h2>
+            <p className="t-body text-muted-foreground">点一颗，进拼流台。</p>
             <ol className="flex gap-3 overflow-x-auto pb-2">
               {groupByStage(stages.data, catalog.data).map(({ stage, caps }) => (
                 <li key={stage} className="w-[10.5rem] shrink-0 space-y-2">
                   <h3 className="font-serif text-[0.9375rem] font-semibold">{stage}</h3>
                   {caps.length === 0
-                    ? <p className="rounded-xl border border-dashed px-3 py-4 text-[0.8125rem] text-muted-foreground">还没有这一段的能力</p>
+                    ? <p className="rounded-xl border border-dashed px-3 py-4 text-[0.8125rem] text-muted-foreground">暂无</p>
                     : caps.map((cap) => (
                       <CapChip key={cap.name} cap={cap}
                                onClick={() => setDraft((d) => ({ ...d, steps: [...d.steps, capStep(cap)] }))} />
@@ -105,7 +101,7 @@ function WorkflowCard({ workflow, titles, onLoad }: { workflow: Workflow; titles
       {workflow.remarks.map((remark) => <p key={remark} className="mt-2 text-[0.8125rem] text-wait">{remark}</p>)}
       <Problems items={workflow.problems} />
       <div className="mt-4 flex justify-end">
-        <Button variant="outline" size="sm" onClick={onLoad}>照这条拼</Button>
+        <Button variant="outline" size="sm" onClick={onLoad}>照着拼</Button>
       </div>
     </SpotlightCard>
   )
@@ -148,7 +144,7 @@ function Bench({ draft, setDraft, titles, onSaved }: {
     setNote(null)
     try {
       const saved = await api.saveWorkflow({ ...draft, overwrite })
-      setNote({ ok: true, text: `存好了：${saved.name}。研究者在主页面让助理取它（flow take ${saved.name}），改改参数就能照着跑。` })
+      setNote({ ok: true, text: `已存：${saved.name}` })
       onSaved()
     } catch (exc) {
       setNote({ ok: false, text: exc instanceof Error ? exc.message : String(exc) })
@@ -164,17 +160,17 @@ function Bench({ draft, setDraft, titles, onSaved }: {
     <aside className="paper-grid self-start rounded-2xl border p-5 lg:sticky lg:top-6">
       <h2 className="font-serif text-[1.0625rem] font-semibold">拼流台</h2>
       <div className="mt-3 space-y-2">
-        <Input value={draft.name} placeholder="名字，小写英文加连字符，就是文件名" aria-label="工作流名字"
+        <Input value={draft.name} placeholder="名字（小写英文、连字符）" aria-label="工作流名字"
                className="bg-card font-mono" onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
-        <Input value={draft.title} placeholder="人话标题" aria-label="工作流标题" className="bg-card"
+        <Input value={draft.title} placeholder="标题" aria-label="工作流标题" className="bg-card"
                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} />
-        <Input value={draft.summary} placeholder="一句话：这条流什么时候用" aria-label="工作流说明" className="bg-card"
+        <Input value={draft.summary} placeholder="一句话说明" aria-label="工作流说明" className="bg-card"
                onChange={(e) => setDraft((d) => ({ ...d, summary: e.target.value }))} />
       </div>
       <ol className="mt-4 space-y-2">
         {draft.steps.length === 0 && (
           <li className="rounded-xl border border-dashed px-3 py-4 text-[0.8125rem] text-muted-foreground">
-            还是空的。点左边货架上的能力，或者加一步人的事。
+            从左边选能力。
           </li>
         )}
         {draft.steps.map((step, i) => (
@@ -197,14 +193,14 @@ function Bench({ draft, setDraft, titles, onSaved }: {
         ))}
       </ol>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={() => add({ by: '人', does: '看一眼，决定下一步' })}>加一步人的事</Button>
+        <Button variant="outline" size="sm" onClick={() => add({ by: '人', does: '看一眼，决定下一步' })}>加人的一步</Button>
         <Button variant="outline" size="sm" onClick={() => add({ by: '人', does: '看一遍需求，署名发布', key: 'publish' })}>加发布键</Button>
         <Button variant="outline" size="sm" onClick={() => add({ by: '人', does: '看一眼结果，署名验收', key: 'accept' })}>加验收键</Button>
       </div>
       <div className="mt-4 space-y-1.5 text-[0.8125rem]">
         {caps.length > 0 && check.data && (
           <p className={cn(problems.length ? 'text-bad' : 'text-ok')}>
-            {problems.length ? '这样摆不通' : `通。${coverageSentence(check.data.covers)}`}
+            {problems.length ? '不通' : `通，${coverageSentence(check.data.covers)}`}
           </p>
         )}
         {check.data?.remarks.map((r) => <p key={r} className="text-wait">{r}</p>)}
@@ -214,9 +210,9 @@ function Bench({ draft, setDraft, titles, onSaved }: {
       <div className="mt-4 flex items-center justify-between gap-3">
         <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground">
           <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />
-          同名就覆盖
+          覆盖同名
         </label>
-        <Button onClick={() => void save()} disabled={!canSave}>{busy ? '存着…' : '存成文件'}</Button>
+        <Button onClick={() => void save()} disabled={!canSave}>{busy ? '保存中' : '保存'}</Button>
       </div>
       {note && <p className={cn('mt-3 text-[0.8125rem] leading-relaxed', note.ok ? 'text-ok' : 'text-bad')}>{note.text}</p>}
     </aside>

@@ -49,14 +49,14 @@ function RunSpine({ workspace, run, runs, onPick, workflows, epoch }: {
   const doc = detail.data
   const template = workflows.find((w) => w.name === 'auto-research') ?? workflows[0] ?? null
   const flow: FlowState | null = doc.flow ?? (template ? synthesizeFlow(doc, template) : null)
-  if (!flow) return <div className="p-6"><ErrorNote text="这个 run 没照流，仓里也没有工作流文件可以对照。" /></div>
+  if (!flow) return <div className="p-6"><ErrorNote text="没有流可对照" /></div>
   const steps = deriveRunSteps(flow, doc)
   return (
     <Column
-      title={`这条流：${flow.title}`}
-      subtitle={`${run.run_id}，${waitingSentence(steps) || `走到第 ${flow.step} 步`}`}
+      title={flow.title}
+      subtitle={`${run.run_id}，${waitingSentence(steps) || `第 ${flow.step} 步`}`}
       picker={runs.length > 1 && (
-        <Picker value={run.run_id} options={runs.map((r) => r.run_id)} onChange={onPick} label="换一个 run" />
+        <Picker value={run.run_id} options={runs.map((r) => r.run_id)} onChange={onPick} label="换 run" />
       )}
     >
       {steps.map((step, i) => (
@@ -79,13 +79,13 @@ function RunStepContent({ workspace, step, run, reload }: {
   if (step.key === 'accept') return <AcceptKey workspace={workspace} run={run} reload={reload} />
   switch (step.cap) {
     case 'start':
-      return <Fact>实验 <code className="font-mono text-[0.8125rem]">{run.run_id}</code>，起点 {metric(run.baseline)}</Fact>
+      return <Fact>起点 {metric(run.baseline)}</Fact>
     case 'experiment':
       if (step.state === 'running') {
         return (
           <>
             {run.last_iter > 0 && <Pair from={run.baseline} to={run.best_metric} />}
-            <ShinyText text={`第 ${run.last_iter + 1} 轮跑着，跑完助理会来说`} color={muted} shineColor={indigo}
+            <ShinyText text={`第 ${run.last_iter + 1} 轮跑着`} color={muted} shineColor={indigo}
                        speed={2.5} className="text-[0.8125rem]" />
           </>
         )
@@ -95,27 +95,27 @@ function RunStepContent({ workspace, step, run, reload }: {
         <>
           <Pair from={run.baseline} to={run.best_metric} />
           <Fact>
-            第 {run.best_iter} 轮最好，跑了 {run.last_iter} 轮
+            最好第 {run.best_iter} 轮，共 {run.last_iter} 轮
             {delta !== null && delta > 0 ? `，好了 ${metric(delta, 4)}` : ''}。{stopSentence(run.stop_reason, run.running)}
           </Fact>
         </>
       )
     case 'analysis':
       if (step.state === 'running') {
-        return <ShinyText text="助理在写分析" color={muted} shineColor={indigo} speed={2.5} className="text-[0.8125rem]" />
+        return <ShinyText text="写分析中" color={muted} shineColor={indigo} speed={2.5} className="text-[0.8125rem]" />
       }
       if (!run.analysis_text) return <Hint>{tail(step.does)}</Hint>
       return (
         <>
           <p className="line-clamp-3 text-[0.875rem] leading-relaxed">{plain(conclusionOf(run.analysis_text))}</p>
-          {run.verify === null && <p className="mt-1 text-[0.8125rem] text-muted-foreground">还没验证，数字没人回溯过。</p>}
+          {run.verify === null && <p className="mt-1 text-[0.8125rem] text-muted-foreground">未验证</p>}
         </>
       )
     case 'verify':
       if (!run.verify) return <Hint>{tail(step.does)}</Hint>
-      if (run.verify.status === 'PASS') return <Fact className="text-ok">分析里的每个数都能回溯到结果文件。</Fact>
-      if (run.verify.status === 'FAIL') return <Fact className="text-bad">分析里有对不上结果文件的数。</Fact>
-      return <Fact className="text-bad">验证报告坏了，要重跑。</Fact>
+      if (run.verify.status === 'PASS') return <Fact className="text-ok">数字全部可回溯</Fact>
+      if (run.verify.status === 'FAIL') return <Fact className="text-bad">有数字对不上</Fact>
+      return <Fact className="text-bad">报告坏了，重跑</Fact>
     default:
       return <Hint>{step.state === 'wait-human' ? `轮到你：${tail(step.does)}` : tail(step.does)}</Hint>
   }
@@ -125,13 +125,13 @@ function RunStepContent({ workspace, step, run, reload }: {
 function IntakeSpine({ workspace, intake, reload }: {
   workspace: WorkspaceDetail; intake: Workflow | null; reload: () => Promise<void>
 }) {
-  if (!intake) return <div className="p-6"><ErrorNote text="库里没有 intake 这条流，没法画需求对齐。" /></div>
+  if (!intake) return <div className="p-6"><ErrorNote text="库里没有 intake" /></div>
   const task = workspace.task
   const steps = deriveIntakeSteps(intake, task, task?.intake_problems ?? null)
   return (
     <Column
-      title={`这条流：${intake.title}`}
-      subtitle={task ? `${workspace.title}，${waitingSentence(steps)}` : `${workspace.title}：还没有需求。在对话里把课题说清楚，助理来起。`}
+      title={intake.title}
+      subtitle={task ? waitingSentence(steps) : '还没有需求'}
     >
       {steps.map((step, i) => (
         <StepModule key={step.n} step={step} last={i === steps.length - 1}>
@@ -151,7 +151,7 @@ function IntakeStepContent({ workspace, step, task, reload }: {
   if (step.state === 'todo' || !task) {
     return <Hint>{step.state === 'wait-human' ? `轮到你：${tail(step.does)}` : tail(step.does)}</Hint>
   }
-  if (step.cap === 'init') return <Fact>需求已经起好，材料在 task/data/ 里。</Fact>
+  if (step.cap === 'init') return <Fact>已起，材料在 task/data/</Fact>
   if (step.by === '助理' && step.cap === null) {
     return (
       <>
@@ -162,15 +162,15 @@ function IntakeStepContent({ workspace, step, task, reload }: {
     )
   }
   if (step.cap === 'design') {
-    return <Fact>{step.state === 'done' ? '裁判脚本和基线草稿写好了，封起来之后不再改。' : tail(step.does)}</Fact>
+    return <Fact>{step.state === 'done' ? '裁判脚本已封' : tail(step.does)}</Fact>
   }
   if (step.cap === 'baseline') {
     const h = task.headroom
     if (step.state === 'done' && h?.baseline !== undefined) {
       return (
         <Fact>
-          起点 {metric(h.baseline)}，每次跑抖 {metric(h.sigma, 3)}，改进要超过 {metric(h.gate, 3)} 才算数
-          {h.gates != null ? `；到尽头还有 ${h.gates.toFixed(1)} 个门的空间` : ''}。
+          起点 {metric(h.baseline)}，抖动 {metric(h.sigma, 3)}，门 {metric(h.gate, 3)}
+          {h.gates != null ? `，离尽头 ${h.gates.toFixed(1)} 个门` : ''}
         </Fact>
       )
     }

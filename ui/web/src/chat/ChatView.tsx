@@ -99,10 +99,10 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onN
       <header className="flex h-11 shrink-0 items-center gap-2 px-3">
         {drawer}
         <span className="min-w-0 flex-1 truncate text-[0.875rem] text-muted-foreground">
-          {current?.title ?? (chatId ? '还没开口的对话' : '')}
+          {current?.title ?? (chatId ? '新对话' : '')}
         </span>
         {current && current.cost_usd > 0 && (
-          <span className="t-label whitespace-nowrap">这段对话花了 {usd(current.cost_usd)}</span>
+          <span className="t-label whitespace-nowrap">{usd(current.cost_usd)}</span>
         )}
         {onToggleBoard && (
           <Button variant="ghost" size="icon-sm" onClick={onToggleBoard} aria-label={boardOpen ? '收起看板' : '展开看板'}>
@@ -149,7 +149,7 @@ function Welcome({ copy, onNew }: { copy: Copy; onNew: () => void }) {
                   direction="top" className="text-[1.75rem] leading-[1.25] font-semibold tracking-tight text-balance" />
         <p className="t-body mt-5 text-muted-foreground">{copy.body}</p>
         <div className="mt-8">
-          <Button size="lg" onClick={onNew}>开始一段对话</Button>
+          <Button size="lg" onClick={onNew}>开始对话</Button>
         </div>
       </div>
     </div>

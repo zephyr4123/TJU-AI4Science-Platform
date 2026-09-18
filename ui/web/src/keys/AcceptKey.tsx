@@ -35,25 +35,25 @@ export function AcceptKey({ workspace, run, reload }: { workspace: string; run: 
   if (run.accept && !run.accept.stale) {
     return (
       <DoneBlock title={`${run.accept.by} 已验收`}
-                 detail={<>{when(run.accept.accepted_at)}，签的是第 {run.accept.best_iter} 轮的 {metric(run.accept.best_metric)}。</>} />
+                 detail={<>{when(run.accept.accepted_at)}，第 {run.accept.best_iter} 轮 {metric(run.accept.best_metric)}</>} />
     )
   }
   const cautions: string[] = []
-  if (run.accept?.stale) cautions.push(`${run.accept.by} 在 ${when(run.accept.accepted_at)} 验收过，之后结果又变了，要再看一遍。`)
-  if (run.verify === null) cautions.push('还没验证。验收的会是没和结果文件对过的数字。')
-  else if (run.verify.status !== 'PASS') cautions.push('验证没通过。分析里有对不上的数。')
-  if (run.last_iter === 0) cautions.push('一轮都没改，只有基线，没东西可验收。')
-  if (run.running || run.job) cautions.push('实验还在跑，等它停下。')
+  if (run.accept?.stale) cautions.push(`${run.accept.by} ${when(run.accept.accepted_at)} 验收过，结果又变了`)
+  if (run.verify === null) cautions.push('未验证')
+  else if (run.verify.status !== 'PASS') cautions.push('验证没过')
+  if (run.last_iter === 0) cautions.push('只有基线')
+  if (run.running || run.job) cautions.push('还在跑')
   const disabled = busy || run.running || run.job !== null || run.last_iter === 0 || !signer.trim()
   return (
-    <KeyPanel title="验收这个结果"
+    <KeyPanel title="验收结果"
               hint={cautions.length > 0 ? <ul className="space-y-1">{cautions.map((c) => <li key={c}>{c}</li>)}</ul>
-                : '你觉得这个结果能拿去用，署名验收。这颗键只有人能按。'}>
+                : '署名后验收'}>
       {error && <div className="mb-3"><ErrorNote text={error} /></div>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <SignerField id="accept-signer" value={signer} onChange={setSigner} />
         <ClickSpark sparkColor={amber} sparkRadius={20} sparkCount={8} duration={420}>
-          <StarBorder glow={amber} onClick={press} disabled={disabled}>{busy ? '验收中…' : '验收结果'}</StarBorder>
+          <StarBorder glow={amber} onClick={press} disabled={disabled}>{busy ? '验收中' : '验收'}</StarBorder>
         </ClickSpark>
       </div>
     </KeyPanel>
