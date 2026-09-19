@@ -1,5 +1,5 @@
 """实验这一族能力私下的共享层（纲领 P-19）：设计、auto-research、分析、
-验证四颗能力之间约好的文件格式与算法。
+验证四个能力之间约好的文件格式与算法。
 
     pack        设计留下的那包东西合不合约：scoring.yaml、harness/、code/、env/、baseline/
     env         env/ 怎么读、uv 怎么建任务级 venv、harness 保证拿到的环境变量

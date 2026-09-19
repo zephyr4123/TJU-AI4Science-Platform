@@ -11,7 +11,9 @@ import pytest
 
 from backends import BackendNotFound
 from framework import paths
+from framework.capabilities import stage_table
 from framework.chat.server import ChatServer
+from framework.cli import serve as serve_cli
 from framework.workspace import root as workspace
 from tests.fixtures.scripted_chat import KNOBS, ScriptedChat, reply, with_tool
 
@@ -20,7 +22,7 @@ WORKFLOWS = [{"name": "w", "title": "一条", "summary": "…",
               "stages": [{"kind": "stage", "stage": "设计",
                           "caps": [{"cap": "design", "with": {}}]}],
               "covers": ["设计"], "remarks": [], "problems": []}]
-PROMPTS = {"workspace": "研究助理指南", "studio": "造流助理指南"}
+PROMPTS = {"workspace": "研究助理指南", "studio": "流程助理指南"}
 
 
 def check_workflow(doc: dict) -> dict:
@@ -30,11 +32,11 @@ def check_workflow(doc: dict) -> dict:
             for caps in room.values() for c in (caps or [])]
     unknown = [c for c in caps if c not in known]
     return {"covers": ["设计"], "remarks": [],
-            "problems": [f"没有这颗能力：{unknown}"] if unknown else []}
+            "problems": [f"没有这个能力：{unknown}"] if unknown else []}
 
 
 def descriptors() -> dict:
-    """流实例的进度要按真描述符核对点名的能力：直接用仓里的四颗。"""
+    """流程实例的进度要按真描述符核对点名的能力：直接用仓里的四个。"""
     from framework.capabilities import discover
     return {name: module.DESCRIPTOR for name, module in discover().items()}
 
@@ -59,7 +61,7 @@ def served(tmp_path):
 
     def save_workflow(doc: dict) -> dict:
         if doc.get("name") == "taken":
-            raise FileExistsError("已经有一条叫 'taken' 的流")
+            raise FileExistsError("已经有一条叫 'taken' 的流程")
         if not doc.get("stages"):
             raise ValueError("x.yaml: stages 要是非空列表")
         return {**doc, "covers": ["实验"], "remarks": [], "problems": []}
@@ -67,7 +69,8 @@ def served(tmp_path):
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
                         workflows=lambda: WORKFLOWS, check_workflow=check_workflow,
                         save_workflow=save_workflow, descriptors=descriptors,
-                        chat_factory=factory, system_prompts=PROMPTS, ui_dir=ui_dir(tmp_path))
+                        stage_table=stage_table, chat_factory=factory, system_prompts=PROMPTS,
+                        ui_dir=ui_dir(tmp_path))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -109,7 +112,10 @@ def test_health_and_catalog(served):
     assert status == 200
     stages = json.loads(body)
     assert [s["name"] for s in stages] == ["文献", "假设", "设计", "实验", "分析", "写作", "验证"]
-    assert stages[3] == {"name": "实验", "slug": "experiment"}
+    assert stages[3] == {"name": "实验", "slug": "experiment",
+                         "main_files": [{"name": "ledger.tsv", "label": "账本"},
+                                        {"name": "results.json", "label": "结果"}]}
+    assert stages[0]["main_files"] == []  # 文献阶段还没定主文件，老实给空
     status, _, body = call(base, "/templates")
     assert status == 200 and [t["name"] for t in json.loads(body)] == ["ai", "cs", "generic",
                                                                        "materials"]
@@ -117,6 +123,52 @@ def test_health_and_catalog(served):
     assert status == 200 and "application/json" in ctype and json.loads(body) == CATALOG
     status, _, body = call(base, "/workflows")
     assert status == 200 and json.loads(body) == WORKFLOWS
+
+
+def _unnamed(node, path="") -> list[str]:
+    """走一遍响应体：带 id / name / slug 的对象要么有 title / label，要么 name 本身就是中文
+    （阶段）。`cap` `flow` `by` 这类是对别的对象的引用，不是对象自己的名字，不在此列。"""
+    found: list[str] = []
+    if isinstance(node, dict):
+        if any(k in node for k in ("id", "name", "slug")):
+            name = node.get("name")
+            readable = ("title" in node or "label" in node
+                        or (isinstance(name, str) and not name.isascii()))
+            if not readable:
+                found.append(f"{path or '/'}: {sorted(node)}")
+        for key, value in node.items():
+            found += _unnamed(value, f"{path}.{key}")
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            found += _unnamed(value, f"{path}[{i}]")
+    return found
+
+
+def test_everything_named_in_the_page_api_carries_a_readable_name(tmp_path, monkeypatch):
+    """P-21 内部名不上屏、翻译在源头：页面拿到的 JSON 里凡带 id / name / slug 的对象都带中文名
+    （title / label），前端不用拼也不用猜。用仓里真的能力表与流程库起服务，起一个工作区，
+    把页面会读的端点走一遍。"""
+    monkeypatch.setenv("AI4SCI_HOME", str(tmp_path))
+    server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=serve_cli._catalog,
+                        workflows=serve_cli._workflows, check_workflow=serve_cli._check_workflow,
+                        descriptors=serve_cli._descriptor_map, stage_table=stage_table,
+                        system_prompts=PROMPTS)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        new_workspace(base, "w1", "一个课题")
+        for path in ("/stages", "/cap", "/workflows", "/templates", "/workspaces",
+                     "/workspaces/w1"):
+            status, _, body = call(base, path)
+            assert status == 200, (path, body)
+            assert _unnamed(json.loads(body), path) == [], path
+        caps = json.loads(call(base, "/cap")[2])
+        assert {c["name"]: c["title"] for c in caps}["auto-research"] == "AutoResearch"
+        assert all(c["brief"] and all(p["label"] for p in c["params"]) for c in caps)
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_workspaces_are_created_listed_and_read(served, tmp_path):
@@ -165,7 +217,7 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
     assert events[-1]["cost_usd"] == pytest.approx(0.01) and events[-1]["session_id"]
     call_ = chat.calls[-1]
     if prefix == "/studio":
-        assert call_["system_prompt"] == "造流助理指南"
+        assert call_["system_prompt"] == "流程助理指南"
         assert call_["cwd"] == paths.workflows_root().parent
         assert call_["allowed_paths"] == [paths.workflows_root()] and call_["readable_paths"] == []
     else:
@@ -235,7 +287,7 @@ def test_chat_tuning_is_checked_against_the_knobs_and_remembered(served, tmp_pat
     assert chat.calls[-1]["tuning"] == Tuning(model="a", effort="high")
     doc = json.loads(call(base, f"/studio/chats/{chat_id}")[2])
     assert doc["model"] == "a" and doc["effort"] == "high"
-    # 不在清单上的在头响应之前就拒，不开始流、不算一轮
+    # 不在清单上的在头响应之前就拒，不开始流程、不算一轮
     status, _, body = call(base, f"/studio/chats/{chat_id}/messages",
                            {"text": "再来", "effort": "ultra"})
     assert status == 400
@@ -334,7 +386,7 @@ def test_output_board_and_sign(served, tmp_path):
     assert experiment["outputs"][0]["from"] == ["design/1"]
     assert experiment["outputs"][0]["signed"] is None
     [flow] = doc["flows"]
-    assert flow["name"] == "research" and flow["waiting"] == "assistant"  # 产出没记流，流还没动
+    assert flow["name"] == "research" and flow["waiting"] == "assistant"  # 产出没记流程，流程还没动
     status, _, body = call(base, "/workspaces/toy/outputs/analysis/1")
     doc = json.loads(body)
     assert status == 200 and doc["id"] == f"analysis/{doc_dir.name}"
@@ -438,7 +490,7 @@ def test_no_ui_dir_says_how_to_build(tmp_path):
 
 
 def test_save_workflow_endpoint_maps_errors_to_status_codes(served):
-    """编辑台存流（外层 #68）：存成 201 回清单里的样子；形状 / 不通 422；同名 409。"""
+    """编辑台存流程（外层 #68）：存成 201 回清单里的样子；形状 / 不通 422；同名 409。"""
     base, _ = served
     doc = {"name": "w", "title": "t", "summary": "s", "stages": [{"设计": ["design"]}]}
     status, _, body = call(base, "/workflows", doc)

@@ -38,7 +38,7 @@ literature/ hypothesis/ design/ experiment/ analysis/ writing/ verification/
 | 阶段 | 能力（命令） | 读什么 | 一句话 |
 |---|---|---|---|
 | 设计 | `design` 评分脚本与基线 | 需求 + 原件（+ `--from hypothesis/<n>`） | 执行层写 scoring.yaml、harness/ 与 code/，框架封 harness、跑基线出 baseline/、算预检 |
-| 实验 | `auto-research` 自动实验 | `--from design/<n>` | 开一次实验，一轮一轮改代码：过统计门才 keep，否则回退到 best |
+| 实验 | `auto-research` AutoResearch | `--from design/<n>` | 开一次实验，一轮一轮改代码：过统计门才 keep，否则回退到 best |
 | 分析 | `analysis` 分析初稿 | `--from experiment/<n>`（可几个） | 读账本与每轮结果，写三节固定的 analysis.md |
 | 验证 | `verify` 数字核对 | `--from analysis/<n>` + 它读的实验 | 零模型：分析里的数回溯到 results.json，账本与 git 对账，PASS / FAIL |
 
@@ -81,13 +81,13 @@ ai4sci cap verify --from analysis/1 --from experiment/1   # 核对数字 → ver
 |---|---|---|
 | `cap ... --detach` 返回 `job <作业号>` | 作业在后台跑，这一轮结束 | 什么都不用做；跑完框架会开新一轮告诉你。研究者问进度就 `show job <作业号>` |
 | `cap auto-research` 返回 `batch_exhausted` | 这批配额用完，实验没停 | 想继续就 `--continue experiment/<n>` 再跑一批 |
-| 返回 `patience` / `unrecoverable` / `max_cost_usd` / `max_iterations` | 实验停了，`stop.json` 有原因 | 读 `notebook.md` 决定：续命（`--continue experiment/<n> --patience 9 --reason ...`，改预算、清停止标记后接着跑）、回设计阶段再开一次、还是就此分析 |
+| 返回 `patience` / `unrecoverable` / `max_cost_usd` / `max_iterations` | 实验停了，`stop.json` 有原因 | 读 `notebook.md` 决定：加预算（`--continue experiment/<n> --patience 9 --reason ...`，改预算、清停止标记后接着跑）、回设计阶段再开一次、还是就此分析 |
 | `cap auto-research` 退 1 说有 in-flight | 上次被杀在半路 | `--continue experiment/<n> --resume`；对不上就停下来找人，不要手改 checkpoint |
 | `cap analysis` 退 1 | 执行层越界 / 没写出 / 形状不合约 | 看 stderr 那一句；再调用一次就是新一次产出，没成的那次留在盘上 |
 | `cap verify` 退 1 | 分析里有编的数、正文有表外的数、账本对不上 | 读 `verification/<n>/report.json` 的 `details`；数字问题重跑 `cap analysis`，账本问题停下来找人 |
 | `cap verify` 退 0 | 这份分析的数字全部可回溯 | 到**断点：验收**——研究者在页面上签 `verification/<n>`，或终端 `ai4sci sign verification/<n>`。**人确认，你不替人签** |
 
-`experiment/<n>/journal.md` 是你的本子：每个决定一行——为什么进这个阶段、看到什么、下一步、指回哪条 issue。框架只建空文件、续命时追一行，其余是你写。
+`experiment/<n>/journal.md` 是你的本子：每个决定一行——为什么进这个阶段、看到什么、下一步、指回哪条 issue。框架只建空文件、加预算时追一行，其余是你写。
 
 ## 取一条流程，按需求改
 

@@ -78,7 +78,7 @@ def run_loop(
             f"ai4sci cap auto-research --continue {state['output']} --resume"
         )
     if state.get("stop_reason"):
-        # 已经停过的 run 不自己续命：要不要继续是协调层的决定（P-10）
+        # 已经停过的 run 不自己加预算：要不要继续是协调层的决定（P-10）
         return StopReason(state["stop_reason"], state["last_iter"], state["best_metric"])
     limit = (ctx.max_iterations if max_iters is None
              else min(ctx.max_iterations, state["last_iter"] + max_iters))
@@ -238,7 +238,8 @@ def _stop_reason(ctx: RunContext, state: dict[str, Any], limit: int) -> StopReas
     done, best = state["last_iter"], state["best_metric"]
     if done >= ctx.max_iterations:
         return StopReason("max_iterations", done, best)
-    # 续命过的 run 只数续命之后的轮次：之前的失败协调层已经看过并决定继续（lifecycle.extend_run）
+    # 加预算过的 run 只数加预算之后的轮次：之前的失败协调层已经看过并决定继续
+    # （lifecycle.extend_run）
     since = state.get("resumed_after_iter", 0)
     recent = [r for r in rows if r.iter > since][-UNRECOVERABLE_REPEATS:]
     fails = [r.status for r in recent if r.status in failures.FAILURE_STATUSES]

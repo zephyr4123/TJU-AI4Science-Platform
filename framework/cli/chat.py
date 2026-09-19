@@ -1,6 +1,6 @@
 """`ai4sci chat new|send|list [--studio]`：在终端里和助理聊，网页没来之前的入口，也是排障入口。
 
-在 cli 层，调 `framework.chat`。域由 `--studio` 定：给了就是编辑台的造流助理，不给就是当前工作区的
+在 cli 层，调 `framework.chat`。域由 `--studio` 定：给了就是编辑台的流程助理，不给就是当前工作区的
 研究助理（P-16）。`send` 把事件逐行打到 stdout：助理的话逐字打（delta），工具一行一个，
 最后一行 `done` 或 `error`；退出码照旧 0 / 1 / 2。`new` 与 `send` 的 `--model` / `--effort`
 选模型与思考深度（外层 #86）：只认后端自报的清单，选了记进对话、之后每轮沿用；页面同一套。
@@ -153,12 +153,12 @@ def render(event: ChatEvent) -> str:
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
     chat = groups.add_parser(
-        "chat", help="和助理聊（终端入口）：当前工作区的研究助理，或 --studio 造流助理")
+        "chat", help="和助理聊（终端入口）：当前工作区的研究助理，或 --studio 流程助理")
     actions = chat.add_subparsers(dest="action", required=True)
 
     creating = actions.add_parser("new", help="开一段对话：<域>/chats/<id>/")
     creating.add_argument("--backend", default=DEFAULT_BACKEND, help="agent 后端名")
-    creating.add_argument("--studio", action="store_true", help="编辑台的造流助理，不看工作区")
+    creating.add_argument("--studio", action="store_true", help="编辑台的流程助理，不看工作区")
     _add_knobs(creating)
     creating.set_defaults(func=cmd_new)
 

@@ -56,7 +56,7 @@ def checkpoint(run_dir: Path) -> Path:
 
 
 def journal(run_dir: Path) -> Path:
-    """协调层自己的本子：框架只建空文件、续命时追一行。"""
+    """协调层自己的本子：框架只建空文件、加预算时追一行。"""
     return Path(run_dir) / JOURNAL_NAME
 
 

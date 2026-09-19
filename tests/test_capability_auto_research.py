@@ -1,6 +1,6 @@
-"""auto-research 这颗能力的入口（外层 #96、#104）：第一次调用读设计那包开实验，
+"""auto-research 这个能力的入口（外层 #96、#104）：第一次调用读设计那包开实验，
 之后 --continue 接着跑；
-续跑、续命的参数只对已开过的实验有意义。内环本身的行为在 test_experiment_loop.py。"""
+续跑、加预算的参数只对已开过的实验有意义。内环本身的行为在 test_experiment_loop.py。"""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def test_resume_and_extension_need_an_opened_experiment(tmp_path, monkeypatch):
         auto_research.run(out, inputs, ports(), patience=5, reason="再试")
     assert not (out / "work").exists()
     auto_research.run(out, inputs, ports(0.015), max_iters=1)
-    with pytest.raises(CapabilityFailed, match="--reason 只在续命时有意义"):
+    with pytest.raises(CapabilityFailed, match="--reason 只在加预算时有意义"):
         auto_research.run(out, inputs, ports(), reason="没配预算")
 
 

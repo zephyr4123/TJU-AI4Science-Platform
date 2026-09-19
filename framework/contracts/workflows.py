@@ -1,6 +1,6 @@
-"""工作流：经过几个阶段、按什么顺序，哪几个阶段完了要人签（纲领 P-18、P-19）。
+"""流程：经过几个阶段、按什么顺序，哪几个阶段完了要人签（纲领 P-18、P-19）。
 
-一个工作流一个 YAML。库在仓根 `workflows/`（通用，编辑台的造流助理改），工作区 `flows/` 里的是取来
+一个流程一个 YAML。库在仓根 `workflows/`（通用，编辑台的流程助理改），工作区 `flows/` 里的是取来
 改过参数的实例（研究助理用），两处同一套检查。它是预装的走法，不是平台本身：平台是七个研究阶段和每个阶段里的能力。
 
     name: research               # 目录里唯一，等于文件名去掉 .yaml
@@ -8,9 +8,9 @@
     summary: 一段人话
     stages:
       - 设计                                     # 一个阶段：这个阶段用哪些能力由助理看着办
-      - 断点: 核对评分脚本算的是不是你要的数         # 前一个阶段的产出要人签了下游才能读；
+      - 断点: 评分指标核对         # 前一个阶段的产出要人签了下游才能读；
       写一句要人确认什么
-      - 实验: {auto-research: {max_iters: 3}}   # 点名用哪颗能力、带什么参数（参数名是描述符里的
+      - 实验: {auto-research: {max_iters: 3}}   # 点名用哪个能力、带什么参数（参数名是描述符里的
       Param）
       - 分析: [analysis]                         # 点名但不带参数也行
       - 验证
@@ -19,10 +19,10 @@
       - [0, 0]
       - [264, 0]
 
-断点是开放的：几个、放哪由流定——端到端全自动的流一个没有，步步确认的流每步一个。含义只有一个：
+断点是开放的：几个、放哪由流程定——端到端全自动的流程一个没有，步步确认的流程每步一个。含义只有一个：
 前一个阶段的产出要人签（产出目录里的 signed.json）了，下游能力才能 `--from` 它。
 阶段之间没有显式的输入输出接口：检查只看阶段名对不对、点名的能力在不在那个阶段、参数名与类型对不对、断点位置合不合法
-（不能开头就是断点、不能两个断点挨着）。一个阶段里要的东西盘上有没有，是那颗能力开始执行时自己查的（P-7）。
+（不能开头就是断点、不能两个断点挨着）。一个阶段里要的东西盘上有没有，是那个能力开始执行时自己查的（P-7）。
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from framework.contracts.capability import PARAM_TYPES, Capability
 from framework.contracts.stages import STAGE_NAMES as STAGES
 
 STOP = "断点"
-# 文件名就是流的名字（P-13）：小写英文加连字符，页面存流时也按这个拒
+# 文件名就是流程的名字（P-13）：小写英文加连字符，页面存流程时也按这个拒
 NAME_RE = re.compile(r"[a-z][a-z0-9-]*")
 
 
@@ -49,7 +49,7 @@ class WorkflowInvalid(ValueError):
 
 @dataclass(frozen=True)
 class Pick:
-    """一个阶段里点名用的一颗能力，可带参数（`with`），键是描述符里的 Param 名：agent 照着调用，
+    """一个阶段里点名用的一个能力，可带参数（`with`），键是描述符里的 Param 名：agent 照着调用，
     页面照着画。"""
 
     cap: str
@@ -119,7 +119,7 @@ def load_workflows(root: Path) -> list[Workflow]:
 
 def load_valid(root: Path) -> list[Workflow]:
     """读得出来的那些；坏文件跳过。坏在哪不在这里说，`describe_dir` 会把它当一条问题摆出来，
-    所以这里的跳过不是静默——用在只要"能用的流"的地方（反查 used_by）。"""
+    所以这里的跳过不是静默——用在只要"能用的流程"的地方（反查 used_by）。"""
     out: list[Workflow] = []
     for path in sorted(Path(root).glob("*.yaml")) if Path(root).is_dir() else []:
         try:
@@ -139,7 +139,7 @@ def load_workflow(path: Path) -> Workflow:
 
 
 def parse_workflow(filename: str, raw: Any) -> Workflow:
-    """一份工作流的形状检查，读文件与页面存流走同一处；`filename` 只用来报错与核对 name。"""
+    """一份流程的形状检查，读文件与页面存流程走同一处；`filename` 只用来报错与核对 name。"""
     stem = filename[:-5] if filename.endswith(".yaml") else filename
     if not isinstance(raw, dict):
         raise WorkflowInvalid(f"{filename}: 顶层要是映射")
@@ -228,7 +228,7 @@ def _picks(label: str, raw: Any) -> tuple[Pick, ...]:
 
 def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability], *,
                   overwrite: bool = False) -> Workflow:
-    """编辑台存一条流：形状与检查都过了才写 `<root>/<name>.yaml`；已有同名不覆盖，除非明说。
+    """编辑台存一条流程：形状与检查都过了才写 `<root>/<name>.yaml`；已有同名不覆盖，除非明说。
 
     存的是页面交来的原样映射（只留认识的键），YAML 里中文原样、键序照给。
     """
@@ -239,7 +239,7 @@ def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability
     path = Path(root) / f"{workflow.name}.yaml"
     if path.exists() and not overwrite:
         raise FileExistsError(
-            f"已经有一条叫 {workflow.name!r} 的流：{path}；换个名字，或者明说覆盖")
+            f"已经有一条叫 {workflow.name!r} 的流程：{path}；换个名字，或者明说覆盖")
     doc: dict[str, Any] = {"name": workflow.name, "title": workflow.title,
                            "summary": workflow.summary,
                            "stages": [_item_doc(item) for item in workflow.stages]}
@@ -283,7 +283,7 @@ def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> lis
             cap = catalog.get(pick.cap)
             label = f"第 {i} 项「{item.stage}」里的 {pick.cap}"
             if cap is None:
-                problems.append(f"{label}：没有这颗能力（有的：{sorted(catalog)}）")
+                problems.append(f"{label}：没有这个能力（有的：{sorted(catalog)}）")
                 continue
             if cap.stage != item.stage:
                 problems.append(
@@ -293,7 +293,7 @@ def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> lis
 
 
 def _with_problems(label: str, params: dict[str, Any], cap: Capability) -> list[str]:
-    """参数按描述符核对：名字要在 Param 表里、得是流里能写的（in_flow），值要是那个类型
+    """参数按描述符核对：名字要在 Param 表里、得是流程里能写的（in_flow），值要是那个类型
     （int 可以当 float）。"""
     known = {p.name: p for p in cap.params}
     out: list[str] = []
@@ -303,7 +303,7 @@ def _with_problems(label: str, params: dict[str, Any], cap: Capability) -> list[
             out.append(f"{label} 带了描述符里没有的参数 {name!r}（有的：{sorted(known)}）")
             continue
         if not param.in_flow:
-            out.append(f"{label} 的 {name} 是每次调用时才定的，不写进流")
+            out.append(f"{label} 的 {name} 是每次调用时才定的，不写进流程")
             continue
         expected = PARAM_TYPES[param.type]
         ok = (isinstance(value, expected) and not (expected is not bool and isinstance(value, bool))
@@ -314,7 +314,7 @@ def _with_problems(label: str, params: dict[str, Any], cap: Capability) -> list[
 
 
 def remarks(workflow: Workflow) -> list[str]:
-    """给人看的提醒，不是问题、不拦流。机器能说的一句：有实验或分析却没有验证，数字没人回溯。"""
+    """给人看的提醒，不是问题、不拦流程。机器能说的一句：有实验或分析却没有验证，数字没人回溯。"""
     covered = workflow.covered
     if ("实验" in covered or "分析" in covered) and "验证" not in covered:
         return ["有实验或分析、没有验证：数字没人回溯，结果不能算可信"]
@@ -331,9 +331,9 @@ def stop_after(workflow: Workflow, index: int) -> Stop | None:
 
 
 def matching_step(workflow: Workflow, cap: str, stage: str, after: int = -1) -> int | None:
-    """一颗能力跑在这条流的第几项（0 起）：`after` 之后第一个阶段对得上的项——点了名看名字，
+    """一个能力跑在这条流程的第几项（0 起）：`after` 之后第一个阶段对得上的项——点了名看名字，
     没点名看阶段。
-    流里没有它就是 None。"""
+    流程里没有它就是 None。"""
     for i in range(after + 1, len(workflow.stages)):
         item = workflow.stages[i]
         if not isinstance(item, Stage):
@@ -360,13 +360,13 @@ def describe_dir(root: Path, catalog: dict[str, Capability]) -> list[dict[str, A
 
 
 def describe(workflows: Sequence[Workflow], catalog: dict[str, Capability]) -> list[dict[str, Any]]:
-    """给页面与 `show workflows` 的响应体：每条流带它走过的阶段、提醒与问题清单。"""
+    """给页面与 `show workflows` 的响应体：每条流程带它走过的阶段、提醒与问题清单。"""
     return [{**wf.to_dict(), "covers": wf.covered, "remarks": remarks(wf),
              "problems": workflow_problems(wf, catalog)} for wf in workflows]
 
 
 def used_by(workflows: Sequence[Workflow]) -> dict[str, list[str]]:
-    """能力名 → 点名用到它的工作流名。反查而不是写在能力上：工作流引用能力，能力不认识工作流。"""
+    """能力名 → 点名用到它的流程名。反查而不是写在能力上：流程引用能力，能力不认识流程。"""
     uses: dict[str, list[str]] = {}
     for wf in workflows:
         for cap in dict.fromkeys(wf.caps):

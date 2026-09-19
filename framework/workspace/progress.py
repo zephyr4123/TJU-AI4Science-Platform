@@ -1,9 +1,9 @@
-"""一条流走到哪：不另存记录，从产出的 meta（在哪条流第几项下产的）与签字现算（纲领 P-19）。
+"""一条流程走到哪：不另存记录，从产出的 meta（在哪条流程第几项下产的）与签字现算（纲领 P-19）。
 
-每个产出记 `flow` / `step`，所以「这条流的第 k 项」有哪几次产出、成没成、签没签，扫一遍就知道。
+每个产出记 `flow` / `step`，所以「这条流程的第 k 项」有哪几次产出、成没成、签没签，扫一遍就知道。
 「在等谁」也现算：作业在跑 → 等作业；下一项是断点而前一项的产出没签 → 等人签；下一项是阶段 →
 轮到助理；
-走完 → done。同一条流走两遍就是同一项下两次产出，都列出来，页面按 from 链分辨。
+走完 → done。同一条流程走两遍就是同一项下两次产出，都列出来，页面按 from 链分辨。
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ DONE = "done"
 
 def flow_progress(workspace: Workspace, workflow: workflows.Workflow,
                   outputs: list[tuple[Path, Meta]]) -> dict[str, Any]:
-    """一条流实例的进度：每一项下有哪几次产出、走到第几项、在等谁。"""
+    """一条流程实例的进度：每一项下有哪几次产出、走到第几项、在等谁。"""
     mine = [(d, m) for d, m in outputs if m.flow == workflow.name and m.step is not None]
     items: list[dict[str, Any]] = []
     for i, item in enumerate(workflow.stages):

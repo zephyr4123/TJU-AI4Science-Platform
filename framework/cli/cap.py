@@ -1,15 +1,15 @@
 """`ai4sci cap <name> --from <stage>/<n>... [--flow <name>] [--continue <stage>/<n>]`：
 按名字跑一个能力的通用驱动（纲领 P-10、P-12、P-19）。
 
-在 cli 层。每个能力的子命令是从它的描述符**生成**的：`--from` 每颗都有（读哪几个产出）、`--flow`
-每颗都有（照哪条流跑，记进产出）、`--continue` 只有 continuable 的有（接着上一次的产出干，
+在 cli 层。每个能力的子命令是从它的描述符**生成**的：`--from` 每个都有（读哪几个产出）、`--flow`
+每个都有（照哪条流程跑，记进产出）、`--continue` 只有 continuable 的有（接着上一次的产出干，
 不另开目录）、`--backend` 只在 needs_executor 时有、`--compute` 只在 needs_compute 时有、
 每个 `Param` 变成一个选项——所以"CLI 参数与描述符一致"是构造保证，不靠人对。
 
 驱动做的事，能力自己不知道：
   1. 需求没确认不开工（唯一内置的门，P-19）；
   2. `--from` 的每个产出都得在、成了、没被改过（冻结，`workspace.outputs.resolve_inputs`）；
-  3. 照流跑时查断点：流说输入那个阶段完了要人签，签字不在或过期就拒；
+  3. 照流程跑时查断点：流程说输入那个阶段完了要人签，签字不在或过期就拒；
   4. 在自己的阶段下开一个产出目录、写 running 的 meta，跑完记 ok / failed；
   5. `--detach` 把去掉它的同一条命令起成独立进程当作业，跑完回写记录、属于某段对话的去叫醒。
 
@@ -46,7 +46,8 @@ from framework.workspace import jobs, outputs
 from framework.workspace.root import Workspace
 
 FROM_HELP = "读哪几个产出（<阶段目录>/<序号>，比如 design/1），可以给几个"
-FLOW_HELP = "照当前工作区里哪条流跑（show flows 里的名字）：记进产出，断点按它查；只有一条流时可省"
+FLOW_HELP = ("照当前工作区里哪条流程跑（show flows 里的名字）：记进产出，断点按它查；"
+             "只有一条流程时可省")
 CONTINUE_HELP = "接着上一次的产出干（<阶段目录>/<序号>），不另开目录"
 
 
@@ -90,7 +91,8 @@ def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports:
     except (ValueError, output.OutputNotFound) as exc:  # OutputChanged 是 ValueError
         return EXIT_INVALID, str(exc)
     try:
-        flow, step = _place_in_flow(ws, descriptor, inputs, getattr(args, "flow", ""))
+        flow, step = _place_in_flow(ws, descriptor.name, descriptor.stage, inputs,
+                                    getattr(args, "flow", ""))
     except workflows.WorkflowInvalid as exc:
         return EXIT_INVALID, str(exc)
     params = {p.name: getattr(args, p.name) for p in descriptor.params}
@@ -119,7 +121,7 @@ def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports:
 
 
 def _reopen(ws: Workspace, descriptor: Capability, oid: str, inputs: Inputs) -> tuple[Path, Meta]:
-    """`--continue`：产出得是这颗能力自己产的、这个阶段的；成了没成都能接着干（草稿改第二版）。"""
+    """`--continue`：产出得是这个能力自己产的、这个阶段的；成了没成都能接着干（草稿改第二版）。"""
     directory, meta = outputs.find_output(ws, oid)
     if meta.stage != descriptor.stage_slug or meta.by != descriptor.name:
         raise ValueError(f"{oid} 是 {meta.by} 在「{meta.stage}」阶段产的，{descriptor.name} 接不了")
@@ -132,24 +134,24 @@ def _reopen(ws: Workspace, descriptor: Capability, oid: str, inputs: Inputs) -> 
     return directory, meta
 
 
-def _place_in_flow(ws: Workspace, descriptor: Capability, inputs: Inputs,
+def _place_in_flow(ws: Workspace, by: str, stage: str, inputs: Inputs,
                    flow_name: str) -> tuple[str | None, int | None]:
-    """照哪条流、第几项：`--flow` 给了用它；没给而工作区只有一条流就用那条；几条就得说清；
-    一条没有就不照流。
-    照流时查断点：输入那一项后面紧跟断点的，那个产出得签过且没过期。"""
+    """照哪条流程、第几项：`--flow` 给了用它；没给而工作区只有一条流程就用那条；几条就得说清；
+    一条没有就不照流程。
+    照流程时查断点：输入那一项后面紧跟断点的，那个产出得签过且没过期。"""
     flow_name = (flow_name or "").strip()
     instances = sorted(p.stem for p in ws.flows.glob("*.yaml")) if ws.flows.is_dir() else []
     if not flow_name:
         if len(instances) > 1:
             raise workflows.WorkflowInvalid(
-                f"工作区有几条流（{', '.join(instances)}），说清照哪条：--flow <name>")
+                f"工作区有几条流程（{', '.join(instances)}），说清照哪条：--flow <name>")
         if not instances:
             return None, None
         flow_name = instances[0]
     path = ws.flows / f"{flow_name}.yaml"
     if not path.is_file():
         raise workflows.WorkflowInvalid(
-            f"工作区里没有叫 {flow_name!r} 的流（flows/ 下有：{', '.join(instances) or '-'}）；"
+            f"工作区里没有叫 {flow_name!r} 的流程（flows/ 下有：{', '.join(instances) or '-'}）；"
             f"库里有的先取过来：ai4sci flow take {flow_name}")
     workflow = workflows.load_workflow(path)
     after = -1
@@ -165,10 +167,10 @@ def _place_in_flow(ws: Workspace, descriptor: Capability, inputs: Inputs,
         if signed is None or signed["stale"]:
             what = f"「{stop.note}」" if stop.note else "签字"
             raise workflows.WorkflowInvalid(
-                f"流 {workflow.name} 在 {oid} 之后有断点{what}：这次产出要人签了下游才能读"
+                f"流程 {workflow.name} 在 {oid} 之后有断点{what}：这次产出要人签了下游才能读"
                 + ("（签过但之后改了，签字过期）" if signed else "")
                 + f"；研究者在页面上签，或终端 ai4sci sign {oid}")
-    step = workflows.matching_step(workflow, descriptor.name, descriptor.stage, after)
+    step = workflows.matching_step(workflow, by, stage, after)
     return workflow.name, step
 
 

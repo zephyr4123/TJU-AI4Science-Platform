@@ -1,4 +1,4 @@
-"""看板读盘：工作区一整份（需求、七个阶段的产出、每条流的进度、作业）、一次产出的细节、需求模板；
+"""看板读盘：工作区一整份（需求、七个阶段的产出、每条流程的进度、作业）、一次产出的细节、需求模板；
 NaN 出门前换 None。纯读盘、零模型（P-19：只读框架认的东西）。"""
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ def test_stages_list_outputs_with_signature_and_flows_carry_progress(tmp_path):
     pack = pf.make_pack(tmp_path)
     ws = pack.workspace
     (ws.flows / "quick.yaml").write_text(FLOW, encoding="utf-8")
-    # 把设计产出记到流的第 0 项下，签字；实验在第 2 项下
+    # 把设计产出记到流程的第 0 项下，签字；实验在第 2 项下
     _, meta = outputs.find_output(ws, "design/1")
     meta.flow, meta.step = "quick", 0
     output.write_meta(pack.pack, meta)

@@ -3,7 +3,7 @@
 模板用 `string.Template`：占位符缺一个就抛 KeyError，不会静默留下一个 `$xxx` 在提示里。
 模板路径由调用方传进来，本模块不持有它：模板是**能力**的资产（实验内环的模板在
 `capabilities/auto_research/prompt.md`），组装是执行层这一层的活。写死一个路径就等于把
-executor 焊在某颗能力上，别的能力再想用同一套组装就得复制一份。
+executor 焊在某个能力上，别的能力再想用同一套组装就得复制一份。
 """
 
 from __future__ import annotations

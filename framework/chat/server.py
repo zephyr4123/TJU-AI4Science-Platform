@@ -1,17 +1,17 @@
 """网页的后端：HTTP 端点包住 conversation.py 与 boards.py，事件用 SSE 推，页面本身也从这里端出去。
 
 标准库 ThreadingHTTPServer：二十个端点不值得引一个 web 框架。零模型：模型在适配器的子进程里。
-能力清单（`/cap`）、工作流库（`/workflows`）、拼流检查（`/workflows/check`）与描述符表（流实例的进度要核对
+能力清单（`/cap`）、流程库（`/workflows`）、拼流程检查（`/workflows/check`）与描述符表（流程实例的进度要核对
 点名的能力）由调用方以函数传入——这一层不认识 capabilities，依赖方向不能反过来。
 页面是这些端点的客户端，换一种 UI 也是同一套（`ui/README.md`）。
 
-端点按域分前缀（纲领 P-16）：工作区 `/workspaces/<id>/…` 是研究助理的域，`/studio/…` 是造流助理
+端点按域分前缀（纲领 P-16）：工作区 `/workspaces/<id>/…` 是研究助理的域，`/studio/…` 是流程助理
 的域，对话四个端点在两个前缀下共用一套实现；主页面的对话物理上到不了库。
 
     GET  /health                            {"ok": true}
     GET  /backends                          每家 agent 后端的旋钮：模型清单、思考深度档位、缺省
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
-    GET  /cap                               能力描述符清单：每颗带 stage、五栏与 used_by
+    GET  /cap                               能力描述符清单：每个带 stage、五栏与 used_by
     GET  /workflows                         库：`workflows/*.yaml`，covers / remarks / problems
     POST /workflows                         {name, title, summary, stages[, overwrite]} → 存进库
     POST /workflows/check                   同一个 body，只查不存：covers / remarks / problems
@@ -20,10 +20,11 @@
     有没有作业在跑
     POST /workspaces                        {"id", "title"?, "template"?} → 新工作区（按模板起草
     requirement.md）
-    GET  /workspaces/<id>                   工作区 + 需求 + 七个阶段的产出 + 每条流实例的进度 + 作业
+    GET  /workspaces/<id>                   工作区 + 需求 + 七个阶段的产出 + 每条流程实例的进度
+                                            + 作业
     GET  /workspaces/<id>/requirement       需求：原文、按二级标题切的格、确认状态、上一版原文
     POST /workspaces/<id>/requirement/confirm  {"by"} → 确认需求；人的确认，agent 不替人做
-    GET  /workspaces/<id>/flows             流实例：covers / remarks / problems + 进度
+    GET  /workspaces/<id>/flows             流程实例：covers / remarks / problems + 进度
     GET  /workspaces/<id>/outputs/<stage>/<n>  一次产出：记录、签字、文件清单（小文本带正文）、作业
     POST /workspaces/<id>/outputs/<stage>/<n>/sign  {"by", "note"?} → 签字记录
     GET  /workspaces/<id>/files?path=<dir>  文件镜头：目录的一层（目录在前；.venv .git 不列），
@@ -77,6 +78,7 @@ class ChatServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], *, home: Path,
                  catalog: Callable[[], list[dict[str, Any]]],
                  workflows: Callable[[], list[dict[str, Any]]],
+                 stage_table: Callable[[], list[dict[str, Any]]] = stages.to_dicts,
                  check_workflow: Callable[[dict[str, Any]], dict[str, Any]],
                  save_workflow: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  descriptors: Callable[[], dict[str, Capability]] = dict,
@@ -87,10 +89,12 @@ class ChatServer(ThreadingHTTPServer):
         self.home = Path(home).resolve()
         self.catalog = catalog
         self.workflows = workflows
+        # 阶段表：cli 注入带主文件与它页面上的名字的那份（主文件表在 capabilities，chat 层不认识它）
+        self.stage_table = stage_table
         self.check_workflow = check_workflow
-        # 编辑台存流：cli 注入（要对着能力清单核对，chat 层不认识 capabilities）；None 是不让存
+        # 编辑台存流程：cli 注入（要对着能力清单核对，chat 层不认识 capabilities）；None 是不让存
         self.save_workflow = save_workflow
-        # 能力描述符表：流实例的进度要按它核对点名的能力；cli 注入，chat 层不认识 capabilities
+        # 能力描述符表：流程实例的进度要按它核对点名的能力；cli 注入，chat 层不认识 capabilities
         self.descriptors = descriptors
         self.chat_factory = chat_factory
         # 页面构建目录；None 就是没构建，根路径回一句怎么构建，接口照常
@@ -135,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
                                 **asdict(self.server.chat_factory(name).knobs())}
                                for name in available_backends()])
         if parts == ["stages"]:
-            return self._json(stages.to_dicts())
+            return self._json(self.server.stage_table())
         if parts == ["cap"]:
             return self._json(self.server.catalog())
         if parts == ["workflows"]:
@@ -232,7 +236,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.server.check_workflow(body))
         if parts == ["workflows"]:
             if self.server.save_workflow is None:
-                return self._error(HTTPStatus.NOT_IMPLEMENTED, "这个服务没开存流")
+                return self._error(HTTPStatus.NOT_IMPLEMENTED, "这个服务没开存流程")
             try:
                 return self._json(self.server.save_workflow(body), HTTPStatus.CREATED)
             except ValueError as exc:  # WorkflowInvalid 继承 ValueError：形状不对、不通

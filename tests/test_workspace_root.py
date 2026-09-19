@@ -32,7 +32,7 @@ def test_create_load_list_and_the_layout(tmp_path):
     (root / "not-a-workspace").mkdir()
     assert [w.id for w in workspace.list_workspaces(root)] == ["b", "rahman-nll"]
     assert workspace.list_workspaces(tmp_path / "nowhere") == []
-    # 阶段目录：流走到才有；stage_dir 只认七个
+    # 阶段目录：流程走到才有；stage_dir 只认七个
     assert ws.stage_dirs() == []
     ws.stage_dir("design").mkdir()
     assert [p.name for p in ws.stage_dirs()] == ["design"]

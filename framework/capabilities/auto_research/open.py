@@ -1,7 +1,7 @@
-"""开一次实验与给已停的实验续命。
+"""开一次实验与给已停的实验加预算。
 
 开实验的第一件事是过设计那包的契约（`experiment.pack`）与预检（`experiment.headroom`），
-过不了就不开（P-7）。续命只改快照里的 budget 与停止标记——要不要继续是协调层的
+过不了就不开（P-7）。加预算只改快照里的 budget 与停止标记——要不要继续是协调层的
 决定（P-10），怎么继续必须留痕。
 """
 
@@ -104,10 +104,10 @@ def extend_experiment(
     run_dir: Path, *, patience: int | None = None, max_iterations: int | None = None,
     max_cost_usd: float | None = None, reason: str = "",
 ) -> dict[str, Any]:
-    """协调层给已停的实验续命：改快照里的 budget、清 stop_reason 与 stop.json、journal 记一行。
+    """协调层给已停的实验加预算：改快照里的 budget、清 stop_reason 与 stop.json、journal 记一行。
 
     只改这三样：要不要继续是协调层的决定（P-10），但怎么继续必须留痕——journal.md 是
-    协调层自己的本子，续命这条记在这里而不是账本里，账本只记轮次。
+    协调层自己的本子，加预算这条记在这里而不是账本里，账本只记轮次。
     """
     run_dir = Path(run_dir).resolve()
     scoring = load_scoring(run_dir)
@@ -124,13 +124,14 @@ def extend_experiment(
         yaml.safe_dump(scoring, allow_unicode=True, sort_keys=False), encoding="utf-8")
     state = read_checkpoint(run_dir)
     cleared = state.get("stop_reason")
-    # resumed_after_iter：不可修复的判定只数这一轮之后的账本行。续命本身就是协调层在说
-    # "之前那几次失败我看过了、不算"（真跑时执行层连不上模型三次被判不可修复，续命后
-    # 内环一起来又从账本尾部数到同样三行、当场再停，等于续命无效）
+    # resumed_after_iter：不可修复的判定只数这一轮之后的账本行。加预算本身就是协调层在说
+    # "之前那几次失败我看过了、不算"（真跑时执行层连不上模型三次被判不可修复，加预算后
+    # 内环一起来又从账本尾部数到同样三行、当场再停，等于加预算无效）
     write_checkpoint(run_dir, {**state, "stop_reason": None,
                                "resumed_after_iter": state["last_iter"]})
     layout.stop(run_dir).unlink(missing_ok=True)
-    line = (f"- {datetime.now(UTC).isoformat(timespec='seconds')} 续命：清掉 stop_reason={cleared}"
+    line = (f"- {datetime.now(UTC).isoformat(timespec='seconds')} 加预算："
+            f"清掉 stop_reason={cleared}"
             f"；{'；'.join(changes) or '预算未改'}；原因：{reason or '未说明'}\n")
     with layout.journal(run_dir).open("a", encoding="utf-8") as fh:
         fh.write(line)

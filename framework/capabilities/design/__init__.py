@@ -1,8 +1,8 @@
-"""写评分脚本、跑基线：设计阶段里的那颗能力——读需求（与假设），起执行层写评分契约、harness
+"""写评分脚本、跑基线：设计阶段里的那个能力——读需求（与假设），起执行层写评分契约、harness
 与基线代码，框架封、lint、校验，接着起 `make_run0.sh` 跑基线、算预检。
 
 前半段的干活代码在同包的 `drafting.py`（组提示、起会话、判越界、封 harness、ruff、validate），
-后半段在 `baseline.py`。评分脚本写完不跑基线没意义，基线又只能跑封好的评分脚本，所以是一颗
+后半段在 `baseline.py`。评分脚本写完不跑基线没意义，基线又只能跑封好的评分脚本，所以是一个
 （外层 #96）。
 
 产出 `design/<n>/` 就是实验族的那包东西：scoring.yaml、harness/、code/、data/（原件的拷贝）、env/
@@ -33,10 +33,11 @@ DESCRIPTOR = Capability(
     name=NAME,
     stage="设计",
     title="评分脚本与基线",
+    brief="按需求写评分契约、评分脚本与基线代码，跑出起点成绩",
     does=(
-        "起一个执行层会话，照需求（与假设阶段的产出，如果 --from 带了）写评分契约 scoring.yaml"
-        "（指标、方向、预算、统计门）、评分脚本（harness/：launcher.sh、evaluate.py、make_run0.sh）"
-        "和一版最朴素的基线代码（code/）。会话结束后框架接手："
+        "起一个执行层会话，照已确认的需求（带了假设阶段的产出就一并读）写评分契约 scoring.yaml"
+        "（指标、方向、预算、统计门）、评分脚本 harness/（launcher.sh、evaluate.py、make_run0.sh）"
+        "与一版最朴素的基线代码 code/。会话结束后框架接手："
         "给脚本加执行位、写 SHA256SUMS 封住 harness，跑 ruff 与契约校验；"
         "都过了就按 env/ 建 .venv、起 make_run0.sh 跑基线——重复 inner_k 次得到起点成绩与 σ，"
         "写进 baseline/；最后做预检：统计门 max(accept_sigma × σ, min_delta) 要大于零，"
@@ -44,14 +45,14 @@ DESCRIPTOR = Capability(
     ),
     does_not=(
         "不改需求：requirement.md 是它的输入，人确认过才动手。不跑内环、不开实验。"
-        "封好的 harness 之后任何能力都不许再改（hash 守着），要改评分脚本就带意见接着改这次产出。"
+        "封好的 harness 之后任何能力都不许再改；要改评分脚本，带修改意见接着改这次产出，"
+        "不另开目录。"
     ),
     brings=(
-        "确认过的需求 requirement.md（要优化什么、数据在哪、怎么算好、花多少）；原件 materials/"
+        "已确认的需求 requirement.md（要优化什么、数据在哪、怎么算好、花多少）；原件 materials/"
         "（评分脚本重算指标要用的数据，搬进 data/）与 materials/env/（python-version 与"
-        "requirements.lock，"
-        "研究者环境的 pip freeze）；可选 --from hypothesis/<n>；改第二版带 --continue design/<n>"
-        "--feedback。"
+        "requirements.lock，研究者环境的 pip freeze）；假设阶段的产出可选。"
+        "改第二版时接着上一次产出，带修改意见。"
     ),
     leaves=(
         "scoring.yaml、harness/（封好的评分脚本与 SHA256SUMS）、code/（基线代码）、data/、env/、"
@@ -59,15 +60,15 @@ DESCRIPTOR = Capability(
         "执行层会话的日志在 executor/。"
     ),
     stops=(
-        "执行层越界改了别的目录、ruff 或契约校验没过：草稿留在盘上、问题一行一条，"
-        "等 --feedback 改第二版。make_run0.sh 退非零或预检没过（门为零、离尽头不够一个门）："
+        "执行层改了别的目录、ruff 或契约校验没过：草稿留在盘上、问题一行一条，"
+        "等修改意见改第二版。make_run0.sh 退非零或预检没过（门为零、离尽头不够一个门）："
         "停下来说清，这道题不值得跑。都过了就一次成活，结论行里是基线、σ、门与离尽头几个门。"
     ),
     params=(
         Param("domain", "str", packs.DEFAULT_DOMAIN,
-              "领域包名（domains/ 下的目录）：执行层提示按它追加领域约定"),
+              "领域包名（domains/ 下的目录）：执行层提示按它追加领域约定", "领域包"),
         Param("feedback", "str", "",
-              "喂回执行层的修改意见（改第二版）；写 @<文件> 就读那个文件；空串是第一版",
+              "喂回执行层的修改意见（改第二版）；写 @<文件> 就读那个文件；空串是第一版", "修改意见",
               in_flow=False),
     ),
     needs_executor=True,

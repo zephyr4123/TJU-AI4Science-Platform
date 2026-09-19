@@ -284,7 +284,7 @@ class ClaudeCodeChat:
         for path in allowed_paths:
             rules += [f"Edit({_abs_glob(path)})", f"Write({_abs_glob(path)})"]
         rules.append(f"Read({_abs_glob(cwd)})")
-        # 工作目录之外能读不能写的目录（研究助理看工作流库）：`--add-dir` 让 Read / Glob / Grep 在
+        # 工作目录之外能读不能写的目录（研究助理看流程库）：`--add-dir` 让 Read / Glob / Grep 在
         # dontAsk 下不被拒；Edit / Write 的白名单没有它，写照旧被拒
         for path in readable_paths:
             rules.append(f"Read({_abs_glob(path)})")

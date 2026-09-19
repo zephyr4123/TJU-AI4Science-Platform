@@ -3,7 +3,7 @@
 
 在 cli 层。文献、假设、写作三个阶段现在没有能力，助理在对话里自己写东西：先在这儿开目录、写好 meta，
 然后直接往目录里写文件。`by` 记成 assistant；人自己在终端开的，`--by human`。
-门、输入的冻结核对、照流与断点，与 `cap` 同一套（复用 cap 的函数）。
+门、输入的冻结核对、照流程与断点，与 `cap` 同一套（复用 cap 的函数）。
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import sys
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, current_workspace
 from framework.cli.cap import FLOW_HELP, FROM_HELP, _place_in_flow
 from framework.contracts import output, requirement, workflows
-from framework.contracts.capability import Capability
 from framework.contracts.stages import STAGE_SLUGS, name_of
 from framework.workspace import jobs, outputs
 
@@ -32,11 +31,9 @@ def cmd_new(args: argparse.Namespace) -> int:
     try:
         version = requirement.require_confirmed(ws.root)
         inputs = outputs.resolve_inputs(ws, list(args.inputs or []))
-        # 手写的产出在流里按阶段找位置：借一颗"没点名"的描述符，只有阶段名有用
+        # 手写的产出在流程里按阶段找位置：没点名能力，只有阶段名有用
         title = args.title.strip() or name_of(args.stage)
-        stand_in = Capability(name=args.by, stage=name_of(args.stage), title=title,
-                              does="-", does_not="-", brings="-", leaves="-", stops="-")
-        flow, step = _place_in_flow(ws, stand_in, inputs, args.flow)
+        flow, step = _place_in_flow(ws, args.by, name_of(args.stage), inputs, args.flow)
     except (requirement.NotConfirmed, ValueError, output.OutputNotFound,
             workflows.WorkflowInvalid) as exc:
         print(str(exc), file=sys.stderr)

@@ -698,7 +698,7 @@ def test_notebook_survives_revert_to_best(tmp_path):
     assert text.count("### 第 ") == 2 and "no_results" in text
 
 
-# ── 续命：协调层给已停的实验加预算 ─────────────────────────────────────
+# ── 加预算：协调层给已停的实验加预算 ─────────────────────────────────────
 def test_extend_experiment_clears_stop_and_lets_the_loop_continue(tmp_path):
     run_dir, _ = start_run(tmp_path, patience=1)
     stop = run_loop(run_dir, ScriptedRunner([train_for_mse(0.0299)]), LocalCompute())
@@ -707,7 +707,7 @@ def test_extend_experiment_clears_stop_and_lets_the_loop_continue(tmp_path):
     assert done["cleared"] == "patience" and done["changes"] == ["patience: 1 → 5"]
     assert read_checkpoint(run_dir)["stop_reason"] is None
     assert not (run_dir / "stop.json").exists()
-    assert "续命" in (run_dir / "journal.md").read_text(encoding="utf-8")
+    assert "加预算" in (run_dir / "journal.md").read_text(encoding="utf-8")
     stop = run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(),
                          max_iters=1)
     assert stop.reason == "batch_exhausted" and rows_of(run_dir)[-1].status == "keep"
@@ -744,7 +744,7 @@ def test_three_executor_failures_in_a_row_are_unrecoverable(tmp_path):
 
 
 def test_extend_after_unrecoverable_forgives_the_failures_before_it(tmp_path):
-    """真跑：执行层连不上模型三次判不可修复，续命后内环一起来又数到同样三行、当场再停。"""
+    """真跑：执行层连不上模型三次判不可修复，加预算后内环一起来又数到同样三行、当场再停。"""
     run_dir, _ = start_run(tmp_path)
     runner = ScriptedRunner([train_for_mse(0.018)] * 4, die_at=(1, 2, 3))
     assert run_loop(run_dir, runner, LocalCompute()).reason == "unrecoverable:executor_failed"

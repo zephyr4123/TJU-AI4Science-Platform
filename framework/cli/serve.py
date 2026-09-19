@@ -1,6 +1,6 @@
 """`ai4sci serve`：起网页的后端（HTTP + SSE）并把页面端出去，常驻直到 Ctrl-C。
 
-cli 层里唯一常驻的命令：它不是"跑一个能力"，是给页面一个门。能力清单、工作流库、拼流检查与描述符表
+cli 层里唯一常驻的命令：它不是"跑一个能力"，是给页面一个门。能力清单、流程库、拼流程检查与描述符表
 从 `capabilities.discover` 与 `contracts.workflows` 拿，以函数传给 server
 （chat 层不认识 capabilities）。数据根是 `AI4SCI_HOME`（缺省仓根）：工作区与编辑台的对话都在它下面。
 
@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from framework import paths
-from framework.capabilities import discover
+from framework.capabilities import discover, stage_table
 from framework.chat import guide
 from framework.chat.server import ChatServer
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, setup_logging
@@ -44,7 +44,7 @@ def _descriptor_map() -> dict[str, object]:
 
 
 def _save_workflow(doc: dict) -> dict:
-    """编辑台存流：核对形状与通不通，写进库，回它在清单里的样子。"""
+    """编辑台存流程：核对形状与通不通，写进库，回它在清单里的样子。"""
     catalog = _descriptors()
     overwrite = bool(doc.pop("overwrite", False))
     saved = workflows.save_workflow(paths.workflows_root(), doc, catalog, overwrite=overwrite)
@@ -53,7 +53,7 @@ def _save_workflow(doc: dict) -> dict:
 
 
 def _check_workflow(doc: dict) -> dict:
-    """编辑台拼着的那条流有没有问题：与存流同一套检查，只查不写；形状不对也当问题报，页面不该为此
+    """编辑台拼着的那条流程有没有问题：与存流程同一套检查，只查不写；形状不对也当问题报，页面不该为此
     拿 500。名字、标题、说明还没填是常态（人先排阶段），这里只查阶段那部分，三样空着的补个占位。"""
     catalog = _descriptors()
     name = str(doc.get("name") or "").strip() or "draft"
@@ -63,7 +63,7 @@ def _check_workflow(doc: dict) -> dict:
     try:
         workflow = workflows.parse_workflow(f"{name}.yaml", doc)
     except workflows.WorkflowInvalid as exc:
-        # 文件名前缀是给终端看的；页面上这条流还没有文件
+        # 文件名前缀是给终端看的；页面上这条流程还没有文件
         return {"covers": [], "remarks": [], "problems": [str(exc).removeprefix(f"{name}.yaml: ")]}
     return {"covers": workflow.covered, "remarks": workflows.remarks(workflow),
             "problems": workflows.workflow_problems(workflow, catalog)}
@@ -82,7 +82,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         server = ChatServer((args.host, args.port), home=paths.home(), catalog=_catalog,
                             workflows=_workflows, check_workflow=_check_workflow,
                             save_workflow=_save_workflow, descriptors=_descriptor_map,
-                            ui_dir=ui_dir)
+                            stage_table=stage_table, ui_dir=ui_dir)
     except guide.GuideMissing as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID

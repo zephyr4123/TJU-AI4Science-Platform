@@ -1,10 +1,11 @@
-"""看板读盘：工作区（需求、七个阶段的产出、每条流走到哪、作业）与一次产出的细节。纯读盘、零模型。
+"""看板读盘：工作区（需求、七个阶段的产出、每条流程走到哪、作业）与一次产出的细节。纯读盘、零模型。
 
 页面是 `ai4sci serve` 的客户端（`ui/README.md`）：这里每个函数就是一个端点的响应体，
 server 只做路由；换一种 UI（TUI）读的也是同一份东西。每个响应体都是能直接 `json.dumps`
 的字典——NaN 在这里就换成 None，浏览器的 JSON.parse 不认 NaN。
 
-按纲领 P-19 只读框架认的东西：需求、meta.yaml、signed.json、流文件、作业。产出目录里其它文件只列名字
+按纲领 P-19 只读框架认的东西：需求、meta.yaml、signed.json、流程文件、作业。产出目录里其它文件
+只列名字
 （页面按文件种类通用渲染），不解释内容。
 
 文件镜头（外层 #111）：工作区的目录一层一层懒加载、一个文件的正文、一个文件原样端出。只读；路径出了
@@ -51,7 +52,7 @@ def workspace_summary(workspace: Workspace) -> dict[str, Any]:
 
 
 def workspace_detail(workspace: Workspace, catalog: dict[str, Capability]) -> dict[str, Any]:
-    """主页面要的一整份：需求 + 七个阶段各自的产出 + 每条流实例的进度 + 作业。"""
+    """主页面要的一整份：需求 + 七个阶段各自的产出 + 每条流程实例的进度 + 作业。"""
     found = outputs.list_outputs(workspace)
     briefs = {meta.id: output_brief(directory, meta) for directory, meta in found}
     stages = [{"name": s.name, "slug": s.slug,

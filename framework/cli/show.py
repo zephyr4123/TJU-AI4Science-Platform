@@ -35,7 +35,7 @@ def cmd_workspaces(args: argparse.Namespace) -> int:
 
 
 def cmd_workspace(args: argparse.Namespace) -> int:
-    """当前工作区的全貌：需求状态、每个阶段有几次产出、每条流走到哪、在等谁、跑着的作业。"""
+    """当前工作区的全貌：需求状态、每个阶段有几次产出、每条流程走到哪、在等谁、跑着的作业。"""
     ws = current_workspace()
     if isinstance(ws, int):
         return ws
@@ -151,11 +151,11 @@ def _job_line(job: jobs.Job) -> str:
 
 
 def cmd_caps(args: argparse.Namespace) -> int:
-    """能力清单：七个研究阶段、每个阶段里的能力，空着的阶段也列出来。每颗带五栏（干什么 / 不干什么 /
-    要带什么进来 / 留下什么 / 什么时候停）与"用在哪几条流"——后者是从库里的工作流文件反查的，
+    """能力清单：七个研究阶段、每个阶段里的能力，空着的阶段也列出来。每个带五栏（干什么 / 不干什么 /
+    要带什么进来 / 留下什么 / 什么时候停）与"用在哪几条流程"——后者是从库里的流程文件反查的，
     能力自己不知道。"""
     descriptors = [module.DESCRIPTOR for module in discover().values()]
-    # 坏掉的工作流文件不算进反查；坏在哪由 show workflows 报
+    # 坏掉的流程文件不算进反查；坏在哪由 show workflows 报
     uses = workflows.used_by(workflows.load_valid(paths.workflows_root()))
     if args.json:
         print(json.dumps([{**d.to_dict(), "used_by": uses.get(d.name, [])} for d in descriptors],
@@ -167,9 +167,8 @@ def cmd_caps(args: argparse.Namespace) -> int:
             print(f"{stage.name}\t-\t这个阶段还没有能力"
                   f"（助理可以 ai4sci output new {stage.slug} 自己写）")
         for d in caps:
-            who = "助理" if d.needs_executor else "机器"
             params = " ".join(f"--{p.name.replace('_', '-')}" for p in d.params) or "-"
-            print(f"{stage.name}\t{d.name}\t{d.title}\t{who}\t参数 {params}"
+            print(f"{stage.name}\t{d.name}\t{d.title}\t{d.brief}\t参数 {params}"
                   f"\tused_by={','.join(uses.get(d.name, [])) or '-'}")
             for key, label in COLUMNS:
                 print(f"  {label}：{getattr(d, key)}")
@@ -181,12 +180,12 @@ def _catalog():
 
 
 def cmd_workflows(args: argparse.Namespace) -> int:
-    """库里的工作流：每条一行带走过的阶段，点名的能力不在那个阶段、参数不对的退 1；提醒只打不退。"""
+    """库里的流程：每条一行带走过的阶段，点名的能力不在那个阶段、参数不对的退 1；提醒只打不退。"""
     return _print_flows(paths.workflows_root(), args.json)
 
 
 def cmd_flows(args: argparse.Namespace) -> int:
-    """当前工作区里的流实例：从库里取来、改过参数的那几条，同一套形状检查。"""
+    """当前工作区里的流程实例：从库里取来、改过参数的那几条，同一套形状检查。"""
     ws = current_workspace()
     if isinstance(ws, int):
         return ws
@@ -233,12 +232,12 @@ def cmd_template(args: argparse.Namespace) -> int:
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
-    show = groups.add_parser("show", help="只读查询：工作区、产出、作业、流、能力清单、需求模板")
+    show = groups.add_parser("show", help="只读查询：工作区、产出、作业、流程、能力清单、需求模板")
     what = show.add_subparsers(dest="what", required=True)
     spaces = what.add_parser("workspaces", help="列出全部工作区：id、标题、需求状态、在哪")
     spaces.set_defaults(func=cmd_workspaces)
     space = what.add_parser("workspace",
-                            help="当前工作区的全貌：需求、每个阶段的产出、每条流走到哪、作业")
+                            help="当前工作区的全貌：需求、每个阶段的产出、每条流程走到哪、作业")
     space.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     space.set_defaults(func=cmd_workspace)
     outs = what.add_parser("outputs", help="当前工作区的产出清单，可按阶段筛")
@@ -254,15 +253,15 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     job.add_argument("job_id")
     job.set_defaults(func=cmd_job)
     flows = what.add_parser("flows",
-                            help="当前工作区的流实例（flows/*.yaml）：经过哪些阶段、有无问题")
+                            help="当前工作区的流程实例（flows/*.yaml）：经过哪些阶段、有无问题")
     flows.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     flows.set_defaults(func=cmd_flows)
     caps = what.add_parser("caps",
-                           help="能力清单：七个研究阶段各有什么能力、每颗五栏说明，带用在哪几条流")
+                           help="能力清单：七个研究阶段各有什么能力、每个五栏说明，带用在哪几条流程")
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     caps.set_defaults(func=cmd_caps)
     wfs = what.add_parser("workflows",
-                          help="库里的工作流（workflows/*.yaml）：经过哪些阶段、有无问题")
+                          help="库里的流程（workflows/*.yaml）：经过哪些阶段、有无问题")
     wfs.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     wfs.set_defaults(func=cmd_workflows)
     tpls = what.add_parser("templates", help="库里的需求模板：通用一份、按学科加")

@@ -52,7 +52,7 @@ class Job:
     log: str = ""
     # 跑完叫醒那段对话的结果（chat 层写的一句话）；没有对话的作业是 None
     wake: str | None = None
-    # 照哪条流跑的（--flow）；没照流是 None。页面靠它把跑着的作业画到那条流上
+    # 照哪条流程跑的（--flow）；没照流程是 None。页面靠它把跑着的作业画到那条流程上
     flow: str | None = None
     # 这个作业产的那次产出（子进程开了目录再回写）；接着干的作业开工时就知道
     output: str | None = None
@@ -149,7 +149,7 @@ def running_for(jobs_dir: Path, output: str) -> Job | None:
 
 
 def running_flow(jobs_dir: Path, flow: str) -> Job | None:
-    """正在照某条流跑的作业；没有就是 None。"""
+    """正在照某条流程跑的作业；没有就是 None。"""
     for job in reversed(list_jobs(jobs_dir)):
         if job.flow == flow and effective_status(job) == "running":
             return job

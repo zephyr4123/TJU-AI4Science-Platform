@@ -1,4 +1,4 @@
-"""工作流文件（P-18）：阶段 + 断点读得出来，点名的能力得在那个阶段、参数得对得上描述符；
+"""流程文件（P-18）：阶段 + 断点读得出来，点名的能力得在那个阶段、参数得对得上描述符；
 坏文件当场报，不静默跳过。"""
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def test_shipped_workflow_is_one_line_from_design_to_verification():
     assert wf.covered == ["设计", "实验", "分析", "验证"]
     assert wf.caps == ["auto-research"]  # 只点名了实验阶段；别的间由助理看着办
     stops = [r for r in wf.stages if isinstance(r, Stop)]
-    assert [s.note for s in stops] == ["核对评分脚本算的是不是你要的数", "验收"]
+    assert [s.note for s in stops] == ["评分指标核对", "验收"]
     # 断点管前一项：设计完要签、验证完要签
     assert workflows.stop_after(wf, 0) is stops[0] and workflows.stop_after(wf, 4) is stops[1]
     assert workflows.stop_after(wf, 2) is None
@@ -93,7 +93,7 @@ def test_pick_params_are_checked_against_the_descriptor(tmp_path):
     problems = workflows.workflow_problems(wf, catalog())
     assert len(problems) == 3
     assert "没有的参数 'nope'" in problems[0] and "max_iters 要是 int" in problems[1]
-    assert "resume 是每次调用时才定的，不写进流" in problems[2]
+    assert "resume 是每次调用时才定的，不写进流程" in problems[2]
     write(tmp_path, GOOD.replace("{auto-research: {max_iters: 2}}", "{auto-research: [1]}"))
     with pytest.raises(workflows.WorkflowInvalid, match="「参数名: 值」"):
         workflows.load_workflows(tmp_path)
@@ -105,7 +105,7 @@ def test_a_capability_must_sit_in_its_own_room(tmp_path):
     problems = workflows.workflow_problems(wf, catalog())
     assert problems == [
         "第 3 项「设计」里的 verify 属于「验证」阶段，不能放在「设计」阶段里",
-        "第 3 项「设计」里的 nope：没有这颗能力（有的：['analysis', 'auto-research', 'design', "
+        "第 3 项「设计」里的 nope：没有这个能力（有的：['analysis', 'auto-research', 'design', "
         "'verify']）"]
 
 
@@ -128,8 +128,8 @@ def test_remarks_are_advice_not_problems(tmp_path):
 
 
 def test_save_workflow_writes_the_shortest_spelling_and_refuses_bad_or_duplicate(tmp_path):
-    """编辑台存流（外层 #68）：形状与检查都过了才落盘，存出的文件能被同一套读回来；同名不覆盖。"""
-    doc = {"name": "my-look", "title": "我的流", "summary": "看一眼",
+    """编辑台存流程（外层 #68）：形状与检查都过了才落盘，存出的文件能被同一套读回来；同名不覆盖。"""
+    doc = {"name": "my-look", "title": "我的流程", "summary": "看一眼",
            "stages": ["假设", {"断点": "看一眼"}, "设计",
                      {"实验": {"auto-research": {"max_iters": 2}}},
                      {"分析": ["analysis"]}, {"断点": "看一眼结论"}]}
@@ -143,7 +143,7 @@ def test_save_workflow_writes_the_shortest_spelling_and_refuses_bad_or_duplicate
         workflows.save_workflow(tmp_path, doc, catalog())
     workflows.save_workflow(tmp_path, {**doc, "title": "改了"}, catalog(), overwrite=True)
     assert workflows.load_workflows(tmp_path)[0].title == "改了"
-    with pytest.raises(workflows.WorkflowInvalid, match="没有这颗能力"):
+    with pytest.raises(workflows.WorkflowInvalid, match="没有这个能力"):
         workflows.save_workflow(tmp_path, {**doc, "name": "bad", "stages": [{"设计": ["nope"]}]},
                                 catalog())
     with pytest.raises(workflows.WorkflowInvalid, match="小写英文"):

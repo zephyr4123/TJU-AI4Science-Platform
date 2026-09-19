@@ -2,7 +2,7 @@
 
 子进程跑真命令（退出码、stdout / stderr 分工），进程内跑 `main()` 换剧本后端
 （能力本身在各自的测试里）。
-门：需求没确认任何能力不开工；输入冻住了改过就拒；照流跑断点没签就拒。
+门：需求没确认任何能力不开工；输入冻住了改过就拒；照流程跑断点没签就拒。
 """
 
 from __future__ import annotations
@@ -214,7 +214,7 @@ def test_cap_records_failures_on_disk_and_refuses_them_as_inputs(tmp_path):
 
 
 def test_flow_take_then_stops_are_enforced_when_following_the_flow(tmp_path, monkeypatch, capsys):
-    """纲领 P-15 / P-19：库里的流先取成实例；照流跑时，前一项后面有断点就得签了才能读。"""
+    """纲领 P-15 / P-19：库里的流程先取成实例；照流程跑时，前一项后面有断点就得签了才能读。"""
     from framework.cli import main
 
     pack = pf.make_pack(tmp_path)
@@ -230,14 +230,14 @@ def test_flow_take_then_stops_are_enforced_when_following_the_flow(tmp_path, mon
     assert renamed.returncode == EXIT_OK and (pack.workspace.flows / "research-5.yaml").is_file()
     listed = run_cli("show", "flows", **in_pack(pack))
     assert listed.returncode == EXIT_OK, listed.stderr
-    assert ("设计 → ◆核对评分脚本算的是不是你要的数 → 实验(auto-research) → 分析 → 验证 → ◆验收"
+    assert ("设计 → ◆评分指标核对 → 实验(auto-research) → 分析 → 验证 → ◆验收"
             in listed.stdout)
     (pack.workspace.flows / "zz.yaml").write_text("name: zz\n", encoding="utf-8")
     listed = run_cli("show", "flows", **in_pack(pack))
     assert listed.returncode == EXIT_INVALID and "zz.yaml: 缺 title" in listed.stderr
     (pack.workspace.flows / "zz.yaml").unlink()
 
-    # 两条流：不说照哪条就拒；design/1 没记在流里（夹具直接造的），断点管不到它
+    # 两条流程：不说照哪条就拒；design/1 没记在流程里（夹具直接造的），断点管不到它
     code = main(["cap", "auto-research", "--from", "design/1"])
     assert code == EXIT_INVALID and "--flow" in capsys.readouterr().err
     code = main(["cap", "auto-research", "--from", "design/1", "--flow", "nope"])
@@ -247,7 +247,7 @@ def test_flow_take_then_stops_are_enforced_when_following_the_flow(tmp_path, mon
     output.write_meta(pack.pack, meta)
     code = main(["cap", "auto-research", "--from", "design/1", "--flow", "research"])
     err = capsys.readouterr().err
-    assert code == EXIT_INVALID and "断点「核对评分脚本算的是不是你要的数」" in err
+    assert code == EXIT_INVALID and "断点「评分指标核对」" in err
     assert "ai4sci sign design/1" in err
     output.sign(pack.pack, by="人")
     code = main(["cap", "auto-research", "--from", "design/1", "--flow", "research"])
@@ -332,7 +332,7 @@ def test_finished_job_drops_its_job_id_before_waking_the_chat(tmp_path, monkeypa
 
 
 def test_auto_research_extends_the_budget_before_looping(tmp_path, monkeypatch, capsys):
-    """续命是 auto-research 的参数：给了预算就改快照、清停止标记、journal 记一行，再接着跑。"""
+    """加预算是 auto-research 的参数：给了预算就改快照、清停止标记、journal 记一行，再接着跑。"""
     from framework.capabilities import auto_research as experiment
     from framework.cli import main
     from framework.experiment.checkpoint import read_checkpoint, write_checkpoint
@@ -355,7 +355,7 @@ def test_auto_research_extends_the_budget_before_looping(tmp_path, monkeypatch, 
     assert "patience: 99 → 9" in (run_dir / "journal.md").read_text(encoding="utf-8")
     assert capsys.readouterr().out.startswith("stop batch_exhausted")
     code = main(["cap", "auto-research", "--continue", "experiment/1", "--reason", "没配预算"])
-    assert code == EXIT_INVALID and "只在续命时" in capsys.readouterr().err
+    assert code == EXIT_INVALID and "只在加预算时" in capsys.readouterr().err
 
 
 def test_show_caps_lists_stages_with_empty_stages_visible_and_five_columns():
@@ -366,11 +366,13 @@ def test_show_caps_lists_stages_with_empty_stages_visible_and_five_columns():
     assert "output new literature" in lines[0]
     assert lines[1].startswith("假设\t-\t")
     design = next(line for line in lines if line.startswith("设计\tdesign\t"))
-    assert "助理" in design and "used_by=-" in design and "--domain --feedback" in design
+    # 一行上屏，执行者种类不上屏
+    assert "评分脚本与基线\t按需求写评分契约" in design and "助理" not in design
+    assert "used_by=-" in design and "--domain --feedback" in design
     experiment = next(line for line in lines if line.startswith("实验\tauto-research\t"))
     assert "used_by=research" in experiment
-    assert any(line.startswith("  干什么：") for line in lines)
-    assert any(line.startswith("  什么时候停：") for line in lines)
+    assert any(line.startswith("  职责：") for line in lines)
+    assert any(line.startswith("  终止条件：") for line in lines)
 
 
 def test_show_caps_json_is_descriptor_dicts_with_used_by():
@@ -387,7 +389,7 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
 def test_show_workflows_lists_stages_and_stops():
     proc = run_cli("show", "workflows")
     assert proc.returncode == EXIT_OK, proc.stderr
-    assert proc.stdout.startswith("research\t从设计到验证\t设计 → ◆核对评分脚本算的是不是你要的数")
+    assert proc.stdout.startswith("research\t从设计到验证\t设计 → ◆评分指标核对")
     assert proc.stdout.rstrip().endswith("→ 验证 → ◆验收")
 
 
@@ -556,7 +558,7 @@ def test_chat_new_send_list_in_the_workspace_with_a_scripted_backend(tmp_path, m
                                    "ok w")])
     monkeypatch.setattr("framework.cli.chat.get_chat", lambda name: chat)
     monkeypatch.setitem(guide.GUIDE_PATHS, guide.WORKSPACE, tmp_path / "README.md")
-    (tmp_path / "README.md").write_text("# 指南\n用流不造流。", encoding="utf-8")
+    (tmp_path / "README.md").write_text("# 指南\n用流程不造流程。", encoding="utf-8")
     ws = workspace.create(tmp_path / "workspaces", "w")
     monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
 
@@ -570,7 +572,7 @@ def test_chat_new_send_list_in_the_workspace_with_a_scripted_backend(tmp_path, m
     assert out[2].startswith("[result] ok w") and out[3] == "有一份需求。"
     assert out[4].startswith("done\tcost_usd=0.0100")
     assert chat.calls[0]["system_prompt"].startswith("# 你在服务里") and \
-        "用流不造流" in chat.calls[0]["system_prompt"]
+        "用流程不造流程" in chat.calls[0]["system_prompt"]
     assert chat.calls[0]["cwd"] == ws.root
     assert chat.calls[0]["allowed_paths"] == [ws.root]
     assert chat.calls[0]["readable_paths"] == [paths.workflows_root(), paths.templates_root()]
@@ -621,7 +623,7 @@ def test_chat_new_and_send_take_model_and_effort_from_the_backends_list(tmp_path
 
 def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_path, monkeypatch,
                                                                             capsys):
-    """纲领 P-16：`--studio` 是编辑台的造流助理——另一份指南、对话在 studio/ 下、只能写库。"""
+    """纲领 P-16：`--studio` 是编辑台的流程助理——另一份指南、对话在 studio/ 下、只能写库。"""
     from framework import paths
     from framework.chat import guide
     from framework.cli import main
@@ -630,7 +632,7 @@ def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_p
     chat = ScriptedChat([reply("拼好了")])
     monkeypatch.setattr("framework.cli.chat.get_chat", lambda name: chat)
     monkeypatch.setitem(guide.GUIDE_PATHS, guide.STUDIO, tmp_path / "studio.md")
-    (tmp_path / "studio.md").write_text("# 造流\n只写库。", encoding="utf-8")
+    (tmp_path / "studio.md").write_text("# 造流程\n只写库。", encoding="utf-8")
     library = tmp_path / "lib" / "workflows"
     library.mkdir(parents=True)
     monkeypatch.setenv("AI4SCI_HOME", str(tmp_path))
@@ -664,7 +666,7 @@ def test_chat_send_unknown_id_and_missing_file_exit_two(tmp_path):
 
 # ── serve 注入给页面后端的几个函数：真清单、真检查 ────────────────────────
 def test_serve_helpers_check_a_draft_and_list_the_catalog():
-    """编辑台边拼边问：名字、标题、说明还没填也只报阶段的问题；清单每颗带五栏与 used_by。"""
+    """编辑台边拼边问：名字、标题、说明还没填也只报阶段的问题；清单每个带五栏与 used_by。"""
     from framework.cli import serve
 
     ok = serve._check_workflow(

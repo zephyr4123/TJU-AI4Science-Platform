@@ -24,7 +24,7 @@ def cmd_confirm(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
     print(f"ok {ws.id}\tv{record['version']}\tby={record['by']}\tat={record['confirmed_at']}"
-          "\tnext=取一条流 ai4sci flow take <name>，然后按流走")
+          "\tnext=取一条流程 ai4sci flow take <name>，然后按流程走")
     return EXIT_OK
 
 

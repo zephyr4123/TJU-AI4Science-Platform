@@ -1,6 +1,6 @@
 """仓根与几个根目录的读取点，全框架只此一处（纲领 P-15：读数据根的只有这里）。
 
-两类目录分开想：随代码走的**库**——工作流库 `workflows/`、需求模板 `templates/`、领域包 `domains/`、
+两类目录分开想：随代码走的**库**——流程库 `workflows/`、需求模板 `templates/`、领域包 `domains/`、
 两位助理的指南 `coordinator/`、页面构建 `ui/web/dist`——缺省都在仓根下；随使用长出来的**数据**
 ——工作区 `workspaces/`、编辑台的对话 `studio/`——根是 `AI4SCI_HOME`，0.x 缺省也是仓根。
 四个环境变量各自
@@ -31,7 +31,7 @@ def home() -> Path:
 
 
 def workflows_root() -> Path:
-    """工作流库：通用的流，编辑台改它；工作区里的是它的实例（workflow.md §1）。"""
+    """流程库：通用的流程，编辑台改它；工作区里的是它的实例（workflow.md §1）。"""
     return _root(WORKFLOWS_ROOT_ENV, REPO_ROOT / WORKFLOWS_DIRNAME)
 
 

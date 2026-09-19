@@ -1,4 +1,4 @@
-"""核对数字：验证阶段里现有的一颗能力——零模型，对分析初稿做数字回溯与账本对账，写 `report.json`。
+"""核对数字：验证阶段里现有的一个能力——零模型，对分析初稿做数字回溯与账本对账，写 `report.json`。
 
 一个能力一个子包，互不 import。它读分析能力与实验能力的产物但不 import 它们：三边共用的只有
 `experiment.analysis`（数据表解析）与 `experiment.artifacts`（结果索引）。
@@ -30,8 +30,9 @@ DESCRIPTOR = Capability(
     name="verify",
     stage="验证",
     title="数字核对",
+    brief="把分析里的每个数回溯到结果文件，账本对 git 历史",
     does=(
-        "零模型。读 --from 点名的分析产出里的 analysis.md，把数据表每一行 (来源, 指标, 值)"
+        "不经模型。读点名的分析产出里的 analysis.md，把数据表每一行 (来源, 指标, 值)"
         " 回溯到那次实验那一轮的 results.json——相对误差在容差内才算找到；"
         "正文里每个带小数点或指数的数都得出现在数据表里；"
         "再把每次实验的 ledger.tsv 与 work/ 的 git 对账：每行 commit 在仓里找得到、"
@@ -40,11 +41,11 @@ DESCRIPTOR = Capability(
     ),
     does_not=(
         "不判结论对不对、不重跑任何实验、不读代码：它只回答「分析里的数是不是从结果文件抄的、"
-        "账本与代码历史对不对得上」。不替人验收——验收是人签字。"
+        "账本与代码历史对不对得上」。不替人验收——验收是人确认。"
     ),
     brings=(
-        "一次分析产出（--from analysis/<n>）与它分析的那几次实验产出（--from experiment/<n>，"
-        "分析读了谁就带谁）：analysis.md、iters/iter_N/results.json、ledger.tsv、work/（git 仓）。"
+        "一次分析产出与它分析的那几次实验产出（分析读了谁就带谁）："
+        "analysis.md、iters/iter_N/results.json、ledger.tsv、work/（git 仓）。"
     ),
     leaves="report.json（PASS 与 FAIL 都写）。",
     stops=(
@@ -52,7 +53,8 @@ DESCRIPTOR = Capability(
         "analysis.md 不在就直接判失败。"
     ),
     params=(
-        Param("tolerance", "float", DEFAULT_TOLERANCE, "数字回溯的相对容差，缺省 0.01（1%）"),
+        Param("tolerance", "float", DEFAULT_TOLERANCE, "数字回溯的相对容差，缺省 0.01（1%）",
+              "容差"),
     ),
 )
 

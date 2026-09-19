@@ -79,7 +79,7 @@ writing/2/draft.md     meta: by: report-draft   from: [analysis/2]
 
 | 层 | 字段 | 页面上 | 规矩 | 例 |
 |---|---|---|---|---|
-| 名 | `title` | 直接显示 | 名词短语，不超过六字，不用动宾；方法有公认名字的原样写，不硬翻 | 评分脚本与基线、分析初稿、数字核对、AutoResearch |
+| 名 | `title` | 直接显示 | 名词短语，不超过八字，不用动宾；方法有公认名字的原样写，不硬翻 | 评分脚本与基线、分析初稿、数字核对、AutoResearch |
 | 一行 | `brief` | hover | 一句，三十字内，说拿什么做出什么；不带路径、参数名 | 自动迭代代码，逐轮记账 |
 | 详情 | 五栏 `does` `does_not` `brings` `leaves` `stops` | 点击跳详情页，栏名 职责 / 边界 / 输入 / 产出 / 终止条件 | 工程语言陈述句；文件名可以写（它们在工作区里真实存在）；CLI 参数不写（`--from design/<n>` 写成「设计阶段的一次产出」）；框架内部机制不写（目录 hash 校验、`refs/attempts`）；口语不写（「这包」「越界」「续命」「签了」） | 见下 |
 
@@ -105,7 +105,7 @@ from framework.contracts.capability import Capability, CapabilityFailed, Inputs,
 DESCRIPTOR = Capability(
     name="paper-draft",
     stage="写作",
-    title="论文初稿",                       # 名：名词，不超过六字；方法有公认名字的原样写
+    title="论文初稿",                       # 名：名词，不超过八字；方法有公认名字的原样写
     does="...",                             # 职责：讲机制，带专业术语
     does_not="...",                         # 边界
     brings="...",                           # 输入：按阶段说文件名

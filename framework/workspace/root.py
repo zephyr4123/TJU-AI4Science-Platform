@@ -4,10 +4,10 @@
     ├── requirement.md       需求：有它才算工作区（标记就是它）；一级标题是课题标题
     ├── requirement.lock     人的确认（contracts.requirement）
     ├── materials/           原件：PDF / 数据 / 代码，只增不改
-    ├── flows/               流实例：从库里取来、按这份需求改过的 <name>.yaml，几条都行
+    ├── flows/               流程实例：从库里取来、按这份需求改过的 <name>.yaml，几条都行
     ├── literature/ hypothesis/ design/ experiment/ analysis/ writing/ verification/
     │                        七个阶段各一个目录（英文 slug），每次产出一个子目录 <stage>/<n>/；
-    流没走的阶段没有目录
+    流程没走的阶段没有目录
     └── .ai4sci/             平台自己的记录，不是研究产物：chats/ jobs/ logs/ requirement/
     （每版确认的存档）
 
@@ -39,7 +39,7 @@ CHATS_DIRNAME = "chats"
 JOBS_DIRNAME = "jobs"
 LOGS_DIRNAME = "logs"
 WORKSPACE_ENV = "AI4SCI_WORKSPACE"
-# 目录名就是 id：小写英文、数字、连字符（与工作流名同一规矩）
+# 目录名就是 id：小写英文、数字、连字符（与流程名同一规矩）
 ID_RE = re.compile(r"[a-z][a-z0-9-]*")
 
 
@@ -92,7 +92,7 @@ class Workspace:
         return self.root / slug
 
     def stage_dirs(self) -> list[Path]:
-        """七个阶段里盘上已经有目录的那几个，按固定序（P-19：流没走的阶段没有目录）。"""
+        """七个阶段里盘上已经有目录的那几个，按固定序（P-19：流程没走的阶段没有目录）。"""
         return [self.root / slug for slug in STAGE_SLUGS if (self.root / slug).is_dir()]
 
     def title(self) -> str:
@@ -108,7 +108,7 @@ def workspaces_root(home: Path) -> Path:
 
 
 def create(root: Path, ws_id: str, *, title: str = "", template: str = "") -> Workspace:
-    """起一个工作区：建目录、写需求的初稿（模板 + 标题）。阶段目录等流走到再建。
+    """起一个工作区：建目录、写需求的初稿（模板 + 标题）。阶段目录等流程走到再建。
 
     `template` 是模板原文（`templates/<name>.md`），第一个一级标题换成课题标题；没给模板就只写标题。
     """
