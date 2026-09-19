@@ -42,12 +42,16 @@ COLUMNS = (("does", "干什么"), ("does_not", "不干什么"), ("brings", "要�
 
 @dataclass(frozen=True)
 class Param:
-    """能力的一个可调参数。CLI 里是 `--<name 下划线换连字符>`，缺省值就是这里的 default。"""
+    """能力的一个可调参数。CLI 里是 `--<name 下划线换连字符>`，缺省值就是这里的 default。
+
+    `in_flow` 为假的是每次调用时才定的（哪个 run、接不接着跑、材料在哪），流里写不了：
+    编辑台不给它输入框，`workflows` 的检查也拒。"""
 
     name: str
     type: str
     default: Any
     help: str
+    in_flow: bool = True
 
     def __post_init__(self) -> None:
         assert self.type in PARAM_TYPES, (

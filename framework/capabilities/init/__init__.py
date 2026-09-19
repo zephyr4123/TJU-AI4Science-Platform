@@ -64,10 +64,12 @@ DESCRIPTOR = Capability(
     ),
     params=(
         Param("domain", "str", packs.DEFAULT_DOMAIN, "领域包名（domains/ 下的目录）"),
-        Param("materials", "str", "", "研究者给的文件夹，整棵搬进 data/；空就只建空目录"),
-        Param("python", "str", "", "研究者脚本用的 Python 版本，写进 env/python-version（必填）"),
+        Param("materials", "str", "", "研究者给的文件夹，整棵搬进 data/；空就只建空目录",
+              in_flow=False),
+        Param("python", "str", "", "研究者脚本用的 Python 版本，写进 env/python-version（必填）",
+              in_flow=False),
         Param("lock", "str", "",
-              "研究者环境的 pip freeze 文件，复制成 env/requirements.lock（必填）"),
+              "研究者环境的 pip freeze 文件，复制成 env/requirements.lock（必填）", in_flow=False),
     ),
 )
 

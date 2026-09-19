@@ -57,7 +57,8 @@ DESCRIPTOR = Capability(
     ),
     params=(
         Param("feedback", "str", "",
-              "喂回执行层的修改意见（改第二版）；写 @<文件> 就读那个文件；空串是第一版"),
+              "喂回执行层的修改意见（改第二版）；写 @<文件> 就读那个文件；空串是第一版",
+              in_flow=False),
     ),
     needs_executor=True,
 )

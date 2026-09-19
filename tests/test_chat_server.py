@@ -350,7 +350,7 @@ def test_jobs_endpoints(served, tmp_path):
 
 
 def test_check_workflow_endpoint(served):
-    """拼流台边拼边问：同一个 body 只查不存。"""
+    """编辑台边拼边问：同一个 body 只查不存。"""
     base, _ = served
     assert call(base, "/workflows/check")[0] == 404  # GET 下没有它，只有 POST
     doc = {"name": "w", "title": "t", "summary": "s", "stages": ["假设", {"设计": ["design"]}]}

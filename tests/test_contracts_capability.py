@@ -121,6 +121,18 @@ def test_every_shipped_capability_sits_in_a_room_with_all_columns_filled():
             assert len(getattr(d, key)) > 20, f"{d.name}.{key} 太短，五栏要讲机制"
 
 
+def test_param_in_flow_defaults_true_and_invocation_only_ones_are_marked():
+    assert Param("k", "int", 1, "h").in_flow is True
+    from framework.capabilities import discover
+    catalog = {name: module.DESCRIPTOR for name, module in discover().items()}
+    by = {(c, p.name): p.in_flow for c in catalog for p in catalog[c].params}
+    assert by[("auto-research", "run_id")] is False and by[("auto-research", "resume")] is False
+    assert by[("auto-research", "max_iters")] is True
+    assert by[("init", "materials")] is False and by[("init", "domain")] is True
+    assert by[("design", "feedback")] is False
+    assert by[("verify", "tolerance")] is True
+
+
 def test_param_rejects_unknown_type_and_bad_name():
     with pytest.raises(AssertionError, match="类型"):
         Param("k", "list", [], "h")

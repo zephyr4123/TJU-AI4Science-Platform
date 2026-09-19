@@ -82,11 +82,12 @@ def test_used_by_is_looked_up_from_the_files():
 
 
 def test_pick_params_are_checked_against_the_descriptor(tmp_path):
-    write(tmp_path, GOOD.replace("{max_iters: 2}", "{nope: 1, max_iters: 'x'}"))
+    write(tmp_path, GOOD.replace("{max_iters: 2}", "{nope: 1, max_iters: 'x', run_id: r1}"))
     [wf] = workflows.load_workflows(tmp_path)
     problems = workflows.workflow_problems(wf, catalog())
-    assert len(problems) == 2
+    assert len(problems) == 3
     assert "没有的参数 'nope'" in problems[0] and "max_iters 要是 int" in problems[1]
+    assert "run_id 是每次调用时才定的，不写进流" in problems[2]
     write(tmp_path, GOOD.replace("{auto-research: {max_iters: 2}}", "{auto-research: [1]}"))
     with pytest.raises(workflows.WorkflowInvalid, match="「参数名: 值」"):
         workflows.load_workflows(tmp_path)
@@ -97,8 +98,8 @@ def test_a_capability_must_sit_in_its_own_room(tmp_path):
     [wf] = workflows.load_workflows(tmp_path)
     problems = workflows.workflow_problems(wf, catalog())
     assert problems == [
-        "第 3 间「设计」里的 verify 属于「验证」间，不能摆在「设计」间里",
-        "第 3 间「设计」里的 nope：没有这颗能力（有的：['analysis', 'auto-research', 'design', "
+        "第 3 项「设计」里的 verify 属于「验证」阶段，不能放在「设计」阶段里",
+        "第 3 项「设计」里的 nope：没有这颗能力（有的：['analysis', 'auto-research', 'design', "
         "'init', 'verify']）"]
 
 

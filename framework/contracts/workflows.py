@@ -252,24 +252,29 @@ def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> lis
             continue
         for pick in item.picks:
             cap = catalog.get(pick.cap)
-            label = f"第 {i} 间「{item.stage}」里的 {pick.cap}"
+            label = f"第 {i} 项「{item.stage}」里的 {pick.cap}"
             if cap is None:
                 problems.append(f"{label}：没有这颗能力（有的：{sorted(catalog)}）")
                 continue
             if cap.stage != item.stage:
-                problems.append(f"{label} 属于「{cap.stage}」间，不能摆在「{item.stage}」间里")
+                problems.append(
+                    f"{label} 属于「{cap.stage}」阶段，不能放在「{item.stage}」阶段里")
             problems += _with_problems(label, pick.with_, cap)
     return problems
 
 
 def _with_problems(label: str, params: dict[str, Any], cap: Capability) -> list[str]:
-    """参数按描述符核对：名字要在 Param 表里，值要是那个类型（int 可以当 float）。"""
+    """参数按描述符核对：名字要在 Param 表里、得是流里能写的（in_flow），值要是那个类型
+    （int 可以当 float）。"""
     known = {p.name: p for p in cap.params}
     out: list[str] = []
     for name, value in params.items():
         param = known.get(name)
         if param is None:
             out.append(f"{label} 带了描述符里没有的参数 {name!r}（有的：{sorted(known)}）")
+            continue
+        if not param.in_flow:
+            out.append(f"{label} 的 {name} 是每次调用时才定的，不写进流")
             continue
         expected = PARAM_TYPES[param.type]
         ok = (isinstance(value, expected) and not (expected is not bool and isinstance(value, bool))

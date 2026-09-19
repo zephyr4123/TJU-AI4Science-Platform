@@ -769,16 +769,16 @@ def test_chat_send_unknown_id_and_missing_file_exit_two(tmp_path):
 
 # ── serve 注入给页面后端的几个函数：真清单、真检查 ────────────────────────
 def test_serve_helpers_check_a_draft_and_list_the_catalog():
-    """页面拼流台边拼边问：名字、标题、说明还没填也只报阶段的问题；清单每颗带五栏与 used_by。"""
+    """编辑台边拼边问：名字、标题、说明还没填也只报阶段的问题；清单每颗带五栏与 used_by。"""
     from framework.cli import serve
 
     ok = serve._check_workflow({"stages": ["假设", {"断点": "发布"}, {"设计": ["design"]}, "分析"]})
     assert ok["problems"] == [] and ok["covers"] == ["假设", "设计", "分析"]
     assert ok["remarks"] == ["有实验或分析、没有验证：数字没人回溯，结果不能算可信"]
     bad = serve._check_workflow({"name": "x", "stages": [{"设计": ["verify"]}, "断点", "断点"]})
-    assert bad["problems"] == ["x.yaml: 第 2 项与第 3 项都是断点：两个断点挨着等于一个"]
+    assert bad["problems"] == ["第 2 项与第 3 项都是断点：两个断点挨着等于一个"]
     bad = serve._check_workflow({"stages": [{"设计": ["verify"]}]})
-    assert "属于「验证」间" in bad["problems"][0]
+    assert "属于「验证」阶段" in bad["problems"][0]
     catalog = {c["name"]: c for c in serve._catalog()}
     assert catalog["auto-research"]["used_by"] == ["research"] and catalog["verify"]["does"]
     assert [w["name"] for w in serve._workflows()] == ["research"]

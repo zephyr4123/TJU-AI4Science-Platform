@@ -65,7 +65,8 @@ def _check_workflow(doc: dict) -> dict:
     try:
         workflow = workflows.parse_workflow(f"{name}.yaml", doc)
     except workflows.WorkflowInvalid as exc:
-        return {"covers": [], "remarks": [], "problems": [str(exc)]}
+        # 文件名前缀是给终端看的；页面上这条流还没有文件
+        return {"covers": [], "remarks": [], "problems": [str(exc).removeprefix(f"{name}.yaml: ")]}
     return {"covers": workflow.covered, "remarks": workflows.remarks(workflow),
             "problems": workflows.workflow_problems(workflow, catalog)}
 
