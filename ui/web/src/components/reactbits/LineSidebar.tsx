@@ -1,6 +1,6 @@
 // 能力详情页左边的目录，从 reactbits 的 LineSidebar 捞来改装（MIT，https://reactbits.dev/components/line-sidebar）：
-// 一列条目，每条左边一根刻度线，鼠标靠近的条目往右挪、线变长变靛。改动：颜色走 tokens（父组件用 useToken 读值传进来）、
-// 当前项由外面控制（`active`，按滚动位置算）、去掉序号（目录不是编号清单）、减少动效时不挪。别的原样。
+// 一列条目，鼠标靠近的条目往右挪、变靛。改动：颜色走 tokens（父组件用 useToken 读值传进来）、当前项由外面控制
+// （`active`，按滚动位置算）、去掉序号与左边的刻度线（主人：边上的东西砍掉）、减少动效时不挪。别的原样。
 import { type CSSProperties, useCallback, useEffect, useRef } from 'react'
 
 type Falloff = 'linear' | 'smooth' | 'sharp'
@@ -12,13 +12,9 @@ export interface LineSidebarProps {
   onItemClick: (index: number) => void
   accentColor: string
   textColor: string
-  markerColor: string
   proximityRadius?: number
   maxShift?: number
   falloff?: Falloff
-  markerLength?: number
-  markerGap?: number
-  tickScale?: number
   itemGap?: number
   fontSize?: number
   smoothing?: number
@@ -33,9 +29,9 @@ const FALLOFF_CURVES: Record<Falloff, (p: number) => number> = {
 }
 
 export default function LineSidebar({
-  items, active, onItemClick, accentColor, textColor, markerColor,
-  proximityRadius = 100, maxShift = 30, falloff = 'smooth', markerLength = 60, markerGap = 0, tickScale = 0.5,
-  itemGap = 20, fontSize = 1.1, smoothing = 100, still = false, className = '',
+  items, active, onItemClick, accentColor, textColor,
+  proximityRadius = 100, maxShift = 30, falloff = 'smooth', itemGap = 20, fontSize = 1.1, smoothing = 100, still = false,
+  className = '',
 }: LineSidebarProps) {
   const listRef = useRef<HTMLUListElement>(null)
   const itemRefs = useRef<(HTMLLIElement | null)[]>([])
@@ -117,14 +113,10 @@ export default function LineSidebar({
 
   return (
     <nav
-      className={`relative flex justify-start [padding-left:calc(var(--marker-length)+var(--marker-gap))]${className ? ` ${className}` : ''}`}
+      className={`relative flex justify-start${className ? ` ${className}` : ''}`}
       style={{
         '--accent-color': accentColor,
         '--text-color': textColor,
-        '--marker-color': markerColor,
-        '--marker-length': `${markerLength}px`,
-        '--marker-gap': `${markerGap}px`,
-        '--tick-scale': tickScale,
         '--max-shift': `${still ? 0 : maxShift}px`,
         '--item-gap': `${itemGap}px`,
         '--font-size': `${fontSize}rem`,
@@ -134,9 +126,7 @@ export default function LineSidebar({
           className="m-0 flex list-none flex-col py-2 [gap:var(--item-gap)]">
         {items.map((label, index) => (
           <li key={`${label}-${index}`} ref={(el) => { itemRefs.current[index] = el }}
-              className="relative before:absolute before:-inset-x-12 before:-inset-y-[6px] before:content-[''] after:absolute after:left-[calc(-1*var(--marker-length)-var(--marker-gap))] after:top-[calc(100%+var(--item-gap)/2)] after:h-px after:opacity-50 after:content-[''] last:after:content-none after:[background-color:var(--marker-color)] after:[width:calc(var(--marker-length)*var(--tick-scale))] after:origin-left after:[transform:translateY(-50%)_scaleX(calc(0.7+var(--effect,0)*0.6))]">
-            <span aria-hidden="true"
-                  className="absolute left-[calc(-1*var(--marker-length)-var(--marker-gap))] top-1/2 h-px w-[length:var(--marker-length)] origin-left [background-color:color-mix(in_srgb,var(--accent-color)_calc(var(--effect,0)*100%),var(--marker-color))] [transform:translateY(-50%)_scaleX(calc(0.7+var(--effect,0)*0.5))]" />
+              className="relative before:absolute before:-inset-x-12 before:-inset-y-[6px] before:content-['']">
             <button type="button" aria-current={active === index ? 'true' : undefined} onClick={() => onItemClick(index)}
                     className="relative inline-flex cursor-pointer items-baseline leading-[1.2] [color:color-mix(in_srgb,var(--accent-color)_calc(var(--effect,0)*100%),var(--text-color))] [font-size:var(--font-size)] [transform:translateX(calc(var(--effect,0)*var(--max-shift)))] focus-visible:outline-2 focus-visible:outline-ring">
               {label}

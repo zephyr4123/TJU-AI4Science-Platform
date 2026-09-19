@@ -1,7 +1,7 @@
 // 编辑台的「能力」镜头（P-21，外层 #112）：平台现在能做什么。按七个阶段陈列名字——一个阶段挂再多能力也只是名字的清单，
 // 空着的阶段老实写「暂无」；每个名字是一张小卡（SpotlightCard，与画布上的节点同一种材料，一看就是个东西），hover 是一行，
-// 点了原地切成详情页：顶上一枚常驻的「能力」返回键，宋体大名与一行，左边一列目录（reactbits LineSidebar：刻度线、靠近的条目
-// 往右挪，按滚动位置点亮当前节），右边是参数与五栏。流程镜头里节点上的小片与配置板里的名字点了也跳到这里，一个详情两处入口。
+// 点了原地切成详情页：顶上一枚常驻的「能力」返回键，宋体大名与一行，左边一列目录（reactbits LineSidebar：靠近的条目往右挪，
+// 按滚动位置点亮当前节），右边是参数与五栏。流程镜头里节点上的小片与配置板里的名字点了也跳到这里，一个详情两处入口。
 // 层次与文件镜头同一做法：陈列印在雾景上不加框；详情才是一块抬起的面。
 import { ArrowLeft } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
@@ -76,7 +76,6 @@ function Detail({ cap, stage, scroller, onBack }: {
   const still = useReducedMotion() === true
   const indigo = useToken('--primary')
   const muted = useToken('--muted-foreground')
-  const line = useToken('--border')
   const mains = stage?.main_files ?? []
   const sections: { id: string; label: string }[] = [
     ...(cap.params.length > 0 ? [{ id: 'params', label: '参数' }] : []),
@@ -127,11 +126,11 @@ function Detail({ cap, stage, scroller, onBack }: {
         <h1 className="font-serif text-[2rem] leading-tight font-semibold tracking-tight">{cap.title}</h1>
         <p className="mt-2 text-[1.0625rem] text-muted-foreground">{cap.brief}</p>
       </header>
-      <div className="grid grid-cols-[11rem_minmax(0,1fr)] gap-x-10 px-8 pt-4 pb-10">
+      <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-10 px-8 pt-4 pb-10">
         <aside className="sticky top-16 self-start pt-2">
           <LineSidebar items={sections.map((s) => s.label)} active={active} onItemClick={jump}
-                       accentColor={indigo} textColor={muted} markerColor={line}
-                       markerLength={28} markerGap={10} maxShift={10} itemGap={18} fontSize={0.9375} proximityRadius={72} still={still} />
+                       accentColor={indigo} textColor={muted}
+                       maxShift={10} itemGap={18} fontSize={0.9375} proximityRadius={72} still={still} />
         </aside>
         <div ref={body} className="min-w-0">
           {cap.params.length > 0 && (
