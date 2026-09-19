@@ -5,7 +5,7 @@
 // （P-16）。页面只是 `ai4sci serve` 的客户端。
 import { ChatsCircle } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import { api, inWorkspace, STUDIO } from '@/api/client'
 import type { Backend } from '@/api/types'
@@ -37,6 +37,8 @@ const PICKED_KEY = 'ai4sci.workspace'
 
 /** 工作区页面的两个镜头：看板（做到哪了、在等谁）与文件（盘上有什么） */
 type View = 'board' | 'files'
+/** 有作业在跑时多久重拉一次：别的对话起的作业跑完，这边才看得见 */
+const POLL_MS = 10_000
 
 export default function App() {
   const workspaces = useResource(api.workspaces, [])
@@ -92,7 +94,7 @@ export default function App() {
             <Top place={place} menu={wide ? null : <PlacesSheet {...places} />}
                  title={place.kind === 'studio' ? '编辑台' : place.kind === 'door' ? '新建工作区' : current?.title ?? place.id}
                  note={current && place.kind === 'workspace' ? stageSentence(current) : null}
-                 view={place.kind === 'workspace' ? view : null} onView={setView} />
+                 view={place.kind === 'workspace' ? view : null} onView={(v) => { setView(v); setOpened(null) }} />
           )}
           {place?.kind === 'studio'
             ? <StudioView healthy={healthy} knobs={knobs} />
@@ -100,10 +102,16 @@ export default function App() {
               ? <NewWorkspace existing={workspaces.data ?? []} onCreated={(id) => void created(id)}
                               onCancel={wsId ? () => setCreating(false) : undefined} />
               : place
-                ? <MainView key={place.id} wsId={place.id} healthy={healthy} knobs={knobs} title={current?.title ?? place.id}
-                            view={view} focus={focus} opened={opened} onOpen={setOpened}
-                            onOpenFiles={(path) => { setFocus(path); setView('files') }}
-                            onOpenBoard={(oid) => { setOpened(oid); setView('board') }} />
+                ? (
+                  // 雾景挂在这一层：换工作区只重建里面的 MainView，底图不重贴（主人：切换那一瞬闪屏）
+                  <div className="relative flex min-h-0 flex-1">
+                    <Scene picture={ASSETS.board} veil="mist" />
+                    <MainView key={place.id} wsId={place.id} healthy={healthy} knobs={knobs} title={current?.title ?? place.id}
+                              view={view} focus={focus} opened={opened} onOpen={setOpened}
+                              onOpenFiles={(path) => { setFocus(path); setView('files') }}
+                              onOpenBoard={(oid) => { setOpened(oid); setView('board') }} />
+                  </div>
+                )
                 : <div className="flex-1" />}
         </div>
       </div>
@@ -165,15 +173,24 @@ function MainView({ wsId, title, healthy, knobs, view, focus, opened, onOpen, on
       }
     />
   )
+  // 这个工作区那一整份（需求、产出、流的进度、作业）两个镜头共用，拉一次；有作业在跑时轮询；对话每一轮结束重读
+  const doc = useResource(() => api.workspace(wsId), [wsId, c.epoch])
+  const busy = (doc.data?.running ?? 0) > 0
+  const reload = doc.reload
+  useEffect(() => {
+    if (!busy) return
+    const timer = setInterval(() => { void reload() }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [busy, reload])
   return (
-    // 雾景铺满整行（看板 + 对话那块板底下都是它）：板是悬在风景上的，背景不能到板的左边就断（主人 2026-09-19）
     <div className="relative flex min-h-0 flex-1">
-      <Scene picture={ASSETS.board} veil="mist" />
       <main className="relative min-w-0 flex-1">
-        <div className="relative h-full">
-          {view === 'files'
-            ? <Files key={focus ?? ''} workspace={wsId} epoch={c.epoch} focus={focus} onOpenBoard={onOpenBoard} />
-            : <Board workspace={wsId} epoch={c.epoch} opened={opened} onOpen={onOpen} onOpenFiles={onOpenFiles} />}
+        {/* 两个镜头都常驻，切换只是显示 / 隐藏：不重新挂载、不重新拉数据，树的展开与滚动位置也都保住 */}
+        <div className={cn('relative h-full', view !== 'board' && 'hidden')}>
+          <Board workspace={wsId} doc={doc} opened={opened} onOpen={onOpen} onOpenFiles={onOpenFiles} />
+        </div>
+        <div className={cn('relative h-full', view !== 'files' && 'hidden')}>
+          <Files key={focus ?? ''} workspace={wsId} doc={doc} epoch={c.epoch} focus={focus} onOpenBoard={onOpenBoard} />
         </div>
         {!open && <ChatEntry onOpen={() => setChatOpen(true)} />}
       </main>

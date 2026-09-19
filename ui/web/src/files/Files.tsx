@@ -19,7 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { bytes } from '@/lib/format'
 import { outputWord } from '@/lib/humanize'
 import { stageIcon } from '@/lib/stages'
-import { useResource } from '@/lib/useResource'
+import { type Resource, useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 
 import { ancestors, fileKind, meaningOf, orderRoot, outputIdOf, parseTable, referencedIds, type RowMeaning } from './derive'
@@ -28,11 +28,11 @@ import { highlight, languageOf } from './highlight'
 /** 进来先看需求：树的根上最要紧的那份文件 */
 const DEFAULT_FILE = 'requirement.md'
 
-/** `focus` 是从看板「打开目录」带过来的产出路径：进来就展开到它、选中它（父组件按 focus 给 key，换了就重建） */
-export function Files({ workspace, epoch, focus, onOpenBoard }: {
-  workspace: string; epoch: number; focus: string | null; onOpenBoard: (oid: string) => void
+/** `focus` 是从看板「打开目录」带过来的产出路径：进来就展开到它、选中它（父组件按 focus 给 key，换了就重建）。
+ *  工作区那一整份 `doc` 由父组件拉、与看板共用；`epoch` 是对话的轮次，换了就重读目录与文件 */
+export function Files({ workspace, doc, epoch, focus, onOpenBoard }: {
+  workspace: string; doc: Resource<WorkspaceDetail>; epoch: number; focus: string | null; onOpenBoard: (oid: string) => void
 }) {
-  const doc = useResource(() => api.workspace(workspace), [workspace, epoch])
   const [selected, setSelected] = useState<string>(focus ?? DEFAULT_FILE)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(ancestors(focus ?? DEFAULT_FILE).concat(focus ? [focus] : [])))
   const toggle = (path: string) => setExpanded((prev) => {
