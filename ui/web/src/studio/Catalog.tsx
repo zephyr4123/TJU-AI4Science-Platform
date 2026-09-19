@@ -1,17 +1,14 @@
 // 编辑台的「能力」镜头（P-21，外层 #112）：平台现在能做什么。按七个阶段陈列名字——一个阶段挂再多能力也只是名字的清单，
 // 空着的阶段老实写「暂无」；每个名字是一张小卡（SpotlightCard，与画布上的节点同一种材料，一看就是个东西），hover 是一行，
-// 点了原地切成详情页：顶上一枚常驻的「能力」返回键，宋体大名与一行，左边一列目录（reactbits LineSidebar：靠近的条目往右挪，
-// 按滚动位置点亮当前节），右边是参数与五栏。流程镜头里节点上的小片与配置板里的名字点了也跳到这里，一个详情两处入口。
+// 点了原地切成详情页：顶上一枚常驻的「能力」返回键，宋体大名与一行，底下参数与五栏，一列到底（主人：不要侧边目录）。
+// 流程镜头里节点上的小片与配置板里的名字点了也跳到这里，一个详情两处入口。
 // 层次与文件镜头同一做法：陈列印在雾景上不加框；详情才是一块抬起的面。
 import { ArrowLeft } from '@phosphor-icons/react'
-import { useReducedMotion } from 'motion/react'
-import { createElement, useEffect, useRef, useState } from 'react'
+import { createElement } from 'react'
 
 import type { Capability, StageInfo } from '@/api/types'
-import LineSidebar from '@/components/reactbits/LineSidebar'
 import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
 import { groupByStage, stageIcon } from '@/lib/stages'
-import { useToken } from '@/lib/tokens'
 
 /** 五栏的标题，顺序与后端 `COLUMNS` 一致（词表里的词） */
 const COLUMNS: [keyof Pick<Capability, 'does' | 'does_not' | 'brings' | 'leaves' | 'stops'>, string][] = [
@@ -22,11 +19,10 @@ export function Catalog({ stages, catalog, focus, onFocus }: {
   stages: StageInfo[]; catalog: Capability[]; focus: string | null; onFocus: (name: string | null) => void
 }) {
   const cap = focus ? catalog.find((c) => c.name === focus) ?? null : null
-  const scroller = useRef<HTMLDivElement>(null)
   return (
-    <div ref={scroller} className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto">
       {cap
-        ? <Detail key={cap.name} cap={cap} stage={stages.find((s) => s.name === cap.stage) ?? null} scroller={scroller} onBack={() => onFocus(null)} />
+        ? <Detail key={cap.name} cap={cap} stage={stages.find((s) => s.name === cap.stage) ?? null} onBack={() => onFocus(null)} />
         : <Shelf stages={stages} catalog={catalog} onOpen={onFocus} />}
     </div>
   )
@@ -69,48 +65,11 @@ function Shelf({ stages, catalog, onOpen }: { stages: StageInfo[]; catalog: Capa
   )
 }
 
-/** 详情页：常驻返回键、名与一行、左边目录右边正文。「产出」那一栏前面先列本阶段的主文件（文件名是机器的名字，配页面上的名字） */
-function Detail({ cap, stage, scroller, onBack }: {
-  cap: Capability; stage: StageInfo | null; scroller: React.RefObject<HTMLDivElement | null>; onBack: () => void
-}) {
-  const still = useReducedMotion() === true
-  const indigo = useToken('--primary')
-  const muted = useToken('--muted-foreground')
+/** 详情页：常驻返回键、名与一行、参数、五栏，一列到底。「产出」那一栏前面先列本阶段的主文件（文件名是机器的名字，配页面上的名字） */
+function Detail({ cap, stage, onBack }: { cap: Capability; stage: StageInfo | null; onBack: () => void }) {
   const mains = stage?.main_files ?? []
-  const sections: { id: string; label: string }[] = [
-    ...(cap.params.length > 0 ? [{ id: 'params', label: '参数' }] : []),
-    ...COLUMNS.map(([key, label]) => ({ id: key, label })),
-  ]
-  const [active, setActive] = useState(0)
-  const body = useRef<HTMLDivElement>(null)
-
-  // 目录点亮哪一节：按滚动位置算——最后一个标题已经滚到顶部附近的那一节
-  useEffect(() => {
-    const root = scroller.current
-    if (!root) return
-    const spy = () => {
-      const top = root.getBoundingClientRect().top + 96
-      let current = 0
-      sections.forEach((s, i) => {
-        const el = body.current?.querySelector<HTMLElement>(`[data-section="${s.id}"]`)
-        if (el && el.getBoundingClientRect().top <= top) current = i
-      })
-      setActive(current)
-    }
-    spy()
-    root.addEventListener('scroll', spy, { passive: true })
-    return () => root.removeEventListener('scroll', spy)
-  }, [scroller, sections.length])  // eslint-disable-line react-hooks/exhaustive-deps -- sections 由 cap 决定，Detail 按 cap 重建
-
-  const jump = (index: number) => {
-    const el = body.current?.querySelector<HTMLElement>(`[data-section="${sections[index].id}"]`)
-    const root = scroller.current
-    if (!el || !root) return
-    root.scrollTo({ top: el.offsetTop - 88, behavior: still ? 'auto' : 'smooth' })
-  }
-
   return (
-    <article className="mx-auto my-3 max-w-[62rem] rounded-2xl bg-card shadow-[0_1px_2px_rgb(0_0_0/0.05),0_18px_44px_-22px_rgb(0_0_0/0.28)] ring-1 ring-foreground/[0.06]">
+    <article className="mx-auto my-3 max-w-[50rem] rounded-2xl bg-card shadow-[0_1px_2px_rgb(0_0_0/0.05),0_18px_44px_-22px_rgb(0_0_0/0.28)] ring-1 ring-foreground/[0.06]">
       {/* 常驻的返回键：钉在板的顶上，滚到哪都在 */}
       <div className="sticky top-0 z-10 flex items-center gap-3 rounded-t-2xl bg-card/90 px-6 py-3 backdrop-blur-sm">
         <button type="button" onClick={onBack}
@@ -126,15 +85,10 @@ function Detail({ cap, stage, scroller, onBack }: {
         <h1 className="font-serif text-[2rem] leading-tight font-semibold tracking-tight">{cap.title}</h1>
         <p className="mt-2 text-[1.0625rem] text-muted-foreground">{cap.brief}</p>
       </header>
-      <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-10 px-8 pt-4 pb-10">
-        <aside className="sticky top-16 self-start pt-2">
-          <LineSidebar items={sections.map((s) => s.label)} active={active} onItemClick={jump}
-                       accentColor={indigo} textColor={muted}
-                       maxShift={10} itemGap={18} fontSize={0.9375} proximityRadius={72} still={still} />
-        </aside>
-        <div ref={body} className="min-w-0">
+      <div className="px-8 pt-4 pb-10">
+        <div className="min-w-0">
           {cap.params.length > 0 && (
-            <section data-section="params" aria-label="参数" className="pt-2">
+            <section aria-label="参数" className="pt-2">
               <h2 className="t-step">参数</h2>
               <dl className="mt-3 grid grid-cols-[8rem_1fr] gap-x-4 gap-y-2 text-[0.9375rem]">
                 {cap.params.map((p) => (
@@ -152,7 +106,7 @@ function Detail({ cap, stage, scroller, onBack }: {
             </section>
           )}
           {COLUMNS.map(([key, label]) => (
-            <section key={key} data-section={key} aria-label={label} className="pt-8 first:pt-2">
+            <section key={key} aria-label={label} className="pt-8 first:pt-2">
               <h2 className="t-step">{label}</h2>
               {key === 'leaves' && mains.length > 0 && (
                 <p className="mt-3 text-[0.9375rem]">

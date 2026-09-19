@@ -54,7 +54,7 @@ web/src/
   workspace/  NewWorkspace（门口那一屏：一句话 + 模板起工作区）
   files/      主页面的文件镜头：Files（目录树 + 内容区；树按 `GET /workspaces/<id>` 的阶段与产出标语义）、derive.ts（一行是什么、文件怎么渲染、csv 切表、根一层的顺序，纯函数、有单测）、highlight.ts（highlight.js 五种语言，配色在 index.css 的 `.hl`）
   board/      主页面的看板：Board（按需求确认与否分两个状态；工作区那一整份由 App 的 MainView 拉、与文件镜头共用、有作业在跑时轮询，两个镜头常驻只切显示）、Requirement（未确认的整页 / 确认后的一条 + 侧滑 diff）、Flows（一条流程一张表：阶段列、产出卡、断点线、在等谁）、OutputSheet（一次产出的侧滑：记录、文件、确认）、derive.ts（在等谁的一句话、下一步、产出的状态词、断点的短标签，纯函数、有单测）
-  studio/     编辑台的两个镜头：Studio（流程 / 能力常驻只切显示，雾景与对话窗挂在外面；Editor 是 React Flow 画布、边拼边查、保存——文件名由标题生成不上屏）、model.ts（链的数据：排版、插入、重排、页面形状 ↔ 文件形状，纯函数、有单测）、nodes（阶段 / 断点两种节点，能力小片 hover 一行、点了跳详情）、Palette（阶段梯与流程库的弹层）、Inspector（选中节点：勾能力、填参数——名字是描述符的 label、断点的确认事项）、Catalog（能力镜头：按阶段陈列 SpotlightCard 小卡，详情页是常驻返回键 + LineSidebar 目录 + 一行 / 参数 / 五栏）
+  studio/     编辑台的两个镜头：Studio（流程 / 能力常驻只切显示，雾景与对话窗挂在外面；Editor 是 React Flow 画布、边拼边查、保存——文件名由标题生成不上屏）、model.ts（链的数据：排版、插入、重排、页面形状 ↔ 文件形状，纯函数、有单测）、nodes（阶段 / 断点两种节点，能力小片 hover 一行、点了跳详情）、Palette（阶段梯与流程库的弹层）、Inspector（选中节点：勾能力、填参数——名字是描述符的 label、断点的确认事项）、Catalog（能力镜头：按阶段陈列 SpotlightCard 小卡，详情页是常驻返回键 + 一行 / 参数 / 五栏）
   keys/       确认需求、确认产出两处人的动作（StarBorder 改装）
   sidebar/    对话列表抽屉
   components/ 零件 bits.tsx、Markdown.tsx、Backdrop（门口的视频背景）、Band / Scene（图 + 纱幕）、shadcn 生成的 ui/、reactbits 的改装件
