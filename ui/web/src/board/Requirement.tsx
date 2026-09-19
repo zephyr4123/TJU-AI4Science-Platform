@@ -36,7 +36,7 @@ export function RequirementPage({ workspace, requirement, reload }: {
       </header>
       {intro && <div className="mt-4 max-w-[68ch] text-[0.9375rem] leading-[1.65] text-muted-foreground"><Markdown text={intro} /></div>}
       {requirement.sections.length === 0 && (
-        <p className="t-body mt-8 text-muted-foreground">还是空的：跟右边的助理说要解决什么，它照模板写。</p>
+        <p className="t-body mt-8 text-muted-foreground">尚无内容。与右侧助理说明课题，由它按模板填写。</p>
       )}
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         {requirement.sections.map((section) => <SectionCard key={section.heading} section={section} />)}
@@ -84,7 +84,7 @@ export function RequirementStrip({ workspace, requirement, reload }: {
           <span className="block truncate font-serif text-[1rem] font-semibold">{requirement.title}</span>
           <span className="mt-0.5 block truncate text-[0.8125rem] text-muted-foreground">
             需求 v{requirement.version} · {requirement.by} · {when(requirement.at)}
-            {requirement.dirty && <span className="ml-2 text-wait">改了 {changed} 行，未确认</span>}
+            {requirement.dirty && <span className="ml-2 text-wait">{changed} 行改动 · 待确认</span>}
           </span>
         </span>
         {requirement.dirty

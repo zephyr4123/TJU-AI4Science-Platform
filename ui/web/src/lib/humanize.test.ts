@@ -6,32 +6,32 @@ describe('需求与产出的句子', () => {
   it('需求状态', () => {
     expect(requirementWord({ confirmed: false, version: null, by: null, at: null, dirty: false })).toBe('需求未确认')
     expect(requirementWord({ confirmed: true, version: 2, by: 'a', at: 't', dirty: false })).toBe('需求 v2')
-    expect(requirementWord({ confirmed: true, version: 2, by: 'a', at: 't', dirty: true })).toBe('需求 v2，改了')
+    expect(requirementWord({ confirmed: true, version: 2, by: 'a', at: 't', dirty: true })).toBe('需求 v2 · 有改动')
   })
   it('工作区走到哪', () => {
     const base = { id: 'w', title: 'w', root: '/w', running: 0, counts: { design: 0 } }
     expect(stageSentence({ ...base, requirement: { confirmed: false, version: null, by: null, at: null, dirty: false } })).toBe('需求未确认')
     const ok = { confirmed: true, version: 1, by: 'a', at: 't', dirty: false }
-    expect(stageSentence({ ...base, requirement: ok })).toBe('还没开工')
-    expect(stageSentence({ ...base, requirement: ok, counts: { design: 1, experiment: 2 } })).toBe('3 次产出')
-    expect(stageSentence({ ...base, requirement: ok, running: 1 })).toBe('1 个作业在跑')
+    expect(stageSentence({ ...base, requirement: ok })).toBeNull()
+    expect(stageSentence({ ...base, requirement: ok, counts: { design: 1, experiment: 2 } })).toBeNull()
+    expect(stageSentence({ ...base, requirement: ok, running: 1 })).toBe('运行中 1')
   })
   it('一次产出', () => {
     const signed = { by: 'a', signed_at: 't', sha256: 'x', note: '', stale: false }
-    expect(outputWord({ status: 'running', signed: null })).toBe('在做')
-    expect(outputWord({ status: 'failed', signed: null })).toBe('没成')
-    expect(outputWord({ status: 'ok', signed: null })).toBe('成了')
-    expect(outputWord({ status: 'ok', signed })).toBe('签过')
-    expect(outputWord({ status: 'ok', signed: { ...signed, stale: true } })).toBe('签过，之后改了')
+    expect(outputWord({ status: 'running', signed: null })).toBe('运行中')
+    expect(outputWord({ status: 'failed', signed: null })).toBe('失败')
+    expect(outputWord({ status: 'ok', signed: null })).toBe('完成')
+    expect(outputWord({ status: 'ok', signed })).toBe('已确认')
+    expect(outputWord({ status: 'ok', signed: { ...signed, stale: true } })).toBe('已确认 · 之后有改动')
   })
 })
 
 describe('实验的句子', () => {
   it('停止原因', () => {
-    expect(stopSentence('patience', false)).toBe('几轮没进步，停了')
-    expect(stopSentence(null, true)).toBe('在跑')
+    expect(stopSentence('patience', false)).toBe('多轮无进步，已停止')
+    expect(stopSentence(null, true)).toBe('运行中')
     expect(stopSentence(null, false)).toBe('可继续')
-    expect(stopSentence('weird', false)).toBe('停了：weird')
+    expect(stopSentence('weird', false)).toBe('已停止：weird')
   })
   it('抽结论一节', () => {
     const doc = '# 分析\n\n## 结论\n\nbest 是第 6 轮。\n\n## 数据\n\n| a |\n'
@@ -43,10 +43,10 @@ describe('实验的句子', () => {
 describe('工具行', () => {
   it('命令翻成动作', () => {
     expect(toolSentence('Bash', { command: '.venv/bin/ai4sci cap design' })).toBe('写了评分脚本、跑了基线')
-    expect(toolSentence('Bash', { command: 'ai4sci cap auto-research --continue experiment/1 --resume' })).toBe('接着跑上次没走完的实验')
+    expect(toolSentence('Bash', { command: 'ai4sci cap auto-research --continue experiment/1 --resume' })).toBe('接着跑上次中断的实验')
     expect(toolSentence('Bash', { command: 'ai4sci show workspace' })).toBe('看了工作区走到哪')
     expect(toolSentence('Bash', { command: 'ai4sci show output experiment/1' })).toBe('看了产出')
-    expect(toolSentence('Bash', { command: 'ai4sci sign design/1 --by x' })).toBe('替人签了字（该由人签）')
+    expect(toolSentence('Bash', { command: 'ai4sci sign design/1 --by x' })).toBe('替人确认了产出（应由人确认）')
     expect(toolSentence('Bash', { command: 'ai4sci show templates' })).toBe('看了需求模板')
     expect(toolSentence('Bash', { command: 'ai4sci show workspaces' })).toBe('查了有哪些工作区')
     expect(toolSentence('Bash', { command: 'ai4sci flow take quick-look' })).toBe('从库里取了一条流')

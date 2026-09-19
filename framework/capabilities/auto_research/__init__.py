@@ -42,7 +42,7 @@ NAME = "auto-research"
 DESCRIPTOR = Capability(
     name=NAME,
     stage="实验",
-    title="auto-research",
+    title="自动实验",
     does=(
         "第一次调用先开实验：把设计那包搬进 work/、按 lock 建独立环境、work/ 起一个 git 仓，"
         "基线成绩记进 checkpoint.json；scoring.yaml 与需求各快照一份。"

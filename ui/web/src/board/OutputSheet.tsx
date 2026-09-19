@@ -1,4 +1,4 @@
-// 一次产出的细节：记录（谁产的、读了谁、在哪条流第几项下、按哪版需求）、签字、目录里的文件——按文件种类通用渲染
+// 一次产出的细节：记录（来源、输入、在哪条流第几步、按哪版需求）、确认、目录里的文件——按文件种类通用渲染
 // （markdown 排版、json / yaml / tsv 原样、大的与二进制只给名字），能力没配专门视图也看得见东西（P-13 在页面上的对应物）。
 import { useState } from 'react'
 
@@ -40,10 +40,10 @@ function Body({ workspace, oid, signHint, onChanged }: { workspace: string; oid:
       </SheetHeader>
       <div className="space-y-5 px-6 pb-8">
         <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 text-[0.875rem]">
-          <dt className="text-muted-foreground">谁</dt><dd>{byWord(o.by)}</dd>
+          <dt className="text-muted-foreground">来源</dt><dd>{byWord(o.by)}</dd>
           <dt className="text-muted-foreground">状态</dt><dd className={cn(o.status === 'failed' && 'text-bad')}>{outputWord(o)}</dd>
-          <dt className="text-muted-foreground">读了</dt><dd className="font-mono text-[0.8125rem]">{o.from.length ? o.from.join(', ') : '—'}</dd>
-          {o.flow && <><dt className="text-muted-foreground">流</dt><dd>{o.flow}{o.step !== null && ` · 第 ${o.step + 1} 项`}</dd></>}
+          <dt className="text-muted-foreground">输入</dt><dd className="font-mono text-[0.8125rem]">{o.from.length ? o.from.join(', ') : '—'}</dd>
+          {o.flow && <><dt className="text-muted-foreground">流</dt><dd>{o.flow}{o.step !== null && ` · 第 ${o.step + 1} 步`}</dd></>}
           {o.requirement !== null && <><dt className="text-muted-foreground">需求</dt><dd>v{o.requirement}</dd></>}
           <dt className="text-muted-foreground">时间</dt><dd>{when(o.created_at)}{o.finished_at && ` → ${when(o.finished_at)}`}</dd>
           {Object.keys(o.params).length > 0 && (
@@ -58,7 +58,7 @@ function Body({ workspace, oid, signHint, onChanged }: { workspace: string; oid:
         <SignKey workspace={workspace} output={o} hint={signHint} reload={reload} />
         <section>
           <h3 className="t-step">文件</h3>
-          {o.files.length === 0 && <p className="t-label mt-1">还没有文件</p>}
+          {o.files.length === 0 && <p className="t-label mt-1">暂无文件</p>}
           <ul className="mt-2 space-y-2">
             {o.files.map((f) => <FileRow key={f.path} file={f} />)}
           </ul>

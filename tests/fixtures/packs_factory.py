@@ -154,7 +154,7 @@ def make_pack(
             f"id: {domain}\ndisplay_name: {domain}\n", encoding="utf-8"
         )
     pack, meta = outputs.open_output(
-        workspace, "design", title="写评分脚本、跑基线", by="design", inputs=[], params={},
+        workspace, "design", title="评分脚本与基线", by="design", inputs=[], params={},
         flow=None, step=None, requirement=1 if confirmed else None, chat_id=None)
     fill_pack(pack, scoring=scoring, scoring_text=scoring_text, seeds=seeds, values=values,
               elapsed_s=elapsed_s)

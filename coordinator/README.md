@@ -37,10 +37,10 @@ literature/ hypothesis/ design/ experiment/ analysis/ writing/ verification/
 
 | 阶段 | 能力（命令） | 读什么 | 一句话 |
 |---|---|---|---|
-| 设计 | `design` 写评分脚本、跑基线 | 需求 + 原件（+ `--from hypothesis/<n>`） | 执行层写 scoring.yaml、harness/ 与 code/，框架封 harness、跑基线出 baseline/、算预检 |
-| 实验 | `auto-research` | `--from design/<n>` | 开一次实验，一轮一轮改代码：过统计门才 keep，否则回退到 best |
-| 分析 | `analysis` 写分析初稿 | `--from experiment/<n>`（可几个） | 读账本与每轮结果，写三节固定的 analysis.md |
-| 验证 | `verify` 核对数字 | `--from analysis/<n>` + 它读的实验 | 零模型：分析里的数回溯到 results.json，账本与 git 对账，PASS / FAIL |
+| 设计 | `design` 评分脚本与基线 | 需求 + 原件（+ `--from hypothesis/<n>`） | 执行层写 scoring.yaml、harness/ 与 code/，框架封 harness、跑基线出 baseline/、算预检 |
+| 实验 | `auto-research` 自动实验 | `--from design/<n>` | 开一次实验，一轮一轮改代码：过统计门才 keep，否则回退到 best |
+| 分析 | `analysis` 分析初稿 | `--from experiment/<n>`（可几个） | 读账本与每轮结果，写三节固定的 analysis.md |
+| 验证 | `verify` 数字核对 | `--from analysis/<n>` + 它读的实验 | 零模型：分析里的数回溯到 results.json，账本与 git 对账，PASS / FAIL |
 
 文献、假设、写作三个阶段还没有能力。流里排了这些阶段，你自己写：`ai4sci output new <stage> --title <一句>`（要读谁就加 `--from`）开一个产出目录，然后往里写文件（文献笔记、假设、稿子）。
 

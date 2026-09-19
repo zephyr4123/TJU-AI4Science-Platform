@@ -17,7 +17,7 @@ __all__ = ["DESCRIPTOR", "run"]
 DESCRIPTOR = Capability(
     name="analysis",
     stage="分析",
-    title="写分析初稿",
+    title="分析初稿",
     does=(
         "起一个执行层会话，只给它 --from 点名的每次实验的账本全部行、实验笔记全文、"
         "每轮的 results.json 清单，以及 work/ 里基线到 best 的代码 diff，"

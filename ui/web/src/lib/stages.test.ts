@@ -33,6 +33,6 @@ describe('按阶段分组', () => {
     expect(itemLabel({ kind: 'stage', stage: '验证', caps: [{ cap: 'verify', with: {} }, { cap: 'x', with: {} }] }, title))
       .toBe('验证：核对数字、x')
     expect(itemLabel({ kind: 'stop', note: '看一眼' }, title)).toBe('看一眼')
-    expect(itemLabel({ kind: 'stop', note: '' }, title)).toBe('签字')
+    expect(itemLabel({ kind: 'stop', note: '' }, title)).toBe('确认')
   })
 })

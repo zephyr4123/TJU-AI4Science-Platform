@@ -125,8 +125,8 @@ function MainView({ wsId, title, healthy, knobs }: { wsId: string; title: string
       onClose={() => setChatOpen(false)}
       autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
       knobs={knobs}
-      intro={{ lede: '课题', body: '问题、材料、怎么算好。' }}
-      welcome={{ headline: '课题', body: '问题、材料、怎么算好。' }}
+      intro={{ lede: '课题', body: '问题、材料、评价标准。' }}
+      welcome={{ headline: '课题', body: '问题、材料、评价标准。' }}
       drawer={
         <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                     creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}

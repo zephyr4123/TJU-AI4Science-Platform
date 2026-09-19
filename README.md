@@ -13,7 +13,7 @@ platform/
 ├── coordinator/   两位助理的指南：README.md 主页面的研究助理、studio.md 编辑台的造流助理（执行层不加载）
 ├── framework/     框架：契约、工作区、能力、ai4sci CLI、页面后端；零模型调用
 │   ├── cli/           一个子命令一个模块
-│   ├── capabilities/  一个能力一个子包（design/ 写评分脚本跑基线、auto_research/、analysis/ 写分析初稿、verify/ 核对数字），互不 import，各带五栏描述符
+│   ├── capabilities/  一个能力一个子包（design/ 评分脚本与基线、auto_research/ 自动实验、analysis/ 分析初稿、verify/ 数字核对），互不 import，各带五栏描述符
 │   ├── chat/          两位助理的对话、看板读盘、HTTP + SSE 服务
 │   ├── experiment/    实验这一族能力私下的约定：scoring.yaml 与三份 schema、env 与 uv venv、预检、账本、笔记、结果
 │   ├── executor/      组 prompt、起执行层会话、留档日志

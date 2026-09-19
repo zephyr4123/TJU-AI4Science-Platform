@@ -66,7 +66,7 @@ def write_analysis(pack: pf.Pack, text: str, *,
                    inputs: tuple[str, ...] = ("experiment/1",)) -> Path:
     """一次分析产出 analysis/1/：meta 记读了哪次实验，正文是 text。返回目录。"""
     directory, meta = outputs.open_output(
-        pack.workspace, "analysis", title="写分析初稿", by="analysis", inputs=list(inputs),
+        pack.workspace, "analysis", title="分析初稿", by="analysis", inputs=list(inputs),
         params={}, flow=None, step=None, requirement=1, chat_id=None)
     (directory / "analysis.md").write_text(text, encoding="utf-8")
     outputs.close_output(directory, meta, ok=True, line="analysis ok")

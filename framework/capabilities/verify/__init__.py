@@ -29,7 +29,7 @@ DEFAULT_TOLERANCE = 0.01  # spec A-10：1% 容差
 DESCRIPTOR = Capability(
     name="verify",
     stage="验证",
-    title="核对数字",
+    title="数字核对",
     does=(
         "零模型。读 --from 点名的分析产出里的 analysis.md，把数据表每一行 (来源, 指标, 值)"
         " 回溯到那次实验那一轮的 results.json——相对误差在容差内才算找到；"

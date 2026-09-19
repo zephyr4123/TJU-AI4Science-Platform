@@ -20,7 +20,7 @@ def test_id_is_the_path():
 
 
 def test_meta_round_trips_with_from_spelled_as_from(tmp_path):
-    meta = Meta(id="analysis/1", stage="analysis", title="写分析初稿", by="analysis",
+    meta = Meta(id="analysis/1", stage="analysis", title="分析初稿", by="analysis",
                 created_at="2026-09-19T00:00:00+00:00",
                 inputs=[Input("experiment/1", "a" * 64), Input("experiment/2", "b" * 64)],
                 params={"tolerance": 0.01}, flow="research", step=3, requirement=2, chat_id="c1")

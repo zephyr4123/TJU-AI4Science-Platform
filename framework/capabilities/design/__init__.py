@@ -32,7 +32,7 @@ IGNORED = (".git", "__pycache__", ".venv", ".DS_Store", env.ENV_DIRNAME)
 DESCRIPTOR = Capability(
     name=NAME,
     stage="设计",
-    title="写评分脚本、跑基线",
+    title="评分脚本与基线",
     does=(
         "起一个执行层会话，照需求（与假设阶段的产出，如果 --from 带了）写评分契约 scoring.yaml"
         "（指标、方向、预算、统计门）、评分脚本（harness/：launcher.sh、evaluate.py、make_run0.sh）"

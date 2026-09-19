@@ -35,7 +35,7 @@ export function ConfirmKey({ workspace, requirement, reload, compact = false }: 
 
   const blocked = requirement.pending || !requirement.text.trim()
   const next = requirement.confirmed ? `确认 v${(requirement.version ?? 0) + 1}` : '确认需求'
-  const hint = requirement.pending ? '还有「待填」' : requirement.confirmed ? '改过了，看过 diff 再确认' : '署名后确认，阶段才能开工'
+  const hint = requirement.pending ? '尚有「待填」' : requirement.confirmed ? '有改动，核对后确认' : '署名后确认，方可开工'
   return (
     <KeyPanel title={next} hint={hint} compact={compact}>
       {error && <div className="mb-3"><ErrorNote text={error} /></div>}
