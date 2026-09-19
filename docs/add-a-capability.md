@@ -83,7 +83,7 @@ writing/2/draft.md     meta: by: report-draft   from: [analysis/2]
 | 一行 | `brief` | hover | 一句，三十字内，说拿什么做出什么；不带路径、参数名 | 自动迭代代码，逐轮记账 |
 | 详情 | 五栏 `does` `does_not` `brings` `leaves` `stops` | 点击跳详情页，栏名 职责 / 边界 / 输入 / 产出 / 终止条件 | 工程语言陈述句；文件名可以写（它们在工作区里真实存在）；CLI 参数不写（`--from design/<n>` 写成「设计阶段的一次产出」）；框架内部机制不写（目录 hash 校验、`refs/attempts`）；口语不写（「这包」「越界」「续命」「签了」） | 见下 |
 
-参数的 `label` 是页面上的名字（`max_iters` → 最多轮数），`help` 是 hover 的一句。协调层读的就是这份详情，不另写用户版；执行者的种类（`needs_executor`、能不能续跑）是机器读的，不上屏。`brief` 与 `label` 两个字段随外层 [#112](https://github.com/zephyr4123/TJU-AI4Science/issues/112) 落地，落地前 `title` 与 `help` 先按这张表写。
+参数的 `label` 是页面上的名字（`max_iters` → 最多轮数），`help` 是 hover 的一句。协调层读的就是这份详情，不另写用户版；执行者的种类（`needs_executor`、能不能续跑）是机器读的，不上屏。字数、禁用词、CLI 参数这些规矩都在 `Capability.__post_init__` 与 `Param.__post_init__` 里断言（`framework/contracts/capability.py`），写错了 `discover()` 当场炸、信息说到哪一栏撞了哪个词。
 
 AutoResearch 的详情写出来是这样：
 
@@ -106,12 +106,13 @@ DESCRIPTOR = Capability(
     name="paper-draft",
     stage="写作",
     title="论文初稿",                       # 名：名词，不超过八字；方法有公认名字的原样写
+    brief="按分析稿与核对报告写出论文初稿",     # 一行：三十字内，不带路径与参数名
     does="...",                             # 职责：讲机制，带专业术语
     does_not="...",                         # 边界
     brings="...",                           # 输入：按阶段说文件名
     leaves="draft.md、figures/、refs.bib",   # 产出：必须写到本阶段主文件
     stops="...",                            # 终止条件：成功停在哪、失败怎么报
-    params=(Param("sections", "int", 4, "写几节"),),
+    params=(Param("sections", "int", 4, "初稿分几节", "节数"),),   # help 是 hover 的一句，label 是页面上的名字
     needs_executor=True,                    # 要起执行层（模型）就 True；零模型的能力 False
 )
 

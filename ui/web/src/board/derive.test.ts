@@ -43,12 +43,12 @@ describe('流在等谁', () => {
   it('一句话：下一步 / 待确认 / 运行中 / 完成 / 坏了', () => {
     const f = flow(items)
     expect(waitingSentence({ ...f, step: 0, waiting: 'assistant' }, new Set(), nameOf)).toBe('下一步：实验 · 助理')
-    expect(waitingSentence({ ...f, step: 0, waiting: 'sign' }, new Set(['design/1']), nameOf)).toBe('待确认：设计 1')
+    expect(waitingSentence({ ...f, step: 0, waiting: 'sign' }, new Set(['design/1']), nameOf)).toBe('待确认：设计 · 1')
     const job = { job_id: 'j', cap: 'auto-research', stage: 'experiment', argv: [], pid: 1, started_at: 't', status: 'running' as const,
                   effective_status: 'running' as const, finished_at: null, exit_code: null, result: '', chat_id: null, log: '', flow: 'f', output: 'experiment/2' }
-    expect(waitingSentence({ ...f, step: 0, waiting: 'job', job }, new Set(), nameOf)).toBe('运行中：实验 2')
+    expect(waitingSentence({ ...f, step: 0, waiting: 'job', job }, new Set(), nameOf)).toBe('运行中：实验 · 2')
     expect(waitingSentence({ ...f, step: 3, waiting: 'done' }, new Set(), nameOf)).toBe('完成')
-    expect(waitingSentence({ ...f, problems: ['坏'] }, new Set(), nameOf)).toBe('流文件有误')
+    expect(waitingSentence({ ...f, problems: ['坏'] }, new Set(), nameOf)).toBe('流程文件有误')
   })
   it('产出的状态词按运行 / 失败 / 待确认 / 已确认 / 完成分', () => {
     const pending = new Set(['design/1'])

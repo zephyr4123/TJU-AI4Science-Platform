@@ -117,7 +117,7 @@ ai4sci sign verification/1 --by <你>                               # 断点：�
 |---|---|---|
 | `需求还没确认` / `需求 v1 确认之后又改过` | 没有 requirement.lock，或改过没确认 | `ai4sci requirement confirm` |
 | `design/1 被引用或签字之后改过了` | 签过字或被引用的产出目录变了 | 别改它；在它的阶段下新开一次产出，下游 `--from` 新的那个 |
-| `流 research 在 design/1 之后有断点` | 流程里这儿要人签了下游才能读 | `ai4sci sign design/1` |
+| `流程 research 在 design/1 之后有断点` | 流程里这儿要人签了下游才能读 | `ai4sci sign design/1` |
 | `工作区有几条流程，说清照哪条` | flows/ 下不止一个实例 | 命令加 `--flow <name>` |
 | `env/: 目录缺失` | materials/ 没带环境 | 建 `materials/env/` 两个文件，零依赖也要有空的 lock |
 | `harness/launcher.sh:12: 裸调 python` | launcher 用了 PATH 上的 python | 让执行层改：`--continue design/1 --feedback` |

@@ -18,13 +18,11 @@ export function stageSentence(w: WorkspaceSummary): string | null {
 }
 
 // ── 产出 ────────────────────────────────────────────────────────────────
-/** 谁产的：能力名翻成人话，助理 / 人照写 */
-export const BY_WORD: Record<string, string> = {
-  assistant: '助理', human: '研究者', design: '设计', 'auto-research': '实验', analysis: '分析', verify: '验证',
-}
+/** 谁产的：助理 / 研究者手写的照写；能力产的写能力的名（`titleOf` 查后端给的能力表，P-21：页面不自己翻） */
+export const BY_WORD: Record<string, string> = { assistant: '助理', human: '研究者' }
 
-export function byWord(by: string): string {
-  return BY_WORD[by] ?? by
+export function byWord(by: string, titleOf: (name: string) => string | undefined): string {
+  return BY_WORD[by] ?? titleOf(by) ?? by
 }
 
 /** 一次产出的状态一个词 */
@@ -35,7 +33,7 @@ export function outputWord(o: Pick<OutputBrief, 'status' | 'signed'>): string {
   return o.signed.stale ? '已确认 · 之后有改动' : '已确认'
 }
 
-/** 流在等谁 */
+/** 流程在等谁 */
 export const WAITING_WORD: Record<Waiting, string> = {
   job: '运行中', sign: '待确认', assistant: '助理', done: '完成',
 }

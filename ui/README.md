@@ -43,7 +43,7 @@ ai4sci serve       # 起后端并端出页面：http://127.0.0.1:8765
 设计口径在 `docs/PRODUCT.md`（给谁用、反例、原则）与 `docs/DESIGN.md`（色板、字阶、布局）。
 页面先认工作区：最左一条地方栏（先「工作区 / 编辑台」两个世界的开关，工作区世界里再列封面块与「新建」；编辑台是全局一个库，进了编辑台工作区块整段收掉）；没有工作区时主页面是门口那一屏（一句话 + 模板起工作区，循环视频背景）。
 主页面 = 这个工作区的看板铺满 + 右边一列对话（可收，收起后右下角一枚圆形入口）。看板按 `requirement.lock` 在不在分两个状态：没确认，需求文档就是页面（一格一节，底下「确认」）；确认了，需求收成顶部一条，下面一条流程一张表（横向阶段、纵向每次产出、断点是列间的线、右上角在等谁），产出点开侧滑。编辑台 = 画布铺满（React Flow：一条线性的链，阶段 / 断点两种节点；左上角阶段梯与题头，右上角库、保存与选中节点的配置；底下一层风景）+ 右下角圆形入口弹出的悬浮对话窗（流程助理）。
-正文只许出现 `lib/humanize.ts` 翻译过的词；状态码、哈希、命令的输出只在展开层。对话里的工具调用是例外：原样一行（`chat/trace.ts::toolLine`）。
+正文只许出现词表里的词与后端给的中文名（纲领 P-21：能力 `title` `brief`、参数 `label`、阶段名、流程 `title`；产出 id 写「设计 · 1」）；状态码、哈希、命令的输出只在展开层。对话里的工具调用是例外：原样一行（`chat/trace.ts::toolLine`）。`copy.test.ts` 扫源码：禁用词与 `font-mono` 出了文件镜头、工具行、diff、文件清单就不过。
 
 ```
 web/src/
@@ -54,11 +54,11 @@ web/src/
   workspace/  NewWorkspace（门口那一屏：一句话 + 模板起工作区）
   files/      主页面的文件镜头：Files（目录树 + 内容区；树按 `GET /workspaces/<id>` 的阶段与产出标语义）、derive.ts（一行是什么、文件怎么渲染、csv 切表、根一层的顺序，纯函数、有单测）、highlight.ts（highlight.js 五种语言，配色在 index.css 的 `.hl`）
   board/      主页面的看板：Board（按需求确认与否分两个状态；工作区那一整份由 App 的 MainView 拉、与文件镜头共用、有作业在跑时轮询，两个镜头常驻只切显示）、Requirement（未确认的整页 / 确认后的一条 + 侧滑 diff）、Flows（一条流程一张表：阶段列、产出卡、断点线、在等谁）、OutputSheet（一次产出的侧滑：记录、文件、确认）、derive.ts（在等谁的一句话、下一步、产出的状态词、断点的短标签，纯函数、有单测）
-  studio/     编辑台的画布：model.ts（链的数据：排版、插入、重排、页面形状 ↔ 文件形状，纯函数、有单测）、nodes（阶段 / 断点两种节点）、Palette（阶段梯与库的弹层）、Inspector（选中节点：勾能力、填参数、断点的确认事项）、Studio（React Flow 画布、边拼边查、保存）
+  studio/     编辑台的两个镜头：Studio（流程 / 能力常驻只切显示，雾景与对话窗挂在外面；Editor 是 React Flow 画布、边拼边查、保存——文件名由标题生成不上屏）、model.ts（链的数据：排版、插入、重排、页面形状 ↔ 文件形状，纯函数、有单测）、nodes（阶段 / 断点两种节点，能力小片 hover 一行、点了跳详情）、Palette（阶段梯与流程库的弹层）、Inspector（选中节点：勾能力、填参数——名字是描述符的 label、断点的确认事项）、Catalog（能力镜头：按阶段陈列名字，详情页是一行 + 参数 + 五栏）
   keys/       确认需求、确认产出两处人的动作（StarBorder 改装）
   sidebar/    对话列表抽屉
   components/ 零件 bits.tsx、Markdown.tsx、Backdrop（门口的视频背景）、Band / Scene（图 + 纱幕）、shadcn 生成的 ui/、reactbits 的改装件
-  lib/        humanize.ts（术语翻人话、能力的人话说法，有单测）、stages.ts（阶段图标与流程里一项的说法）、diff.ts（行级 diff，有单测）、useChats（一个域的对话清单）、format、取数 hook、署名记忆
+  lib/        humanize.ts（状态词与谁产的，有单测）、stages.ts（阶段图标、按阶段分组、经过哪几个阶段）、slug.ts（工作区 id 与流程文件名从标题生成，有单测）、diff.ts（行级 diff，有单测）、useChats（一个域的对话清单）、format、取数 hook、署名记忆
 ```
 
 依赖方向：`App → workspace / board / studio / chat / sidebar → keys / components → api`；`api/` 不 import 任何组件。

@@ -12,6 +12,7 @@ describe('suggestId', () => {
   it('没有拉丁字符就按日期', () => {
     expect(suggestId('一维函数回归的固定预算调参', [], day)).toBe('ws-0918')
     expect(suggestId('', [], day)).toBe('ws-0918')
+    expect(suggestId('从设计到验证', [], day, 'flow')).toBe('flow-0918')  // 流程文件名同一条规矩，只差前缀
   })
   it('数字开头补前缀，重音去掉', () => {
     expect(suggestId('3D 打印', [], day)).toBe('ws-3d')

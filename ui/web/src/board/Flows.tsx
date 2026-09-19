@@ -1,5 +1,5 @@
-// 需求确认之后的主页面：一条流一张表。横向是流经过的阶段（有什么阶段就几列），纵向是每一列跑过的每一次产出；
-// 断点是两列之间的一道线。右上角一句话说在等谁。流没经过的阶段不出现；不在任何流里的产出只在最底下一行「其它」。
+// 需求确认之后的主页面：一条流程一张表。横向是流程经过的阶段（有什么阶段就几列），纵向是每一列跑过的每一次产出；
+// 断点是两列之间的一道线。右上角一句话说在等谁。流程没经过的阶段不出现；不在任何流程里的产出只在最底下一行「其它」。
 import { CheckCircle, Signature } from '@phosphor-icons/react'
 import { createElement } from 'react'
 
@@ -14,8 +14,8 @@ const STATE_WORD: Record<OutputState, string> = {
   running: '运行中', failed: '失败', pending: '待确认', confirmed: '已确认', done: '完成',
 }
 
-/** 一列底下列哪些能力：流点名的（靛色小片），或没点名时这个阶段能用的（素色小片） */
-export interface ColumnCaps { titles: string[]; named: boolean }
+/** 一列底下列哪些能力：流程点名的（靛色小片），或没点名时这个阶段能用的（素色小片）；名直接显示、一行 hover */
+export interface ColumnCaps { caps: { title: string; brief: string }[]; named: boolean }
 
 export function Flows({ doc, capsOf, onOpen }: {
   doc: WorkspaceDetail
@@ -27,7 +27,7 @@ export function Flows({ doc, capsOf, onOpen }: {
   const loose = doc.stages.flatMap((s) => s.outputs.filter((o) => o.flow === null))
   return (
     <div className="space-y-6">
-      {doc.flows.length === 0 && <p className="t-label">尚未选定流。与助理说明照哪条流进行。</p>}
+      {doc.flows.length === 0 && <p className="t-label">尚未选定流程。与助理说明照哪条流程进行。</p>}
       {doc.flows.map((flow) => (
         <FlowTable key={flow.name} flow={flow} pending={pending} nameOf={nameOf} capsOf={capsOf} onOpen={onOpen} />
       ))}
@@ -50,7 +50,7 @@ export function Flows({ doc, capsOf, onOpen }: {
   )
 }
 
-/** 一条流一张表：题头（名字 + 在等谁）、一行列（阶段列与断点线交替） */
+/** 一条流程一张表：题头（标题 + 在等谁）、一行列（阶段列与断点线交替） */
 function FlowTable({ flow, pending, nameOf, capsOf, onOpen }: {
   flow: FlowProgress; pending: Set<string>; nameOf: NameOf
   capsOf: (stage: ResearchStage, named: string[]) => ColumnCaps; onOpen: (oid: string) => void
@@ -62,10 +62,7 @@ function FlowTable({ flow, pending, nameOf, capsOf, onOpen }: {
   return (
     <section className="rounded-2xl border bg-card/80 p-5 backdrop-blur-sm" aria-label={flow.title}>
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <span className="flex items-baseline gap-2">
-          <span className="font-serif text-[1.0625rem] font-semibold">{flow.title}</span>
-          <span className="t-label font-mono">{flow.name}</span>
-        </span>
+        <span className="font-serif text-[1.0625rem] font-semibold">{flow.title}</span>
         <span className={cn('text-[0.875rem]', broken ? 'text-bad' : flow.waiting === 'sign' ? 'font-semibold text-wait' : flow.waiting === 'job' ? 'text-primary' : 'text-muted-foreground')}>
           {sentence}
         </span>
@@ -100,10 +97,10 @@ function StageColumn({ item, flow, pending, caps, current, runningOutput, onOpen
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-1">
         <span className="mr-0.5 text-[0.6875rem] text-muted-foreground">能力</span>
-        {caps.titles.length === 0 && <span className="text-[0.6875rem] text-muted-foreground/70">无</span>}
-        {caps.titles.map((title) => (
-          <span key={title} className={cn('rounded-md px-1.5 py-0.5 text-[0.6875rem] leading-tight',
-                                          caps.named ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{title}</span>
+        {caps.caps.length === 0 && <span className="text-[0.6875rem] text-muted-foreground/70">无</span>}
+        {caps.caps.map((cap) => (
+          <span key={cap.title} title={cap.brief} className={cn('rounded-md px-1.5 py-0.5 text-[0.6875rem] leading-tight',
+                                                               caps.named ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{cap.title}</span>
         ))}
       </div>
       <ul className="mt-2 space-y-1.5">
@@ -129,7 +126,7 @@ function OutputCard({ output, state, onOpen }: { output: FlowOutput; state: Outp
                             state === 'done' && 'bg-background/60')}>
         <span className="flex items-center gap-2">
           {state === 'running' && <Dot tone="primary" pulse />}
-          <span className="font-mono tabular-nums">{n}</span>
+          <span className="tabular-nums">{n}</span>
         </span>
         <span className={cn(state === 'pending' && 'font-semibold')}>{STATE_WORD[state]}</span>
       </button>

@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import type { Capability } from '@/api/types'
 
-import { actorOf, coverageSentence, groupByStage, itemLabel } from './stages'
+import { coverageSentence, groupByStage } from './stages'
 
 const cap = (name: string, stage: string, needs_executor = false): Capability => ({
-  name, stage, stage_slug: stage, title: `${name} 的活`, does: 'd', does_not: 'n', brings: 'b', leaves: 'l',
+  name, stage, stage_slug: stage, title: `${name} 的活`, brief: 'b', does: 'd', does_not: 'n', brings: 'b', leaves: 'l',
   stops: 's', params: [], needs_executor, needs_compute: false, continuable: false, used_by: [],
 })
 
@@ -21,18 +21,8 @@ describe('按阶段分组', () => {
     expect(groups.map((g) => g.stage)).toEqual(['设计', '写作'])
     expect(groups[1].caps).toHaveLength(1)
   })
-  it('谁来做与经过哪几个阶段', () => {
-    expect(actorOf({ needs_executor: true })).toBe('助理')
-    expect(actorOf({ needs_executor: false })).toBe('机器')
+  it('经过哪几个阶段', () => {
     expect(coverageSentence(['设计', '实验'])).toBe('设计 → 实验')
     expect(coverageSentence([])).toBe('没有阶段')
-  })
-  it('一项的名字：阶段带点名的能力标题，断点写要确认什么', () => {
-    const title = (name: string) => (name === 'verify' ? '核对数字' : undefined)
-    expect(itemLabel({ kind: 'stage', stage: '验证', caps: [] }, title)).toBe('验证')
-    expect(itemLabel({ kind: 'stage', stage: '验证', caps: [{ cap: 'verify', with: {} }, { cap: 'x', with: {} }] }, title))
-      .toBe('验证：核对数字、x')
-    expect(itemLabel({ kind: 'stop', note: '看一眼' }, title)).toBe('看一眼')
-    expect(itemLabel({ kind: 'stop', note: '' }, title)).toBe('确认')
   })
 })

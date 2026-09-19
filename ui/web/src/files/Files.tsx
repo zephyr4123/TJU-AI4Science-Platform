@@ -11,7 +11,7 @@ import {
 import { createElement, type ReactNode, useState } from 'react'
 
 import { api } from '@/api/client'
-import type { DirEntry, OutputBrief, WorkspaceDetail } from '@/api/types'
+import type { Capability, DirEntry, OutputBrief, WorkspaceDetail } from '@/api/types'
 import { OutputBody } from '@/board/OutputSheet'
 import { Dot, ErrorNote, Skeleton } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
@@ -30,8 +30,9 @@ const DEFAULT_FILE = 'requirement.md'
 
 /** `focus` 是从看板「打开目录」带过来的产出路径：进来就展开到它、选中它（父组件按 focus 给 key，换了就重建）。
  *  工作区那一整份 `doc` 由父组件拉、与看板共用；`epoch` 是对话的轮次，换了就重读目录与文件 */
-export function Files({ workspace, doc, epoch, focus, onOpenBoard }: {
-  workspace: string; doc: Resource<WorkspaceDetail>; epoch: number; focus: string | null; onOpenBoard: (oid: string) => void
+export function Files({ workspace, doc, caps, epoch, focus, onOpenBoard }: {
+  workspace: string; doc: Resource<WorkspaceDetail>; caps: Resource<Capability[]>; epoch: number; focus: string | null
+  onOpenBoard: (oid: string) => void
 }) {
   const [selected, setSelected] = useState<string>(focus ?? DEFAULT_FILE)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(ancestors(focus ?? DEFAULT_FILE).concat(focus ? [focus] : [])))
@@ -64,7 +65,8 @@ export function Files({ workspace, doc, epoch, focus, onOpenBoard }: {
           ? (
             <>
               <Location path={selected} meaning={meaning} onReveal={reveal} />
-              <OutputBody workspace={workspace} oid={picked.output.id} signHint={null} onChanged={doc.reload} showFiles={false}
+              <OutputBody workspace={workspace} doc={data} catalog={caps.data ?? []} oid={picked.output.id} signHint={null}
+                          onChanged={doc.reload} showFiles={false} onOpen={(oid) => reveal(oid, true)}
                           title={(o) => <h2 className="font-serif text-[1.25rem] font-semibold">{o.title}</h2>} />
             </>
           )

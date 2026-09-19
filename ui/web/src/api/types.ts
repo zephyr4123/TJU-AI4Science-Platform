@@ -1,9 +1,11 @@
 // 与 `framework/chat/boards.py`、`server.py` 的响应体一一对应。改后端字段先改这里，页面才会跟着编译不过。
 
-/** 七个研究阶段之一（`GET /stages`）：名字给人看、slug 是目录名与 id 的前缀。 */
+/** 七个研究阶段之一（`GET /stages`）：名字给人看、slug 是目录名与 id 的前缀；主文件是这个阶段钉死的文件名（P-20）
+ *  连同它页面上的名字（P-21），还没定的阶段是空表。 */
 export interface StageInfo {
   name: string
   slug: string
+  main_files: { name: string; label: string }[]
 }
 export type ResearchStage = string
 
@@ -246,6 +248,8 @@ export interface ChatEvent {
 
 export interface CapabilityParam {
   name: string
+  /** 页面上的名字（`max_iters` → 最多轮数）；`help` 是 hover 的一句 */
+  label: string
   help?: string
   default?: unknown
   type?: string
@@ -259,8 +263,11 @@ export interface Capability {
   /** 属于哪个阶段：标签，不定先后；`stage_slug` 是那个阶段的目录名 */
   stage: ResearchStage
   stage_slug: string
-  /** 给研究者看的名字 */
+  /** 名：页面直接显示（P-21） */
   title: string
+  /** 一行：hover 显示 */
+  brief: string
+  /** 详情：职责 / 边界 / 输入 / 产出 / 终止条件，点开才看 */
   does: string
   does_not: string
   brings: string

@@ -1,29 +1,28 @@
 // 选中节点的配置。阶段：这个阶段有哪些能力，勾上就点名，参数按描述符逐个给输入框（能力参数在页面上的落点，外层 #101）；
-// 断点：写一句要人确认什么（前一项的产出要人签了下游才能读；几个、放哪由流定，P-19）。
-// 五列说明折在展开层里，不占面板。
-import { CaretDown, Signature } from '@phosphor-icons/react'
-import { createElement, useState } from 'react'
+// 断点：写一句确认事项（上游产出经人确认后下游方可读取；几个、放哪由流程定，P-19）。
+// 能力这一行只有名字与参数（P-21 三层对三种动作）：一行 hover 看，详情点名字跳到「能力」镜头的详情页，这里不摊开。
+import { CaretRight, Signature } from '@phosphor-icons/react'
+import { createElement } from 'react'
 
 import type { Capability, CapabilityParam } from '@/api/types'
 import SquishSwitch from '@/components/reactbits/SquishSwitch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { actorOf, stageIcon } from '@/lib/stages'
+import { stageIcon } from '@/lib/stages'
 import { cn } from '@/lib/utils'
 
 import { type Item, parseParam, setParam, type StageItem, type StopItem, toggleCap } from './model'
 
-/** 五列的标题，顺序与后端 `COLUMNS` 一致 */
-const COLUMNS: [keyof Pick<Capability, 'does' | 'does_not' | 'brings' | 'leaves' | 'stops'>, string][] = [
-  ['does', '干什么'], ['does_not', '不干什么'], ['brings', '要带什么进来'], ['leaves', '留下什么'], ['stops', '什么时候停'],
-]
-
-export function Inspector({ item, catalog, onChange }: { item: Item; catalog: Capability[]; onChange: (item: Item) => void }) {
+export function Inspector({ item, catalog, onChange, onOpenCap }: {
+  item: Item; catalog: Capability[]; onChange: (item: Item) => void; onOpenCap: (name: string) => void
+}) {
   if (item.kind === 'stop') return <StopPanel item={item} onChange={onChange} />
-  return <StagePanel item={item} caps={catalog.filter((c) => c.stage === item.stage)} onChange={onChange} />
+  return <StagePanel item={item} caps={catalog.filter((c) => c.stage === item.stage)} onChange={onChange} onOpenCap={onOpenCap} />
 }
 
-function StagePanel({ item, caps, onChange }: { item: StageItem; caps: Capability[]; onChange: (item: StageItem) => void }) {
+function StagePanel({ item, caps, onChange, onOpenCap }: {
+  item: StageItem; caps: Capability[]; onChange: (item: StageItem) => void; onOpenCap: (name: string) => void
+}) {
   return (
     <div>
       <h2 className="flex items-center gap-2 font-serif text-[1.0625rem] font-semibold">
@@ -39,7 +38,8 @@ function StagePanel({ item, caps, onChange }: { item: StageItem; caps: Capabilit
               return (
                 <CapRow key={cap.name} cap={cap} picked={pick?.with ?? null}
                         onToggle={(on) => onChange(toggleCap(item, cap.name, on))}
-                        onParam={(name, value) => onChange(setParam(item, cap.name, name, value))} />
+                        onParam={(name, value) => onChange(setParam(item, cap.name, name, value))}
+                        onOpen={() => onOpenCap(cap.name)} />
               )
             })}
           </ul>
@@ -48,26 +48,22 @@ function StagePanel({ item, caps, onChange }: { item: StageItem; caps: Capabilit
   )
 }
 
-/** 一颗能力：勾选、参数、展开五列 */
-function CapRow({ cap, picked, onToggle, onParam }: {
+/** 一个能力：勾选、名字（hover 一行、点了跳详情）、勾上后的参数 */
+function CapRow({ cap, picked, onToggle, onParam, onOpen }: {
   cap: Capability; picked: Record<string, unknown> | null
-  onToggle: (on: boolean) => void; onParam: (name: string, value: unknown) => void
+  onToggle: (on: boolean) => void; onParam: (name: string, value: unknown) => void; onOpen: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const id = `cap-${cap.name}`
-  // 流里能写的参数才给输入框；每次调用时才定的（run_id、resume）不在这儿
+  // 流程里能写的参数才给输入框；每次调用时才定的（续跑、修改意见）不在这儿
   const knobs = cap.params.filter((p) => p.in_flow !== false)
   return (
     <li className={cn('rounded-xl border', picked ? 'border-primary/50 bg-card' : 'bg-card/60')}>
       <div className="flex items-center gap-2.5 px-3 py-2.5">
-        <Checkbox id={id} checked={picked !== null} onCheckedChange={(v) => onToggle(v === true)} />
-        <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
-          <span className="block truncate text-[0.9375rem] font-medium">{cap.title}</span>
-          <span className="block text-[0.75rem] text-muted-foreground">{actorOf(cap)}{cap.continuable ? ' · 可接着干' : ''}</span>
-        </label>
-        <button type="button" aria-label={open ? '收起' : '说明'} aria-expanded={open} onClick={() => setOpen((v) => !v)}
-                className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent/40 hover:text-foreground">
-          <CaretDown className={cn('size-3.5 transition-transform duration-200', open && 'rotate-180')} />
+        <Checkbox id={id} checked={picked !== null} onCheckedChange={(v) => onToggle(v === true)} aria-label={cap.title} />
+        <button type="button" onClick={onOpen} title={cap.brief}
+                className="group flex min-w-0 flex-1 items-center gap-1 text-left text-[0.9375rem] font-medium hover:text-primary focus-visible:outline-2 focus-visible:outline-ring">
+          <span className="truncate">{cap.title}</span>
+          <CaretRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
         </button>
       </div>
       {picked && knobs.length > 0 && (
@@ -75,37 +71,27 @@ function CapRow({ cap, picked, onToggle, onParam }: {
           {knobs.map((p) => <ParamField key={p.name} param={p} value={picked[p.name]} onChange={(v) => onParam(p.name, v)} />)}
         </dl>
       )}
-      {open && (
-        <dl className="space-y-2 border-t px-3 py-2.5 text-[0.75rem] leading-relaxed">
-          {COLUMNS.map(([key, label]) => (
-            <div key={key}>
-              <dt className="font-medium text-foreground">{label}</dt>
-              <dd className="text-muted-foreground">{cap[key]}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
     </li>
   )
 }
 
-/** 一个参数：布尔是开关，数字与字符串是输入框；空着就是描述符的缺省值 */
+/** 一个参数：布尔是开关，数字与字符串是输入框；空着就是描述符的缺省值。名字是描述符给的 label，参数名不上屏 */
 function ParamField({ param, value, onChange }: { param: CapabilityParam; value: unknown; onChange: (value: unknown) => void }) {
   const fallback = param.default === null || param.default === undefined || param.default === '' ? '' : String(param.default)
   if (param.type === 'bool') {
     return (
       <div className="flex items-center justify-between gap-3">
-        <dt className="font-mono text-[0.75rem]" title={param.help}>{param.name}</dt>
-        <dd><SquishSwitch checked={value === true} onChange={(on) => onChange(on ? true : undefined)} ariaLabel={param.name} width={32} height={18} /></dd>
+        <dt className="text-[0.8125rem]" title={param.help}>{param.label}</dt>
+        <dd><SquishSwitch checked={value === true} onChange={(on) => onChange(on ? true : undefined)} ariaLabel={param.label} width={32} height={18} /></dd>
       </div>
     )
   }
   return (
     <div className="flex items-center justify-between gap-3">
-      <dt className="min-w-0 truncate font-mono text-[0.75rem]" title={param.help}>{param.name}</dt>
+      <dt className="min-w-0 truncate text-[0.8125rem]" title={param.help}>{param.label}</dt>
       <dd className="w-[7.5rem] shrink-0">
-        <Input value={value === undefined ? '' : String(value)} placeholder={fallback} aria-label={param.name} title={param.help}
-               inputMode={param.type === 'str' ? 'text' : 'decimal'} className="h-7 bg-card font-mono text-[0.75rem]"
+        <Input value={value === undefined ? '' : String(value)} placeholder={fallback} aria-label={param.label} title={param.help}
+               inputMode={param.type === 'str' ? 'text' : 'decimal'} className="h-7 bg-card text-[0.8125rem] tabular-nums"
                onChange={(e) => onChange(parseParam(param.type, e.target.value))} />
       </dd>
     </div>
@@ -116,8 +102,8 @@ function StopPanel({ item, onChange }: { item: StopItem; onChange: (item: StopIt
   return (
     <div>
       <h2 className="flex items-center gap-2 font-serif text-[1.0625rem] font-semibold text-wait"><Signature weight="duotone" className="size-[1.125rem]" />断点</h2>
-      <p className="mt-2 text-[0.75rem] text-muted-foreground">前一个阶段的产出要人签了，下游才能读。</p>
-      <Input value={item.note} placeholder="确认什么" aria-label="确认什么" className="mt-2 bg-card"
+      <p className="mt-2 text-[0.75rem] text-muted-foreground">上游产出经人确认后，下游方可读取。</p>
+      <Input value={item.note} placeholder="确认事项" aria-label="确认事项" className="mt-2 bg-card"
              onChange={(e) => onChange({ ...item, note: e.target.value })} />
     </div>
   )

@@ -1,7 +1,9 @@
-// 编辑台：一张画布铺满整页（React Flow，Dify 用的同一个引擎），一条线性的链——节点是研究阶段（装能力 + 参数）或断点，边只表示顺序
-// （纲领 P-18；外层 #100 #101）。左上角阶段梯与题头（玻璃板），右上角库、保存与选中节点的配置；边拼边问后端有没有问题
-// （POST /workflows/check），问题贴到节点上；存成 workflows/<name>.yaml。坐标不进文件，按顺序自动排、放不下换行。
-// 造流助理是右下角一枚圆形入口，点开在角上弹出一扇悬浮的对话窗（主人：画布是主角，chat 是辅助）。它每说完一轮 epoch 加一，库就重读。
+// 编辑台：两个镜头（P-21，外层 #112）——「流程」是一张画布铺满整页（React Flow，Dify 用的同一个引擎），一条线性的链：节点是
+// 研究阶段（装能力 + 参数）或断点，边只表示顺序（纲领 P-18；外层 #100 #101）；「能力」是按七个阶段陈列的能力清单与每个能力的
+// 详情页（`Catalog`）。两个镜头都常驻只切显示，雾景与对话窗挂在外面，切换不闪。画布：左上角阶段梯与题头（玻璃板），右上角流程库、
+// 保存与选中节点的配置；边拼边问后端有没有问题（POST /workflows/check），问题贴到节点上；存成 workflows/<name>.yaml，文件名由
+// 标题生成（不显示、不让填）。坐标不进文件，按顺序自动排、放不下换行。流程助理的对话是右下角的悬浮窗，默认开着；它每说完一轮
+// epoch 加一，流程库就重读。
 import {
   Background, BackgroundVariant, type Edge, MarkerType, type Node, type OnSelectionChangeFunc, Panel, ReactFlow,
   ReactFlowProvider, useNodesState, useReactFlow,
@@ -11,27 +13,29 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ChangeEvent, type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api } from '@/api/client'
-import type { Capability, Workflow, WorkflowCheck } from '@/api/types'
+import type { Capability, StageInfo, Workflow, WorkflowCheck } from '@/api/types'
 import { ASSETS } from '@/assets'
 import { ErrorNote, Problems, Skeleton } from '@/components/bits'
 import GlassSurface from '@/components/reactbits/GlassSurface'
 import { ChatEntry } from '@/App'
-import SquishSwitch from '@/components/reactbits/SquishSwitch'
+
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { suggestId } from '@/lib/slug'
 import { coverageSentence } from '@/lib/stages'
 import { useToken } from '@/lib/tokens'
 import { useMediaQuery, WIDE } from '@/lib/useMediaQuery'
 import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 
+import { Catalog } from './Catalog'
 import { Inspector } from './Inspector'
 import {
   append, arranged, type Draft, dropAt, EMPTY, fromWorkflow, type Item, parseSeed, patch, place, positions, problemIndices,
   remove, type Seed, SEED_MIME, tidy, toDraft,
 } from './model'
-import { StageNode, type StageNodeType, StopNode, type StopNodeType } from './nodes'
+import { type CapChip, StageNode, type StageNodeType, StopNode, type StopNodeType } from './nodes'
 import { Ladder, Library } from './Palette'
 
 import '@xyflow/react/dist/style.css'
@@ -41,9 +45,17 @@ type CanvasNode = StageNodeType | StopNodeType
 const FIT = { top: '150px', left: '110px', right: '60px', bottom: '70px' } as const
 const NODE_TYPES = { stage: StageNode, stop: StopNode }
 type SetItems = (change: (items: Item[]) => Item[]) => void
+/** 编辑台的两个镜头：流程（画布）与能力（陈列与详情） */
+export type StudioView = 'flow' | 'caps'
 
 
-export function Studio({ epoch, chat }: { epoch: number; chat: (close: () => void) => ReactNode }) {
+export function Studio({ epoch, chat, view, focus, onFocus }: {
+  epoch: number; chat: (close: () => void) => ReactNode
+  view: StudioView
+  /** 「能力」镜头里打开的是哪个能力的详情（null 是陈列页）；从画布或配置板点名字过来时父组件同时切镜头 */
+  focus: string | null
+  onFocus: (name: string | null) => void
+}) {
   const stages = useResource(api.stages, [])
   const workflows = useResource(api.workflows, [epoch])
   const catalog = useResource(api.capabilities, [])
@@ -54,20 +66,31 @@ export function Studio({ epoch, chat }: { epoch: number; chat: (close: () => voi
     return <div className="flex-1 space-y-2 p-6">{errors.map((e) => <ErrorNote key={e} text={e} />)}</div>
   }
   return (
-    <ReactFlowProvider>
-      <Editor stages={stages.data.map((s) => s.name)} workflows={workflows.data} catalog={catalog.data} onSaved={() => void workflows.reload()} chat={chat} />
-    </ReactFlowProvider>
+    <div className="relative min-h-0 min-w-0 flex-1">
+      {/* 底下一层风景，压到只剩氛围；两个镜头共用，切换不重贴 */}
+      <Scene picture={ASSETS.studio} veil="mist" />
+      <div className={cn('relative h-full', view !== 'flow' && 'hidden')}>
+        <ReactFlowProvider>
+          <Editor stages={stages.data} workflows={workflows.data} catalog={catalog.data} onSaved={() => void workflows.reload()}
+                  onOpenCap={onFocus} />
+        </ReactFlowProvider>
+      </div>
+      <div className={cn('relative h-full', view !== 'caps' && 'hidden')}>
+        <Catalog stages={stages.data} catalog={catalog.data} focus={focus} onFocus={onFocus} />
+      </div>
+      <ChatDock chat={chat} />
+    </div>
   )
 }
 
-function Editor({ stages, workflows, catalog, onSaved, chat }: {
-  stages: string[]; workflows: Workflow[]; catalog: Capability[]; onSaved: () => void; chat: (close: () => void) => ReactNode
+function Editor({ stages, workflows, catalog, onSaved, onOpenCap }: {
+  stages: StageInfo[]; workflows: Workflow[]; catalog: Capability[]; onSaved: () => void; onOpenCap: (name: string) => void
 }) {
   const wide = useMediaQuery(WIDE)
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [selected, setSelected] = useState<number | null>(null)
   const setItems: SetItems = useCallback((change) => setDraft((d) => ({ ...d, items: change(d.items) })), [])
-  const titles = useMemo(() => new Map(catalog.map((c) => [c.name, c.title])), [catalog])
+  const chips = useMemo(() => new Map<string, CapChip>(catalog.map((c) => [c.name, { name: c.name, title: c.title, brief: c.brief }])), [catalog])
 
   // 边拼边查：形状同文件；空画布不问
   const doc = toDraft(draft)
@@ -86,31 +109,29 @@ function Editor({ stages, workflows, catalog, onSaved, chat }: {
   const load = (wf: Workflow) => { setDraft(fromWorkflow(wf)); setSelected(null) }
   const current = selected === null ? null : draft.items.find((it) => it.uid === selected) ?? null
   const inspector = current && (
-    <Inspector key={current.uid} item={current} catalog={catalog}
+    <Inspector key={current.uid} item={current} catalog={catalog} onOpenCap={onOpenCap}
                onChange={(next) => setItems((items) => patch(items, next.uid, () => next))} />
   )
 
-  const taken = workflows.some((wf) => wf.name === draft.name.trim())
   return (
-    <div className="relative min-h-0 min-w-0 flex-1">
-      {/* 画布底下一层风景，压到只剩氛围；点阵铺在它上面 */}
-      <Scene picture={ASSETS.studio} veil="mist" />
-      <Canvas items={draft.items} titles={titles} perItem={perItem} selected={selected} onSelect={setSelected} setItems={setItems}>
+    <div className="relative h-full min-w-0">
+      <Canvas items={draft.items} chips={chips} perItem={perItem} selected={selected} onSelect={setSelected} setItems={setItems} onOpenCap={onOpenCap}>
         {/* 浮在画布上的几块：面板本身不挡鼠标，只有里面的东西接事件 */}
         <Panel position="top-left" className="pointer-events-none !m-4 flex items-start gap-4">
-          <div className="pointer-events-auto"><Ladder stages={stages} onAdd={(seed) => add(seed)} /></div>
+          <div className="pointer-events-auto"><Ladder stages={stages.map((s) => s.name)} onAdd={(seed) => add(seed)} /></div>
           <div className="pointer-events-auto"><Heading draft={draft} setDraft={setDraft} /></div>
         </Panel>
         <Panel position="top-right" className="pointer-events-none !m-4 flex flex-col items-end gap-3">
           <div className="pointer-events-auto flex items-center gap-2">
             {arranged(draft.items) && (
-              <Button variant="outline" size="sm" className="rounded-full bg-card/85 backdrop-blur-sm" title="回到自动排"
+              <Button variant="outline" size="sm" className="rounded-full bg-card/85 backdrop-blur-sm" title="回到自动排列"
                       onClick={() => setItems(tidy)}>
-                <ArrowsInLineHorizontal data-icon="inline-start" />整理
+                <ArrowsInLineHorizontal data-icon="inline-start" />排列
               </Button>
             )}
             <Library workflows={workflows} onLoad={load} />
-            <Save draft={draft} taken={taken} ok={draft.items.length > 0 && check.data !== null && problems.length === 0} onSaved={onSaved} />
+            <Save draft={draft} setDraft={setDraft} names={workflows.map((wf) => wf.name)}
+                  ok={draft.items.length > 0 && check.data !== null && problems.length === 0} onSaved={onSaved} />
           </div>
           {wide && inspector && (
             <div className="pointer-events-auto max-h-[calc(100dvh-13rem)] w-[19rem] overflow-y-auto rounded-2xl border bg-card/90 p-4 shadow-sm backdrop-blur-sm">{inspector}</div>
@@ -120,7 +141,6 @@ function Editor({ stages, workflows, catalog, onSaved, chat }: {
           <Verdict items={draft.items} check={check.data} error={check.error} />
         </Panel>
       </Canvas>
-      <ChatDock chat={chat} />
       {!wide && (
         <Sheet open={current !== null} onOpenChange={(open) => { if (!open) setSelected(null) }}>
           <SheetContent side="right" className="w-[20rem] overflow-y-auto p-5">
@@ -133,30 +153,25 @@ function Editor({ stages, workflows, catalog, onSaved, chat }: {
   )
 }
 
-/** 题头：一块玻璃板（与门口的输入框同款），上面是宋体大标题、mono 名字、一行说明——文字直接写在板上，没有框没有线 */
+/** 题头：一块玻璃板（与门口的输入框同款），上面是宋体大标题、一行说明——文字直接写在板上，没有框没有线。
+ *  文件名不在这儿：由标题生成，不显示、不让填（P-21） */
 const TEXT = 'w-full bg-transparent outline-none placeholder:text-muted-foreground/55'
 function Heading({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
-  const field = (k: 'name' | 'title' | 'summary') => (e: ChangeEvent<HTMLInputElement>) =>
+  const field = (k: 'title' | 'summary') => (e: ChangeEvent<HTMLInputElement>) =>
     setDraft((d) => ({ ...d, [k]: e.target.value }))
   return (
     <GlassSurface borderRadius={22} className="w-[34rem] max-w-[calc(100vw-24rem)] focus-within:ring-3 focus-within:ring-ring/35">
       <div className="px-5 pt-3.5 pb-3">
         <input value={draft.title} onChange={field('title')} placeholder="标题" aria-label="标题" spellCheck={false}
                className={cn(TEXT, 'font-serif text-[1.5rem] leading-tight font-semibold tracking-tight')} />
-        <div className="mt-1 flex items-baseline gap-2">
-          <input value={draft.name} onChange={field('name')} placeholder="name" aria-label="name" spellCheck={false} autoComplete="off"
-                 style={{ width: `${Math.max(draft.name.length, 4) + 1}ch` }}
-                 className={cn(TEXT, 'max-w-[14rem] shrink-0 font-mono text-[0.8125rem] text-primary')} />
-          <span aria-hidden className="text-muted-foreground/60">·</span>
-          <input value={draft.summary} onChange={field('summary')} placeholder="说明" aria-label="说明" spellCheck={false}
-                 className={cn(TEXT, 'min-w-0 flex-1 text-[0.875rem]')} />
-        </div>
+        <input value={draft.summary} onChange={field('summary')} placeholder="说明" aria-label="说明" spellCheck={false}
+               className={cn(TEXT, 'mt-1 text-[0.875rem]')} />
       </div>
     </GlassSurface>
   )
 }
 
-/** 右下角：悬浮的对话窗默认开着（主人：对话默认展开，人手动关）；关了剩一颗带字的玻璃键（和工作区同一颗） */
+/** 右下角：悬浮的对话窗默认开着（主人：对话默认展开，人手动关）；关了剩一枚带字的玻璃键（和工作区同一枚） */
 function ChatDock({ chat }: { chat: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(true)
   const still = useReducedMotion() === true
@@ -180,18 +195,22 @@ function ChatDock({ chat }: { chat: (close: () => void) => ReactNode }) {
   )
 }
 
-/** 右上角：保存；名字与库里的重了才出现「覆盖同名」的开关 */
-function Save({ draft, taken, ok, onSaved }: { draft: Draft; taken: boolean; ok: boolean; onSaved: () => void }) {
+/** 右上角：保存。从流程库载入的（或存过一次的）就是覆盖它自己；新拼的文件名从标题生成、避开库里已有的，所以没有「同名」这回事 */
+function Save({ draft, setDraft, names, ok, onSaved }: {
+  draft: Draft; setDraft: (f: (d: Draft) => Draft) => void; names: string[]; ok: boolean; onSaved: () => void
+}) {
   const [busy, setBusy] = useState(false)
-  const [overwrite, setOverwrite] = useState(false)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
-  const filled = draft.name.trim() !== '' && draft.title.trim() !== '' && draft.summary.trim() !== ''
+  const filled = draft.title.trim() !== '' && draft.summary.trim() !== ''
   const save = async () => {
     setBusy(true)
     setNote(null)
+    const existing = draft.name.trim() !== ''
+    const name = existing ? draft.name.trim() : suggestId(draft.title, names, new Date(), 'flow')
     try {
-      const saved = await api.saveWorkflow({ ...toDraft(draft), overwrite: taken && overwrite })
-      setNote({ ok: true, text: `已存 ${saved.name}` })
+      const saved = await api.saveWorkflow({ ...toDraft({ ...draft, name }), overwrite: existing })
+      setDraft((d) => ({ ...d, name: saved.name }))
+      setNote({ ok: true, text: '已保存' })
       onSaved()
     } catch (exc) {
       setNote({ ok: false, text: exc instanceof Error ? exc.message : String(exc) })
@@ -202,25 +221,20 @@ function Save({ draft, taken, ok, onSaved }: { draft: Draft; taken: boolean; ok:
   return (
     <div className="flex items-center gap-3">
       {note && <span className={cn('max-w-[20rem] truncate text-[0.8125rem]', note.ok ? 'text-ok' : 'text-bad')}>{note.text}</span>}
-      {taken && (
-        <label className="flex items-center gap-1.5 text-[0.8125rem] text-wait">
-          覆盖同名<SquishSwitch checked={overwrite} onChange={setOverwrite} ariaLabel="覆盖同名" width={32} height={18} />
-        </label>
-      )}
-      <Button size="sm" className="rounded-full px-4 shadow-sm" onClick={() => void save()} disabled={!ok || !filled || busy || (taken && !overwrite)}>
+      <Button size="sm" className="rounded-full px-4 shadow-sm" onClick={() => void save()} disabled={!ok || !filled || busy}>
         {busy ? '保存中' : '保存'}
       </Button>
     </div>
   )
 }
 
-/** 左下角：检查结果。通过就说经过哪几个阶段；有问题一条一条列；提醒是琥珀色 */
+/** 底下：检查结果。通过就说经过哪几个阶段；有问题一条一条列；提醒是琥珀色 */
 function Verdict({ items, check, error }: { items: Item[]; check: WorkflowCheck | null; error: string | null }) {
   if (items.length === 0 || (!check && !error)) return null
   return (
     <div className="space-y-1.5 rounded-xl border bg-card/90 px-3 py-2 text-[0.8125rem] shadow-sm backdrop-blur-sm">
       {error && <ErrorNote text={error} />}
-      {check && check.problems.length === 0 && <p className="text-ok">通过 · {coverageSentence(check.covers)}</p>}
+      {check && check.problems.length === 0 && <p className="text-ok">校验通过 · {coverageSentence(check.covers)}</p>}
       {check?.remarks.map((r) => <p key={r} className="text-wait">{r}</p>)}
       {check && <Problems items={check.problems} />}
     </div>
@@ -228,10 +242,10 @@ function Verdict({ items, check, error }: { items: Item[]; check: WorkflowCheck 
 }
 
 // ── 画布 ──────────────────────────────────────────────────────────────────
-function Canvas({ items, titles, perItem, selected, onSelect, setItems, children }: {
-  items: Item[]; titles: Map<string, string>; perItem: Map<number, string[]>
+function Canvas({ items, chips, perItem, selected, onSelect, setItems, onOpenCap, children }: {
+  items: Item[]; chips: Map<string, CapChip>; perItem: Map<number, string[]>
   selected: number | null; onSelect: (uid: number | null) => void
-  setItems: SetItems
+  setItems: SetItems; onOpenCap: (name: string) => void
   children: ReactNode
 }) {
   const { screenToFlowPosition, fitView } = useReactFlow()
@@ -249,10 +263,11 @@ function Canvas({ items, titles, perItem, selected, onSelect, setItems, children
         const problems = perItem.get(i) ?? []
         const onRemove = () => setItems((all) => remove(all, item.uid))
         if (item.kind === 'stop') return { ...base, type: 'stop', data: { n: i + 1, note: item.note, problems, onRemove } }
-        return { ...base, type: 'stage', data: { n: i + 1, stage: item.stage, caps: item.caps.map((p) => titles.get(p.cap) ?? p.cap), problems, onRemove } }
+        const caps = item.caps.map((p) => chips.get(p.cap) ?? { name: p.cap, title: p.cap, brief: '' })
+        return { ...base, type: 'stage', data: { n: i + 1, stage: item.stage, caps, problems, onRemove, onOpenCap } }
       })
     })
-  }, [items, perItem, titles, setNodes, setItems])
+  }, [items, perItem, chips, setNodes, setItems, onOpenCap])
   useEffect(() => {
     const id = requestAnimationFrame(() => void fitView({ padding: FIT, maxZoom: 1, duration: 200 }))
     return () => cancelAnimationFrame(id)
@@ -299,7 +314,7 @@ function Canvas({ items, titles, perItem, selected, onSelect, setItems, children
       <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
       {items.length === 0 && (
         <Panel position="top-center" className="pointer-events-none !mt-[28%]">
-          <div className="grid h-[4.5rem] w-[13rem] place-items-center rounded-2xl border-2 border-dashed border-muted-foreground/40 font-serif text-[0.9375rem] text-muted-foreground">拖入阶段</div>
+          <div className="grid h-[4.5rem] w-[15rem] place-items-center rounded-2xl border-2 border-dashed border-muted-foreground/40 font-serif text-[0.9375rem] text-muted-foreground">从左栏拖入阶段</div>
         </Panel>
       )}
       {children}

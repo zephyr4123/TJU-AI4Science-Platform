@@ -1,7 +1,7 @@
-// 看板上算出来的东西，纯函数、有单测：一条流在等谁、下一步是哪个阶段、每次产出用哪个词、断点的短标签。
+// 看板上算出来的东西，纯函数、有单测：一条流程在等谁、下一步是哪个阶段、每次产出用哪个词、断点的短标签。
 import type { FlowOutput, FlowProgress, FlowProgressItem } from '@/api/types'
 
-/** 哪些产出待人确认：流里那一项后面是断点、产出还没确认（或确认之后又改了） */
+/** 哪些产出待人确认：流程里那一项后面是断点、产出还没确认（或确认之后又改了） */
 export function needsSign(flows: FlowProgress[]): Set<string> {
   const found = new Set<string>()
   for (const flow of flows) {
@@ -15,7 +15,7 @@ export function needsSign(flows: FlowProgress[]): Set<string> {
   return found
 }
 
-/** 下一步是流里的第几项（阶段）：step 之后第一个阶段项；走完了是 null */
+/** 下一步是流程里的第几项（阶段）：step 之后第一个阶段项；走完了是 null */
 export function nextStage(flow: FlowProgress): Extract<FlowProgressItem, { kind: 'stage' }> | null {
   const items = flow.items ?? []
   const step = flow.step ?? -1
@@ -43,9 +43,9 @@ export function outputState(o: FlowOutput, pending: Set<string>): OutputState {
 /** 目录名 → 阶段名（`GET /stages` 给的表） */
 export type NameOf = (slug: string) => string
 
-/** 一条流现在在等谁，一句话：下一步：实验 · 助理 / 待确认：设计 1 / 运行中：实验 2 / 完成 / 流文件有误 */
+/** 一条流程现在在等谁，一句话：下一步：实验 · 助理 / 待确认：设计 · 1 / 运行中：实验 · 2 / 完成 / 流程文件有误 */
 export function waitingSentence(flow: FlowProgress, pending: Set<string>, nameOf: NameOf): string {
-  if (flow.problems.length > 0 || !flow.items) return '流文件有误'
+  if (flow.problems.length > 0 || !flow.items) return '流程文件有误'
   const items = flow.items
   const step = flow.step ?? -1
   if (flow.waiting === 'job') {
@@ -62,8 +62,8 @@ export function waitingSentence(flow: FlowProgress, pending: Set<string>, nameOf
   return next ? `下一步：${next.stage} · 助理` : '完成'
 }
 
-/** 产出 id 的人话：design/1 → 设计 1 */
+/** 产出 id 上屏的写法：design/1 → 设计 · 1（P-21：机器的名字不上屏） */
 export function outputName(id: string, nameOf: NameOf): string {
   const [slug, n] = id.split('/')
-  return `${nameOf(slug)} ${n}`
+  return `${nameOf(slug)} · ${n}`
 }

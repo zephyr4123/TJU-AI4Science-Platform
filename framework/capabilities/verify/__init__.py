@@ -49,11 +49,11 @@ DESCRIPTOR = Capability(
     ),
     leaves="report.json（PASS 与 FAIL 都写）。",
     stops=(
-        "报告写完就退出。FAIL 时退非零、结论行说哪项没过（fail-closed：验证不过就停，P-7）；"
+        "报告写完就退出。FAIL 时退非零、结论行说哪项没过（验证不过就停，不放行）；"
         "analysis.md 不在就直接判失败。"
     ),
     params=(
-        Param("tolerance", "float", DEFAULT_TOLERANCE, "数字回溯的相对容差，缺省 0.01（1%）",
+        Param("tolerance", "float", DEFAULT_TOLERANCE, "数字回溯的相对容差：相对误差在它之内算找到",
               "容差"),
     ),
 )

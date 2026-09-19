@@ -57,7 +57,7 @@ DESCRIPTOR = Capability(
         "实验笔记 notebook.md 每轮一段，下一轮整本进提示。"
     ),
     does_not=(
-        "不修改 harness/（每轮核对，改动判 readonly_violated 并回滚）、"
+        "不修改 harness/（每轮核对，改了就回滚并判失败）、"
         "不改 scoring 快照里的指标与预算（加预算续跑除外）、不写分析、"
         "不判结果可不可信——它只负责让分支 tip 永远是目前最好的那一版。"
     ),

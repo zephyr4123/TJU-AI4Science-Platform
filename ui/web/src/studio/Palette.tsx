@@ -1,5 +1,5 @@
 // 画布左边一根梯子：七个研究阶段按顺序竖排成方块（顺序本身就是信息），底下一块断点（拖进去写一句要人确认什么）。
-// 拖进画布落在哪就插在哪；点一下加到末尾（键盘也走得通）。库另在右上角：一个弹层，点一条载入画布（名字照旧，重名要勾「覆盖同名」）。
+// 拖进画布落在哪就插在哪；点一下加到末尾（键盘也走得通）。流程库另在右上角：一个弹层，点一条载入画布（存回去就是覆盖它）。
 import { Books, CaretDown, Signature } from '@phosphor-icons/react'
 import { createElement, useState } from 'react'
 
@@ -40,7 +40,7 @@ export function Library({ workflows, onLoad }: { workflows: Workflow[]; onLoad: 
       <PopoverTrigger asChild>
         <button type="button"
                 className="flex h-8 items-center gap-1.5 rounded-full border bg-card/85 px-3 text-[0.8125rem] shadow-sm backdrop-blur-sm transition-colors hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-ring">
-          <Books weight="duotone" aria-hidden className="size-4 text-primary" />库 {workflows.length}
+          <Books weight="duotone" aria-hidden className="size-4 text-primary" />流程库
           <CaretDown className={cn('size-3 text-muted-foreground transition-transform', open && 'rotate-180')} aria-hidden />
         </button>
       </PopoverTrigger>
@@ -53,7 +53,7 @@ export function Library({ workflows, onLoad }: { workflows: Workflow[]; onLoad: 
                       className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-serif text-[0.9375rem] font-semibold">{wf.title}</span>
-                  <span className="block truncate font-mono text-[0.6875rem] text-muted-foreground">{wf.name} · {wf.stages.length} 项</span>
+                  <span className="block truncate text-[0.6875rem] text-muted-foreground">{wf.stages.length} 项</span>
                 </span>
                 {wf.problems.length > 0 && <span role="img" aria-label="有问题" className="size-2 shrink-0 rounded-full bg-bad" />}
               </button>

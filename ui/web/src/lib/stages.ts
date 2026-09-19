@@ -1,7 +1,7 @@
 // 能力清单按七个研究阶段分组。阶段顺序来自 `GET /stages`，空着的阶段也要占一格：
 // 页面诚实地告诉人"这个阶段还没有能力"，比把五颗能力排成一列更能看出平台现在能做到哪。
 
-import type { Capability, FlowItem, ResearchStage } from '@/api/types'
+import type { Capability, ResearchStage } from '@/api/types'
 
 export interface StageGroup {
   stage: ResearchStage
@@ -15,27 +15,13 @@ export function groupByStage(stages: ResearchStage[], caps: Capability[]): Stage
   return order.map((stage) => ({ stage, caps: caps.filter((c) => c.stage === stage) }))
 }
 
-/** 谁来做：要执行层的是助理（agent），不要的是机器，不经过模型。 */
-export function actorOf(cap: Pick<Capability, 'needs_executor'>): '助理' | '机器' {
-  return cap.needs_executor ? '助理' : '机器'
-}
-
-/** 一条流经过哪几个阶段：「假设 → 设计 → 实验」。 */
+/** 一条流程经过哪几个阶段：「假设 → 设计 → 实验」。 */
 export function coverageSentence(covers: ResearchStage[]): string {
   return covers.length === 0 ? '没有阶段' : covers.join(' → ')
 }
 
-/** 流里一项的一句名：阶段名（点了名带能力标题），断点写要人确认什么。 */
-export function itemLabel(item: FlowItem, titleOf: (cap: string) => string | undefined): string {
-  if (item.kind === 'stop') return item.note || '确认'
-  if (item.caps.length === 0) return item.stage
-  return `${item.stage}：${item.caps.map((c) => titleOf(c.cap) ?? c.cap).join('、')}`
-}
-
-// ── 图标：七个阶段各一枚，断点是签名的笔（Phosphor，全站一套） ──
-import {
-  Books, ChartLineUp, Flask, type Icon, Lightbulb, PenNib, PencilRuler, SealCheck, Signature,
-} from '@phosphor-icons/react'
+// ── 图标：七个阶段各一枚（Phosphor，全站一套） ──
+import { Books, ChartLineUp, Flask, type Icon, Lightbulb, PenNib, PencilRuler, SealCheck } from '@phosphor-icons/react'
 
 /** 阶段名是后端给的中文；清单外的阶段用锥形瓶兜底 */
 export const STAGE_ICON: Record<string, Icon> = {
@@ -44,9 +30,4 @@ export const STAGE_ICON: Record<string, Icon> = {
 
 export function stageIcon(stage: ResearchStage): Icon {
   return STAGE_ICON[stage] ?? Flask
-}
-
-/** 流里的一项配哪枚：阶段按它的名字，断点是签名的笔 */
-export function itemIcon(item: FlowItem): Icon {
-  return item.kind === 'stage' ? stageIcon(item.stage) : Signature
 }
