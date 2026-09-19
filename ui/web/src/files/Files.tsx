@@ -1,6 +1,7 @@
 // 文件镜头（外层 #111）：同一个工作区的另一个镜头——看板答「做到哪了、在等谁」，这里答「盘上到底有什么」。
 // 左边一棵大纲式的树，直接印在底上不加框：每一级一根浅灰缩进导线（不上色，主人：蓝线太丑）；七个阶段目录写阶段名 + 阶段图标
-// （与看板同一套）并拉开成小节；每次产出那一层是编号 + 右对齐的状态词（冻结另加一把锁）；`.ai4sci/` 灰显；一层一层懒加载。
+// （与看板同一套），行距统一不分组（主人：分组的空行看着像没对齐）；每次产出那一层是编号 + 右对齐的状态词（冻结另加一把锁）；
+// `.ai4sci/` 灰显；一层一层懒加载。
 // 右边是整个镜头里唯一抬起的面：头部是「位置」（面包屑写平台语义 + 文件名大字 + 大小与行数），正文按种类渲染——代码高亮带行号、
 // markdown 排版、csv / tsv 成表、图片居中；产出那一层是它的记录与确认。只看不改：改动走对话，和需求同一条规矩（手改会撞冻结）。
 import {
@@ -101,7 +102,7 @@ function DirRows({ workspace, path, depth, epoch, expanded, selected, meaning, o
         const open = expanded.has(full)
         const what = meaning(full)
         return (
-          <li key={entry.name} className={cn(what.kind === 'stage' && 'mt-3 first:mt-0', what.kind === 'platform' && 'mt-3')}>
+          <li key={entry.name}>
             <Row entry={entry} path={full} depth={depth} open={open} selected={selected === full} meaning={what}
                  onToggle={() => onToggle(full)}
                  onClick={() => {
