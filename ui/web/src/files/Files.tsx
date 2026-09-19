@@ -2,11 +2,11 @@
 // 左边一棵大纲式的树，直接印在底上不加框：每一级一根浅灰缩进导线（不上色，主人：蓝线太丑）；七个阶段目录写阶段名 + 阶段图标
 // （与看板同一套），行距统一不分组（主人：分组的空行看着像没对齐）；每次产出那一层是编号 + 右对齐的状态词（冻结另加一把锁）；
 // `.ai4sci/` 灰显；一层一层懒加载。
-// 右边是整个镜头里唯一抬起的面：头部是「位置」（面包屑写平台语义 + 文件名大字 + 大小与行数），正文按种类渲染——代码高亮带行号、
+// 右边是整个镜头里唯一抬起的面：头部是「位置」（面包屑写平台语义 + 文件名大字 + 大小与行数；没有「下载」，文件本来就在盘上），正文按种类渲染——代码高亮带行号、
 // markdown 排版、csv / tsv 成表、图片居中；产出那一层是它的记录与确认。只看不改：改动走对话，和需求同一条规矩（手改会撞冻结）。
 import {
-  CaretRight, CheckCircle, DownloadSimple, File, FileCode, FileText, Folder, FolderOpen, Image as ImageIcon,
-  Kanban, Lock, Table as TableIcon,
+  CaretRight, CheckCircle, File, FileCode, FileText, Folder, FolderOpen, Image as ImageIcon, Kanban, Lock,
+  Table as TableIcon,
 } from '@phosphor-icons/react'
 import { createElement, type ReactNode, useState } from 'react'
 
@@ -228,24 +228,18 @@ function FilePane({ workspace, path, epoch, doc, meaning, onReveal, onOpenBoard 
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-6 pt-1">
           <h2 className="min-w-0 truncate font-mono text-[1.0625rem] font-medium">{name}</h2>
           <span className="t-label tabular-nums">{bytes(f.size)}{lines !== null && ` · ${lines} 行`}</span>
-          <span className="ml-auto flex items-center gap-4">
-            {oid && (
-              <button type="button" onClick={() => onOpenBoard(oid)}
-                      className="inline-flex items-center gap-1 text-[0.8125rem] text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary focus-visible:outline-2 focus-visible:outline-ring">
-                <Kanban className="size-3.5" aria-hidden />在看板打开
-              </button>
-            )}
-            <a href={api.rawUrl(workspace, path)} download
-               className="inline-flex items-center gap-1 text-[0.8125rem] text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
-              <DownloadSimple className="size-3.5" aria-hidden />下载
-            </a>
-          </span>
+          {oid && (
+            <button type="button" onClick={() => onOpenBoard(oid)}
+                    className="ml-auto inline-flex items-center gap-1 text-[0.8125rem] text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary focus-visible:outline-2 focus-visible:outline-ring">
+              <Kanban className="size-3.5" aria-hidden />在看板打开
+            </button>
+          )}
         </div>
       </header>
       {kind === 'image'
         ? <div className="m-6 flex justify-center rounded-xl bg-muted/40 p-6"><img src={api.rawUrl(workspace, path)} alt={name} className="max-w-full rounded-md" /></div>
         : f.text === null
-          ? <p className="t-label px-6 py-5">二进制文件</p>
+          ? <p className="t-label px-6 py-5">二进制文件，页面不显示。</p>
           : kind === 'markdown'
             ? <div className="px-6 py-5"><Markdown text={f.text} className="max-w-[72ch]" /></div>
             : kind === 'table'
