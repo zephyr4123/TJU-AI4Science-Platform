@@ -147,6 +147,25 @@ export interface WorkspaceDetail extends WorkspaceSummary {
   jobs: Job[]
 }
 
+/** 文件镜头：目录的一层（`GET /workspaces/<id>/files?path=`），目录在前；`.venv` `.git` 不列。 */
+export interface DirEntry {
+  name: string
+  kind: 'dir' | 'file'
+  size: number | null
+}
+export interface DirListing {
+  path: string
+  entries: DirEntry[]
+}
+
+/** 一个文件（`GET /workspaces/<id>/file?path=`）：文本带正文（大的截断），二进制 `text` 为 null、走 raw。 */
+export interface FileContent {
+  path: string
+  size: number
+  text: string | null
+  truncated: boolean
+}
+
 /** 库里的一份需求模板（`GET /templates`）。 */
 export interface Template {
   name: string

@@ -121,6 +121,57 @@ def test_output_detail_lists_files_with_small_text_inline(tmp_path):
         boards.output_detail(pack.workspace, "analysis/9")
 
 
+def test_file_view_lists_a_directory_one_level_and_reads_files(tmp_path):
+    """文件镜头：目录一层一层给、目录在前、.venv / .git 不列；文本带正文、大的截断、
+    二进制 text 为 None。"""
+    run_dir, pack = rf.make_run(tmp_path)
+    ws = pack.workspace
+    (ws.root / "materials" / "big.log").write_bytes(b"x" * (boards.TEXT_LIMIT + 10))
+    (ws.root / "materials" / "blob.bin").write_bytes(b"\x00\x01\x02")
+    (ws.root / "materials" / "\u6570\u636e.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+
+    top = boards.list_dir(ws, "")
+    assert top["path"] == ""
+    names = [e["name"] for e in top["entries"]]
+    assert "requirement.md" in names and "design" in names and "experiment" in names
+    kinds = [e["kind"] for e in top["entries"]]
+    assert kinds == sorted(kinds, key=lambda k: k != "dir")  # 目录在前
+    inner = boards.list_dir(ws, "experiment/1/")
+    inner_names = {e["name"] for e in inner["entries"]}
+    assert "ledger.tsv" in inner_names and ".venv" not in inner_names
+    assert inner["path"] == "experiment/1"
+    work = boards.list_dir(ws, "experiment/1/work")
+    assert ".git" not in {e["name"] for e in work["entries"]}
+
+    doc = boards.read_file(ws, "materials/\u6570\u636e.csv")
+    assert doc["text"] == "a,b\n1,2\n" and doc["truncated"] is False and doc["size"] == 8
+    big = boards.read_file(ws, "materials/big.log")
+    assert big["truncated"] is True and len(big["text"]) == boards.TEXT_LIMIT
+    blob = boards.read_file(ws, "materials/blob.bin")
+    assert blob["text"] is None and blob["truncated"] is False and blob["size"] == 3
+    data, ctype = boards.raw_file(ws, "materials/blob.bin")
+    assert data == b"\x00\x01\x02" and ctype == "application/octet-stream"
+
+    with pytest.raises(FileNotFoundError):
+        boards.list_dir(ws, "nope")
+    with pytest.raises(FileNotFoundError):
+        boards.read_file(ws, "materials")  # 是目录不是文件
+
+
+def test_file_view_refuses_paths_outside_the_workspace(tmp_path):
+    """绝对路径、`..`、指到外面的符号链接，一律 ValueError；页面上是 422 一句话。"""
+    _, pack = rf.make_run(tmp_path)
+    ws = pack.workspace
+    outside = tmp_path / "secret.txt"
+    outside.write_text("x", encoding="utf-8")
+    (ws.root / "materials" / "leak").symlink_to(outside)
+    for rel in ("/etc/passwd", "../secret.txt", "materials/../../secret.txt", "materials/leak"):
+        with pytest.raises(ValueError, match="要在工作区里"):
+            boards.resolve_path(ws, rel)
+    assert boards.resolve_path(ws, "") == ws.root.resolve()
+    assert boards.resolve_path(ws, "materials/./env") == (ws.root / "materials" / "env").resolve()
+
+
 def test_templates_are_listed_with_title_and_summary():
     found = boards.list_templates(paths.templates_root())
     assert [t["name"] for t in found] == ["ai", "cs", "generic", "materials"]

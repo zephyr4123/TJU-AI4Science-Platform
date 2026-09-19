@@ -6,11 +6,15 @@ server 只做路由；换一种 UI（TUI）读的也是同一份东西。每个�
 
 按纲领 P-19 只读框架认的东西：需求、meta.yaml、signed.json、流文件、作业。产出目录里其它文件只列名字
 （页面按文件种类通用渲染），不解释内容。
+
+文件镜头（外层 #111）：工作区的目录一层一层懒加载、一个文件的正文、一个文件原样端出。只读；路径出了
+工作区一律拒。阶段名、产出状态这些语义页面自己从 `workspace_detail` 拼，这里不重复。
 """
 
 from __future__ import annotations
 
 import math
+import mimetypes
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +33,10 @@ LISTING_LIMIT = 200
 TEXT_SUFFIXES = (".md", ".txt", ".yaml", ".yml", ".json", ".tsv", ".csv", ".py", ".sh", ".lock",
                  ".toml", ".cfg", ".ini", ".log", "")
 TEXT_LIMIT = 200_000
+# 文件镜头：目录树里整段跳过的（环境、git 对象库、缓存——几千个文件，对人没意义）；
+# 正文最多给这么多字节，再大截断；原样端出的文件上限（数据集不该从这儿下）
+TREE_SKIPPED = frozenset({".venv", ".git", "__pycache__", "node_modules"})
+RAW_LIMIT = 50_000_000
 
 
 # ── 工作区 ───────────────────────────────────────────────────────────────
@@ -103,6 +111,68 @@ def output_detail(workspace: Workspace, oid: str) -> dict[str, Any]:
             break
     return {**output_brief(directory, meta), "files": files,
             "jobs": [job.to_dict() for job in jobs.jobs_for(workspace.jobs, meta.id)]}
+
+
+# ── 文件镜头 ─────────────────────────────────────────────────────────────
+def resolve_path(workspace: Workspace, rel: str) -> Path:
+    """工作区里的相对路径 → 绝对路径。绝对路径、`..`、符号链接指到工作区外的都拒（ValueError）。"""
+    parts = [p for p in rel.split("/") if p]
+    if rel.startswith("/") or any(p == ".." for p in parts):
+        raise ValueError(f"路径要在工作区里：{rel}")
+    base = workspace.root.resolve()
+    target = base.joinpath(*parts).resolve()
+    if target != base and base not in target.parents:
+        raise ValueError(f"路径要在工作区里：{rel}")
+    return target
+
+
+def list_dir(workspace: Workspace, rel: str) -> dict[str, Any]:
+    """目录的一层：目录在前、名字排序；`TREE_SKIPPED` 里的不列。"""
+    directory = resolve_path(workspace, rel)
+    if not directory.is_dir():
+        raise FileNotFoundError(f"没有这个目录：{rel}")
+    entries: list[dict[str, Any]] = []
+    for path in sorted(directory.iterdir(), key=lambda p: (not p.is_dir(), p.name)):
+        if path.name in TREE_SKIPPED:
+            continue
+        entries.append({"name": path.name, "kind": "dir" if path.is_dir() else "file",
+                        "size": None if path.is_dir() else path.stat().st_size})
+    return {"path": "/".join(p for p in rel.split("/") if p), "entries": entries}
+
+
+def read_file(workspace: Workspace, rel: str) -> dict[str, Any]:
+    """一个文件：文本带正文（超过 TEXT_LIMIT 截断、`truncated` 为真），二进制（解不出 utf-8 或
+    含 NUL）`text` 是 None、页面走 raw 端点。不按后缀猜，按内容判。"""
+    path = resolve_path(workspace, rel)
+    if not path.is_file():
+        raise FileNotFoundError(f"没有这个文件：{rel}")
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        head = handle.read(TEXT_LIMIT)
+    truncated = size > TEXT_LIMIT
+    text: str | None
+    if b"\x00" in head:
+        text = None
+    else:
+        try:
+            # 截断处可能切在一个多字节字符中间，截断时丢掉那半个；没截断就严格判
+            text = head.decode("utf-8", errors="ignore" if truncated else "strict")
+        except UnicodeDecodeError:
+            text = None
+    return {"path": "/".join(p for p in rel.split("/") if p), "size": size, "text": text,
+            "truncated": truncated and text is not None}
+
+
+def raw_file(workspace: Workspace, rel: str) -> tuple[bytes, str]:
+    """文件原样与 MIME 类型（图片让浏览器自己显示）；超过 RAW_LIMIT 拒。"""
+    path = resolve_path(workspace, rel)
+    if not path.is_file():
+        raise FileNotFoundError(f"没有这个文件：{rel}")
+    size = path.stat().st_size
+    if size > RAW_LIMIT:
+        raise ValueError(f"文件太大，不从页面端出：{rel}（{size} 字节）")
+    kind, _ = mimetypes.guess_type(path.name)
+    return path.read_bytes(), kind or "application/octet-stream"
 
 
 # ── 模板 ─────────────────────────────────────────────────────────────────

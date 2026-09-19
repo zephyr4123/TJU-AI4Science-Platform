@@ -11,6 +11,9 @@
 ### 修复
 - 对话里每一轮的花费报高了（主人：一句「你是什么模型」显示 $0.28）：Claude Code `--resume` 时 result 事件的 `total_cost_usd` 是整段会话到此刻的累计，不是这一轮的（实测七轮单调递增 0.165 → 0.284，那一轮实际约 $0.014），meta 里按轮累加的总花费也因此翻了几倍（$1.58，实际 $0.33）。`Chat` 端口加 `cost_reporting`（`"turn"` 按轮 / `"session"` 按会话累计），Claude Code 适配器报 `"session"`，`conversation.send` 把累计减成这一轮的（换了会话从零算、NaN 照传），落盘的 trace、SSE 与 meta 都是减过的数。已有对话的 meta 总数没有回改。
 
+### 新增
+- 主页面的文件镜头（外层 [#111](https://github.com/zephyr4123/TJU-AI4Science/issues/111)，主人：每个工作区要能看见盘上实际的目录，之后每个工作区单独 Git 管理）：页眉「看板 / 文件」切换，同一个工作区的另一个镜头，对话列两边都在。左边一棵带平台语义的目录树（阶段目录写阶段名 + 图标、产出那一层编号 + 状态词 + 冻结锁、`.ai4sci/` 灰显、根一层按工作区骨架排、懒加载），右边按种类渲染（markdown、图片、csv / tsv 成表、其它带行号；大的截断、二进制只给下载），选产出那一层是它的记录与确认；看板侧滑加「打开目录」跳过来。只看不改。后端三个只读端点 `GET /workspaces/<id>/files|file|raw?path=`，`boards.resolve_path` 拒绝绝对路径、`..` 与指到外面的符号链接。`OutputSheet` 的正文抽成 `OutputBody` 两处共用；文件大小的写法归 `lib/format.bytes`。
+
 ### 变更
 - 文件名按阶段定、不按能力定（纲领 P-20，外层 [#110](https://github.com/zephyr4123/TJU-AI4Science/issues/110)，主人：每来一颗能力就多一套文件名，框架永远定不下来）：`capabilities.MAIN_FILES` 一个阶段一行钉主文件（设计 scoring.yaml、实验 ledger.tsv + results.json、分析 analysis.md、验证 report.json；文献、假设、写作待第一颗能力定），`discover()` 断言描述符「留下什么」写到了本阶段主文件；新指南 `docs/add-a-capability.md`：头尾形状、四个先答的问题、三层文件（主文件 / 族文件 / 私有）、谁产的记在 meta 不记在文件名、skill 不是一格、代码骨架、测试、写作阶段填好的例子；CLAUDE.md 红线 13 补一句。
 - 门口那一屏：文件夹名不再让人填（外层 [#109](https://github.com/zephyr4123/TJU-AI4Science/issues/109)，主人：标题还没写就先亮出一枚 `ws-0919` 让人改，这是内部 id，本来就该按规则自动生成）——可编辑的 mono 小药丸删，`suggestId` 照旧从标题推（拉丁词小写连字符相连、没有就按日期、重名加 -2），封面卡副标题不再显示 id；模板那一排前面加「学科」标签、底下一行小字「需求提纲按学科起草」，封面卡副标题改显示所选学科。

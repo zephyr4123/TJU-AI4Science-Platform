@@ -1,7 +1,8 @@
-// 壳：左边地方栏（先选世界：工作区 / 编辑台，再选工作区），右边页眉 + 当前地方的内容（外层 #58 #64 #70 #79 #104）。
-// 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的看板（需求没确认就是需求文档，确认了是七个阶段的产出）
-// + 右边的对话。编辑台是全局一个库：画布 + 造流助理的悬浮对话窗（外层 #100），和工作区是两个平行的世界：地方栏上是一个开关，
-// 进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。页面只是 `ai4sci serve` 的客户端。
+// 壳：左边地方栏（先选世界：工作区 / 编辑台，再选工作区），右边页眉 + 当前地方的内容（外层 #58 #64 #70 #79 #104 #111）。
+// 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的两个镜头——看板（需求没确认就是需求文档，确认了是一条流
+// 一张表）与文件（盘上的目录树与文件内容，只读），页眉上切换，对话在右边两个镜头都在。编辑台是全局一个库：画布 + 造流助理的
+// 悬浮对话窗（外层 #100），和工作区是两个平行的世界：地方栏上是一个开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换
+// （P-16）。页面只是 `ai4sci serve` 的客户端。
 import { ChatCircle } from '@phosphor-icons/react'
 import { type ReactNode, useState } from 'react'
 
@@ -15,7 +16,9 @@ import { Scene } from '@/components/Scene'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { Files } from '@/files/Files'
 import { stageSentence } from '@/lib/humanize'
 import { useChats } from '@/lib/useChats'
 import { useMediaQuery, WIDE } from '@/lib/useMediaQuery'
@@ -29,6 +32,9 @@ import { Studio } from '@/studio/Studio'
 import { NewWorkspace } from '@/workspace/NewWorkspace'
 
 const PICKED_KEY = 'ai4sci.workspace'
+
+/** 工作区页面的两个镜头：看板（做到哪了、在等谁）与文件（盘上有什么） */
+type View = 'board' | 'files'
 
 export default function App() {
   const workspaces = useResource(api.workspaces, [])
@@ -46,6 +52,9 @@ export default function App() {
   }
   const [creating, setCreating] = useState(false)
   const [studio, setStudio] = useState(false)
+  const [view, setView] = useState<View>('board')
+  // 从看板「打开目录」跳到文件镜头时定位到哪个产出；换工作区就清掉
+  const [focus, setFocus] = useState<string | null>(null)
   const wide = useMediaQuery(WIDE)
 
   const first = workspaces.data?.length ? workspaces.data[0].id : null
@@ -66,7 +75,7 @@ export default function App() {
   const places = {
     workspaces: workspaces.data,
     place: place ?? { kind: 'door' as const },
-    onPick: (id: string) => { setPicked(id); setCreating(false); setStudio(false) },
+    onPick: (id: string) => { setPicked(id); setCreating(false); setStudio(false); setFocus(null) },
     onNew: () => { setCreating(true); setStudio(false) },
     onWorld: (world: World) => setStudio(world === 'studio'),
   }
@@ -79,7 +88,8 @@ export default function App() {
           {place && (
             <Top place={place} menu={wide ? null : <PlacesSheet {...places} />}
                  title={place.kind === 'studio' ? '编辑台' : place.kind === 'door' ? '新建工作区' : current?.title ?? place.id}
-                 note={current && place.kind === 'workspace' ? stageSentence(current) : null} />
+                 note={current && place.kind === 'workspace' ? stageSentence(current) : null}
+                 view={place.kind === 'workspace' ? view : null} onView={setView} />
           )}
           {place?.kind === 'studio'
             ? <StudioView healthy={healthy} knobs={knobs} />
@@ -87,7 +97,8 @@ export default function App() {
               ? <NewWorkspace existing={workspaces.data ?? []} onCreated={(id) => void created(id)}
                               onCancel={wsId ? () => setCreating(false) : undefined} />
               : place
-                ? <MainView key={place.id} wsId={place.id} healthy={healthy} knobs={knobs} title={current?.title ?? place.id} />
+                ? <MainView key={place.id} wsId={place.id} healthy={healthy} knobs={knobs} title={current?.title ?? place.id}
+                            view={view} focus={focus} onOpenFiles={(path) => { setFocus(path); setView('files') }} />
                 : <div className="flex-1" />}
         </div>
       </div>
@@ -95,8 +106,11 @@ export default function App() {
   )
 }
 
-/** 页眉只属于当前地方：工作区的标题 + 走到哪，底下封面糊成一抹颜色（换工作区就换色）；编辑台一条横幅；门口宽屏不要页眉（画面铺满），窄屏留一条放入口。 */
-function Top({ place, title, note, menu }: { place: Place; title: string; note: string | null; menu: ReactNode }) {
+/** 页眉只属于当前地方：工作区的标题 + 走到哪 + 两个镜头的开关，底下封面糊成一抹颜色（换工作区就换色）；编辑台一条横幅；
+ *  门口宽屏不要页眉（画面铺满），窄屏留一条放入口。 */
+function Top({ place, title, note, menu, view, onView }: {
+  place: Place; title: string; note: string | null; menu: ReactNode; view: View | null; onView: (view: View) => void
+}) {
   if (place.kind === 'door' && !menu) return null
   const picture = place.kind === 'studio' ? ASSETS.studio : place.kind === 'workspace' ? coverOf(place.id) : null
   const row = (
@@ -104,16 +118,27 @@ function Top({ place, title, note, menu }: { place: Place; title: string; note: 
       {menu}
       <span className="min-w-0 truncate font-serif text-[1.0625rem] font-semibold tracking-[0.02em]">{title}</span>
       {note && <span className="t-label hidden whitespace-nowrap sm:inline">{note}</span>}
-      <ThemeToggle className="ml-auto" />
+      {view && (
+        <Tabs value={view} onValueChange={(v) => onView(v as View)} className="ml-auto">
+          <TabsList aria-label="镜头" className="bg-background/70 backdrop-blur-sm">
+            <TabsTrigger value="board" className="px-3">看板</TabsTrigger>
+            <TabsTrigger value="files" className="px-3">文件</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+      <ThemeToggle className={cn(!view && 'ml-auto')} />
     </header>
   )
   if (!picture) return <div className="shrink-0 border-b bg-card">{row}</div>
   return <Band picture={picture} veil="wash" blur className="shrink-0 border-b">{row}</Band>
 }
 
-/** 主页面：这个工作区的看板铺满，对话在右边一列（宽屏常开、可收；窄屏是从右边拉出来的抽屉）。
+/** 主页面：这个工作区的看板或文件铺满，对话在右边一列（宽屏常开、可收；窄屏是从右边拉出来的抽屉）。
  *  换工作区时父组件用 key 重建，状态天然按工作区隔离。 */
-function MainView({ wsId, title, healthy, knobs }: { wsId: string; title: string; healthy: boolean | null; knobs: Backend | null }) {
+function MainView({ wsId, title, healthy, knobs, view, focus, onOpenFiles }: {
+  wsId: string; title: string; healthy: boolean | null; knobs: Backend | null
+  view: View; focus: string | null; onOpenFiles: (path: string) => void
+}) {
   const scope = inWorkspace(wsId)
   const c = useChats(scope)
   const wide = useMediaQuery(WIDE)
@@ -138,7 +163,11 @@ function MainView({ wsId, title, healthy, knobs }: { wsId: string; title: string
     <div className="relative flex min-h-0 flex-1">
       <main className="relative min-w-0 flex-1">
         <Scene picture={ASSETS.board} veil="mist" />
-        <div className="relative h-full"><Board workspace={wsId} epoch={c.epoch} /></div>
+        <div className="relative h-full">
+          {view === 'files'
+            ? <Files key={focus ?? ''} workspace={wsId} epoch={c.epoch} focus={focus} />
+            : <Board workspace={wsId} epoch={c.epoch} onOpenFiles={onOpenFiles} />}
+        </div>
         {!open && (
           <Button size="icon-lg" className="absolute right-5 bottom-5 rounded-full shadow-lg" onClick={() => setChatOpen(true)} aria-label="展开对话">
             <ChatCircle weight="duotone" className="size-5" />

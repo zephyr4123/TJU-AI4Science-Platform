@@ -44,3 +44,10 @@ export function improvement(
 export function chatTitle(chat: { title: string | null; created_at: string }): string {
   return chat.title ?? `${when(chat.created_at)} 开始的对话`
 }
+
+/** 文件大小：B / KB / MB，一位小数。 */
+export function bytes(value: number): string {
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / 1024 / 1024).toFixed(1)} MB`
+}

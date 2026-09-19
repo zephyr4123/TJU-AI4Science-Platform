@@ -15,7 +15,7 @@ import { Flows } from './Flows'
 /** 有作业在跑时多久重拉一次：别的对话起的作业跑完，这边才看得见 */
 const POLL_MS = 10_000
 
-export function Board({ workspace, epoch }: { workspace: string; epoch: number }) {
+export function Board({ workspace, epoch, onOpenFiles }: { workspace: string; epoch: number; onOpenFiles: (path: string) => void }) {
   const doc = useResource(() => api.workspace(workspace), [workspace, epoch])
   // 能力清单只为一件事：每一列底下写这一步的能力（点名的，或这个阶段能用的）的人话标题
   const caps = useResource(api.capabilities, [])
@@ -53,7 +53,8 @@ export function Board({ workspace, epoch }: { workspace: string; epoch: number }
         <Flows doc={data} capsOf={capsOf} onOpen={setOpened} />
       </div>
       <OutputSheet workspace={workspace} oid={opened} onClose={() => setOpened(null)} onChanged={doc.reload}
-                   signHint={opened && waiting.has(opened) ? '流在此处待你确认，确认后下一步方可读取' : null} />
+                   signHint={opened && waiting.has(opened) ? '流在此处待你确认，确认后下一步方可读取' : null}
+                   onOpenFiles={(path) => { setOpened(null); onOpenFiles(path) }} />
     </div>
   )
 }

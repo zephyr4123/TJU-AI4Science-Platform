@@ -26,6 +26,10 @@
     GET  /workspaces/<id>/flows             流实例：covers / remarks / problems + 进度
     GET  /workspaces/<id>/outputs/<stage>/<n>  一次产出：记录、签字、文件清单（小文本带正文）、作业
     POST /workspaces/<id>/outputs/<stage>/<n>/sign  {"by", "note"?} → 签字记录
+    GET  /workspaces/<id>/files?path=<dir>  文件镜头：目录的一层（目录在前；.venv .git 不列），
+                                            懒加载，path 空是工作区根
+    GET  /workspaces/<id>/file?path=<file>  一个文件：文本带正文（大的截断），二进制 text 为 null
+    GET  /workspaces/<id>/raw?path=<file>   文件原样端出（图片让浏览器显示）；出了工作区一律 422
     GET  /workspaces/<id>/jobs[/<jid>]      作业清单 / 一个作业
     GET  <域>/chats                         对话清单；<域> 是 /workspaces/<id> 或 /studio
     POST <域>/chats                         {"backend"?, "model"?, "effort"?} → 新对话的 meta
@@ -47,7 +51,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from backends import BackendNotFound, Chat, ChatEvent, Tuning, available_backends, get_chat
 from framework import paths
@@ -161,6 +165,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(boards.output_detail(ws, f"{rest[1]}/{rest[2]}"))
             except (ValueError, output.OutputNotFound) as exc:
                 return self._error(HTTPStatus.NOT_FOUND, str(exc))
+        if rest in (["files"], ["file"], ["raw"]):
+            return self._get_file(ws, rest[0], parse_qs(url.query).get("path", [""])[0])
         if rest == ["jobs"]:
             return self._json([job.to_dict() for job in jobs.list_jobs(ws.jobs)])
         if len(rest) == 2 and rest[0] == "jobs":
@@ -169,6 +175,23 @@ class Handler(BaseHTTPRequestHandler):
             except jobs.JobNotFound as exc:
                 return self._error(HTTPStatus.NOT_FOUND, str(exc))
         return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{url.path}")
+
+    def _get_file(self, ws: root.Workspace, what: str, rel: str) -> None:
+        """文件镜头的三个只读端点。不在的路径 404；出了工作区的是 ValueError，外层回 422。"""
+        try:
+            if what == "files":
+                return self._json(boards.list_dir(ws, rel))
+            if what == "file":
+                return self._json(boards.read_file(ws, rel))
+            data, ctype = boards.raw_file(ws, rel)
+        except FileNotFoundError as exc:
+            return self._error(HTTPStatus.NOT_FOUND, str(exc))
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'inline; filename="{Path(rel).name}"')
+        self.end_headers()
+        self.wfile.write(data)
 
     def _get_chat(self, where: scope.Scope, rest: list[str]) -> None:
         if rest == []:

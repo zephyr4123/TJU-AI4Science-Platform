@@ -4,8 +4,8 @@
 // 对话四个端点在两个域下共用，`Scope` 决定前缀。
 
 import type {
-  Backend, Capability, ChatDoc, ChatMeta, OutputDetail, RequirementDetail, StageInfo, Template,
-  Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
+  Backend, Capability, ChatDoc, ChatMeta, DirListing, FileContent, OutputDetail, RequirementDetail,
+  StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
 } from './types'
 
 export type Scope = { kind: 'workspace'; id: string } | { kind: 'studio' }
@@ -74,6 +74,10 @@ export const api = {
   output: (id: string, oid: string) => request<OutputDetail>(`${ws(id)}/outputs/${oid}`),
   sign: (id: string, oid: string, by: string, note: string) =>
     request<OutputDetail>(`${ws(id)}/outputs/${oid}/sign`, post({ by, note })),
+  /** 文件镜头：目录一层、一个文件的正文、原样端出的 URL（图片直接当 src） */
+  files: (id: string, path: string) => request<DirListing>(`${ws(id)}/files?path=${encodeURIComponent(path)}`),
+  file: (id: string, path: string) => request<FileContent>(`${ws(id)}/file?path=${encodeURIComponent(path)}`),
+  rawUrl: (id: string, path: string) => `${ws(id)}/raw?path=${encodeURIComponent(path)}`,
 
   chats: (scope: Scope) => request<ChatMeta[]>(`${scopePath(scope)}/chats`),
   chat: (scope: Scope, chatId: string) =>

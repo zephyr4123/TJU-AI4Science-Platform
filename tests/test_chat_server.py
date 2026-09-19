@@ -354,6 +354,29 @@ def test_output_board_and_sign(served, tmp_path):
     assert doc["signed"]["stale"] is True
 
 
+def test_file_view_endpoints(served, tmp_path):
+    from tests.fixtures.runs_factory import make_run
+
+    base, _ = served
+    make_run(tmp_path)
+    status, _, body = call(base, "/workspaces/toy/files")
+    doc = json.loads(body)
+    assert status == 200 and doc["path"] == ""
+    assert "experiment" in [e["name"] for e in doc["entries"]]
+    status, _, body = call(base, "/workspaces/toy/files?path=experiment%2F1")
+    assert status == 200 and "ledger.tsv" in [e["name"] for e in json.loads(body)["entries"]]
+    status, _, body = call(base, "/workspaces/toy/file?path=experiment%2F1%2Fledger.tsv")
+    doc = json.loads(body)
+    assert status == 200 and doc["text"] is not None and doc["truncated"] is False
+    status, ctype, body = call(base, "/workspaces/toy/raw?path=requirement.md")
+    assert status == 200 and ctype.startswith("text/markdown") and body.startswith("#")
+    assert call(base, "/workspaces/toy/files?path=nope")[0] == 404
+    assert call(base, "/workspaces/toy/file?path=nope.txt")[0] == 404
+    status, _, body = call(base, "/workspaces/toy/file?path=..%2F..%2Fetc%2Fpasswd")
+    assert status == 422 and "要在工作区里" in json.loads(body)["error"]
+    assert call(base, "/workspaces/toy/raw?path=%2Fetc%2Fpasswd")[0] == 422
+
+
 def test_jobs_endpoints(served, tmp_path):
     """作业清单与单个作业（外层 #63）：工作区看板带全部作业。"""
     import os
