@@ -106,9 +106,9 @@ function DirRows({ workspace, path, depth, epoch, expanded, selected, meaning, o
             <Row entry={entry} path={full} depth={depth} open={open} selected={selected === full} meaning={what}
                  onToggle={() => onToggle(full)}
                  onClick={() => {
-                   // 文件：选中看内容。产出那一层：选中看记录，同时展开（不收）。别的目录：开合
+                   // 文件：选中看内容。产出那一层：第一下选中看记录并展开，已选中再点就开合（主人：点第二下收不回去）。别的目录：开合
                    if (entry.kind === 'file') return onSelect(full)
-                   if (what.kind === 'output') { onSelect(full); if (!open) onToggle(full); return }
+                   if (what.kind === 'output' && selected !== full) { onSelect(full); if (!open) onToggle(full); return }
                    onToggle(full)
                  }} />
             {entry.kind === 'dir' && open && (
@@ -132,7 +132,7 @@ function Row({ entry, path, depth, open, selected, meaning, onClick, onToggle }:
     <div className={cn('relative flex items-center gap-1.5 py-[3px] pr-2 text-[0.8125rem] leading-tight hover:bg-foreground/[0.035]',
                        selected && 'font-medium text-foreground shadow-[inset_2px_0_0_var(--color-primary)]', dim && 'text-muted-foreground/70')}
          style={{ paddingLeft: `${indent(depth)}rem` }}>
-      {/* 折角单独可点：产出那一层点正文是看记录，收起来只靠折角 */}
+      {/* 折角单独可点：产出那一层第一下点正文是看记录，不想换选中也能收 */}
       <button type="button" onClick={onToggle} disabled={!dir} aria-label={dir ? (open ? '收起' : '展开') : undefined} tabIndex={dir ? 0 : -1}
               className={cn('relative z-10 flex size-4 shrink-0 items-center justify-center rounded focus-visible:outline-2 focus-visible:outline-ring', !dir && 'invisible')}>
         <CaretRight weight="bold" aria-hidden className={cn('size-3 text-muted-foreground/60 transition-transform', open && 'rotate-90')} />
