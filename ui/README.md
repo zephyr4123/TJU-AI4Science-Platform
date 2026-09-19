@@ -21,7 +21,7 @@
 | 对话 | `POST <域>/chats`、`POST <域>/chats/<id>/messages`（SSE）、`GET <域>/chats[/<id>]`、`GET /backends` | 主页面和研究助理说话、编辑台和造流助理说话；助理运行的每条命令以 `tool_use` / `tool_result` 事件流回来，落盘成 `turn-N/trace.jsonl`、随 `history[].events` 回来，页面重放成一行一条的工具调用（不折叠、不翻译）；输入框上「模型」「思考」两枚旋钮的清单来自 `GET /backends`（后端自报），选了随消息的 `model` / `effort` 发出去、记进对话 |
 | 需求 | `GET /workspaces/<id>/requirement`、`POST /workspaces/<id>/requirement/confirm` | 没确认时需求文档就是主页面（按二级标题一格一节，「待填」是空格），人**确认**（`requirement.lock`）；确认后收成顶部一条，助理又改了显示 diff、确认下一版。页面只渲染不编辑，改需求只走对话 |
 | 产出 | `GET /workspaces/<id>/outputs/<stage>/<n>`、`POST …/outputs/<stage>/<n>/sign`、`GET …/jobs[/<jid>]` | 一条流一张表：横向是流经过的阶段（有什么阶段就几列，列头是阶段名 + 能力的人话），纵向是每一列跑过的每一次产出（编号 + 一个词：运行中 / 失败 / 待确认 / 已确认 / 完成），断点是两列之间一道线，右上角一句话说在等谁；点开侧滑看记录（来源、输入、状态）、目录里的文件（小文本直接渲染）、作业；流在这儿有断点就人**确认**（`signed.json`）。不在任何流里的产出只在最底下一行「其它」 |
-| 文件 | `GET /workspaces/<id>/files?path=`、`GET …/file?path=`、`GET …/raw?path=` | 主页面的第二个镜头（页眉「看板 / 文件」切换，对话列两边都在）：左边一棵带平台语义的目录树——七个阶段目录显示阶段名与阶段图标、每次产出那一层是编号 + 状态词（冻结另加一把锁）、`.ai4sci/` 灰显、一层一层懒加载、根一层按工作区骨架排；右边选中的东西：文件按种类渲染（markdown 排版、图片、csv / tsv 成表、其它带行号原样，大的截断、二进制只给下载），产出那一层是它的记录与确认。**只看不改**：改动走对话（手改会撞冻结）。看板的侧滑里「打开目录」跳过来定位到那次产出 |
+| 文件 | `GET /workspaces/<id>/files?path=`、`GET …/file?path=`、`GET …/raw?path=` | 主页面的第二个镜头（页眉「看板 / 文件」切换，对话列两边都在）：左边一棵大纲式的树直接印在底上不加框——缩进导线、七个阶段目录显示阶段名与阶段图标并拉开成小节、每次产出那一层是编号 + 右对齐的状态词（冻结另加一把锁）、`.ai4sci/` 灰显、一层一层懒加载、根一层按工作区骨架排；右边是唯一抬起的面：头部是位置（面包屑写平台语义 + 文件名大字 + 大小与行数 +「在看板打开」「下载」），正文按种类渲染（代码高亮带行号、markdown 排版、图片、csv / tsv 成表，大的截断、二进制只给下载），产出那一层是它的记录与确认。**只看不改**：改动走对话（手改会撞冻结）。看板的侧滑里「打开目录」跳过来定位到那次产出 |
 | 库 | `GET /workflows`、`POST /workflows`、`POST /workflows/check`、`GET /cap`、`GET /stages` | 编辑台的画布：节点是研究阶段（装能力 + 参数）或断点，边只表示顺序；边拼边查（问题贴到节点上）；存进库。研究者不改库 |
 
 需求确认是框架唯一内置的门；断点几个、放哪由拼流的人定，一个断点 = 上一项的产出要人确认下游才能读。
@@ -52,7 +52,7 @@ web/src/
   chat/       对话：trace.ts（事件流折成条目、落盘的事件重放、工具行原样，纯函数、有单测）、ChatView（两个域共用，文案由父组件给）/ TurnView（人的气泡、工具行、回答、花费）/ Composer
   places/     Rail（宽屏的地方栏）、PlacesSheet（窄屏的清单）、place.ts（页面此刻在哪）
   workspace/  NewWorkspace（门口那一屏：一句话 + 模板起工作区）
-  files/      主页面的文件镜头：Files（目录树 + 内容区；树按 `GET /workspaces/<id>` 的阶段与产出标语义）、derive.ts（一行是什么、文件怎么渲染、csv 切表、根一层的顺序，纯函数、有单测）
+  files/      主页面的文件镜头：Files（目录树 + 内容区；树按 `GET /workspaces/<id>` 的阶段与产出标语义）、derive.ts（一行是什么、文件怎么渲染、csv 切表、根一层的顺序，纯函数、有单测）、highlight.ts（highlight.js 五种语言，配色在 index.css 的 `.hl`）
   board/      主页面的看板：Board（按需求确认与否分两个状态；有作业在跑时轮询）、Requirement（未确认的整页 / 确认后的一条 + 侧滑 diff）、Flows（一条流一张表：阶段列、产出卡、断点线、在等谁）、OutputSheet（一次产出的侧滑：记录、文件、确认）、derive.ts（在等谁的一句话、下一步、产出的状态词、断点的短标签，纯函数、有单测）
   studio/     编辑台的画布：model.ts（链的数据：排版、插入、重排、页面形状 ↔ 文件形状，纯函数、有单测）、nodes（阶段 / 断点两种节点）、Palette（阶段梯与库的弹层）、Inspector（选中节点：勾能力、填参数、断点的确认事项）、Studio（React Flow 画布、边拼边查、保存）
   keys/       确认需求、确认产出两处人的动作（StarBorder 改装）

@@ -53,8 +53,9 @@ export default function App() {
   const [creating, setCreating] = useState(false)
   const [studio, setStudio] = useState(false)
   const [view, setView] = useState<View>('board')
-  // 从看板「打开目录」跳到文件镜头时定位到哪个产出；换工作区就清掉
+  // 从看板「打开目录」跳到文件镜头时定位到哪个产出；从文件镜头「在看板打开」回来时侧滑里开哪次产出；换工作区都清掉
   const [focus, setFocus] = useState<string | null>(null)
+  const [opened, setOpened] = useState<string | null>(null)
   const wide = useMediaQuery(WIDE)
 
   const first = workspaces.data?.length ? workspaces.data[0].id : null
@@ -75,7 +76,7 @@ export default function App() {
   const places = {
     workspaces: workspaces.data,
     place: place ?? { kind: 'door' as const },
-    onPick: (id: string) => { setPicked(id); setCreating(false); setStudio(false); setFocus(null) },
+    onPick: (id: string) => { setPicked(id); setCreating(false); setStudio(false); setFocus(null); setOpened(null) },
     onNew: () => { setCreating(true); setStudio(false) },
     onWorld: (world: World) => setStudio(world === 'studio'),
   }
@@ -98,7 +99,9 @@ export default function App() {
                               onCancel={wsId ? () => setCreating(false) : undefined} />
               : place
                 ? <MainView key={place.id} wsId={place.id} healthy={healthy} knobs={knobs} title={current?.title ?? place.id}
-                            view={view} focus={focus} onOpenFiles={(path) => { setFocus(path); setView('files') }} />
+                            view={view} focus={focus} opened={opened} onOpen={setOpened}
+                            onOpenFiles={(path) => { setFocus(path); setView('files') }}
+                            onOpenBoard={(oid) => { setOpened(oid); setView('board') }} />
                 : <div className="flex-1" />}
         </div>
       </div>
@@ -135,9 +138,10 @@ function Top({ place, title, note, menu, view, onView }: {
 
 /** 主页面：这个工作区的看板或文件铺满，对话在右边一列（宽屏常开、可收；窄屏是从右边拉出来的抽屉）。
  *  换工作区时父组件用 key 重建，状态天然按工作区隔离。 */
-function MainView({ wsId, title, healthy, knobs, view, focus, onOpenFiles }: {
+function MainView({ wsId, title, healthy, knobs, view, focus, opened, onOpen, onOpenFiles, onOpenBoard }: {
   wsId: string; title: string; healthy: boolean | null; knobs: Backend | null
-  view: View; focus: string | null; onOpenFiles: (path: string) => void
+  view: View; focus: string | null; opened: string | null; onOpen: (oid: string | null) => void
+  onOpenFiles: (path: string) => void; onOpenBoard: (oid: string) => void
 }) {
   const scope = inWorkspace(wsId)
   const c = useChats(scope)
@@ -165,8 +169,8 @@ function MainView({ wsId, title, healthy, knobs, view, focus, onOpenFiles }: {
         <Scene picture={ASSETS.board} veil="mist" />
         <div className="relative h-full">
           {view === 'files'
-            ? <Files key={focus ?? ''} workspace={wsId} epoch={c.epoch} focus={focus} />
-            : <Board workspace={wsId} epoch={c.epoch} onOpenFiles={onOpenFiles} />}
+            ? <Files key={focus ?? ''} workspace={wsId} epoch={c.epoch} focus={focus} onOpenBoard={onOpenBoard} />
+            : <Board workspace={wsId} epoch={c.epoch} opened={opened} onOpen={onOpen} onOpenFiles={onOpenFiles} />}
         </div>
         {!open && (
           <Button size="icon-lg" className="absolute right-5 bottom-5 rounded-full shadow-lg" onClick={() => setChatOpen(true)} aria-label="展开对话">

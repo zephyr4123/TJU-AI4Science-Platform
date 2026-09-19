@@ -272,6 +272,19 @@
   .prose-ai4sci :where(code):not(:where(pre *)) {
     @apply rounded bg-accent px-1 py-0.5;
   }
+  /* 代码高亮（files/highlight.ts）：只用站内的色，克制到三种；深色模式跟着 token 走 */
+  .hl .hljs-keyword, .hl .hljs-built_in, .hl .hljs-selector-tag, .hl .hljs-section {
+    @apply text-primary;
+  }
+  .hl .hljs-string, .hl .hljs-attr, .hl .hljs-attribute, .hl .hljs-title, .hl .hljs-name {
+    @apply text-ok;
+  }
+  .hl .hljs-number, .hl .hljs-literal, .hl .hljs-bullet {
+    @apply text-wait;
+  }
+  .hl .hljs-comment, .hl .hljs-meta, .hl .hljs-punctuation {
+    @apply text-muted-foreground;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
