@@ -1,10 +1,10 @@
-# 接一颗能力
+# 接一个能力
 
-给要往平台里加一颗能力（或想把一个 skill 变成流里一格）的人。读完照做，不用问人。验收标准：**换一个人、换一个阶段，照这份文档写出来的能力，`discover()` 放行、下游能读、页面能显示。** 卡在哪一步，就是这份文档的 bug，请开 issue。
+给要往平台里加一个能力（或想把一个 skill 变成流程里一格）的人。读完照做，不用问人。验收标准：**换一个人、换一个阶段，照这份文档写出来的能力，`discover()` 放行、下游能读、页面能显示。** 卡在哪一步，就是这份文档的 bug，请开 issue。
 
 为什么是这套规矩，见外层纲领 P-18、P-19、P-20（`docs/architecture/README.md`）。这里只讲怎么做。
 
-## 一颗能力是什么
+## 一个能力是什么
 
 一个阶段里的一件活。对研究助理就是一条命令 `ai4sci cap <name>`，跑一次，工作区里多一个文件夹 `<stage>/<n>/`。
 
@@ -22,41 +22,41 @@
    （只认标量）   （runner / compute）             失败 raise CapabilityFailed
 ```
 
-对所有能力一样的只有这个形状。要哪几个文件、留哪几个文件，是你这颗能力自己的事，写在描述符里。
+对所有能力一样的只有这个形状。要哪几个文件、留哪几个文件，是你这个能力自己的事，写在描述符里。
 
 ## 先回答四个问题
 
 写代码之前，把这四句写下来，它们就是描述符的骨架：
 
-1. **进哪个阶段。** 七个里选一个：文献、假设、设计、实验、分析、写作、验证。一颗能力只属于一个阶段；同一段代码想在两个阶段用，就是两颗能力。
+1. **进哪个阶段。** 七个里选一个：文献、假设、设计、实验、分析、写作、验证。一个能力只属于一个阶段；同一段代码想在两个阶段用，就是两个能力。
 2. **非要上游的哪几个文件。** 按阶段说（「分析阶段的 `analysis.md`」），不按能力说。这些文件不在，你开工就报错。
 3. **留下哪几个文件。** 必须包含本阶段的主文件；其它按需要。
 4. **那句结论怎么说。** 助理和页面只看这一句决定下一步，所以要说清「留下了什么、下一步能拿它干什么」：「初稿 4 节 2300 字，图 3 张，引用 12 条」，不是「done」。
 
 ## 文件名按阶段定，不按能力定
 
-每个阶段钉一个主文件。进这个阶段的任何能力都必须留下它，名字不许自创；下游只认阶段主文件，不认是哪颗能力产的——换一颗同阶段的能力，下游一行不改。
+每个阶段钉一个主文件。进这个阶段的任何能力都必须留下它，名字不许自创；下游只认阶段主文件，不认是哪个能力产的——换一个同阶段的能力，下游一行不改。
 
 | 阶段 | 主文件 | 状态 |
 |---|---|---|
-| 文献 | — | 待第一颗能力定 |
-| 假设 | — | 待第一颗能力定 |
+| 文献 | — | 待第一个能力定 |
+| 假设 | — | 待第一个能力定 |
 | 设计 | `scoring.yaml` | 已定（`design`） |
 | 实验 | `ledger.tsv` + `iters/iter_N/results.json` | 已定（`auto-research`） |
 | 分析 | `analysis.md` | 已定（`analysis`） |
-| 写作 | — | 待第一颗能力定 |
+| 写作 | — | 待第一个能力定 |
 | 验证 | `report.json` | 已定（`verify`） |
 
-表在 `framework/capabilities/__init__.py` 的 `MAIN_FILES`，`discover()` 查你描述符的「留下什么」有没有写到它，没写不让注册。
+表在 `framework/capabilities/__init__.py` 的 `MAIN_FILES`，`discover()` 查你描述符的「产出」栏有没有写到它，没写不让注册。
 
-- **你是这个阶段第一颗能力**：主文件名由你定，同时写进 `MAIN_FILES`。定名照 P-13：角色名词（`draft.md`、`hypothesis.md`），不带能力名、模型名、日期、版本号。定了就锁死，之后谁想改是一次决策。
+- **你是这个阶段第一个能力**：主文件名由你定，同时写进 `MAIN_FILES`。定名照 P-13：角色名词（`draft.md`、`hypothesis.md`），不带能力名、模型名、日期、版本号。定了就锁死，之后谁想改是一次决策。
 - **阶段已有主文件**：照用。你的产出可以另外多留文件，但那些是私有的——没有别的能力可以依赖它们。下游真要用，把它提成族文件。
 
 产出目录里的文件分三层：
 
 | 层 | 谁定名 | 谁能读 | 放哪 |
 |---|---|---|---|
-| 主文件 | 阶段（第一颗能力） | 任何下游 | `MAIN_FILES` |
+| 主文件 | 阶段（第一个能力） | 任何下游 | `MAIN_FILES` |
 | 族文件 | 族（`framework/<族>/`，实验族已有 `experiment/`） | 同族能力 | 族包里的读写函数与 schema |
 | 私有文件 | 你 | 只有你自己 | 不登记 |
 
@@ -64,14 +64,36 @@
 
 ## 谁产的记在 meta，不记在文件名
 
-两颗写作能力各跑一次：
+两个写作能力各跑一次：
 
 ```
 writing/1/draft.md     meta: by: paper-draft    from: [analysis/2, verification/1]
 writing/2/draft.md     meta: by: report-draft   from: [analysis/2]
 ```
 
-文件名一样，文件夹编号和 `meta.yaml` 不同。「谁产的、读了谁、按哪版需求」都在 meta 里，页面的「来源 / 输入」、`ai4sci show output writing/1`、冻结的 hash 核对读的都是它。不要把能力名写进文件名——一写进去，下游就得认识每一颗能力。
+文件名一样，文件夹编号和 `meta.yaml` 不同。「谁产的、读了谁、按哪版需求」都在 meta 里，页面的「来源 / 输入」、`ai4sci show output writing/1`、冻结的 hash 核对读的都是它。不要把能力名写进文件名——一写进去，下游就得认识每一个能力。
+
+## 文案：名、一行、详情
+
+描述符里给人看的字分三层，页面对应三种动作（纲领 P-21）。一个阶段挂再多能力，版面上也只是名字的清单，所以每层只做自己的事：
+
+| 层 | 字段 | 页面上 | 规矩 | 例 |
+|---|---|---|---|---|
+| 名 | `title` | 直接显示 | 名词短语，不超过六字，不用动宾；方法有公认名字的原样写，不硬翻 | 评分脚本与基线、分析初稿、数字核对、AutoResearch |
+| 一行 | `brief` | hover | 一句，三十字内，说拿什么做出什么；不带路径、参数名 | 自动迭代代码，逐轮记账 |
+| 详情 | 五栏 `does` `does_not` `brings` `leaves` `stops` | 点击跳详情页，栏名 职责 / 边界 / 输入 / 产出 / 终止条件 | 工程语言陈述句；文件名可以写（它们在工作区里真实存在）；CLI 参数不写（`--from design/<n>` 写成「设计阶段的一次产出」）；框架内部机制不写（目录 hash 校验、`refs/attempts`）；口语不写（「这包」「越界」「续命」「签了」） | 见下 |
+
+参数的 `label` 是页面上的名字（`max_iters` → 最多轮数），`help` 是 hover 的一句。协调层读的就是这份详情，不另写用户版；执行者的种类（`needs_executor`、能不能续跑）是机器读的，不上屏。`brief` 与 `label` 两个字段随外层 [#112](https://github.com/zephyr4123/TJU-AI4Science/issues/112) 落地，落地前 `title` 与 `help` 先按这张表写。
+
+AutoResearch 的详情写出来是这样：
+
+| 栏 | 文字 |
+|---|---|
+| 职责 | 首次调用建立实验：复制设计阶段的产出至 work/，按 lock 建独立环境并初始化 git 仓，基线成绩写入 checkpoint.json；随后逐轮修改代码、运行评分脚本、记账。再次调用可续跑。 |
+| 边界 | 不修改评分脚本，不改指标与预算（续跑参数除外），不写分析，不判断结果可信度。 |
+| 输入 | 设计阶段的一次产出：scoring.yaml、harness/、code/、baseline/。 |
+| 产出 | ledger.tsv 每轮一行；results.json 最佳一轮；work/ 代码历史；checkpoint.json 进度。 |
+| 终止条件 | 达到轮数上限、连续若干轮无改进、花费超限，或执行层连续失败；原因写入 checkpoint.json。 |
 
 ## 写代码
 
@@ -83,12 +105,12 @@ from framework.contracts.capability import Capability, CapabilityFailed, Inputs,
 DESCRIPTOR = Capability(
     name="paper-draft",
     stage="写作",
-    title="论文初稿",                       # 名词短语，给研究者看
-    does="...",                             # 干什么：讲机制，带专业术语
-    does_not="...",                         # 不干什么
-    brings="...",                           # 要带什么进来：按阶段说文件名
-    leaves="draft.md、figures/、refs.bib",   # 留下什么：必须写到本阶段主文件
-    stops="...",                            # 什么时候停：成功停在哪、失败怎么报
+    title="论文初稿",                       # 名：名词，不超过六字；方法有公认名字的原样写
+    does="...",                             # 职责：讲机制，带专业术语
+    does_not="...",                         # 边界
+    brings="...",                           # 输入：按阶段说文件名
+    leaves="draft.md、figures/、refs.bib",   # 产出：必须写到本阶段主文件
+    stops="...",                            # 终止条件：成功停在哪、失败怎么报
     params=(Param("sections", "int", 4, "写几节"),),
     needs_executor=True,                    # 要起执行层（模型）就 True；零模型的能力 False
 )
@@ -104,19 +126,19 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, sections: int = 4) ->
 规矩，每条都有机器守着：
 
 - `run` 前三个参数固定是 `output_dir, inputs, ports`，后面只许关键字参数，且与 `params` 一一对应（`discover()` 断言）。
-- 参数只认 `int` / `float` / `str` / `bool`。要更复杂的输入，那是文件——放 `materials/` 或上游产出。每次调用才定的参数（接不接着跑、修改意见）标 `in_flow=False`，流里写不了。
+- 参数只认 `int` / `float` / `str` / `bool`。要更复杂的输入，那是文件——放 `materials/` 或上游产出。每次调用才定的参数（接不接着跑、修改意见）标 `in_flow=False`，流程里写不了。
 - 读输入只经 `inputs`：`inputs.workspace` 下的 `requirement.md` 与 `materials/`、`inputs.of_stage(slug)` / `inputs.one_of(slug, label)` 点名的产出。没有「读最新」。
 - 只往 `output_dir` 写。`meta.yaml` 与 `signed.json` 是框架写的，不要碰。
 - 缺东西开工就报错：`raise CapabilityFailed("论文初稿要分析阶段的 analysis.md：--from analysis/<n>")`。说清缺哪个阶段的哪个文件，助理读了报错去补。
 - 失败 `raise CapabilityFailed`，不降级不兜底；产出目录留着，meta 记 `status: failed`。
-- 起执行层的能力：提示模板放子包里的 `prompt.md`；领域包给这一族的补充在 `domains/<包>/prompts/<族>.md`，skill 在 `domains/<包>/skills/*/SKILL.md`，由你这颗能力快照进产出目录再进提示（看 `auto_research/open.py::_snapshot_domain`）。
+- 起执行层的能力：提示模板放子包里的 `prompt.md`；领域包给这一族的补充在 `domains/<包>/prompts/<族>.md`，skill 在 `domains/<包>/skills/*/SKILL.md`，由你这个能力快照进产出目录再进提示（看 `auto_research/open.py::_snapshot_domain`）。
 - 能力互不 import。同族共用的读写放 `framework/<族>/`，`tests/test_layering.py` 查。
 
 不用写的：CLI 子命令、`--from` / `--flow` / `--continue` / `--detach`、页面上的节点与能力小片、`show caps`——都从描述符生成。
 
 ## skill 呢
 
-skill 不是一格。它是随某颗执行层能力进去的一篇说明书，自己不写盘、不出现在流里。想让一个 skill 变成流里的一格，把它包成能力：描述符 + `run` 起执行层 + 留下本阶段主文件。「只写说明书不写代码的能力」还没有，见外层 open-questions Q-14。
+skill 不是一格。它是随某个执行层能力进去的一篇说明书，自己不写盘、不出现在流程里。想让一个 skill 变成流程里的一格，把它包成能力：描述符 + `run` 起执行层 + 留下本阶段主文件。「只写说明书不写代码的能力」还没有，见外层 open-questions Q-14。
 
 ## 测试
 
@@ -139,4 +161,4 @@ skill 不是一格。它是随某颗执行层能力进去的一篇说明书，�
 
 - `make check` 绿（changelog + ruff + pytest + 页面）。
 - `CHANGELOG.md` Unreleased 一条，外层 issue 为锚。
-- 描述符五栏是给研究者、助理、工程师读同一份的：讲机制、带专业术语、不写路径表、不用「按钮」「键」这类比喻。
+- 描述符的名、一行、详情照上面「文案」那张表：研究者、助理、工程师读同一份；工程语言，不写 CLI 参数与框架内部机制，不用「按钮」「键」这类比喻。

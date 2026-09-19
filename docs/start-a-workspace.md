@@ -2,7 +2,7 @@
 
 把你手里"一段能跑的代码 + 一个越小（或越大）越好的数"接进平台，让实验内环替你调。读完照做，不用问人。验收标准就是这句：**换一个人、换一个课题，照这份文档接进来就能跑。** 卡在哪一步，就是这份文档的 bug，请开 issue。
 
-大多数人不用读这份：在页面上新建工作区、跟研究助理说清要解决什么、确认需求，剩下的它照流做。这份是给在终端里当协调层的人、和想知道磁盘上到底发生了什么的人。
+大多数人不用读这份：在页面上新建工作区、跟研究助理说清要解决什么、确认需求，剩下的它照流程做。这份是给在终端里当协调层的人、和想知道磁盘上到底发生了什么的人。
 
 ## 你要先有
 
@@ -22,7 +22,7 @@ workspaces/<id>/
 ├── requirement.lock     确认记录：人确认后才有；是框架唯一内置的门
 ├── materials/           原件：你给的数据、代码；只追加
 │   └── env/             python-version + requirements.lock（你环境的 pip freeze）
-├── flows/               流实例：从库里取来的走法，改参数在这儿改
+├── flows/               流程实例：从库里取来的走法，改参数在这儿改
 ├── literature/          七个阶段各一个目录，每次执行一个编号子目录 <stage>/<n>/
 ├── hypothesis/
 ├── design/              design/1/：scoring.yaml、harness/、code/、data/、env/、baseline/
@@ -33,7 +33,7 @@ workspaces/<id>/
 └── .ai4sci/             平台记录：chats/ jobs/ logs/ requirement/v<n>.md
 ```
 
-`<id>` 只用小写字母、数字、连字符。每次产出目录里 `meta.yaml` 记它读了谁（`from`，带 sha256）、挂在哪条流第几步；`signed.json` 是人签字的记录。被下游引用或签过字的产出就冻结，改了 hash 对不上，下游拒开工。
+`<id>` 只用小写字母、数字、连字符。每次产出目录里 `meta.yaml` 记它读了谁（`from`，带 sha256）、挂在哪条流程第几步；`signed.json` 是人签字的记录。被下游引用或签过字的产出就冻结，改了 hash 对不上，下游拒开工。
 
 ## 1. 需求
 
@@ -91,7 +91,7 @@ harness 三条硬规矩，`experiment/pack.py` 都会查：
 
 预检退 1 说"无解"是门太高或题太浅（`scoring.yaml` 主指标可写 `attainable` 尽头值），改需求或松门，别硬跑。
 
-**人核对**：`evaluate.py` 算的是不是你要的数、`baseline/` 的成绩合不合常识。流里这儿是断点，签了下游才能读：
+**人核对**：`evaluate.py` 算的是不是你要的数、`baseline/` 的成绩合不合常识。流程里这儿是断点，签了下游才能读：
 
 ```bash
 ai4sci sign design/1 --by <你> --note "评分脚本算的是我要的数"
@@ -100,7 +100,7 @@ ai4sci sign design/1 --by <你> --note "评分脚本算的是我要的数"
 ## 4. 跑起来
 
 ```bash
-ai4sci flow take research                                          # 库里的流取成实例 flows/research.yaml（只有一条流时命令上不用写 --flow）
+ai4sci flow take research                                          # 库里的流程取成实例 flows/research.yaml（只有一条流程时命令上不用写 --flow）
 ai4sci cap auto-research --from design/1 --max-iters 5 --detach    # 开 experiment/1，一轮一轮改；后台作业
 ai4sci show job <id>                                               # 进度；跑完框架叫醒对话
 ai4sci cap auto-research --continue experiment/1 --max-iters 10    # 接着同一次实验再跑
@@ -117,8 +117,8 @@ ai4sci sign verification/1 --by <你>                               # 断点：�
 |---|---|---|
 | `需求还没确认` / `需求 v1 确认之后又改过` | 没有 requirement.lock，或改过没确认 | `ai4sci requirement confirm` |
 | `design/1 被引用或签字之后改过了` | 签过字或被引用的产出目录变了 | 别改它；在它的阶段下新开一次产出，下游 `--from` 新的那个 |
-| `流 research 在 design/1 之后有断点` | 流里这儿要人签了下游才能读 | `ai4sci sign design/1` |
-| `工作区有几条流，说清照哪条` | flows/ 下不止一个实例 | 命令加 `--flow <name>` |
+| `流 research 在 design/1 之后有断点` | 流程里这儿要人签了下游才能读 | `ai4sci sign design/1` |
+| `工作区有几条流程，说清照哪条` | flows/ 下不止一个实例 | 命令加 `--flow <name>` |
 | `env/: 目录缺失` | materials/ 没带环境 | 建 `materials/env/` 两个文件，零依赖也要有空的 lock |
 | `harness/launcher.sh:12: 裸调 python` | launcher 用了 PATH 上的 python | 让执行层改：`--continue design/1 --feedback` |
 | `harness/evaluate.py:45: 给 AI4SCI_INNER_K 写了默认值` | 评分脚本拿不到框架保证的变量时自己兜底 | 同上 |
@@ -129,4 +129,4 @@ ai4sci sign verification/1 --by <你>                               # 断点：�
 
 ## 谁做什么
 
-研究者：说清课题、给材料、确认需求、核对评分脚本、验收。研究助理（页面上的那位）：写需求、取流、按流调用能力、看着磁盘决定下一步喂什么、停下来等人签。执行层（能力起的会话）：只在自己那次产出目录里写。框架：开门（需求确认）、开产出目录、封 harness、跑打分、记账本、判冻结与签字。协调层的操作步骤见 `coordinator/README.md`。第一个真课题 `workspaces/boehm-nll/` 就是这么接进来的，它的 `requirement.md` 是样本。
+研究者：说清课题、给材料、确认需求、核对评分脚本、验收。研究助理（页面上的那位）：写需求、取流程、按流程调用能力、看着磁盘决定下一步喂什么、停下来等人签。执行层（能力起的会话）：只在自己那次产出目录里写。框架：开门（需求确认）、开产出目录、封 harness、跑打分、记账本、判冻结与签字。协调层的操作步骤见 `coordinator/README.md`。第一个真课题 `workspaces/boehm-nll/` 就是这么接进来的，它的 `requirement.md` 是样本。

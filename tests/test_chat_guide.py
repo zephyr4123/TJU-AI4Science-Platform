@@ -21,9 +21,9 @@ def test_system_prompt_is_preamble_plus_guide(tmp_path):
     path.write_text("# 指南正文\n", encoding="utf-8")
     text = guide.system_prompt(guide.WORKSPACE, path)
     assert text.startswith("# 你在服务里") and text.rstrip().endswith("# 指南正文")
-    assert "流实例在 `flows/`" in text and "--detach" in text
+    assert "流程实例在 `flows/`" in text and "--detach" in text
     studio = guide.system_prompt(guide.STUDIO, path)
-    assert studio.startswith("# 你在服务里") and "造流助理" in studio and "--detach" not in studio
+    assert studio.startswith("# 你在服务里") and "流程助理" in studio and "--detach" not in studio
     with pytest.raises(AssertionError, match="指南只有"):
         guide.system_prompt("nope", path)
 
@@ -38,7 +38,7 @@ def test_missing_or_empty_guide_is_an_error(tmp_path):
 
 
 def test_the_two_scopes_write_to_disjoint_places(tmp_path, monkeypatch):
-    """分权靠白名单：研究助理只写自己的工作区，造流助理只写库；两组没有交集。"""
+    """分权靠白名单：研究助理只写自己的工作区，流程助理只写库；两组没有交集。"""
     ws = workspace.create(tmp_path / "workspaces", "w1")
     library = tmp_path / "lib" / "workflows"
     library.mkdir(parents=True)
@@ -53,7 +53,7 @@ def test_the_two_scopes_write_to_disjoint_places(tmp_path, monkeypatch):
     assert studio.kind == "studio" and studio.cwd == library.parent
     assert studio.allowed_paths == (library,) and studio.chats == tmp_path / "studio" / "chats"
     assert not set(research.allowed_paths) & set(studio.allowed_paths)
-    # 两个库对研究助理是只读的：在可读清单里、不在可写清单里；造流助理反过来
+    # 两个库对研究助理是只读的：在可读清单里、不在可写清单里；流程助理反过来
     assert research.readable_paths == (library, templates) and studio.readable_paths == ()
 
 
@@ -87,13 +87,13 @@ def test_shipped_guides_never_show_the_agent_a_raw_command(kind):
 
 
 def test_research_guide_takes_flows_and_never_builds_them():
-    """纲领 P-16 的机器判据：研究助理的指南没有「拼一条自己的流」、没有往库里写文件的写法；
-    只教取流、改实例；命令里不带任务包路径（P-15）。"""
+    """纲领 P-16 的机器判据：研究助理的指南没有「拼一条自己的流程」、没有往库里写文件的写法；
+    只教取流程、改实例；命令里不带任务包路径（P-15）。"""
     text = guide.system_prompt(guide.WORKSPACE)
-    assert "## 取一条流，按需求改" in text and "ai4sci flow take" in text
+    assert "## 取一条流程，按需求改" in text and "ai4sci flow take" in text
     assert f"库在 `{paths.workflows_root()}`：你能读不能写" in text  # 路径写实，agent 不用去找
-    assert "## 拼一条自己的流" not in text and "workflows/<name>.yaml" not in text
-    assert "不要造流" in text and "去编辑台" in text
+    assert "## 拼一条自己的流程" not in text and "workflows/<name>.yaml" not in text
+    assert "不要造流程" in text and "去编辑台" in text
     assert "不要自己把 `ai4sci cap` 放后台" in text
     assert "ai4sci show templates" in text and "你不做" in text  # 需求：只写不确认
     for line in _commands(text):
@@ -109,7 +109,7 @@ def test_studio_guide_builds_flows_and_never_runs_experiments():
 
 
 def test_the_studio_guides_example_workflow_actually_loads_and_passes(tmp_path):
-    """造流助理指南里给它抄的样例必须真能过 `show workflows`，否则它照抄就撞墙。"""
+    """流程助理指南里给它抄的样例必须真能过 `show workflows`，否则它照抄就撞墙。"""
     from framework.capabilities import discover
     from framework.contracts import workflows
 

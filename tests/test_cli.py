@@ -642,7 +642,7 @@ def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_p
     assert main(["chat", "send", chat_id, "拼一条", "--studio"]) == EXIT_OK
     capsys.readouterr()
     prompt = chat.calls[0]["system_prompt"]
-    assert "只写库" in prompt and "造流助理" in prompt
+    assert "只写库" in prompt and "流程助理" in prompt
     assert chat.calls[0]["cwd"] == library.parent and chat.calls[0]["allowed_paths"] == [library]
     assert chat.calls[0]["readable_paths"] == []
     assert main(["chat", "list", "--studio"]) == EXIT_OK
