@@ -66,8 +66,12 @@ function DirRows({ workspace, path, depth, epoch, expanded, selected, meaning, o
 }) {
   const listing = useResource(() => api.files(workspace, path), [workspace, path, epoch])
   if (listing.error) return <p className="px-3 py-1 text-[0.75rem] text-bad" style={{ paddingLeft: indent(depth) }}>{listing.error}</p>
-  if (!listing.data) return <div className="px-3 py-1" style={{ paddingLeft: indent(depth) }}><Skeleton lines={2} /></div>
+  // 子目录加载不画占位：本地请求几十毫秒就回，骨架闪一下又没了（空目录尤其明显）；折角一转就是反馈。骨架只给根那一层
+  if (!listing.data) return depth === 0 ? <div className="px-3 py-1"><Skeleton lines={4} /></div> : null
   const entries = order ? order(listing.data.entries) : listing.data.entries
+  if (entries.length === 0) {
+    return <p className="py-[3px] pr-2 text-[0.75rem] text-muted-foreground/60" style={{ paddingLeft: `calc(${indent(depth)} + 1.375rem)` }}>空</p>
+  }
   return (
     <ul>
       {entries.map((entry) => {
