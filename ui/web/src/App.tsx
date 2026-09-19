@@ -1,15 +1,19 @@
-// 壳：左边地方栏（先选世界：工作区 / 编辑台，再选工作区），右边页眉 + 当前地方的内容（外层 #58 #64 #70 #79）。
-// 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的对话 + 流程脊柱。编辑台是全局一个库：编辑台助理的对话 + 画布
-// （外层 #100），和工作区是两个平行的世界：地方栏上是一个开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。页面只是 `ai4sci serve` 的客户端。
+// 壳：左边地方栏（先选世界：工作区 / 编辑台，再选工作区），右边页眉 + 当前地方的内容（外层 #58 #64 #70 #79 #104）。
+// 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的看板（需求没确认就是需求文档，确认了是七个阶段的产出）
+// + 右边的对话。编辑台是全局一个库：画布 + 造流助理的悬浮对话窗（外层 #100），和工作区是两个平行的世界：地方栏上是一个开关，
+// 进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。页面只是 `ai4sci serve` 的客户端。
+import { ChatCircle } from '@phosphor-icons/react'
 import { type ReactNode, useState } from 'react'
 
 import { api, inWorkspace, STUDIO } from '@/api/client'
 import type { Backend } from '@/api/types'
 import { ASSETS, coverOf } from '@/assets'
+import { Board } from '@/board/Board'
 import { ChatView } from '@/chat/ChatView'
 import { Band } from '@/components/Band'
 import { Scene } from '@/components/Scene'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { stageSentence } from '@/lib/humanize'
@@ -21,9 +25,10 @@ import type { Place, World } from '@/places/place'
 import { PlacesSheet } from '@/places/PlacesSheet'
 import { Rail } from '@/places/Rail'
 import { ChatDrawer } from '@/sidebar/ChatDrawer'
-import { Spine } from '@/spine/Spine'
 import { Studio } from '@/studio/Studio'
 import { NewWorkspace } from '@/workspace/NewWorkspace'
+
+const PICKED_KEY = 'ai4sci.workspace'
 
 export default function App() {
   const workspaces = useResource(api.workspaces, [])
@@ -31,14 +36,20 @@ export default function App() {
   // 输入框上两枚旋钮的清单：缺省那家后端有哪些模型、哪几档思考深度（外层 #86）
   const backends = useResource(api.backends, [])
   const knobs = backends.data?.find((b) => b.default) ?? backends.data?.[0] ?? null
-  const [picked, setPicked] = useState<string | null>(null)
+  // 上次看的哪个工作区记在浏览器里；没记过就是清单里第一个
+  const [picked, setPickedState] = useState<string | null>(() => {
+    try { return window.localStorage.getItem(PICKED_KEY) } catch { return null }
+  })
+  const setPicked = (id: string | null) => {
+    setPickedState(id)
+    try { if (id) window.localStorage.setItem(PICKED_KEY, id) } catch { /* 隐私模式存不了就每次从头挑 */ }
+  }
   const [creating, setCreating] = useState(false)
   const [studio, setStudio] = useState(false)
   const wide = useMediaQuery(WIDE)
 
-  const newest = workspaces.data?.length
-    ? [...workspaces.data].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))[0].id : null
-  const wsId = picked && workspaces.data?.some((w) => w.id === picked) ? picked : newest
+  const first = workspaces.data?.length ? workspaces.data[0].id : null
+  const wsId = picked && workspaces.data?.some((w) => w.id === picked) ? picked : first
   const current = wsId ? workspaces.data?.find((w) => w.id === wsId) ?? null : null
   const healthy = health.loading && !health.data ? null : health.data?.ok === true
 
@@ -100,46 +111,52 @@ function Top({ place, title, note, menu }: { place: Place; title: string; note: 
   return <Band picture={picture} veil="wash" blur className="shrink-0 border-b">{row}</Band>
 }
 
-/** 主页面：这个工作区的对话 + 脊柱。换工作区时父组件用 key 重建，状态天然按工作区隔离。 */
+/** 主页面：这个工作区的看板铺满，对话在右边一列（宽屏常开、可收；窄屏是从右边拉出来的抽屉）。
+ *  换工作区时父组件用 key 重建，状态天然按工作区隔离。 */
 function MainView({ wsId, title, healthy, knobs }: { wsId: string; title: string; healthy: boolean | null; knobs: Backend | null }) {
   const scope = inWorkspace(wsId)
   const c = useChats(scope)
   const wide = useMediaQuery(WIDE)
-  // 没点过：宽屏常开、窄屏收着；窄屏上脊柱是一张从右边拉出来的抽屉
-  const [boardOpen, setBoardOpen] = useState<boolean | null>(null)
-  const open = boardOpen ?? wide
-  const spine = <Spine workspace={wsId} epoch={c.epoch} chatId={c.chatId} />
+  const [chatOpen, setChatOpen] = useState<boolean | null>(null)
+  const open = chatOpen ?? true
+  const chat = (
+    <ChatView
+      key={c.chatId ?? 'none'} scope={scope} chatId={c.chatId} current={c.current}
+      onClose={() => setChatOpen(false)}
+      autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
+      knobs={knobs}
+      intro={{ lede: '课题', body: '问题、材料、怎么算好。' }}
+      welcome={{ headline: '课题', body: '问题、材料、怎么算好。' }}
+      drawer={
+        <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
+                    creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
+                    cover={coverOf(wsId)} title={title} />
+      }
+    />
+  )
   return (
-    <div className="flex min-h-0 flex-1">
-      <ChatView
-        key={c.chatId ?? 'none'} scope={scope} chatId={c.chatId} current={c.current}
-        boardOpen={open} onToggleBoard={() => setBoardOpen(!open)}
-        autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
-        knobs={knobs}
-        intro={{ lede: '课题', body: '问题、数据、评价指标。' }}
-        welcome={{ headline: '课题', body: '问题、数据、评价指标。' }}
-        drawer={
-          <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
-                      creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
-                      cover={coverOf(wsId)} title={title} />
-        }
-      />
+    <div className="relative flex min-h-0 flex-1">
+      <main className="relative min-w-0 flex-1">
+        <Scene picture={ASSETS.board} veil="mist" />
+        <div className="relative h-full"><Board workspace={wsId} epoch={c.epoch} /></div>
+        {!open && (
+          <Button size="icon-lg" className="absolute right-5 bottom-5 rounded-full shadow-lg" onClick={() => setChatOpen(true)} aria-label="展开对话">
+            <ChatCircle weight="duotone" className="size-5" />
+          </Button>
+        )}
+      </main>
       {wide ? (
-        <aside
-          className={cn('relative h-full shrink-0 border-l transition-[width] duration-200',
-                        open ? 'w-[27.5rem]' : 'w-0 overflow-hidden border-l-0')}
-          aria-label="工作流" aria-hidden={!open}
-        >
-          <Scene picture={ASSETS.board} veil="mist" />
-          <div className="relative h-full w-[27.5rem]">{spine}</div>
+        <aside className={cn('relative h-full shrink-0 border-l transition-[width] duration-200',
+                             open ? 'w-[30rem]' : 'w-0 overflow-hidden border-l-0')}
+               aria-label="对话" aria-hidden={!open}>
+          <div className="relative h-full w-[30rem]">{chat}</div>
         </aside>
       ) : (
-        <Sheet open={open} onOpenChange={setBoardOpen}>
+        <Sheet open={open} onOpenChange={setChatOpen}>
           <SheetContent side="right"
-                        className="gap-0 p-0 data-[side=right]:w-[100vw] data-[side=right]:sm:w-[27.5rem] data-[side=right]:sm:max-w-[27.5rem]">
-            <SheetHeader className="sr-only"><SheetTitle>工作流</SheetTitle></SheetHeader>
-            <Scene picture={ASSETS.board} veil="mist" />
-            <div className="relative h-full">{spine}</div>
+                        className="gap-0 p-0 data-[side=right]:w-[100vw] data-[side=right]:sm:w-[30rem] data-[side=right]:sm:max-w-[30rem]">
+            <SheetHeader className="sr-only"><SheetTitle>对话</SheetTitle></SheetHeader>
+            <div className="relative h-full">{chat}</div>
           </SheetContent>
         </Sheet>
       )}

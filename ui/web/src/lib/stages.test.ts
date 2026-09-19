@@ -5,8 +5,8 @@ import type { Capability } from '@/api/types'
 import { actorOf, coverageSentence, groupByStage, itemLabel } from './stages'
 
 const cap = (name: string, stage: string, needs_executor = false): Capability => ({
-  name, stage, level: 'run', title: `${name} 的活`, does: 'd', does_not: 'n', brings: 'b', leaves: 'l', stops: 's',
-  params: [], needs_executor, needs_compute: false, used_by: [],
+  name, stage, stage_slug: stage, title: `${name} 的活`, does: 'd', does_not: 'n', brings: 'b', leaves: 'l',
+  stops: 's', params: [], needs_executor, needs_compute: false, continuable: false, used_by: [],
 })
 
 describe('按阶段分组', () => {
@@ -32,8 +32,7 @@ describe('按阶段分组', () => {
     expect(itemLabel({ kind: 'stage', stage: '验证', caps: [] }, title)).toBe('验证')
     expect(itemLabel({ kind: 'stage', stage: '验证', caps: [{ cap: 'verify', with: {} }, { cap: 'x', with: {} }] }, title))
       .toBe('验证：核对数字、x')
-    expect(itemLabel({ kind: 'stop', key: 'publish', note: '发布' }, title)).toBe('发布')
-    expect(itemLabel({ kind: 'stop', key: null, note: '看一眼' }, title)).toBe('看一眼')
-    expect(itemLabel({ kind: 'stop', key: null, note: '' }, title)).toBe('等你确认')
+    expect(itemLabel({ kind: 'stop', note: '看一眼' }, title)).toBe('看一眼')
+    expect(itemLabel({ kind: 'stop', note: '' }, title)).toBe('签字')
   })
 })

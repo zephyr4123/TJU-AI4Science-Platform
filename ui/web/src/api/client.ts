@@ -4,7 +4,7 @@
 // 对话四个端点在两个域下共用，`Scope` 决定前缀。
 
 import type {
-  Backend, Capability, ChatDoc, ChatMeta, ResearchStage, RunDetail, RunSummary, TaskDetail,
+  Backend, Capability, ChatDoc, ChatMeta, OutputDetail, RequirementDetail, StageInfo, Template,
   Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
 } from './types'
 
@@ -56,22 +56,24 @@ const ws = (id: string) => scopePath(inWorkspace(id))
 export const api = {
   health: () => request<{ ok: boolean }>('/health'),
   backends: () => request<Backend[]>('/backends'),
-  stages: () => request<ResearchStage[]>('/stages'),
+  stages: () => request<StageInfo[]>('/stages'),
+  templates: () => request<Template[]>('/templates'),
   capabilities: () => request<Capability[]>('/cap'),
   workflows: () => request<Workflow[]>('/workflows'),
   saveWorkflow: (doc: WorkflowDraft) => request<Workflow>('/workflows', post(doc)),
   checkWorkflow: (doc: WorkflowDraft) => request<WorkflowCheck>('/workflows/check', post(doc)),
 
   workspaces: () => request<WorkspaceSummary[]>('/workspaces'),
-  newWorkspace: (id: string, title: string) =>
-    request<WorkspaceSummary>('/workspaces', post({ id, title })),
+  newWorkspace: (id: string, title: string, template: string) =>
+    request<WorkspaceSummary>('/workspaces', post({ id, title, template })),
   workspace: (id: string) => request<WorkspaceDetail>(ws(id)),
-  publish: (id: string, by: string) => request<TaskDetail>(`${ws(id)}/publish`, post({ by })),
-  runs: (id: string) => request<RunSummary[]>(`${ws(id)}/runs`),
-  run: (id: string, runId: string) =>
-    request<RunDetail>(`${ws(id)}/runs/${encodeURIComponent(runId)}`),
-  accept: (id: string, runId: string, by: string) =>
-    request<RunDetail>(`${ws(id)}/runs/${encodeURIComponent(runId)}/accept`, post({ by })),
+  requirement: (id: string) => request<RequirementDetail>(`${ws(id)}/requirement`),
+  confirm: (id: string, by: string) =>
+    request<RequirementDetail>(`${ws(id)}/requirement/confirm`, post({ by })),
+  /** 产出的 id 就是路径（experiment/2），直接拼进 URL */
+  output: (id: string, oid: string) => request<OutputDetail>(`${ws(id)}/outputs/${oid}`),
+  sign: (id: string, oid: string, by: string, note: string) =>
+    request<OutputDetail>(`${ws(id)}/outputs/${oid}/sign`, post({ by, note })),
 
   chats: (scope: Scope) => request<ChatMeta[]>(`${scopePath(scope)}/chats`),
   chat: (scope: Scope, chatId: string) =>

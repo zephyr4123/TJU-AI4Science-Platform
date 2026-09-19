@@ -27,14 +27,14 @@ export function coverageSentence(covers: ResearchStage[]): string {
 
 /** 流里一项的一句名：阶段名（点了名带能力标题），断点写要人确认什么。 */
 export function itemLabel(item: FlowItem, titleOf: (cap: string) => string | undefined): string {
-  if (item.kind === 'stop') return item.key === 'publish' ? '发布' : item.key === 'accept' ? '验收' : item.note || '等你确认'
+  if (item.kind === 'stop') return item.note || '签字'
   if (item.caps.length === 0) return item.stage
   return `${item.stage}：${item.caps.map((c) => titleOf(c.cap) ?? c.cap).join('、')}`
 }
 
-// ── 图标：七个阶段各一枚，发布盖章、验收签名、别的断点一只手（Phosphor，全站一套） ──
+// ── 图标：七个阶段各一枚，断点是签名（Phosphor，全站一套） ──
 import {
-  Books, ChartLineUp, Flask, HandPalm, type Icon, Lightbulb, PenNib, PencilRuler, SealCheck, Signature, Stamp,
+  Books, ChartLineUp, Flask, type Icon, Lightbulb, PenNib, PencilRuler, SealCheck, Signature,
 } from '@phosphor-icons/react'
 
 /** 阶段名是后端给的中文；清单外的阶段用锥形瓶兜底 */
@@ -46,10 +46,7 @@ export function stageIcon(stage: ResearchStage): Icon {
   return STAGE_ICON[stage] ?? Flask
 }
 
-/** 流里的一项配哪枚：阶段按它的名字，发布盖章、验收签名，别的断点一只手 */
+/** 流里的一项配哪枚：阶段按它的名字，断点是签名 */
 export function itemIcon(item: FlowItem): Icon {
-  if (item.kind === 'stage') return stageIcon(item.stage)
-  if (item.key === 'publish') return Stamp
-  if (item.key === 'accept') return Signature
-  return HandPalm
+  return item.kind === 'stage' ? stageIcon(item.stage) : Signature
 }

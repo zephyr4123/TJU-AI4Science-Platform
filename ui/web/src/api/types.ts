@@ -1,94 +1,90 @@
 // 与 `framework/chat/boards.py`、`server.py` 的响应体一一对应。改后端字段先改这里，页面才会跟着编译不过。
 
-export type Direction = 'minimize' | 'maximize'
-export type Stage = 'drafting' | 'published' | 'designed' | 'baselined'
+/** 七个研究阶段之一（`GET /stages`）：名字给人看、slug 是目录名与 id 的前缀。 */
+export interface StageInfo {
+  name: string
+  slug: string
+}
+export type ResearchStage = string
 
-export interface PublishState {
-  ok: boolean
-  /** ok：发布记录有效；missing：从没发布过；invalid：发布过但签的文件改了，reason 说是哪个 */
-  state: 'ok' | 'missing' | 'invalid'
+/** 需求确认的状态（`requirement.lock`）：没确认过 / 确认过 / 确认后又改了（dirty）。 */
+export interface RequirementState {
+  confirmed: boolean
+  version: number | null
   by: string | null
   at: string | null
-  reason: string | null
+  dirty: boolean
 }
 
-export interface PrimaryMetric {
-  name: string
-  direction: Direction
-  attainable: number | null
+/** 需求文档里按二级标题切出来的一格；`pending` 是空着或还有「待填」。 */
+export interface RequirementSection {
+  heading: string
+  body: string
+  pending: boolean
 }
 
-export interface TaskSummary {
-  id: string
+/** `GET /workspaces/<id>/requirement`：原文、格、确认状态、上一版确认时的原文（页面做 diff）。 */
+export interface RequirementDetail extends RequirementState {
   title: string
-  question: string
-  domain: string
-  metric: PrimaryMetric | null
-  stage: Stage
-  publish: PublishState
+  text: string
+  sections: RequirementSection[]
+  pending: boolean
+  confirmed_text: string | null
 }
 
-export interface Headroom {
-  metric?: string
-  direction?: Direction
-  baseline?: number
-  sigma?: number
-  gate?: number
-  attainable?: number | null
-  room?: number | null
-  gates?: number | null
-  problems: string[]
-  summary: string | null
-}
-
-export interface TaskDetail extends TaskSummary {
-  manifest: Record<string, unknown>
-  design: string
-  intake_problems: string[]
-  headroom: Headroom | null
-}
-
-/** 一个工作区 = 一份需求（`GET /workspaces`）：任务包还没起时 `task` 是 null。 */
-export interface WorkspaceSummary {
-  id: string
-  title: string
-  created_at: string | null
-  root: string
-  task: TaskSummary | null
-  /** 几个 run */
-  runs: number
-}
-
-/** `GET /workspaces/<id>`：任务包细节、从库里取来的流实例、全部 run 的摘要。 */
-export interface WorkspaceDetail extends Omit<WorkspaceSummary, 'task' | 'runs'> {
-  task: TaskDetail | null
-  flows: Workflow[]
-  runs: RunSummary[]
-}
-
-export interface Acceptance {
-  accepted_at: string
+/** 人的签字（产出目录里的 signed.json）；`stale`：签过之后目录又改了。 */
+export interface Signature {
   by: string
-  best_iter: number
-  best_metric: number
-  best_commit: string
-  verify: string | null
+  signed_at: string
+  sha256: string
+  note: string
   stale: boolean
 }
 
-export interface VerifyState {
-  status: 'PASS' | 'FAIL' | 'invalid'
-  error?: string
-  checks?: unknown
+export type OutputStatus = 'running' | 'ok' | 'failed'
+
+/** 一次产出的记录（meta.yaml）：谁产的、读了谁、在哪条流第几项下产的、成没成、签没签。 */
+export interface OutputBrief {
+  id: string
+  stage: string
+  title: string
+  status: OutputStatus
+  by: string
+  from: string[]
+  params: Record<string, unknown>
+  flow: string | null
+  step: number | null
+  requirement: number | null
+  chat_id: string | null
+  created_at: string
+  finished_at: string | null
+  result: string
+  error: string
+  signed: Signature | null
 }
 
-/** `cap ... --detach` 起的一个后台作业（`GET /jobs[/<id>]`）。`status` 是记录里写的，
- *  `effective_status` 探过 pid：记录说 running 但进程不在了就是 lost。 */
+/** 产出目录里的一个文件：小文本带正文（页面按种类渲染），大的与二进制只给名字。 */
+export interface OutputFile {
+  path: string
+  size: number
+  text?: string
+}
+
+export interface OutputDetail extends OutputBrief {
+  files: OutputFile[]
+  jobs: Job[]
+}
+
+/** 一个阶段一格：名字、目录名、这个阶段的全部产出。 */
+export interface StageBoard extends StageInfo {
+  outputs: OutputBrief[]
+}
+
+/** `cap ... --detach` 起的一个后台作业。`status` 是记录里写的，`effective_status` 探过 pid。 */
 export interface Job {
   job_id: string
   cap: string
-  level: 'task' | 'run' | 'project'
-  target: string
+  stage: string
   argv: string[]
   pid: number
   started_at: string
@@ -99,72 +95,64 @@ export interface Job {
   result: string
   chat_id: string | null
   log: string
+  flow: string | null
+  /** 这个作业产的那次产出；子进程开了目录才有 */
+  output: string | null
 }
 
-/** run 照的那条流与走到第几项（`cap auto-research --workflow`）；`waiting` 是现算的：
- *  `job:<id>` 等作业、`key:publish|accept` 停在出厂的两个断点等人、`human` 停在别的断点等人、
- *  `assistant` 轮到助理、`done` 走完。 */
-export interface FlowState {
-  workflow: string
+/** 流实例的一项在盘上对应的产出（进度算出来的） */
+export interface FlowOutput {
+  id: string
   title: string
-  step: number
-  total: number
-  stages: FlowItem[]
-  next: FlowItem | null
-  waiting: string
-  updated_at: string | null
+  status: OutputStatus
+  by: string
+  from: string[]
+  signed: boolean
+  signed_stale: boolean
 }
 
-export interface RunSummary {
-  run_id: string
-  task: string | null
+export type FlowProgressItem =
+  | { kind: 'stage'; index: number; stage: ResearchStage; caps: { cap: string; with: Record<string, unknown> }[]; outputs: FlowOutput[] }
+  | { kind: 'stop'; index: number; note: string; outputs: FlowOutput[]; signed: boolean }
+
+/** 在等谁：作业 / 人签 / 助理 / 走完 */
+export type Waiting = 'job' | 'sign' | 'assistant' | 'done'
+
+/** 工作区里的一条流实例（`flows/*.yaml`）+ 它的进度（沿产出的 meta 算）。坏文件只有 problems。 */
+export interface FlowProgress extends Workflow {
+  items?: FlowProgressItem[]
+  step?: number
+  total?: number
+  waiting?: Waiting
+  job?: Job | null
+}
+
+/** 一个工作区 = 一份需求（`GET /workspaces`）。 */
+export interface WorkspaceSummary {
+  id: string
   title: string
-  metric: { name: string; direction: Direction }
-  baseline: number | null
-  best_metric: number
-  best_iter: number
-  last_iter: number
-  stop_reason: string | null
-  updated_at: string | null
-  cost_usd: number | null
-  running: boolean
-  /** 哪段对话开的；终端里开的或老 run 是 null */
-  chat_id: string | null
-  /** 正在跑的后台作业；没有就是 null */
-  job: Job | null
-  /** 照的流与步序；没照流就是 null */
-  flow: FlowState | null
-  analysis: boolean
-  verify: VerifyState | null
-  accept: Acceptance | null
+  root: string
+  requirement: RequirementState
+  /** 每个阶段几次产出，键是目录名 */
+  counts: Record<string, number>
+  /** 几个作业在跑 */
+  running: number
 }
 
-export type LedgerStatus =
-  | 'keep' | 'discard' | 'timeout' | 'crash' | 'no_results' | 'readonly_violated'
-  | 'noop' | 'interrupted' | 'executor_failed' | string
-
-export interface LedgerRow {
-  iter: number
-  commit: string
-  parent: string
-  metric: number | null
-  direction: Direction
-  elapsed_s: number | null
-  seed: number
-  status: LedgerStatus
-  sigma: number | null
-  harness_sha: string
-  note: string
-  cost_usd: number | null
-  executor_s: number | null
-}
-
-export interface RunDetail extends RunSummary {
-  ledger: LedgerRow[]
-  /** 这个 run 的全部作业，按起的先后 */
+/** `GET /workspaces/<id>`：需求 + 七个阶段各自的产出 + 每条流实例的进度 + 作业。 */
+export interface WorkspaceDetail extends WorkspaceSummary {
+  requirement: RequirementDetail
+  stages: StageBoard[]
+  flows: FlowProgress[]
   jobs: Job[]
-  journal: string
-  analysis_text: string | null
+}
+
+/** 库里的一份需求模板（`GET /templates`）。 */
+export interface Template {
+  name: string
+  title: string
+  summary: string
+  text: string
 }
 
 export interface ChatMeta {
@@ -244,15 +232,12 @@ export interface CapabilityParam {
   in_flow?: boolean
 }
 
-/** 七个研究阶段之一（`GET /stages` 给顺序）；能力描述符的 `stage` 取值。 */
-export type ResearchStage = string
-
 /** 一颗能力：一个阶段里的一件活，对助理就是一条命令。五栏是给人读的机制说明（纲领 P-18）。 */
 export interface Capability {
   name: string
-  /** 属于哪个阶段：标签，不定先后 */
+  /** 属于哪个阶段：标签，不定先后；`stage_slug` 是那个阶段的目录名 */
   stage: ResearchStage
-  level: 'task' | 'run' | 'project'
+  stage_slug: string
   /** 给研究者看的名字 */
   title: string
   does: string
@@ -263,14 +248,16 @@ export interface Capability {
   params: CapabilityParam[]
   needs_executor: boolean
   needs_compute: boolean
+  /** 能接着上一次的产出干（--continue），不另开目录 */
+  continuable: boolean
   /** 点名用在哪几条工作流里：后端从工作流文件反查的，能力自己不写 */
   used_by: string[]
 }
 
-/** 流里的一项：一个阶段（可点名能力、带参数），或一个断点（停下来等人确认；发布 / 验收是出厂的两个）。 */
+/** 流里的一项：一个阶段（可点名能力、带参数），或一个断点（前一项的产出要人签了下游才能读）。 */
 export type FlowItem =
   | { kind: 'stage'; stage: ResearchStage; caps: { cap: string; with: Record<string, unknown> }[] }
-  | { kind: 'stop'; key: 'publish' | 'accept' | null; note: string }
+  | { kind: 'stop'; note: string }
 
 /** 编辑台交给 `POST /workflows`（存）与 `POST /workflows/check`（只查）的一条流：形状同文件。
  *  一项是阶段名、`{阶段: [能力]}`、`{阶段: {能力: 参数}}`、`"断点"` 或 `{断点: 一句话}`。 */

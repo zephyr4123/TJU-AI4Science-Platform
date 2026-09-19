@@ -56,7 +56,7 @@ export function Studio({ epoch, chat }: { epoch: number; chat: (close: () => voi
   }
   return (
     <ReactFlowProvider>
-      <Editor stages={stages.data} workflows={workflows.data} catalog={catalog.data} onSaved={() => void workflows.reload()} chat={chat} />
+      <Editor stages={stages.data.map((s) => s.name)} workflows={workflows.data} catalog={catalog.data} onSaved={() => void workflows.reload()} chat={chat} />
     </ReactFlowProvider>
   )
 }

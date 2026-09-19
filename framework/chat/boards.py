@@ -24,8 +24,10 @@ from framework.workspace.root import Workspace
 LISTING_IGNORED = frozenset({output.META_NAME, output.SIGNED_NAME, ".venv", ".git", "__pycache__",
                              ".ai4sci", "executor"})
 LISTING_LIMIT = 200
-# 小文本文件的正文直接带上，页面照渲染；大的与二进制只给名字
-TEXT_SUFFIXES = (".md", ".txt", ".yaml", ".yml", ".json", ".tsv", ".csv")
+# 小文本文件的正文直接带上，页面照渲染；大的与二进制只给名字。
+# 没有后缀的（python-version、SHA256SUMS）也当文本试着读，读不出来就只给名字
+TEXT_SUFFIXES = (".md", ".txt", ".yaml", ".yml", ".json", ".tsv", ".csv", ".py", ".sh", ".lock",
+                 ".toml", ".cfg", ".ini", ".log", "")
 TEXT_LIMIT = 200_000
 
 
@@ -91,7 +93,11 @@ def output_detail(workspace: Workspace, oid: str) -> dict[str, Any]:
             continue
         entry: dict[str, Any] = {"path": rel.as_posix(), "size": path.stat().st_size}
         if path.suffix in TEXT_SUFFIXES and entry["size"] <= TEXT_LIMIT:
-            entry["text"] = path.read_text(encoding="utf-8", errors="replace")
+            try:
+                entry["text"] = path.read_bytes().decode("utf-8")
+            except UnicodeDecodeError:
+                pass  # 没后缀的二进制：只给名字
+
         files.append(entry)
         if len(files) >= LISTING_LIMIT:
             break

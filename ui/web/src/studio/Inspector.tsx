@@ -1,15 +1,13 @@
 // 选中节点的配置。阶段：这个阶段有哪些能力，勾上就点名，参数按描述符逐个给输入框（能力参数在页面上的落点，外层 #101）；
-// 断点：先选是哪种——发布、验收（框架守着的两个，各有记录，助理没它不开下一步）还是别的（写一句确认事项，助理停下来等人说继续）。
+// 断点：写一句要人确认什么（前一项的产出要人签了下游才能读；几个、放哪由流定，P-19）。
 // 五列说明折在展开层里，不占面板。
-import { CaretDown, HandPalm, Signature, Stamp } from '@phosphor-icons/react'
+import { CaretDown, Signature } from '@phosphor-icons/react'
 import { createElement, useState } from 'react'
 
 import type { Capability, CapabilityParam } from '@/api/types'
 import SquishSwitch from '@/components/reactbits/SquishSwitch'
-import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { LEVEL_COPY } from '@/lib/humanize'
 import { actorOf, stageIcon } from '@/lib/stages'
 import { cn } from '@/lib/utils'
 
@@ -65,7 +63,7 @@ function CapRow({ cap, picked, onToggle, onParam }: {
         <Checkbox id={id} checked={picked !== null} onCheckedChange={(v) => onToggle(v === true)} />
         <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer">
           <span className="block truncate text-[0.9375rem] font-medium">{cap.title}</span>
-          <span className="block text-[0.75rem] text-muted-foreground">{actorOf(cap)} · {LEVEL_COPY[cap.level]}</span>
+          <span className="block text-[0.75rem] text-muted-foreground">{actorOf(cap)}{cap.continuable ? ' · 可接着干' : ''}</span>
         </label>
         <button type="button" aria-label={open ? '收起' : '说明'} aria-expanded={open} onClick={() => setOpen((v) => !v)}
                 className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent/40 hover:text-foreground">
@@ -114,30 +112,13 @@ function ParamField({ param, value, onChange }: { param: CapabilityParam; value:
   )
 }
 
-const STOP_KINDS = [
-  { key: '发布', icon: Stamp, hint: '记录：publish.json；没它评分脚本与实验不开' },
-  { key: '验收', icon: Signature, hint: '记录：accept.json；签这一版 best 与验证结论' },
-  { key: '', icon: HandPalm, hint: '写一句确认事项；助理停下来等人说继续' },
-] as const
-
 function StopPanel({ item, onChange }: { item: StopItem; onChange: (item: StopItem) => void }) {
-  const kind = item.note === '发布' || item.note === '验收' ? item.note : ''
   return (
     <div>
-      <h2 className="flex items-center gap-2 font-serif text-[1.0625rem] font-semibold text-wait"><HandPalm weight="duotone" className="size-[1.125rem]" />断点</h2>
-      <div role="radiogroup" aria-label="断点种类" className="mt-3 grid grid-cols-3 gap-1.5">
-        {STOP_KINDS.map(({ key, icon }) => (
-          <Button key={key || 'other'} size="sm" role="radio" aria-checked={kind === key} title={STOP_KINDS.find((k) => k.key === key)?.hint}
-                  variant={kind === key ? 'default' : 'outline'} onClick={() => onChange({ ...item, note: key })}>
-            {createElement(icon, { weight: 'duotone', 'aria-hidden': true })}{key || '其它'}
-          </Button>
-        ))}
-      </div>
-      <p className="mt-2 text-[0.75rem] text-muted-foreground">{STOP_KINDS.find((k) => k.key === kind)?.hint}</p>
-      {kind === '' && (
-        <Input value={item.note} placeholder="确认事项" aria-label="确认事项" className="mt-2 bg-card"
-               onChange={(e) => onChange({ ...item, note: e.target.value })} />
-      )}
+      <h2 className="flex items-center gap-2 font-serif text-[1.0625rem] font-semibold text-wait"><Signature weight="duotone" className="size-[1.125rem]" />断点</h2>
+      <p className="mt-2 text-[0.75rem] text-muted-foreground">前一个阶段的产出要人签了，下游才能读。</p>
+      <Input value={item.note} placeholder="确认什么" aria-label="确认什么" className="mt-2 bg-card"
+             onChange={(e) => onChange({ ...item, note: e.target.value })} />
     </div>
   )
 }

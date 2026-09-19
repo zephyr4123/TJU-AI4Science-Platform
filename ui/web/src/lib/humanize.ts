@@ -1,21 +1,47 @@
 // 把框架的状态码、判决、命令翻成研究者看得懂的短句。页面正文只许用这里的输出；
 // 原始值（状态码、哈希、命令）只在展开层出现。字要少：一句话一件事（主人 2026-09-18）。纯函数，有单测。
 
-import type { Stage, WorkspaceSummary } from '@/api/types'
+import type { OutputBrief, RequirementState, Waiting, WorkspaceSummary } from '@/api/types'
 
-// ── 需求走到哪 ───────────────────────────────────────────────────────────
-export const STAGE_LABEL: Record<Stage, string> = {
-  drafting: '还没发布', published: '已发布', designed: '评分脚本写了', baselined: '基线已跑',
+// ── 需求与工作区走到哪 ───────────────────────────────────────────────────
+/** 需求的状态一句话：未确认 / v2 / v2，改了 */
+export function requirementWord(state: RequirementState): string {
+  if (!state.confirmed) return '需求未确认'
+  return state.dirty ? `需求 v${state.version}，改了` : `需求 v${state.version}`
 }
 
-/** 一行里说这份需求走到哪：还没有需求、需求还在聊、已发布…、跑了几次实验 */
+/** 页眉里说这个工作区走到哪：需求没确认就说需求；确认了就数产出。 */
 export function stageSentence(w: WorkspaceSummary): string {
-  if (!w.task) return '还没有需求'
-  if (w.task.stage === 'baselined' && w.runs > 0) return `跑了 ${w.runs} 次实验`
-  return STAGE_LABEL[w.task.stage]
+  if (!w.requirement.confirmed) return requirementWord(w.requirement)
+  const total = Object.values(w.counts).reduce((a, b) => a + b, 0)
+  if (w.running > 0) return `${w.running} 个作业在跑`
+  return total === 0 ? '还没开工' : `${total} 次产出`
 }
 
-// ── run ──────────────────────────────────────────────────────────────────
+// ── 产出 ────────────────────────────────────────────────────────────────
+/** 谁产的：能力名翻成人话，助理 / 人照写 */
+export const BY_WORD: Record<string, string> = {
+  assistant: '助理', human: '你', design: '评分脚本', 'auto-research': '实验', analysis: '分析', verify: '核对',
+}
+
+export function byWord(by: string): string {
+  return BY_WORD[by] ?? by
+}
+
+/** 一次产出的状态一句话 */
+export function outputWord(o: Pick<OutputBrief, 'status' | 'signed'>): string {
+  if (o.status === 'running') return '在做'
+  if (o.status === 'failed') return '没成'
+  if (o.signed === null) return '成了'
+  return o.signed.stale ? '签过，之后改了' : '签过'
+}
+
+/** 流在等谁 */
+export const WAITING_WORD: Record<Waiting, string> = {
+  job: '作业在跑', sign: '等你签', assistant: '轮到助理', done: '走完了',
+}
+
+// ── 实验 ────────────────────────────────────────────────────────────────
 export const STOP_SENTENCE: Record<string, string> = {
   patience: '几轮没进步，停了',
   max_iterations: '轮数用完',
@@ -36,29 +62,26 @@ export function conclusionOf(analysis: string): string {
   return (match ? match[1] : analysis).trim()
 }
 
-// ── 能力清单 ─────────────────────────────────────────────────────────────
-// 能力的人话标题、五栏与所属阶段都在描述符里，页面直接读 `/cap`，这里不再另抄一份。
-export const LEVEL_COPY: Record<string, string> = { task: '动任务包', run: '动一个 run', project: '动项目' }
-
 // ── 对话里的工具行 ────────────────────────────────────────────────────────
 // 每条命令一句直白的话：查了什么、运行了什么、写了什么。带 --detach 的加一句「放到后台跑」。
 const CLI_SENTENCE: [RegExp, string][] = [
-  [/ai4sci cap init/, '起了任务包'],
   [/ai4sci cap design/, '写了评分脚本、跑了基线'],
   [/ai4sci cap auto-research.*--resume/, '接着跑上次没走完的实验'],
   [/ai4sci cap auto-research.*--(patience|max-iterations|max-cost-usd)/, '给实验续了命，接着跑'],
   [/ai4sci cap auto-research/, '跑了几轮实验'],
   [/ai4sci cap analysis/, '写了分析初稿'],
   [/ai4sci cap verify/, '核对了分析里的数字'],
-  [/ai4sci sign task/, '替人发布了需求（该由人确认）'],
-  [/ai4sci sign run/, '替人验收了结果（该由人确认）'],
+  [/ai4sci requirement confirm/, '替人确认了需求（该由人确认）'],
+  [/ai4sci sign\b/, '替人签了字（该由人签）'],
+  [/ai4sci output new/, '开了一次产出'],
   [/ai4sci show workspaces/, '查了有哪些工作区'],
-  [/ai4sci show task\b/, '检查了需求'],
-  [/ai4sci show runs?\b/, '查了实验进度'],
+  [/ai4sci show workspace\b/, '看了工作区走到哪'],
+  [/ai4sci show outputs?\b/, '看了产出'],
   [/ai4sci show jobs?\b/, '查了后台作业'],
   [/ai4sci show flows\b/, '看了这个工作区里的流'],
   [/ai4sci show caps/, '查了有哪些能力'],
   [/ai4sci show workflows/, '查了库里有哪些流'],
+  [/ai4sci show templates?\b/, '看了需求模板'],
   [/ai4sci flow take/, '从库里取了一条流'],
   [/ai4sci workspace new/, '起了一个工作区'],
   [/^\s*(ls|find|tree)\b/, '看了目录'],

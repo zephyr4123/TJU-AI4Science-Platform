@@ -18,7 +18,7 @@ export interface PlacesProps {
   onWorld: (world: World) => void
 }
 
-/** 新的在上：地方栏与窄屏清单同一顺序 */
+/** 地方栏与窄屏清单同一顺序：后端按目录名给，照抄 */
 export function newestFirst(workspaces: WorkspaceSummary[] | null): WorkspaceSummary[] {
-  return workspaces ? [...workspaces].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '')) : []
+  return workspaces ? [...workspaces] : []
 }

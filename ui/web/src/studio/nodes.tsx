@@ -1,8 +1,8 @@
 // 画布上的两种节点：研究阶段（装能力）与断点。位置由 model.layout 排，节点自己只管长相与四个把手
 // （左右接同一行的边，上下接跨行的边）。序号是真序列（文件里的第几项），所以敢放大写成宋体数字。
-// 阶段节点是 reactbits 的 SpotlightCard 改装件（鼠标经过时一抹淡光）；断点是琥珀色的一块，直接写确认事项，与脊柱上等人的那一格同色。
+// 阶段节点是 reactbits 的 SpotlightCard 改装件（鼠标经过时一抹淡光）；断点是琥珀色的一块，直接写确认事项（前一项的产出要人签）。
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react'
-import { HandPalm, Signature, Stamp, X } from '@phosphor-icons/react'
+import { Signature, X } from '@phosphor-icons/react'
 import { createElement } from 'react'
 
 import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
@@ -91,7 +91,6 @@ export function StageNode({ data, selected }: NodeProps<StageNodeType>) {
 }
 
 export function StopNode({ data, selected }: NodeProps<StopNodeType>) {
-  const icon = data.note === '发布' ? Stamp : data.note === '验收' ? Signature : HandPalm
   const bad = data.problems.length > 0
   return (
     <div className="group relative" style={{ width: WIDTH.stop }}>
@@ -99,10 +98,10 @@ export function StopNode({ data, selected }: NodeProps<StopNodeType>) {
       <div className={cn('relative rounded-2xl border bg-wait-soft px-3.5 pt-3 pb-3 text-wait transition-[border-color,box-shadow]',
                          selected ? 'border-wait shadow-[0_0_0_3px_color-mix(in_oklab,var(--wait)_25%,transparent)]' : bad ? 'border-bad/60' : 'border-wait/50 shadow-sm')}>
         <div className="flex items-center gap-2 pr-5">
-          {createElement(icon, { weight: 'duotone', 'aria-hidden': true, className: 'size-[1.375rem] shrink-0' })}
+          <Signature weight="duotone" aria-hidden className="size-[1.375rem] shrink-0" />
           <ProblemDot problems={data.problems} />
         </div>
-        <p className={cn('mt-2 line-clamp-2 min-h-5 pr-6 text-[0.875rem] leading-snug font-semibold', !data.note && 'font-normal text-wait/60')}>{data.note || '确认事项'}</p>
+        <p className={cn('mt-2 line-clamp-2 min-h-5 pr-6 text-[0.875rem] leading-snug font-semibold', !data.note && 'font-normal text-wait/60')}>{data.note || '签字'}</p>
         <Numeral n={data.n} className="text-wait/35" />
         <RemoveButton label={`删除第 ${data.n} 项`} onClick={data.onRemove} className="text-wait/70 hover:bg-wait/15 hover:text-wait" />
       </div>

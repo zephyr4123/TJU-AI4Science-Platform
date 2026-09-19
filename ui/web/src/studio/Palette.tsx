@@ -1,6 +1,6 @@
-// 画布左边一根梯子：七个研究阶段按顺序竖排成方块（顺序本身就是信息），底下一块断点（是发布、验收还是别的，拖进去再选）。
+// 画布左边一根梯子：七个研究阶段按顺序竖排成方块（顺序本身就是信息），底下一块断点（拖进去写一句要人确认什么）。
 // 拖进画布落在哪就插在哪；点一下加到末尾（键盘也走得通）。库另在右上角：一个弹层，点一条载入画布（名字照旧，重名要勾「覆盖同名」）。
-import { Books, CaretDown, HandPalm } from '@phosphor-icons/react'
+import { Books, CaretDown, Signature } from '@phosphor-icons/react'
 import { createElement, useState } from 'react'
 
 import type { Workflow } from '@/api/types'
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 import { type Seed, SEED_MIME } from './model'
 
 export function Ladder({ stages, onAdd }: { stages: string[]; onAdd: (seed: Seed) => void }) {
-  const tile = (seed: Seed, icon: typeof HandPalm, label: string, tone: 'stage' | 'stop') => (
+  const tile = (seed: Seed, icon: typeof Signature, label: string, tone: 'stage' | 'stop') => (
     <li key={label}>
       <button type="button" draggable onClick={() => onAdd(seed)} title={label}
               onDragStart={(e) => { e.dataTransfer.setData(SEED_MIME, JSON.stringify(seed)); e.dataTransfer.effectAllowed = 'copy' }}
@@ -28,7 +28,7 @@ export function Ladder({ stages, onAdd }: { stages: string[]; onAdd: (seed: Seed
     <div className="rounded-2xl border bg-card/85 p-1.5 shadow-sm backdrop-blur-sm">
       <ol aria-label="阶段" className="space-y-0.5">{stages.map((stage) => tile({ kind: 'stage', stage }, stageIcon(stage), stage, 'stage'))}</ol>
       <span aria-hidden className="my-1.5 block h-px bg-border" />
-      <ul aria-label="断点">{tile({ kind: 'stop', note: '' }, HandPalm, '断点', 'stop')}</ul>
+      <ul aria-label="断点">{tile({ kind: 'stop', note: '' }, Signature, '断点', 'stop')}</ul>
     </div>
   )
 }

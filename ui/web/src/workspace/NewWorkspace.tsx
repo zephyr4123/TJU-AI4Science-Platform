@@ -1,6 +1,7 @@
 // 起一个工作区：一句话就够（外层 #79 #80，主人：别像表单）。玻璃输入框（和对话输入框同一只壳）里写要解决什么，回车即建；
 // 文件夹名从标题里推（lib/slug），小字里可以改；右边一张封面（reactbits TiltedCard 改装）随名字换——封面本来就是按名字挑的
-// （assets.coverOf），名字一变封面就换，让人看见这就是自己的工作区。底下铺循环视频（浅色云雾、深色光线汇聚）。字要少。
+// （assets.coverOf），名字一变封面就换，让人看见这就是自己的工作区。输入框下面一排需求模板（库里 `templates/`，通用一份、按学科几份），
+// 选一份就照它起草 requirement.md，进主页面时助理接着问。底下铺循环视频（浅色云雾、深色光线汇聚）。字要少。
 import { ArrowRight, PencilSimple } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type KeyboardEvent, useState } from 'react'
@@ -15,8 +16,12 @@ import ShinyText from '@/components/reactbits/ShinyText'
 import { TiltedCard } from '@/components/reactbits/TiltedCard'
 import { Button } from '@/components/ui/button'
 import { ID_RE, suggestId } from '@/lib/slug'
+import { useResource } from '@/lib/useResource'
 import { useToken } from '@/lib/tokens'
 import { cn } from '@/lib/utils'
+
+/** 模板名给人看的字：库里按学科加一份，这里加一个词；没写的照 name 显示 */
+const TEMPLATE_WORD: Record<string, string> = { generic: '通用', ai: '人工智能', cs: '计算机', materials: '材料' }
 
 export function NewWorkspace({ existing, onCreated, onCancel }: {
   existing: WorkspaceSummary[]
@@ -28,6 +33,8 @@ export function NewWorkspace({ existing, onCreated, onCancel }: {
   const [named, setNamed] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const templates = useResource(api.templates, [])
+  const [template, setTemplate] = useState('generic')
   const indigo = useToken('--primary')
   const muted = useToken('--muted-foreground')
   const still = useReducedMotion()
@@ -42,7 +49,7 @@ export function NewWorkspace({ existing, onCreated, onCancel }: {
     setBusy(true)
     setError(null)
     try {
-      const made = await api.newWorkspace(id, title.trim())
+      const made = await api.newWorkspace(id, title.trim(), template)
       onCreated(made.id)
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc))
@@ -100,6 +107,18 @@ export function NewWorkspace({ existing, onCreated, onCancel }: {
               </button>
             )}
           </div>
+          {templates.data && templates.data.length > 0 && (
+            <div role="radiogroup" aria-label="需求模板" className="mt-6 flex max-w-[36rem] flex-wrap gap-2">
+              {[...templates.data].sort((a, b) => Number(b.name === 'generic') - Number(a.name === 'generic')).map((t) => (
+                <button key={t.name} type="button" role="radio" aria-checked={template === t.name} title={t.summary}
+                        onClick={() => setTemplate(t.name)}
+                        className={cn('h-8 rounded-full border px-3 text-[0.8125rem] backdrop-blur-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring',
+                                      template === t.name ? 'border-primary bg-primary/10 text-primary' : 'bg-card/70 text-muted-foreground hover:border-primary/50 hover:text-foreground')}>
+                  {TEMPLATE_WORD[t.name] ?? t.name}
+                </button>
+              ))}
+            </div>
+          )}
           {error && <ErrorNote text={error} className="mt-3" />}
         </div>
 
