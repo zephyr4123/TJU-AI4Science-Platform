@@ -1,21 +1,25 @@
-// 编辑台：一张画布（React Flow，Dify 用的同一个引擎），一条线性的链——节点是研究阶段（装能力 + 参数）或断点，边只表示顺序
-// （纲领 P-18；外层 #100 #101）。顶上一条阶段 / 断点 / 库，右边是选中节点的配置；边拼边问后端有没有问题（POST /workflows/check），
-// 问题贴到节点上；存成 workflows/<name>.yaml。坐标不进文件，按顺序自动排、放不下换行。三张清单都从后端读，页面不写死。
-// 左边那位助理每说完一轮 epoch 加一，库就重读——它可能刚存了一条。
+// 编辑台：一张画布铺满整页（React Flow，Dify 用的同一个引擎），一条线性的链——节点是研究阶段（装能力 + 参数）或断点，边只表示顺序
+// （纲领 P-18；外层 #100 #101）。左上角阶段梯与题头（玻璃板），右上角库、保存与选中节点的配置；边拼边问后端有没有问题
+// （POST /workflows/check），问题贴到节点上；存成 workflows/<name>.yaml。坐标不进文件，按顺序自动排、放不下换行。
+// 造流助理是右下角一枚圆形入口，点开在角上弹出一扇悬浮的对话窗（主人：画布是主角，chat 是辅助）。它每说完一轮 epoch 加一，库就重读。
 import {
   Background, BackgroundVariant, Controls, type Edge, MarkerType, type Node, type OnSelectionChangeFunc, Panel, ReactFlow,
   ReactFlowProvider, useNodesState, useReactFlow,
 } from '@xyflow/react'
-import { SidebarSimple } from '@phosphor-icons/react'
+import { ChatsCircle, X } from '@phosphor-icons/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ChangeEvent, type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api } from '@/api/client'
 import type { Capability, Workflow, WorkflowCheck } from '@/api/types'
 import { ASSETS } from '@/assets'
 import { ErrorNote, Problems, Skeleton } from '@/components/bits'
+import GlassSurface from '@/components/reactbits/GlassSurface'
+import { Magnet } from '@/components/reactbits/Magnet'
 import SquishSwitch from '@/components/reactbits/SquishSwitch'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
+import { Spark } from '@/keys/Spark'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { coverageSentence } from '@/lib/stages'
 import { useToken } from '@/lib/tokens'
@@ -40,28 +44,26 @@ const NODE_TYPES = { stage: StageNode, stop: StopNode }
 type SetItems = (change: (items: Item[]) => Item[]) => void
 
 
-interface ChatToggle { chatOpen: boolean; onToggleChat: () => void }
-
-export function Studio({ epoch, ...chat }: { epoch: number } & ChatToggle) {
+export function Studio({ epoch, chat }: { epoch: number; chat: (close: () => void) => ReactNode }) {
   const stages = useResource(api.stages, [])
   const workflows = useResource(api.workflows, [epoch])
   const catalog = useResource(api.capabilities, [])
   const loading = [stages, workflows, catalog].some((r) => r.loading && !r.data)
   const errors = [stages.error, workflows.error, catalog.error].filter((e): e is string => e !== null)
-  if (loading) return <div className="p-6"><Skeleton lines={6} /></div>
+  if (loading) return <div className="flex-1 p-6"><Skeleton lines={6} /></div>
   if (!stages.data || !workflows.data || !catalog.data) {
-    return <div className="space-y-2 p-6">{errors.map((e) => <ErrorNote key={e} text={e} />)}</div>
+    return <div className="flex-1 space-y-2 p-6">{errors.map((e) => <ErrorNote key={e} text={e} />)}</div>
   }
   return (
     <ReactFlowProvider>
-      <Editor stages={stages.data} workflows={workflows.data} catalog={catalog.data} onSaved={() => void workflows.reload()} {...chat} />
+      <Editor stages={stages.data} workflows={workflows.data} catalog={catalog.data} onSaved={() => void workflows.reload()} chat={chat} />
     </ReactFlowProvider>
   )
 }
 
-function Editor({ stages, workflows, catalog, onSaved, ...chat }: {
-  stages: string[]; workflows: Workflow[]; catalog: Capability[]; onSaved: () => void
-} & ChatToggle) {
+function Editor({ stages, workflows, catalog, onSaved, chat }: {
+  stages: string[]; workflows: Workflow[]; catalog: Capability[]; onSaved: () => void; chat: (close: () => void) => ReactNode
+}) {
   const wide = useMediaQuery(WIDE)
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [selected, setSelected] = useState<number | null>(null)
@@ -91,21 +93,17 @@ function Editor({ stages, workflows, catalog, onSaved, ...chat }: {
 
   const taken = workflows.some((wf) => wf.name === draft.name.trim())
   return (
-    <div className="relative h-full min-h-0">
+    <div className="relative min-h-0 min-w-0 flex-1">
       {/* 画布底下一层风景，压到只剩氛围；点阵铺在它上面 */}
       <Scene picture={ASSETS.studio} veil="mist" />
       <Canvas items={draft.items} titles={titles} perItem={perItem} selected={selected} onSelect={setSelected} setItems={setItems}
               onDrop={(seed, index) => add(seed, index)}>
         {/* 浮在画布上的几块：面板本身不挡鼠标，只有里面的东西接事件 */}
-        <Panel position="top-left" className="pointer-events-none !m-3 flex items-start gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={chat.onToggleChat} aria-label={chat.chatOpen ? '收起对话' : '展开对话'}
-                  className="pointer-events-auto hidden shrink-0 bg-card/70 backdrop-blur-sm lg:inline-flex">
-            <SidebarSimple weight={chat.chatOpen ? 'fill' : 'regular'} />
-          </Button>
+        <Panel position="top-left" className="pointer-events-none !m-4 flex items-start gap-4">
           <div className="pointer-events-auto"><Ladder stages={stages} onAdd={(seed) => add(seed)} /></div>
           <div className="pointer-events-auto"><Heading draft={draft} setDraft={setDraft} /></div>
         </Panel>
-        <Panel position="top-right" className="pointer-events-none !m-3 flex flex-col items-end gap-3">
+        <Panel position="top-right" className="pointer-events-none !m-4 flex flex-col items-end gap-3">
           <div className="pointer-events-auto flex items-center gap-2">
             <Library workflows={workflows} onLoad={load} />
             <Save draft={draft} taken={taken} ok={draft.items.length > 0 && check.data !== null && problems.length === 0} onSaved={onSaved} />
@@ -114,10 +112,11 @@ function Editor({ stages, workflows, catalog, onSaved, ...chat }: {
             <div className="pointer-events-auto max-h-[calc(100dvh-13rem)] w-[19rem] overflow-y-auto rounded-2xl border bg-card/90 p-4 shadow-sm backdrop-blur-sm">{inspector}</div>
           )}
         </Panel>
-        <Panel position="bottom-left" className="!m-3 max-w-[28rem]">
+        <Panel position="bottom-center" className="!mb-4 max-w-[28rem]">
           <Verdict items={draft.items} check={check.data} error={check.error} />
         </Panel>
       </Canvas>
+      <ChatDock chat={chat} />
       {!wide && (
         <Sheet open={current !== null} onOpenChange={(open) => { if (!open) setSelected(null) }}>
           <SheetContent side="right" className="w-[20rem] overflow-y-auto p-5">
@@ -130,21 +129,58 @@ function Editor({ stages, workflows, catalog, onSaved, ...chat }: {
   )
 }
 
-/** 题头：像图纸的标题栏——宋体大标题、mono 名字、一行说明，都是填空线不是输入框 */
+/** 题头：一块玻璃板（与门口的输入框同款），上面是宋体大标题、mono 名字、一行说明——文字直接写在板上，没有框没有线 */
+const TEXT = 'w-full bg-transparent outline-none placeholder:text-muted-foreground/55'
 function Heading({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
   const field = (k: 'name' | 'title' | 'summary') => (e: ChangeEvent<HTMLInputElement>) =>
     setDraft((d) => ({ ...d, [k]: e.target.value }))
   return (
-    <div className="pt-1">
-      <input value={draft.title} onChange={field('title')} placeholder="标题" aria-label="标题" spellCheck={false}
-             className="blank w-[20rem] font-serif text-[1.625rem] leading-tight font-semibold tracking-tight" />
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <input value={draft.name} onChange={field('name')} placeholder="name" aria-label="name" spellCheck={false} autoComplete="off"
-               className="blank w-[9rem] font-mono text-[0.8125rem]" />
-        <span aria-hidden className="text-muted-foreground">·</span>
-        <input value={draft.summary} onChange={field('summary')} placeholder="说明" aria-label="说明" spellCheck={false}
-               className="blank w-[26rem] max-w-[calc(100vw-30rem)] text-[0.875rem]" />
+    <GlassSurface borderRadius={22} className="w-[34rem] max-w-[calc(100vw-24rem)] focus-within:ring-3 focus-within:ring-ring/35">
+      <div className="px-5 pt-3.5 pb-3">
+        <input value={draft.title} onChange={field('title')} placeholder="标题" aria-label="标题" spellCheck={false}
+               className={cn(TEXT, 'font-serif text-[1.5rem] leading-tight font-semibold tracking-tight')} />
+        <div className="mt-1 flex items-baseline gap-2">
+          <input value={draft.name} onChange={field('name')} placeholder="name" aria-label="name" spellCheck={false} autoComplete="off"
+                 style={{ width: `${Math.max(draft.name.length, 4) + 1}ch` }}
+                 className={cn(TEXT, 'max-w-[14rem] shrink-0 font-mono text-[0.8125rem] text-primary')} />
+          <span aria-hidden className="text-muted-foreground/60">·</span>
+          <input value={draft.summary} onChange={field('summary')} placeholder="说明" aria-label="说明" spellCheck={false}
+                 className={cn(TEXT, 'min-w-0 flex-1 text-[0.875rem]')} />
+        </div>
       </div>
+    </GlassSurface>
+  )
+}
+
+/** 右下角：一枚圆形玻璃入口（靠近会被吸过去），点开在角上长出一扇悬浮的对话窗 */
+function ChatDock({ chat }: { chat: (close: () => void) => ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const still = useReducedMotion() === true
+  const indigo = useToken('--primary')
+  const close = () => setOpen(false)
+  return (
+    <div className="absolute right-4 bottom-4 z-10 flex flex-col items-end gap-3">
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div key="window" style={{ transformOrigin: 'bottom right' }}
+                      initial={{ opacity: 0, scale: still ? 1 : 0.9, y: still ? 0 : 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: still ? 1 : 0.9, y: still ? 0 : 12 }} transition={{ duration: still ? 0 : 0.22, ease: [0.2, 0.8, 0.2, 1] }}
+                      className="h-[min(38rem,calc(100dvh-9rem))] w-[26rem] max-w-[calc(100vw-2rem)]">
+            <GlassSurface borderRadius={22} height="100%" className="h-full shadow-lg">
+              <div className="h-full overflow-hidden rounded-[20px]">{chat(close)}</div>
+            </GlassSurface>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <Magnet>
+        <Spark color={indigo}>
+          <button type="button" onClick={() => setOpen((v) => !v)} aria-label={open ? '收起对话' : '对话'} aria-expanded={open}
+                  className={cn('grid size-14 place-items-center rounded-full border shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                                open ? 'border-primary bg-primary text-primary-foreground' : 'border-white/40 bg-card/70 text-primary hover:bg-card')}>
+            {open ? <X weight="bold" className="size-6" /> : <ChatsCircle weight="fill" className="size-7" />}
+          </button>
+        </Spark>
+      </Magnet>
     </div>
   )
 }
@@ -262,12 +298,12 @@ function Canvas({ items, titles, perItem, selected, onSelect, setItems, onDrop, 
         const at = screenToFlowPosition({ x: e.clientX, y: e.clientY })
         onDrop(seed, indexAt(items, at.x, at.y))
       }}
-      nodesConnectable={false} edgesFocusable={false} panOnScroll zoomOnScroll={false} minZoom={0.3} maxZoom={1.5}
+      nodesConnectable={false} edgesFocusable={false} panOnScroll zoomOnScroll={false} minZoom={0.3} maxZoom={1.5} attributionPosition="bottom-left"
       deleteKeyCode={['Backspace', 'Delete']} fitView fitViewOptions={{ padding: FIT, maxZoom: 1 }}
       className="!bg-transparent"
     >
       <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
-      <Controls showInteractive={false} position="bottom-right" />
+      <Controls showInteractive={false} position="bottom-left" orientation="horizontal" className="!m-4" />
       {items.length === 0 && (
         <Panel position="top-center" className="pointer-events-none !mt-[28%]">
           <div className="grid h-[4.5rem] w-[13rem] place-items-center rounded-2xl border-2 border-dashed border-muted-foreground/40 font-serif text-[0.9375rem] text-muted-foreground">拖入阶段</div>

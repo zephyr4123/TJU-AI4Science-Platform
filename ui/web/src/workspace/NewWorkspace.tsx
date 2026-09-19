@@ -80,13 +80,13 @@ export function NewWorkspace({ existing, onCreated, onCancel }: {
           </GlassSurface>
 
           <div className="mt-3 flex min-h-7 max-w-[36rem] flex-wrap items-center gap-x-4 gap-y-1 text-[0.8125rem] text-muted-foreground">
-            <label className="flex items-center gap-1.5">
+            <label className={cn('flex h-7 items-center gap-1.5 rounded-full border bg-card/70 pr-2.5 pl-2 backdrop-blur-sm transition-colors focus-within:border-primary',
+                                 (!wellFormed || dup) && 'border-bad text-bad')}>
               <PencilSimple className="size-3.5" />
-              <span>文件夹</span>
               <input
                 value={id} onChange={(event) => setNamed(event.target.value)} spellCheck={false} autoComplete="off" aria-label="文件夹名"
                 style={{ width: `${Math.max(id.length, 4) + 1}ch` }}
-                className={cn('blank font-mono text-[0.8125rem]', (!wellFormed || dup) && 'blank-invalid')}
+                className="bg-transparent font-mono text-[0.8125rem] text-foreground outline-none"
               />
             </label>
             {!wellFormed ? <span className="text-bad">只能小写英文、数字、连字符，字母开头</span>

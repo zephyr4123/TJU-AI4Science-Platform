@@ -147,16 +147,14 @@ function MainView({ wsId, title, healthy, knobs }: { wsId: string; title: string
   )
 }
 
-/** 编辑台：左边助理的对话（窄一列，可收起，画布才是主角），右边画布。 */
+/** 编辑台：画布铺满，造流助理的对话是右下角弹出的悬浮窗（对话的状态在这儿，窗口在画布上）。 */
 function StudioView({ healthy, knobs }: { healthy: boolean | null; knobs: Backend | null }) {
   const c = useChats(STUDIO)
-  const [chatOpen, setChatOpen] = useState(true)
   return (
-    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      <div className={cn('flex h-[40dvh] shrink-0 flex-col border-b lg:h-auto lg:w-[26rem] lg:border-r lg:border-b-0 xl:w-[30rem]',
-                         !chatOpen && 'lg:hidden')}>
+    <div className="flex min-h-0 flex-1">
+      <Studio epoch={c.epoch} chat={(close) => (
         <ChatView
-          key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current}
+          key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current} onClose={close}
           autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
           knobs={knobs}
           intro={{ lede: '工作流', body: '阶段、能力、断点。' }}
@@ -167,8 +165,7 @@ function StudioView({ healthy, knobs }: { healthy: boolean | null; knobs: Backen
                         cover={ASSETS.studio} title="编辑台" />
           }
         />
-      </div>
-      <div className="min-h-0 flex-1"><Studio epoch={c.epoch} chatOpen={chatOpen} onToggleChat={() => setChatOpen((v) => !v)} /></div>
+      )} />
     </div>
   )
 }

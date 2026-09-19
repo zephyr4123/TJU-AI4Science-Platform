@@ -1,4 +1,4 @@
-import { SidebarSimple } from '@phosphor-icons/react'
+import { SidebarSimple, X } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -29,6 +29,8 @@ interface Props {
   /** 有看板可收的页面才给这两个 */
   boardOpen?: boolean
   onToggleBoard?: () => void
+  /** 悬浮窗里的对话：右上角一枚关闭 */
+  onClose?: () => void
   /** 还没有对话时在输入框里打的第一句：对话一建好就发出去 */
   autoSend: string | null
   onAutoSent: () => void
@@ -54,7 +56,7 @@ interface LiveTurn {
 
 type Kept = Record<number, { trace: TraceItem[]; outcome: TurnOutcome }>
 
-export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, autoSend, onAutoSent, onStart, onTurnDone,
+export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onClose, autoSend, onAutoSent, onStart, onTurnDone,
                            knobs, drawer, intro, welcome }: Props) {
   const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId])
   const [live, setLive] = useState<LiveTurn | null>(null)
@@ -132,6 +134,9 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, aut
           <Button variant="ghost" size="icon-sm" onClick={onToggleBoard} aria-label={boardOpen ? '收起看板' : '展开看板'}>
             <SidebarSimple weight={boardOpen ? 'fill' : 'regular'} className="-scale-x-100" />
           </Button>
+        )}
+        {onClose && (
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="收起对话"><X /></Button>
         )}
       </header>
 
