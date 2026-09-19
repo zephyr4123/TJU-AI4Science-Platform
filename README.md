@@ -27,7 +27,7 @@ platform/
 ├── templates/     需求模板库：generic.md 通用，ai.md / cs.md / materials.md 按学科加
 ├── workspaces/    一个工作区一个课题：<id>/{requirement.md, requirement.lock, materials/, flows/, <七个阶段>/<n>/, .ai4sci/}；样例 mlp-regression 玩具、boehm-nll、rahman-nll
 ├── studio/        编辑台的对话，不进 git
-├── docs/          start-a-workspace.md：接一个课题
+├── docs/          start-a-workspace.md：接一个课题；add-a-capability.md：接一颗能力
 ├── tests/         框架测试
 ├── Makefile       check / venv / lock / package / release
 └── CHANGELOG.md
@@ -60,7 +60,7 @@ ai4sci show caps                                           # 七个研究阶段�
 
 执行层用哪个模型、超时多久走环境变量：`AI4SCI_EXECUTOR_MODEL=sonnet`、`AI4SCI_EXECUTOR_TIMEOUT_S=600`；协调层同理 `AI4SCI_COORDINATOR_MODEL` / `_EFFORT`（思考深度 low / medium / high / xhigh / max）/ `_TIMEOUT_S` / `_MAX_BUDGET_USD`。这些是起 `ai4sci serve` 或 `ai4sci chat` 的人在环境里配的缺省，协调 agent 敲的命令上不带（纲领 P-14：它面前只有裸 `ai4sci`）；人在页面的输入框上或 `ai4sci chat new|send --model --effort` 随时换，选了记进那段对话（`GET /backends` 列出每家后端有哪些可选）。
 
-课题跑在自己的环境里：`cap design` 把 `materials/env/` 带进设计那包，`cap auto-research` 开实验时按它建 `experiment/<n>/.venv`，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新课题看 [`docs/start-a-workspace.md`](docs/start-a-workspace.md)。
+课题跑在自己的环境里：`cap design` 把 `materials/env/` 带进设计那包，`cap auto-research` 开实验时按它建 `experiment/<n>/.venv`，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新课题看 [`docs/start-a-workspace.md`](docs/start-a-workspace.md)。往平台里加一颗能力看 [`docs/add-a-capability.md`](docs/add-a-capability.md)：文件名按阶段定、不按能力定，谁产的记在 meta。
 
 ## 版本与发布
 

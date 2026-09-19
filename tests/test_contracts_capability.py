@@ -13,7 +13,7 @@ from types import ModuleType
 
 import pytest
 
-from framework.capabilities import check_capability_module, command_name, discover
+from framework.capabilities import MAIN_FILES, check_capability_module, command_name, discover
 from framework.contracts.capability import (
     COLUMNS,
     Capability,
@@ -28,8 +28,9 @@ FIVE = {"does": "干", "does_not": "不干", "brings": "带", "leaves": "留", "
 
 
 def C(name: str, **kw) -> Capability:
-    """测试用的最小描述符：阶段、标题与五栏给定值，只让每个用例关心自己那一处。"""
-    return Capability(name, **{"stage": "实验", "title": "t", **FIVE, **kw})
+    """测试用的最小描述符：阶段、标题与五栏给定值，只让每个用例关心自己那一处。
+    缺省阶段是还没定主文件的「文献」，主文件那条断言另有用例。"""
+    return Capability(name, **{"stage": "文献", "title": "t", **FIVE, **kw})
 
 
 def _module(name: str, descriptor: object, entry: object) -> ModuleType:
@@ -81,6 +82,23 @@ def test_param_names_match_entrypoint_keyword_arguments():
 def test_check_rejects_modules_that_do_not_match(descriptor, entry, message):
     with pytest.raises(AssertionError, match=message):
         check_capability_module("cap", _module("cap", descriptor, entry))
+
+
+def test_main_file_of_the_stage_must_be_named_in_leaves():
+    """P-20：文件名按阶段定。进已定主文件的阶段，「留下什么」没写到主文件就不让注册；
+    还没定主文件的阶段不查；真的四颗都写到了。"""
+    entry = lambda output_dir, inputs, ports: ""  # noqa: E731
+    half = C("cap", stage="实验", leaves="留 results.json")
+    with pytest.raises(AssertionError, match="主文件 ledger.tsv"):
+        check_capability_module("cap", _module("cap", half, entry))
+    ok = C("cap", stage="实验", leaves="ledger.tsv 与 iters/iter_N/results.json")
+    assert check_capability_module("cap", _module("cap", ok, entry)) is ok
+    open_stage = C("cap", stage="写作", leaves="留")
+    assert check_capability_module("cap", _module("cap", open_stage, entry)) is open_stage
+    assert set(MAIN_FILES) < set(STAGE_NAMES)
+    for module in discover().values():
+        for main in MAIN_FILES[module.DESCRIPTOR.stage]:
+            assert main in module.DESCRIPTOR.leaves
 
 
 def test_check_accepts_a_matching_module_and_maps_hyphens():

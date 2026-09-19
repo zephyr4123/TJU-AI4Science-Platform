@@ -16,6 +16,13 @@
 读了报错去补——这是它会的事。
 子包名里的下划线在命令名里是连字符（`auto_research/` 就是 `ai4sci cap auto-research`）：包名
 不许带连字符，给人看的名字又不该带下划线。
+
+文件名按阶段定、不按能力定（纲领 P-20）：每个阶段钉一个**主文件**，进这个阶段的任何能力都必须
+留下它，下游只认阶段主文件、不认是哪颗能力产的——换一颗同阶段的能力，下游不改。`MAIN_FILES` 一个
+阶段一行，第一颗进来的能力定名、之后锁死；还没有能力的阶段不预填（有第二个用例才抽象）。
+`discover()` 断言描述符的「留下什么」写到了本阶段的主文件；同族能力私下的文件归族包
+（`framework/experiment/`），能力另外留的文件是私有的，谁都不许依赖。接一颗新能力看
+`docs/add-a-capability.md`。
 """
 
 from __future__ import annotations
@@ -30,6 +37,15 @@ from framework.contracts.capability import Capability
 ENTRYPOINT = "run"
 # 前三个参数：产出目录、输入、端口（纲领 P-19：能力是纯函数，显式输入 → 一个产出目录）
 LEADING_PARAMS = ("output_dir", "inputs", "ports")
+# 阶段主文件（P-20）：进这个阶段的能力都得留下它，「留下什么」里要写到它的名字。
+# 文献、假设、写作三个阶段还没有能力，等第一颗进来再填；设计那一行是实验族定的名，第二个族进设计
+# 阶段那天要么沿用、要么改成族无关的，是一次决策。
+MAIN_FILES: dict[str, tuple[str, ...]] = {
+    "设计": ("scoring.yaml",),
+    "实验": ("ledger.tsv", "results.json"),
+    "分析": ("analysis.md",),
+    "验证": ("report.json",),
+}
 
 
 def command_name(package_name: str) -> str:
@@ -50,7 +66,8 @@ def discover() -> dict[str, ModuleType]:
 
 
 def check_capability_module(package_name: str, module: ModuleType) -> Capability:
-    """一个能力子包的三条硬约束：有描述符、名字对得上、入口签名等于描述符的参数表。"""
+    """一个能力子包的四条硬约束：有描述符、名字对得上、入口签名等于描述符的参数表、
+    「留下什么」写到了本阶段的主文件。"""
     descriptor = getattr(module, "DESCRIPTOR", None)
     assert isinstance(descriptor, Capability), (
         f"能力子包 {package_name} 没有导出 Capability 类型的 DESCRIPTOR")
@@ -70,4 +87,8 @@ def check_capability_module(package_name: str, module: ModuleType) -> Capability
         f"{descriptor.param_names()} 对不上")
     assert len(names) == len(leading) + len(keyword_only), (
         f"能力 {package_name} 的 {ENTRYPOINT}() 除 {leading} 外只许关键字参数")
+    for main in MAIN_FILES.get(descriptor.stage, ()):
+        assert main in descriptor.leaves, (
+            f"能力 {package_name} 在「{descriptor.stage}」阶段，「留下什么」里要写到这个阶段的"
+            f"主文件 {main}（P-20：文件名按阶段定，下游只认它）")
     return descriptor

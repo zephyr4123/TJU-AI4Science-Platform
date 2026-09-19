@@ -11,12 +11,12 @@
 | `backends/` | agent 适配器：一个 coding agent CLI 一个文件；两个端口都定义在 `backends/__init__.py`：`Runner`（执行层，一次会话）与 `Chat`（协调层，多轮续接、事件流；起会话时把本 venv 的 bin 追加进 PATH、关后台、Bash 超时对齐本轮、`AI4SCI_CHAT_ID` 告诉它调用的命令自己属于哪段对话；`knobs()` 自报有哪些模型、哪几档思考深度与缺省，每轮的 `tuning` 翻成 `--model` / `--effort`，页面与终端只许从清单里选；`cost_reporting` 说清 `done.cost_usd` 是这一轮的还是会话累计的，Claude Code `--resume` 报的是累计，框架减成这一轮的）。换一家 CLI 就是加一个文件，主人红线：涉及 agent 的一律可替换 |
 | `compute/` | 算力适配器：一个后端一个文件；端口 `Compute` 定义在 `compute/__init__.py` |
 | `tools/` | 确定性脚本：文献 API、引用校验、出图、harness 基类 |
-| `domains/` | 领域包，按工具链命名，一个领域一个目录；`generic/` 兜底、`petab/` 参数估计；`prompts/<能力>.md` 与 `skills/*/SKILL.md` 由 `cap auto-research` 开实验时快照进产出目录、随执行层提示的「领域约定」段注入（执行层的隔离参数关掉了 CLI 原生 skill 加载）。纲领 P-18 里领域包只是打包单位：里面的 skill 拆开各归各的能力 |
+| `domains/` | 领域包，按工具链命名，一个领域一个目录；`generic/` 兜底、`petab/` 参数估计；`prompts/<族>.md`（实验族一份 `experiment.md`）与 `skills/*/SKILL.md` 由 `cap auto-research` 开实验时快照进产出目录、随执行层提示的「领域约定」段注入（执行层的隔离参数关掉了 CLI 原生 skill 加载）。纲领 P-18 里领域包只是打包单位：里面的 skill 拆开各归各的能力 |
 | `workspaces/` | 一个工作区一个课题（纲领 P-15 P-19）：`workspaces/<id>/requirement.md` 是标记也是根（需求，人和助理对话后由助理写，按 `templates/` 里的模板起草），`requirement.lock` 是确认记录（`ai4sci requirement confirm` / 页面上人确认；签 sha256，之后再改就 dirty，要确认下一版，历次原文存 `.ai4sci/requirement/v<n>.md`）；**它是框架唯一内置的门**：没确认任何能力都不开。`materials/` 原件（研究者给的数据、代码、`env/` 两个文件：python-version + requirements.lock），只追加。`flows/` 流实例。七个阶段各一个目录（`literature/ hypothesis/ design/ experiment/ analysis/ writing/ verification/`），每次执行一个编号子目录 `<stage>/<n>/`：`meta.yaml` 记 id（就是路径）、标题、谁、状态、`from`（读了哪几次产出，带 sha256）、params、挂在哪条流第几步、需求第几版；`signed.json` 是人签字的记录（签 tree hash；目录改了记录就 stale）。产出被下游 `from` 引用或签过字就冻结（hash 不对拒开工）。`.ai4sci/` 平台记录：`chats/` `jobs/` `logs/` `requirement/`。三个样例工作区（mlp-regression 玩具、boehm-nll、rahman-nll 两个真课题）进 git 的只有需求、materials/、flows/、design/；实验及之后的产出与 `.ai4sci/`（除 requirement/）不进。数据根 `AI4SCI_HOME` 缺省仓根 |
 | `workflows/` | 工作流**库**：通用的走法，不依附课题，一个一个 YAML（`name` / `title` / `summary` / `stages`；一项是阶段名、`阶段: [能力]`、`阶段: {能力: 参数}`、`断点` 或 `断点: 一句话`——断点 = 上一项的产出要人签字下游才能读，几个断点、放哪由拼流的人定，零个就是全自动；可选 `layout` 是画布上每一项的坐标，人摆过才有，框架只原样存取；纲领 P-18 P-19）。编辑台的造流助理与页面的画布（`POST /workflows`）改它；主页面的研究助理只读，`ai4sci flow take <name>` 复制成工作区 `flows/` 里的实例再改参数。`ai4sci show workflows` / `show flows` / `GET /workflows` / `GET /workspaces/<id>/flows` 读它们，只查阶段名、点名的能力在不在那个阶段、参数、断点位置（阶段之间没有显式的输入输出接口、不做数据流校验）；`covers` `remarks` `used_by` 与每条实例的进度都是从磁盘算出来的，文件里不写。出厂只有一条 `research` |
 | `templates/` | 需求模板的库：`generic.md` 通用一份，`ai.md` `cs.md` `materials.md` 按学科加，再加一个学科就是再放一个文件（`AI4SCI_TEMPLATES_ROOT` 可指定）。格式开放：一级标题是课题名，二级标题是节，节里「待填」页面显示成空格；框架不规定必须有哪些节。`ai4sci show templates` / `show template <name>` / `GET /templates` 读，`workspace new --template` 与页面新建时按它起草 |
 | `ui/` | 界面层，一种界面一个目录，全是 `ai4sci serve` 端点的客户端（`ui/README.md` 写契约）：`web/` 网页（React 19 + Tailwind v4 + shadcn，Vite 构建到 `web/dist`，`serve` 缺省端它；依赖只进 `web/node_modules`，`make ui` 构建、`make ui-check` 门禁），`tui/` 留位置。需求的**确认**与产出的**签字**两处在页面上，是"只有人能确认"的唯一保证 |
-| `docs/` | 面向接课题的人的指南 |
+| `docs/` | 指南：`start-a-workspace.md` 接一个课题、`add-a-capability.md` 接一颗能力 |
 | `studio/` | 编辑台的对话（造流助理），不进 git；在数据根下 |
 | `tests/` | 框架测试；单测跟着模块走 |
 
@@ -52,7 +52,7 @@
 10. 助理面前只有 `ai4sci` 一个入口（纲领 P-14 CLI 主导封装）：白名单是 `Bash(ai4sci *)`（带 `.venv/bin/` 的老写法也放行，前期别设坎），配置（模型、预算、超时、目录）归起服务的人的环境变量、命令上不带，命令也不带工作区路径（P-15：cwd 就是工作区）；两份指南里每条命令以 `ai4sci ` 开头、不带路径不挂前缀不接管道（`test_chat_guide` 守着）。agent 需要而没有的动作是平台缺口：加能力，不放行裸命令。给研究者看的话（指南、页面、agent 的回话）不用「能力单元」这类内部词，每条命令翻成一句直白话；文档与指南用直白的工程语言：命令就是 agent 调用的 tool，「人按」就是人确认，不写「按钮」「键」这种比喻（主人 2026-09-18）。
 11. 造流与用流分权（纲领 P-16）：主页面的研究助理只能用流（`flow take` 取、改实例、照着跑），不造流、不造能力；编辑台的造流助理只写 `workflows/`，不跑实验、不碰工作区。分权靠 `chat/scope.py` 的可写目录与按域分前缀的端点，不靠指南里的一句「请不要」；研究助理的指南里没有 `workflows/<name>.yaml` 的写法（`test_chat_guide` 守着）。
 12. 素材不进仓（纲领 P-17）：页面里的图片 / 视频只写自己 CDN 的 URL，且只在 `ui/web/src/assets.ts` 一处；`git ls-files ui/` 里没有 png / jpg / mp4（`make ui-check` 守着）；图标全站一套 Phosphor 内联。素材从来源站下到本机、处理好再推桶，不直接引第三方源；清单与许可记在 `docs/DESIGN.md`「素材」。
-13. 框架只管文件夹怎么摆，不管里面装什么（纲领 P-19）：框架认的文件只有 `requirement.md` / `requirement.lock` / `meta.yaml` / `signed.json` / 流文件 / 描述符；`scoring.yaml` 这类是某一族能力私下的约定，放那族自己的包里（`framework/experiment/`），不进 `contracts/`。需求确认是唯一内置的门；断点几个、放哪由拼流的人定。能力是纯函数：读什么用 `--from` 点名，没有「缺省读最新」——哪次产出该喂给谁，是助理看着磁盘做的判断。
+13. 框架只管文件夹怎么摆，不管里面装什么（纲领 P-19）：框架认的文件只有 `requirement.md` / `requirement.lock` / `meta.yaml` / `signed.json` / 流文件 / 描述符；`scoring.yaml` 这类是某一族能力私下的约定，放那族自己的包里（`framework/experiment/`），不进 `contracts/`。需求确认是唯一内置的门；断点几个、放哪由拼流的人定。能力是纯函数：读什么用 `--from` 点名，没有「缺省读最新」——哪次产出该喂给谁，是助理看着磁盘做的判断。**文件名按阶段定，不按能力定**（P-20）：每个阶段一个主文件（`capabilities.MAIN_FILES`），进这个阶段的能力都得留下它、下游只认它，`discover()` 查「留下什么」写到了；族文件归族包，能力另留的文件是私有的；谁产的记在 meta 的 `by` / `from`，不写进文件名。skill 不是一格：它随执行层能力进去，不写盘、不进流。接一颗能力看 `docs/add-a-capability.md`。
 
 ## 版本与发布
 
