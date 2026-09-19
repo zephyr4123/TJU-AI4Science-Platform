@@ -1,7 +1,8 @@
-"""在 tmp_path 里造一个最小合法任务包（住在一个工作区里），供 packs / cli 测试逐条破坏。
+"""在 tmp_path 里造一个最小的工作区（需求已确认）和一次合法的设计产出 `design/1/`，
+供 pack / cli 测试逐条破坏。
 
-为什么不复用仓里的 workspaces/mlp-regression：CI 门禁要求删掉全部任务包后框架测试照过
-（纲领 P-5），夹具一旦指向真实包，这条门禁就成了摆设。
+为什么不复用仓里的 workspaces/：CI 门禁要求删掉全部工作区后框架测试照过（纲领 P-5），
+夹具一旦指向真实工作区，这条门禁就成了摆设。
 """
 
 from __future__ import annotations
@@ -13,9 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from framework.contracts import publish
-from framework.run import workspace as ws_mod
-from framework.run.workspace import Workspace
+from framework.contracts import requirement
+from framework.workspace import outputs
+from framework.workspace import root as ws_mod
+from framework.workspace.root import Workspace
 
 # 夹具 harness：形状与真任务一致（清产物 → 训练 → 评分），但只有几行。
 LAUNCHER_SH = """#!/usr/bin/env bash
@@ -66,9 +68,13 @@ PYTHON_VERSION = f"{sys.version_info[0]}.{sys.version_info[1]}"
 # 只 print 一行"成绩"、什么都不产出的假成功脚本，用来验证 harness 拦得住它。
 FAKE_SUCCESS_TRAIN_PY = 'print("val_mse 0.0001")\n'
 
-# 夹具的 design.md：需求看板聊出来的"怎么算好"，发布签的就是它和 manifest
-BRIEF = "code/ 写 predictions.json：{\"y_pred\": [...]}；evaluate.py 算 val_mse 写 results.json。\n"
-PUBLISHED_BY = "fixture"
+# 夹具的需求：研究者与助理对齐过、确认过的那份
+REQUIREMENT = (
+    "# 夹具课题\n\n## 问题\n\n在固定预算下把 val_mse 压到最低。\n\n"
+    "## 怎么算好\n\ncode/ 写 predictions.json：{\"y_pred\": [...]}；"
+    "evaluate.py 算 val_mse 写 results.json。\n"
+)
+CONFIRMED_BY = "fixture"
 DEFAULT_SEEDS = (42, 43, 44)
 DEFAULT_VALUES = (0.50, 0.52, 0.48)
 
@@ -77,17 +83,18 @@ DEFAULT_VALUES = (0.50, 0.52, 0.48)
 class Pack:
     root: Path
     workspace: Workspace
-    task_dir: Path
+    pack: Path
     domains_root: Path
 
+    @property
+    def output_id(self) -> str:
+        return f"design/{self.pack.name}"
 
-def default_manifest(task_id: str = "toy") -> dict[str, Any]:
+
+def default_scoring() -> dict[str, Any]:
     return {
         "format_version": 1,
-        "id": task_id,
         "domain": "generic",
-        "title": "夹具任务",
-        "question": "在固定预算下把 val_mse 压到最低",
         "metrics": [{"name": "val_mse", "direction": "minimize", "primary": True}],
         "budget": {
             "wall_clock_s": 10,
@@ -106,82 +113,90 @@ def default_manifest(task_id: str = "toy") -> dict[str, Any]:
     }
 
 
-def to_yaml(manifest: dict[str, Any]) -> str:
-    """手写 YAML，避免夹具依赖 yaml.dump 的格式选择；坏 YAML 的用例直接传字符串。"""
+def to_yaml(doc: dict[str, Any]) -> str:
     import yaml
 
-    return yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False)
+    return yaml.safe_dump(doc, allow_unicode=True, sort_keys=False)
+
+
+def make_workspace(tmp_path: Path, ws_id: str = "toy", *, confirmed: bool = True) -> Workspace:
+    """一个工作区：需求写好（缺省已确认）、materials/env/ 备好。"""
+    workspace = ws_mod.create(ws_mod.workspaces_root(tmp_path), ws_id)
+    workspace.requirement.write_text(REQUIREMENT, encoding="utf-8")
+    write_env(workspace.materials)
+    if confirmed:
+        requirement.confirm(workspace.root, by=CONFIRMED_BY)
+    return workspace
 
 
 def make_pack(
     tmp_path: Path,
     *,
-    task_id: str = "toy",
-    dir_name: str | None = None,
-    manifest: dict[str, Any] | None = None,
-    manifest_text: str | None = None,
+    ws_id: str = "toy",
+    scoring: dict[str, Any] | None = None,
+    scoring_text: str | None = None,
     domains: tuple[str, ...] = ("generic",),
     seeds: tuple[int, ...] = DEFAULT_SEEDS,
     values: tuple[float, ...] = DEFAULT_VALUES,
     elapsed_s: float = 1.0,
-    published: bool = True,
+    confirmed: bool = True,
 ) -> Pack:
-    """造一个默认合法的任务包；每个参数对应一处可被单独破坏的地方。
+    """造一个工作区加一次默认合法的设计产出；每个参数对应一处可被单独破坏的地方。
 
-    包住在 `<root>/workspaces/<dir_name or task_id>/task/`（纲领 P-15）：`dir_name` 与 `task_id`
-    不一致就是"manifest 的 id 与工作区名对不上"那条路。
-
-    默认已发布（design.md + publish.json）：夹具代表"接任务那一刻已经过了需求看板"，
-    `run new` 与 task 级能力开门前查的钥匙都在。`published=False` 是没发布那条路的入口。
+    产出住在 `<root>/workspaces/<ws_id>/design/1/`（纲领 P-19），meta 记成 design 产的、ok。
+    `confirmed=False` 是需求没确认那条路的入口。
     """
-    root = tmp_path
-    workspace = ws_mod.create(ws_mod.workspaces_root(root), dir_name or task_id)
-    task_dir = workspace.task
-    domains_root = root / "domains"
-    (task_dir / "code").mkdir(parents=True, exist_ok=True)
-    (task_dir / "harness").mkdir(exist_ok=True)
-    (task_dir / "run_0" / "repeats").mkdir(parents=True, exist_ok=True)
-
+    workspace = make_workspace(tmp_path, ws_id, confirmed=confirmed)
+    domains_root = tmp_path / "domains"
     for domain in domains:
         (domains_root / domain).mkdir(parents=True, exist_ok=True)
         (domains_root / domain / "profile.yaml").write_text(
             f"id: {domain}\ndisplay_name: {domain}\n", encoding="utf-8"
         )
-
-    if manifest_text is None:
-        manifest_text = to_yaml(manifest or default_manifest(task_id))
-    text = manifest_text
-    (task_dir / "manifest.yaml").write_text(text, encoding="utf-8")
-    (task_dir / "design.md").write_text(BRIEF, encoding="utf-8")
-
-    (task_dir / "code" / "train.py").write_text(TRAIN_PY, encoding="utf-8")
-    write_env(task_dir)
-    write_harness(task_dir)
-    write_run0(task_dir, seeds=seeds, values=values, elapsed_s=elapsed_s)
-    if published:
-        # 直接写钥匙不过检查：夹具要能造"发布过的坏包"，坏在哪由各测试自己破坏
-        publish.write_record(task_dir, by=PUBLISHED_BY)
-    return Pack(root=root, workspace=workspace, task_dir=task_dir, domains_root=domains_root)
+    pack, meta = outputs.open_output(
+        workspace, "design", title="写评分脚本、跑基线", by="design", inputs=[], params={},
+        flow=None, step=None, requirement=1 if confirmed else None, chat_id=None)
+    fill_pack(pack, scoring=scoring, scoring_text=scoring_text, seeds=seeds, values=values,
+              elapsed_s=elapsed_s)
+    outputs.close_output(pack, meta, ok=True, line="design ok")
+    return Pack(root=tmp_path, workspace=workspace, pack=pack, domains_root=domains_root)
 
 
-def write_env(task_dir: Path, python_version: str = PYTHON_VERSION,
+def fill_pack(pack: Path, *, scoring: dict[str, Any] | None = None,
+              scoring_text: str | None = None, seeds: tuple[int, ...] = DEFAULT_SEEDS,
+              values: tuple[float, ...] = DEFAULT_VALUES, elapsed_s: float = 1.0) -> None:
+    """往一个目录里铺设计那包的全部文件：scoring、code、env、harness、baseline。"""
+    (pack / "code").mkdir(parents=True, exist_ok=True)
+    (pack / "harness").mkdir(exist_ok=True)
+    (pack / "data").mkdir(exist_ok=True)
+    if scoring_text is None:
+        scoring_text = to_yaml(scoring or default_scoring())
+    (pack / "scoring.yaml").write_text(scoring_text, encoding="utf-8")
+    (pack / "code" / "train.py").write_text(TRAIN_PY, encoding="utf-8")
+    write_env(pack)
+    write_harness(pack)
+    write_baseline(pack, seeds=seeds, values=values, elapsed_s=elapsed_s)
+
+
+def write_env(directory: Path, python_version: str = PYTHON_VERSION,
               requirements: str = "") -> None:
-    edir = task_dir / "env"
-    edir.mkdir(exist_ok=True)
+    edir = directory / "env"
+    edir.mkdir(parents=True, exist_ok=True)
     (edir / "python-version").write_text(python_version + "\n", encoding="utf-8")
     (edir / "requirements.lock").write_text(requirements, encoding="utf-8")
 
 
-def write_harness(task_dir: Path) -> None:
-    hdir = task_dir / "harness"
+def write_harness(pack: Path) -> None:
+    hdir = pack / "harness"
+    hdir.mkdir(exist_ok=True)
     (hdir / "launcher.sh").write_text(LAUNCHER_SH, encoding="utf-8")
     (hdir / "evaluate.py").write_text(EVALUATE_PY, encoding="utf-8")
-    refresh_sums(task_dir)
+    refresh_sums(pack)
 
 
-def refresh_sums(task_dir: Path) -> None:
+def refresh_sums(pack: Path) -> None:
     """按磁盘现状重写 SHA256SUMS，格式与 `shasum -a 256` 一致。"""
-    hdir = task_dir / "harness"
+    hdir = pack / "harness"
     lines = []
     for name in ("evaluate.py", "launcher.sh"):
         digest = hashlib.sha256((hdir / name).read_bytes()).hexdigest()
@@ -189,22 +204,22 @@ def refresh_sums(task_dir: Path) -> None:
     (hdir / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def write_run0(
-    task_dir: Path,
+def write_baseline(
+    pack: Path,
     *,
     seeds: tuple[int, ...] = DEFAULT_SEEDS,
     values: tuple[float, ...] = DEFAULT_VALUES,
     elapsed_s: float = 1.0,
 ) -> None:
-    run0 = task_dir / "run_0"
-    (run0 / "repeats").mkdir(parents=True, exist_ok=True)
-    _dump(run0 / "results.json", _results(values[0], elapsed_s, seeds[0]))
+    base = pack / "baseline"
+    (base / "repeats").mkdir(parents=True, exist_ok=True)
+    _dump(base / "results.json", _results(values[0], elapsed_s, seeds[0]))
     for seed, value in zip(seeds, values, strict=True):
-        _dump(run0 / "repeats" / f"results-{seed}.json", _results(value, elapsed_s, seed))
+        _dump(base / "repeats" / f"results-{seed}.json", _results(value, elapsed_s, seed))
     mean = sum(values) / len(values)
     var = sum((v - mean) ** 2 for v in values) / (len(values) - 1) if len(values) > 1 else 0.0
     _dump(
-        run0 / "sigma.json",
+        base / "sigma.json",
         {"val_mse": {"sigma": var**0.5, "seeds": list(seeds), "values": list(values)}},
     )
 

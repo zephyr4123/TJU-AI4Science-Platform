@@ -1,13 +1,19 @@
-"""`ai4sci cap <name> [run_id]`：按名字跑一个能力的通用驱动（纲领 P-10、P-12）。
+"""`ai4sci cap <name> --from <stage>/<n>... [--flow <name>] [--continue <stage>/<n>]`：
+按名字跑一个能力的通用驱动（纲领 P-10、P-12、P-19）。
 
-在 cli 层。每个能力的子命令是从它的描述符**生成**的：位置参数按 level 定（run 级是 run_id，
-task 级没有——它动的是当前工作区的任务包，P-15），`--backend` 只在 needs_executor 时有，
-`--compute` 只在 needs_compute 时有，每个 `Param` 变成一个选项——所以"CLI 参数与描述符一致"
-是构造保证，不靠人对。跑完即退，用退出码表态；能力之间怎么串是协调层的事，这里没有顺序。
+在 cli 层。每个能力的子命令是从它的描述符**生成**的：`--from` 每颗都有（读哪几个产出）、`--flow`
+每颗都有（照哪条流跑，记进产出）、`--continue` 只有 continuable 的有（接着上一次的产出干，
+不另开目录）、`--backend` 只在 needs_executor 时有、`--compute` 只在 needs_compute 时有、
+每个 `Param` 变成一个选项——所以"CLI 参数与描述符一致"是构造保证，不靠人对。
 
-`--detach` 是每颗能力都有的开关（外层 #63）：把去掉它的同一条命令起成独立进程当作业，立刻打印
-作业号退出；子进程跑完把结论行回写进作业记录，作业属于某段对话的就去叫醒它（chat.notify）。
-这里是作业唯一的起点与终点，能力自己不知道自己是不是作业。
+驱动做的事，能力自己不知道：
+  1. 需求没确认不开工（唯一内置的门，P-19）；
+  2. `--from` 的每个产出都得在、成了、没被改过（冻结，`workspace.outputs.resolve_inputs`）；
+  3. 照流跑时查断点：流说输入那个阶段完了要人签，签字不在或过期就拒；
+  4. 在自己的阶段下开一个产出目录、写 running 的 meta，跑完记 ok / failed；
+  5. `--detach` 把去掉它的同一条命令起成独立进程当作业，跑完回写记录、属于某段对话的去叫醒。
+
+跑完即退，用退出码表态；能力之间怎么串是协调层的事，这里没有顺序。
 """
 
 from __future__ import annotations
@@ -15,6 +21,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from framework.capabilities import discover
 from framework.chat import notify
@@ -23,28 +30,31 @@ from framework.cli._common import (
     EXIT_OK,
     EXIT_USAGE,
     current_workspace,
-    open_run_dir,
     resolve_ports,
     setup_logging,
 )
-from framework.contracts.capability import PARAM_TYPES, Capability, CapabilityFailed, Ports
-from framework.contracts.publish import NotPublished
-from framework.run import flow_state, jobs
-from framework.run.context import TaskInvalid
-from framework.run.workspace import Workspace
+from framework.contracts import output, requirement, workflows
+from framework.contracts.capability import (
+    PARAM_TYPES,
+    Capability,
+    CapabilityFailed,
+    Inputs,
+    Ports,
+)
+from framework.contracts.output import Meta
+from framework.workspace import jobs, outputs
+from framework.workspace.root import Workspace
+
+FROM_HELP = "读哪几个产出（<阶段目录>/<序号>，比如 design/1），可以给几个"
+FLOW_HELP = "照当前工作区里哪条流跑（show flows 里的名字）：记进产出，断点按它查；只有一条流时可省"
+CONTINUE_HELP = "接着上一次的产出干（<阶段目录>/<序号>），不另开目录"
 
 
 def cmd_cap(args: argparse.Namespace) -> int:
     ws = current_workspace()
     if isinstance(ws, int):
         return ws
-    descriptor = args.module.DESCRIPTOR
-    if descriptor.level == "task":
-        target = ws
-    else:
-        target = open_run_dir(ws, args.run_id)
-        if isinstance(target, int):
-            return target
+    descriptor: Capability = args.module.DESCRIPTOR
     ports = resolve_ports(getattr(args, "backend", None), getattr(args, "compute", None))
     if isinstance(ports, int):
         return ports
@@ -55,15 +65,11 @@ def cmd_cap(args: argparse.Namespace) -> int:
             return EXIT_USAGE
         return _detach(args, ws, descriptor)
     setup_logging()
-    code, line = _run(args, descriptor, target, ports)
+    code, line = _run(args, ws, descriptor, ports, job_id)
     print(line, file=sys.stdout if code == EXIT_OK else sys.stderr)
-    if code == EXIT_OK and descriptor.level == "run":
-        flow_state.record_press(target, descriptor.name, descriptor.stage)
-          # 记它走到流的哪个阶段；没照流就不记
     if job_id:
         job = jobs.finish(ws.jobs, job_id, exit_code=code, result=line)
         # 作业到此为止：叫醒起的 agent 会继承这个进程的环境，带着作业号它调用的 --detach 全被拒
-        # （端到端第一次真跑就撞上：醒来的 agent 只好前台跑分析）
         os.environ.pop(jobs.JOB_ID_ENV, None)
         if job.chat_id:
             # 作业是某段对话里起的：跑完以框架的身份叫醒那段对话，结果记回作业
@@ -71,22 +77,108 @@ def cmd_cap(args: argparse.Namespace) -> int:
     return code
 
 
-def _run(args: argparse.Namespace, descriptor: Capability, target: object,
-         ports: Ports) -> tuple[int, str]:
-    """跑一颗能力：退出码与那一行话（成功是结论行，失败是能力自己说的那一句，P-7）。"""
-    params = {p.name: getattr(args, p.name) for p in descriptor.params}
+def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports: Ports,
+         job_id: str | None) -> tuple[int, str]:
+    """门 → 输入 → 断点 → 开产出 → 跑 → 记账。返回退出码与那一行话（成功是结论行，
+    失败是能力自己说的那一句）。"""
     try:
-        return EXIT_OK, args.module.run(target, ports, **params)
-    except (CapabilityFailed, NotPublished, TaskInvalid) as exc:
+        version = requirement.require_confirmed(ws.root)
+    except requirement.NotConfirmed as exc:
         return EXIT_INVALID, str(exc)
+    try:
+        inputs = outputs.resolve_inputs(ws, list(args.inputs or []))
+    except (ValueError, output.OutputNotFound) as exc:  # OutputChanged 是 ValueError
+        return EXIT_INVALID, str(exc)
+    try:
+        flow, step = _place_in_flow(ws, descriptor, inputs, getattr(args, "flow", ""))
+    except workflows.WorkflowInvalid as exc:
+        return EXIT_INVALID, str(exc)
+    params = {p.name: getattr(args, p.name) for p in descriptor.params}
+    continuing = getattr(args, "continuing", None)
+    try:
+        if continuing:
+            directory, meta = _reopen(ws, descriptor, continuing, inputs)
+        else:
+            directory, meta = outputs.open_output(
+                ws, descriptor.stage_slug, title=descriptor.title, by=descriptor.name,
+                inputs=list(inputs.ids),
+                params={k: v for k, v in params.items() if v not in (None, "", False)},
+                flow=flow, step=step, requirement=version,
+                chat_id=os.environ.get(jobs.CHAT_ID_ENV))
+    except (ValueError, output.OutputNotFound) as exc:
+        return EXIT_INVALID, str(exc)
+    if job_id:
+        jobs.attach_output(ws.jobs, job_id, meta.id)
+    try:
+        line = args.module.run(directory, inputs, ports, **params)
+    except CapabilityFailed as exc:
+        outputs.close_output(directory, meta, ok=False, line=str(exc))
+        return EXIT_INVALID, f"{exc}\noutput={meta.id}（没成，留在盘上）"
+    outputs.close_output(directory, meta, ok=True, line=line)
+    return EXIT_OK, f"{line}\toutput={meta.id}"
+
+
+def _reopen(ws: Workspace, descriptor: Capability, oid: str, inputs: Inputs) -> tuple[Path, Meta]:
+    """`--continue`：产出得是这颗能力自己产的、这个阶段的；成了没成都能接着干（草稿改第二版）。"""
+    directory, meta = outputs.find_output(ws, oid)
+    if meta.stage != descriptor.stage_slug or meta.by != descriptor.name:
+        raise ValueError(f"{oid} 是 {meta.by} 在「{meta.stage}」阶段产的，{descriptor.name} 接不了")
+    if outputs.referenced_hash(ws, oid) is not None:
+        raise ValueError(f"{oid} 已经被引用或签过，冻住了：要改就新开一次产出（去掉 --continue）")
+    if inputs.ids and list(inputs.ids) != meta.input_ids:
+        raise ValueError(f"{oid} 当初读的是 {meta.input_ids}，接着干不能换输入 {list(inputs.ids)}")
+    meta.status = "running"
+    output.write_meta(directory, meta)
+    return directory, meta
+
+
+def _place_in_flow(ws: Workspace, descriptor: Capability, inputs: Inputs,
+                   flow_name: str) -> tuple[str | None, int | None]:
+    """照哪条流、第几项：`--flow` 给了用它；没给而工作区只有一条流就用那条；几条就得说清；
+    一条没有就不照流。
+    照流时查断点：输入那一项后面紧跟断点的，那个产出得签过且没过期。"""
+    flow_name = (flow_name or "").strip()
+    instances = sorted(p.stem for p in ws.flows.glob("*.yaml")) if ws.flows.is_dir() else []
+    if not flow_name:
+        if len(instances) > 1:
+            raise workflows.WorkflowInvalid(
+                f"工作区有几条流（{', '.join(instances)}），说清照哪条：--flow <name>")
+        if not instances:
+            return None, None
+        flow_name = instances[0]
+    path = ws.flows / f"{flow_name}.yaml"
+    if not path.is_file():
+        raise workflows.WorkflowInvalid(
+            f"工作区里没有叫 {flow_name!r} 的流（flows/ 下有：{', '.join(instances) or '-'}）；"
+            f"库里有的先取过来：ai4sci flow take {flow_name}")
+    workflow = workflows.load_workflow(path)
+    after = -1
+    for directory, oid in zip(inputs.outputs, inputs.ids, strict=True):
+        meta = output.read_meta(directory)
+        if meta.flow != workflow.name or meta.step is None:
+            continue
+        after = max(after, meta.step)
+        stop = workflows.stop_after(workflow, meta.step)
+        if stop is None:
+            continue
+        signed = output.signature_state(directory)
+        if signed is None or signed["stale"]:
+            what = f"「{stop.note}」" if stop.note else "签字"
+            raise workflows.WorkflowInvalid(
+                f"流 {workflow.name} 在 {oid} 之后有断点{what}：这次产出要人签了下游才能读"
+                + ("（签过但之后改了，签字过期）" if signed else "")
+                + f"；研究者在页面上签，或终端 ai4sci sign {oid}")
+    step = workflows.matching_step(workflow, descriptor.name, descriptor.stage, after)
+    return workflow.name, step
 
 
 def _detach(args: argparse.Namespace, ws: Workspace, descriptor: Capability) -> int:
     argv = [a for a in args.argv if a != "--detach"]
-    target = ws.id if descriptor.level == "task" else args.run_id
-    job = jobs.spawn(ws.jobs, argv, cap=descriptor.name, level=descriptor.level, target=target,
-                     chat_id=os.environ.get(jobs.CHAT_ID_ENV))
-    print(f"job {job.job_id}\tcap={descriptor.name}\ttarget={job.target}\tpid={job.pid}"
+    job = jobs.spawn(ws.jobs, argv, cap=descriptor.name, stage=descriptor.stage_slug,
+                     chat_id=os.environ.get(jobs.CHAT_ID_ENV),
+                     flow=getattr(args, "flow", "") or None,
+                     output=getattr(args, "continuing", None))
+    print(f"job {job.job_id}\tcap={descriptor.name}\tpid={job.pid}"
           f"\tnext=ai4sci show job {job.job_id}")
     return EXIT_OK
 
@@ -97,8 +189,12 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     for name, module in discover().items():
         descriptor = module.DESCRIPTOR
         sub = actions.add_parser(name, help=descriptor.title)
-        if descriptor.level != "task":
-            sub.add_argument("run_id")
+        sub.add_argument("--from", dest="inputs", action="append", metavar="STAGE/N",
+                         help=FROM_HELP)
+        sub.add_argument("--flow", default="", help=FLOW_HELP)
+        if descriptor.continuable:
+            sub.add_argument("--continue", dest="continuing", default=None, metavar="STAGE/N",
+                             help=CONTINUE_HELP)
         if descriptor.needs_executor:
             sub.add_argument("--backend", default="claude_code", help="执行层后端名")
         if descriptor.needs_compute:

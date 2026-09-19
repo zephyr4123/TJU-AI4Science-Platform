@@ -1,0 +1,27 @@
+format_version: 1
+domain: petab
+metrics:
+- name: nll_mean
+  direction: minimize
+  primary: true
+- name: nll_min
+  direction: minimize
+- name: nll_max
+  direction: minimize
+budget:
+  wall_clock_s: 60
+  max_iterations: 30
+  inner_k: 3
+  repeat_k: 3
+  accept_sigma: 2.0
+  min_delta: 1.0
+requirements:
+- id: R1
+  type: numeric
+  must_pass: true
+  description: 主指标 nll 优于 run_0 基线，且差值超过 accept_sigma 倍的重复跑标准差（或 min_delta）
+- id: R2
+  type: artifact
+  must_pass: true
+  description: code/ 只产出 params.json（9 个自由参数，log10 尺度，在 PEtab 边界内）；NLL 由 harness 用同一份
+    PEtab 问题重算，code/ 自己算的数不进 results.json

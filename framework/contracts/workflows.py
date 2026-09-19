@@ -1,4 +1,4 @@
-"""工作流：经过几个阶段、按什么顺序，阶段之间可以插断点（纲领 P-18）。
+"""工作流：经过几个阶段、按什么顺序，哪几个阶段完了要人签（纲领 P-18、P-19）。
 
 一个工作流一个 YAML。库在仓根 `workflows/`（通用，编辑台的造流助理改），工作区 `flows/` 里的是取来
 改过参数的实例（研究助理用），两处同一套检查。它是预装的走法，不是平台本身：平台是七个研究阶段和每个阶段里的能力。
@@ -7,12 +7,11 @@
     title: 从课题到验证
     summary: 一段人话
     stages:
-      - 假设                                     # 一个阶段：这个阶段用哪些能力由助理看着办
-      - 断点: 发布                               # 停下来等人确认；「发布」「验收」是出厂的两个
-      - 设计
-      - 断点: 核对评分脚本算的是不是你要的数         # 别的断点写一句要人确认什么
-      - 实验: {auto-research: {max_iters: 3}}   # 点名用哪颗能力、
-      带什么参数（参数名是描述符里的 Param）
+      - 设计                                     # 一个阶段：这个阶段用哪些能力由助理看着办
+      - 断点: 核对评分脚本算的是不是你要的数         # 前一个阶段的产出要人签了下游才能读；
+      写一句要人确认什么
+      - 实验: {auto-research: {max_iters: 3}}   # 点名用哪颗能力、带什么参数（参数名是描述符里的
+      Param）
       - 分析: [analysis]                         # 点名但不带参数也行
       - 验证
       - 断点: 验收
@@ -20,6 +19,8 @@
       - [0, 0]
       - [264, 0]
 
+断点是开放的：几个、放哪由流定——端到端全自动的流一个没有，步步确认的流每步一个。含义只有一个：
+前一个阶段的产出要人签（产出目录里的 signed.json）了，下游能力才能 `--from` 它。
 阶段之间没有显式的输入输出接口：检查只看阶段名对不对、点名的能力在不在那个阶段、参数名与类型对不对、断点位置合不合法
 （不能开头就是断点、不能两个断点挨着）。一个阶段里要的东西盘上有没有，是那颗能力开始执行时自己查的（P-7）。
 """
@@ -34,11 +35,10 @@ from typing import Any
 
 import yaml
 
-from framework.contracts.capability import PARAM_TYPES, STAGES, Capability
+from framework.contracts.capability import PARAM_TYPES, Capability
+from framework.contracts.stages import STAGE_NAMES as STAGES
 
 STOP = "断点"
-# 出厂的两个断点：人的确认，各有一份记录（task/publish.json、runs/<id>/accept.json）
-STOP_KEYS = {"发布": "publish", "验收": "accept"}
 # 文件名就是流的名字（P-13）：小写英文加连字符，页面存流时也按这个拒
 NAME_RE = re.compile(r"[a-z][a-z0-9-]*")
 
@@ -72,13 +72,12 @@ class Stage:
 
 @dataclass(frozen=True)
 class Stop:
-    """停下来等人确认。`key` 是出厂两个之一（publish / accept）或 None；`note` 是要人确认什么。"""
+    """前一个阶段的产出要人签了下游才能读。`note` 是要人确认什么（可空）。"""
 
-    key: str | None = None
     note: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {"kind": "stop", "key": self.key, "note": self.note}
+        return {"kind": "stop", "note": self.note}
 
 
 @dataclass(frozen=True)
@@ -198,10 +197,8 @@ def _item(filename: str, index: int, raw: Any) -> Stage | Stop:
         if value is None:
             return Stop()
         if not isinstance(value, str) or not value.strip():
-            raise WorkflowInvalid(
-                f"{label} 的断点后面要是一句话（要人确认什么），或「发布」「验收」")
-        note = " ".join(value.split())
-        return Stop(key=STOP_KEYS.get(note), note=note)
+            raise WorkflowInvalid(f"{label} 的断点后面要是一句话（要人确认什么）")
+        return Stop(note=" ".join(value.split()))
     if key not in STAGES:
         raise WorkflowInvalid(f"{label} 的 {key!r} 不是阶段（阶段：{STAGES}）")
     return Stage(key, _picks(label, value))
@@ -317,20 +314,33 @@ def _with_problems(label: str, params: dict[str, Any], cap: Capability) -> list[
 
 
 def remarks(workflow: Workflow) -> list[str]:
-    """给人看的提醒，不是问题、不拦流。机器能说的两句：有实验或分析却没有验证，数字没人回溯；
-    设计或实验之前没有「发布」断点，评分脚本与内环都要人签过需求才动，助理到那儿会被拒。"""
-    out: list[str] = []
+    """给人看的提醒，不是问题、不拦流。机器能说的一句：有实验或分析却没有验证，数字没人回溯。"""
     covered = workflow.covered
     if ("实验" in covered or "分析" in covered) and "验证" not in covered:
-        out.append("有实验或分析、没有验证：数字没人回溯，结果不能算可信")
-    published = False
-    for item in workflow.stages:
-        if isinstance(item, Stop) and item.key == "publish":
-            published = True
-        elif isinstance(item, Stage) and item.stage in ("设计", "实验") and not published:
-            out.append(f"「{item.stage}」之前没有「发布」断点：需求要人签过才写评分脚本、才开跑，助理到那儿会被拒")
-            break
-    return out
+        return ["有实验或分析、没有验证：数字没人回溯，结果不能算可信"]
+    return []
+
+
+def stop_after(workflow: Workflow, index: int) -> Stop | None:
+    """第 index 项（0 起）是阶段时，它后面紧跟的断点；没有就是 None——
+    这个阶段的产出要不要人签就看它。"""
+    following = index + 1
+    if following < len(workflow.stages) and isinstance(workflow.stages[following], Stop):
+        return workflow.stages[following]
+    return None
+
+
+def matching_step(workflow: Workflow, cap: str, stage: str, after: int = -1) -> int | None:
+    """一颗能力跑在这条流的第几项（0 起）：`after` 之后第一个阶段对得上的项——点了名看名字，
+    没点名看阶段。
+    流里没有它就是 None。"""
+    for i in range(after + 1, len(workflow.stages)):
+        item = workflow.stages[i]
+        if not isinstance(item, Stage):
+            continue
+        if (any(p.cap == cap for p in item.picks) if item.picks else item.stage == stage):
+            return i
+    return None
 
 
 def describe_dir(root: Path, catalog: dict[str, Capability]) -> list[dict[str, Any]]:

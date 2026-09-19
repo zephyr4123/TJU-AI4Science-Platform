@@ -1,0 +1,16 @@
+format_version: 1
+domain: generic
+metrics:
+- name: val_mse
+  direction: minimize
+  primary: true
+budget:
+  wall_clock_s: 30
+  max_iterations: 30
+  repeat_k: 3
+  accept_sigma: 2.0
+requirements:
+- id: R1
+  type: numeric
+  must_pass: true
+  description: 主指标 val_mse 优于 run_0 基线，且差值超过 accept_sigma 倍的重复跑标准差

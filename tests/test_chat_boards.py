@@ -1,108 +1,141 @@
-"""看板读盘：工作区一行与一整份、任务包的阶段与钥匙、预检、run 的摘要与账本；页面直接显示。"""
+"""看板读盘：工作区一整份（需求、七个阶段的产出、每条流的进度、作业）、一次产出的细节、需求模板；
+NaN 出门前换 None。纯读盘、零模型（P-19：只读框架认的东西）。"""
 
 from __future__ import annotations
 
 import json
 import math
-import shutil
 
 import pytest
 
+from framework import paths
 from framework.chat import boards
-from framework.contracts import publish
-from framework.run import accept, layout, workspace
-from framework.run.checkpoint import read_checkpoint, write_checkpoint
-from tests.fixtures.packs_factory import make_pack
-from tests.fixtures.runs_factory import make_run
+from framework.contracts import output, requirement, workflows
+from framework.workspace import outputs, progress
+from tests.fixtures import packs_factory as pf
+from tests.fixtures import runs_factory as rf
+
+FLOW = """\
+name: quick
+title: 快看
+summary: 设计签过再实验，实验完看一眼。
+stages:
+  - 设计
+  - 断点: 核对评分脚本
+  - 实验: {auto-research: {max_iters: 2}}
+  - 断点: 看一眼
+  - 分析
+"""
 
 
-def test_task_stage_walks_the_board(tmp_path):
-    pack = make_pack(tmp_path, published=False)
-    assert boards.stage(pack.task_dir) == "drafting"
-    publish.publish_task(pack.task_dir, by="张三")
-    assert boards.stage(pack.task_dir) == "baselined"  # 夹具自带 harness/ code/ run_0/
-    shutil.rmtree(pack.task_dir / "run_0")
-    assert boards.stage(pack.task_dir) == "designed"
-    shutil.rmtree(pack.task_dir / "harness")
-    assert boards.stage(pack.task_dir) == "published"
-
-
-def test_task_summary_and_publish_state(tmp_path):
-    pack = make_pack(tmp_path, published=False)
-    found = boards.task_summary(pack.task_dir)
-    assert found["id"] == "toy" and found["metric"]["name"] == "val_mse"
-    assert found["publish"]["ok"] is False and found["publish"]["state"] == "missing"
-    assert "还没发布" in found["publish"]["reason"]
-    publish.publish_task(pack.task_dir, by="张三")
-    found = boards.task_summary(pack.task_dir)
-    assert found["publish"] == {"ok": True, "state": "ok", "by": "张三",
-                                "at": found["publish"]["at"], "reason": None}
-    # 发布后改了签的文件：钥匙失效，原因原样给看板
-    (pack.task_dir / "design.md").write_text("改了\n", encoding="utf-8")
-    found = boards.task_summary(pack.task_dir)["publish"]
-    assert found["state"] == "invalid" and "改过了" in found["reason"]
-
-
-def test_task_detail_has_design_intake_and_headroom(tmp_path):
-    pack = make_pack(tmp_path)
-    found = boards.task_detail(pack.task_dir)
-    assert found["design"].startswith("code/ 写 predictions.json")
-    assert found["intake_problems"] == []
-    assert found["headroom"]["metric"] == "val_mse" and found["headroom"]["problems"] == []
-    assert found["headroom"]["gates"] is None  # 没写 attainable：没有尽头就没有几个门
-    shutil.rmtree(pack.task_dir / "run_0")
-    assert boards.task_detail(pack.task_dir)["headroom"] is None
+def catalog():
+    from framework.capabilities import discover
+    return {name: module.DESCRIPTOR for name, module in discover().items()}
 
 
 def test_workspace_summary_and_detail(tmp_path):
-    """工作区一行：标题、任务包走到哪、几个 run；还没起任务包时 task 是 None。"""
-    empty = workspace.create(tmp_path / "workspaces", "fresh", title="刚起的")
-    row = boards.workspace_summary(empty)
-    assert row["id"] == "fresh" and row["title"] == "刚起的" and row["task"] is None
-    assert row["runs"] == 0 and boards.workspace_detail(empty)["runs"] == []
-    run_dir = make_run(tmp_path)
-    ws = workspace.load(run_dir.parent.parent)
-    row = boards.workspace_summary(ws)
-    assert row["id"] == "toy" and row["task"]["stage"] == "baselined" and row["runs"] == 1
-    detail = boards.workspace_detail(ws)
-    assert detail["task"]["design"].startswith("code/ 写") and detail["runs"][0]["run_id"] == "r1"
+    ws = pf.make_workspace(tmp_path, "w", confirmed=False)
+    summary = boards.workspace_summary(ws)
+    assert summary["id"] == "w" and summary["title"] == "夹具课题"
+    assert summary["requirement"]["confirmed"] is False and summary["running"] == 0
+    assert summary["counts"] == {s: 0 for s in ("literature", "hypothesis", "design", "experiment",
+                                                "analysis", "writing", "verification")}
+    detail = boards.workspace_detail(ws, catalog())
+    assert [s["slug"] for s in detail["stages"]][:2] == ["literature", "hypothesis"]
+    assert all(s["outputs"] == [] for s in detail["stages"])
+    assert detail["flows"] == [] and detail["jobs"] == []
+    req = detail["requirement"]
+    assert req["title"] == "夹具课题"
+    assert [s["heading"] for s in req["sections"]] == ["问题", "怎么算好"]
+    assert req["pending"] is False and req["confirmed_text"] is None
+    json.dumps(boards.jsonable(detail), allow_nan=False)
 
 
-def test_run_summary_and_detail(tmp_path):
-    run_dir = make_run(tmp_path)
-    ws = workspace.load(run_dir.parent.parent)
-    found = boards.run_summary(ws, run_dir)
-    assert found["run_id"] == run_dir.name and found["metric"]["name"] == "val_mse"
-    assert found["baseline"] == pytest.approx(0.03) and found["last_iter"] == 3
-    assert found["best_metric"] == pytest.approx(0.001)
-    assert found["running"] is False and found["verify"] is None and found["accept"] is None
-    assert found["chat_id"] is None  # 老 run / 终端里开的：不知道是谁开的
-    write_checkpoint(run_dir, {**read_checkpoint(run_dir), "chat_id": "chat-7"})
-    assert boards.run_summary(ws, run_dir)["chat_id"] == "chat-7"
-    detail = boards.run_detail(ws, run_dir)
-    assert [row["status"] for row in detail["ledger"]] == ["keep", "discard", "keep"]
-    assert detail["analysis_text"] is None
-    accept.accept_run(run_dir, by="张三")
-    assert boards.run_summary(ws, run_dir)["accept"]["by"] == "张三"
+def test_requirement_detail_carries_diff_base_and_pending(tmp_path):
+    ws = pf.make_workspace(tmp_path, "w")
+    ws.requirement.write_text(pf.REQUIREMENT + "\n## 预算\n\n待填\n", encoding="utf-8")
+    req = boards.requirement_detail(ws)
+    assert req["confirmed"] and req["dirty"] and req["pending"]
+    assert req["sections"][-1] == {"heading": "预算", "body": "待填", "pending": True}
+    assert req["confirmed_text"] == pf.REQUIREMENT  # 页面拿它和现文件做 diff
 
 
-def test_list_runs_skips_non_run_dirs(tmp_path):
-    run_dir = make_run(tmp_path)
-    ws = workspace.load(run_dir.parent.parent)
-    (ws.runs / "design").mkdir()  # 接任务的执行层日志不是 run
-    assert [r["run_id"] for r in boards.list_runs(ws)] == [run_dir.name]
-    assert boards.list_runs(workspace.create(tmp_path / "workspaces", "empty")) == []
+def test_stages_list_outputs_with_signature_and_flows_carry_progress(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    ws = pack.workspace
+    (ws.flows / "quick.yaml").write_text(FLOW, encoding="utf-8")
+    # 把设计产出记到流的第 0 项下，签字；实验在第 2 项下
+    _, meta = outputs.find_output(ws, "design/1")
+    meta.flow, meta.step = "quick", 0
+    output.write_meta(pack.pack, meta)
+    detail = boards.workspace_detail(ws, catalog())
+    design = next(s for s in detail["stages"] if s["slug"] == "design")
+    assert [o["id"] for o in design["outputs"]] == ["design/1"]
+    assert design["outputs"][0]["signed"] is None and design["outputs"][0]["status"] == "ok"
+    [flow] = detail["flows"]
+    assert flow["name"] == "quick" and flow["problems"] == [] and flow["step"] == 0
+    assert flow["waiting"] == progress.WAITING_SIGN  # 设计完了要签
+    assert flow["items"][0]["outputs"][0]["id"] == "design/1"
+    assert flow["items"][1]["signed"] is False
+    output.sign(pack.pack, by="me")
+    detail = boards.workspace_detail(ws, catalog())
+    [flow] = detail["flows"]
+    assert flow["waiting"] == progress.WAITING_ASSISTANT and flow["items"][1]["signed"] is True
+    e1, me = outputs.open_output(ws, "experiment", title="t", by="auto-research",
+                                 inputs=["design/1"], params={}, flow="quick", step=2,
+                                 requirement=1, chat_id=None)
+    outputs.close_output(e1, me, ok=True, line="stop")
+    [flow] = boards.workspace_detail(ws, catalog())["flows"]
+    assert flow["step"] == 2 and flow["waiting"] == progress.WAITING_SIGN
+    # 签了实验，下一项是分析：轮到助理；分析做完就 done
+    output.sign(e1, by="me")
+    [flow] = boards.workspace_detail(ws, catalog())["flows"]
+    assert flow["waiting"] == progress.WAITING_ASSISTANT
+    a1, ma = outputs.open_output(ws, "analysis", title="t", by="analysis", inputs=["experiment/1"],
+                                 params={}, flow="quick", step=4, requirement=1, chat_id=None)
+    outputs.close_output(a1, ma, ok=True, line="ok")
+    [flow] = boards.workspace_detail(ws, catalog())["flows"]
+    assert flow["waiting"] == progress.DONE
 
 
-def test_verify_state_reports_broken_report(tmp_path):
-    run_dir = make_run(tmp_path)
-    report = layout.verify_report(run_dir)
-    report.parent.mkdir(parents=True)
-    report.write_text('{"status": "MAYBE"}', encoding="utf-8")
-    assert boards.verify_state(run_dir)["status"] == "invalid"
+def test_broken_flow_file_is_a_problem_row(tmp_path):
+    ws = pf.make_workspace(tmp_path, "w")
+    (ws.flows / "zz.yaml").write_text("name: zz\n", encoding="utf-8")
+    [flow] = boards.workspace_detail(ws, catalog())["flows"]
+    assert flow["name"] == "zz" and flow["problems"] == ["zz.yaml: 缺 title"]
+    assert "waiting" not in flow
+
+
+def test_output_detail_lists_files_with_small_text_inline(tmp_path):
+    run_dir, pack = rf.make_run(tmp_path)
+    doc = rf.write_analysis(pack, rf.good_analysis(run_dir))
+    detail = boards.output_detail(pack.workspace, f"analysis/{doc.name}")
+    assert detail["id"] == "analysis/1" and detail["from"] == ["experiment/1"]
+    [entry] = detail["files"]
+    assert entry["path"] == "analysis.md" and "## 结论" in entry["text"]
+    detail = boards.output_detail(pack.workspace, "experiment/1")
+    names = [f["path"] for f in detail["files"]]
+    assert "ledger.tsv" in names and "checkpoint.json" in names
+    assert not any(n.startswith((".venv", "work/.git", "executor")) for n in names)
+    with pytest.raises(output.OutputNotFound):
+        boards.output_detail(pack.workspace, "analysis/9")
+
+
+def test_templates_are_listed_with_title_and_summary():
+    found = boards.list_templates(paths.templates_root())
+    assert [t["name"] for t in found] == ["ai", "cs", "generic", "materials"]
+    generic = next(t for t in found if t["name"] == "generic")
+    assert generic["title"] == "课题标题" and generic["summary"].startswith("通用模板")
+    assert requirement.PLACEHOLDER in generic["text"]
 
 
 def test_jsonable_turns_nan_into_null():
-    payload = {"a": math.nan, "b": [1.0, math.inf, {"c": -math.inf}], "d": "x"}
-    assert json.dumps(boards.jsonable(payload), allow_nan=False) == \
-        '{"a": null, "b": [1.0, null, {"c": null}], "d": "x"}'
+    doc = boards.jsonable({"a": math.nan, "b": [1.5, math.inf], "c": {"d": "x"}})
+    assert doc == {"a": None, "b": [1.5, None], "c": {"d": "x"}}
+    json.dumps(doc, allow_nan=False)
+
+
+def test_workflow_helpers_used_by_the_board():
+    wf = workflows.parse_workflow("quick.yaml", __import__("yaml").safe_load(FLOW))
+    assert workflows.stop_after(wf, 0).note == "核对评分脚本"
+    assert workflows.stop_after(wf, 4) is None

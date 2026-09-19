@@ -16,14 +16,12 @@ import pytest
 
 from compute.local import LocalCompute
 from framework.capabilities.auto_research import failures, run_loop
-from framework.contracts.results import read_results
-from framework.memory import ledger
-from framework.run import gitwork
-from framework.run.checkpoint import read_checkpoint
-from framework.run.lifecycle import new_run
+from framework.experiment import gitwork, ledger
+from framework.experiment.checkpoint import read_checkpoint
+from framework.experiment.results import read_results
 from tests.fixtures import packs_factory as pf
 from tests.fixtures.scripted_backend import ScriptedRunner
-from tests.test_experiment_loop import make_loop_pack, train_for_mse
+from tests.test_experiment_loop import make_loop_pack, open_run, train_for_mse
 
 TRACEBACK = 'Traceback (most recent call last):\n  File "code/train.py", line 1\nValueError: 崩了\n'
 IMPORT_ERROR = ("Traceback (most recent call last):\n"
@@ -175,17 +173,15 @@ echo '{"y_true": [0.0]}' > data/val.json
 def test_harness_touching_data_is_readonly_violated_and_rolls_back(tmp_path):
     """成绩再好也不算：只读区被动过，这一轮整个作废并回到 best。"""
     pack = make_loop_pack(tmp_path)
-    (pack.task_dir / "data").mkdir()
-    (pack.task_dir / "data" / "val.json").write_text('{"y_true": [1.0]}', encoding="utf-8")
-    (pack.task_dir / "harness" / "launcher.sh").write_text(TAMPERING_LAUNCHER, encoding="utf-8")
-    pf.refresh_sums(pack.task_dir)
-    run_dir = new_run(pack.task_dir, tmp_path / "runs", "r-tampered",
-                           domains_root=pack.domains_root)
+    (pack.pack / "data" / "val.json").write_text('{"y_true": [1.0]}', encoding="utf-8")
+    (pack.pack / "harness" / "launcher.sh").write_text(TAMPERING_LAUNCHER, encoding="utf-8")
+    pf.refresh_sums(pack.pack)
+    run_dir = open_run(pack)
     work = run_dir / "work"
     before = (work / "data" / "val.json").read_text(encoding="utf-8")
 
     run_loop(run_dir, ScriptedRunner([train_for_mse(0.001)]), LocalCompute(), max_iters=1)
-    row = ledger.read(run_dir / "experiment" / "ledger.tsv")[0]
+    row = ledger.read(run_dir / "ledger.tsv")[0]
     state = read_checkpoint(run_dir)
     assert row.status == "readonly_violated" and "data/val.json" in row.note
     # 账本会留下它跑出来的那个数（那是证据：它动了真值之后自称多少分），但裁决是

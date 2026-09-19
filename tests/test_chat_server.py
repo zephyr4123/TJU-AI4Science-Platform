@@ -12,11 +12,10 @@ import pytest
 from backends import BackendNotFound
 from framework import paths
 from framework.chat.server import ChatServer
-from framework.run import workspace
+from framework.workspace import root as workspace
 from tests.fixtures.scripted_chat import KNOBS, ScriptedChat, reply, with_tool
 
-CATALOG = [{"name": "design", "level": "task", "stage": "设计"},
-           {"name": "auto-research", "level": "task", "stage": "实验"}]
+CATALOG = [{"name": "design", "stage": "设计"}, {"name": "auto-research", "stage": "实验"}]
 WORKFLOWS = [{"name": "w", "title": "一条", "summary": "…",
               "stages": [{"kind": "stage", "stage": "设计",
                           "caps": [{"cap": "design", "with": {}}]}],
@@ -34,11 +33,10 @@ def check_workflow(doc: dict) -> dict:
             "problems": [f"没有这颗能力：{unknown}"] if unknown else []}
 
 
-def flows(ws: workspace.Workspace) -> list[dict]:
-    """剧本版：工作区里有几个 yaml 就回几条；有个叫 boom 的就抛，模拟盘上的东西不合约。"""
-    if (ws.flows / "boom.yaml").exists():
-        raise ValueError("boom.yaml: 坏了")
-    return [{"name": p.stem} for p in sorted(ws.flows.glob("*.yaml"))]
+def descriptors() -> dict:
+    """流实例的进度要按真描述符核对点名的能力：直接用仓里的四颗。"""
+    from framework.capabilities import discover
+    return {name: module.DESCRIPTOR for name, module in discover().items()}
 
 
 def ui_dir(tmp_path):
@@ -67,9 +65,9 @@ def served(tmp_path):
         return {**doc, "covers": ["实验"], "remarks": [], "problems": []}
 
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
-                        workflows=lambda: WORKFLOWS, flows=flows, check_workflow=check_workflow,
-                        save_workflow=save_workflow, chat_factory=factory,
-                        system_prompts=PROMPTS, ui_dir=ui_dir(tmp_path))
+                        workflows=lambda: WORKFLOWS, check_workflow=check_workflow,
+                        save_workflow=save_workflow, descriptors=descriptors,
+                        chat_factory=factory, system_prompts=PROMPTS, ui_dir=ui_dir(tmp_path))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -109,7 +107,12 @@ def test_health_and_catalog(served):
     assert call(base, "/health")[2] == '{"ok": true}'
     status, _, body = call(base, "/stages")
     assert status == 200
-    assert json.loads(body) == ["文献", "假设", "设计", "实验", "分析", "写作", "验证"]
+    stages = json.loads(body)
+    assert [s["name"] for s in stages] == ["文献", "假设", "设计", "实验", "分析", "写作", "验证"]
+    assert stages[3] == {"name": "实验", "slug": "experiment"}
+    status, _, body = call(base, "/templates")
+    assert status == 200 and [t["name"] for t in json.loads(body)] == ["ai", "cs", "generic",
+                                                                       "materials"]
     status, ctype, body = call(base, "/cap")
     assert status == 200 and "application/json" in ctype and json.loads(body) == CATALOG
     status, _, body = call(base, "/workflows")
@@ -122,14 +125,19 @@ def test_workspaces_are_created_listed_and_read(served, tmp_path):
     assert json.loads(call(base, "/workspaces")[2]) == []
     made = new_workspace(base, "rahman-nll", "Rahman 稳定性")
     assert made["id"] == "rahman-nll" and made["title"] == "Rahman 稳定性"
-    assert made["task"] is None and made["runs"] == 0
-    assert (tmp_path / "workspaces" / "rahman-nll" / "workspace.yaml").is_file()
+    assert made["requirement"]["confirmed"] is False and made["running"] == 0
+    requirement = tmp_path / "workspaces" / "rahman-nll" / "requirement.md"
+    assert requirement.read_text(encoding="utf-8").startswith("# Rahman 稳定性\n")
+    assert "## 问题" in requirement.read_text(encoding="utf-8")  # 按 generic 模板起草
     assert call(base, "/workspaces", {"id": "rahman-nll"})[0] == 409
     assert call(base, "/workspaces", {"id": "Bad Name"})[0] == 400
+    assert call(base, "/workspaces", {"id": "x2", "template": "nope"})[0] == 400
     assert call(base, "/workspaces", {})[0] == 400
     status, _, body = call(base, "/workspaces/rahman-nll")
     doc = json.loads(body)
-    assert status == 200 and doc["task"] is None and doc["runs"] == [] and doc["flows"] == []
+    assert status == 200 and doc["flows"] == [] and doc["jobs"] == []
+    assert all(s["outputs"] == [] for s in doc["stages"])
+    assert doc["requirement"]["title"] == "Rahman 稳定性" and doc["requirement"]["pending"]
     assert [w["id"] for w in json.loads(call(base, "/workspaces")[2])] == ["rahman-nll"]
     assert call(base, "/workspaces/nope")[0] == 404
     assert call(base, "/workspaces/../etc")[0] == 404
@@ -147,7 +155,7 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
     meta = json.loads(body)
     chat_id = meta["chat_id"]
     assert meta["backend"] == "claude_code" and meta["turns"] == 0
-    where = tmp_path / ("studio" if prefix == "/studio" else "workspaces/w1")
+    where = tmp_path / ("studio" if prefix == "/studio" else "workspaces/w1/.ai4sci")
     assert (where / "chats" / chat_id / "meta.json").is_file()
 
     status, ctype, body = call(base, f"{prefix}/chats/{chat_id}/messages", {"text": "你好"})
@@ -163,8 +171,8 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
     else:
         ws = workspace.load(tmp_path / "workspaces" / "w1")
         assert call_["system_prompt"] == "研究助理指南" and call_["cwd"] == ws.root
-        assert call_["allowed_paths"] == [ws.task, ws.flows, ws.runs]
-        assert call_["readable_paths"] == [paths.workflows_root()]  # 库可读不可写
+        assert call_["allowed_paths"] == [ws.root]
+        assert call_["readable_paths"] == [paths.workflows_root(), paths.templates_root()]
 
     status, _, body = call(base, f"{prefix}/chats/{chat_id}/messages", {"text": "有几个？"})
     events = sse_events(body)
@@ -248,12 +256,12 @@ def test_error_status_codes(served, tmp_path):
     chat_id = json.loads(call(base, "/workspaces/w1/chats", {})[2])["chat_id"]
     assert call(base, f"/workspaces/w1/chats/{chat_id}/messages", {"text": "  "})[0] == 400
     assert call(base, f"/workspaces/w1/chats/{chat_id}/messages", {})[0] == 400
-    (tmp_path / "workspaces" / "w1" / "chats" / chat_id / "inflight.json").write_text(
+    (tmp_path / "workspaces" / "w1" / ".ai4sci" / "chats" / chat_id / "inflight.json").write_text(
         "{}", encoding="utf-8")
     status, _, body = call(base, f"/workspaces/w1/chats/{chat_id}/messages", {"text": "插队"})
     assert status == 409 and "在跑" in json.loads(body)["error"]
-    assert call(base, "/studio/runs")[0] == 404  # 编辑台下只有对话
-    assert call(base, "/studio/publish", {"by": "x"})[0] == 404
+    assert call(base, "/studio/requirement")[0] == 404  # 编辑台下只有对话
+    assert call(base, "/studio/requirement/confirm", {"by": "x"})[0] == 404
 
 
 def test_bad_json_body_is_400(served):
@@ -265,88 +273,103 @@ def test_bad_json_body_is_400(served):
     assert exc.value.code == 400
 
 
-# ── 看板端点、发布与验收、静态页 ──────────────────────────────────────────────
-def test_workspace_board_and_publish_key(served, tmp_path):
-    from tests.fixtures.packs_factory import make_pack
+# ── 看板端点、确认与签字、静态页 ──────────────────────────────────────────────
+def test_requirement_board_and_confirm(served, tmp_path):
+    from framework.contracts import requirement
+    from tests.fixtures.packs_factory import REQUIREMENT, make_workspace
 
     base, _ = served
-    pack = make_pack(tmp_path, published=False)  # 夹具的工作区 toy 落在同一个 home 下
+    ws = make_workspace(tmp_path, "toy", confirmed=False)  # 夹具的工作区落在同一个 home 下
     status, _, body = call(base, "/workspaces")
     rows = json.loads(body)
     assert status == 200 and [r["id"] for r in rows] == ["toy"]
-    assert rows[0]["task"]["stage"] == "drafting" and rows[0]["task"]["publish"]["ok"] is False
+    assert rows[0]["requirement"]["confirmed"] is False
 
-    status, _, body = call(base, "/workspaces/toy")
+    status, _, body = call(base, "/workspaces/toy/requirement")
     doc = json.loads(body)
-    assert status == 200 and doc["task"]["design"]
-    assert doc["task"]["headroom"]["metric"] == "val_mse"
-    (pack.workspace.flows).mkdir()
-    (pack.workspace.flows / "mine.yaml").write_text("name: mine\n", encoding="utf-8")
-    assert json.loads(call(base, "/workspaces/toy/flows")[2]) == [{"name": "mine"}]
-    assert json.loads(call(base, "/workspaces/toy")[2])["flows"] == [{"name": "mine"}]
+    assert status == 200 and doc["text"] == REQUIREMENT
+    assert [s["heading"] for s in doc["sections"]] == ["问题", "怎么算好"]
+
+    assert call(base, "/workspaces/toy/requirement/confirm", {})[0] == 400  # 不署名不确认
+    status, _, body = call(base, "/workspaces/toy/requirement/confirm", {"by": "张三"})
+    doc = json.loads(body)
+    assert status == 201 and doc["confirmed"] and doc["version"] == 1 and doc["by"] == "张三"
+    assert doc["dirty"] is False and requirement.lock_path(ws.root).is_file()
+    # 改了：dirty，页面拿 confirmed_text 做 diff；再确认成 v2
+    ws.requirement.write_text(REQUIREMENT + "\n## 预算\n\n一天。\n", encoding="utf-8")
+    doc = json.loads(call(base, "/workspaces/toy/requirement")[2])
+    assert doc["dirty"] and doc["confirmed_text"] == REQUIREMENT
+    status, _, body = call(base, "/workspaces/toy/requirement/confirm", {"by": "张三"})
+    assert status == 201 and json.loads(body)["version"] == 2
+    # 内容没变再确认：422 一句话
+    status, _, body = call(base, "/workspaces/toy/requirement/confirm", {"by": "张三"})
+    assert status == 422 and "内容没变" in json.loads(body)["error"]
     # 盘上的东西不合约：回 422 一句话，不是断连接让页面「Failed to fetch」
-    (pack.workspace.flows / "boom.yaml").write_text("", encoding="utf-8")
+    (ws.flows / "boom.yaml").write_text("name: boom\n", encoding="utf-8")
+    doc = json.loads(call(base, "/workspaces/toy")[2])
+    assert doc["flows"][0]["problems"] == ["boom.yaml: 缺 title"]
+    requirement.lock_path(ws.root).write_text("{}", encoding="utf-8")
     status, _, body = call(base, "/workspaces/toy")
-    assert status == 422 and "boom.yaml: 坏了" in json.loads(body)["error"]
-    (pack.workspace.flows / "boom.yaml").unlink()
-
-    assert call(base, "/workspaces/toy/publish", {})[0] == 400  # 不署名不发
-    status, _, body = call(base, "/workspaces/toy/publish", {"by": "张三"})
-    doc = json.loads(body)
-    assert status == 201
-    assert doc["publish"] == {"ok": True, "state": "ok", "by": "张三", "at": doc["publish"]["at"],
-                              "reason": None}
-    assert doc["stage"] == "baselined" and (pack.task_dir / "publish.json").is_file()
-
-    (pack.task_dir / "design.md").write_text("", encoding="utf-8")  # 空 design 发不了
-    status, _, body = call(base, "/workspaces/toy/publish", {"by": "张三"})
-    assert status == 422 and "design.md" in json.loads(body)["error"]
+    assert status == 422 and "不是一份确认记录" in json.loads(body)["error"]
 
 
-def test_run_board_and_accept_key(served, tmp_path):
-    from tests.fixtures.runs_factory import make_run
+def test_output_board_and_sign(served, tmp_path):
+    from tests.fixtures.runs_factory import good_analysis, make_run, write_analysis
 
     base, _ = served
-    run_dir = make_run(tmp_path)
-    assert run_dir.parent.parent == tmp_path / "workspaces" / "toy"
-    status, _, body = call(base, "/workspaces/toy/runs")
-    rows = json.loads(body)
-    assert status == 200 and rows[0]["run_id"] == run_dir.name and rows[0]["accept"] is None
-    assert json.loads(call(base, "/workspaces/toy")[2])["runs"][0]["run_id"] == run_dir.name
-    status, _, body = call(base, f"/workspaces/toy/runs/{run_dir.name}")
+    run_dir, pack = make_run(tmp_path)
+    doc_dir = write_analysis(pack, good_analysis(run_dir))
+    (pack.workspace.flows / "research.yaml").write_text(
+        (paths.workflows_root() / "research.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+    status, _, body = call(base, "/workspaces/toy")
     doc = json.loads(body)
-    assert status == 200 and len(doc["ledger"]) == 3
-    assert call(base, "/workspaces/toy/runs/nope")[0] == 404
-    assert call(base, "/workspaces/toy/runs/../runs")[0] == 404
+    assert status == 200
+    experiment = next(s for s in doc["stages"] if s["slug"] == "experiment")
+    assert [o["id"] for o in experiment["outputs"]] == ["experiment/1"]
+    assert experiment["outputs"][0]["from"] == ["design/1"]
+    assert experiment["outputs"][0]["signed"] is None
+    [flow] = doc["flows"]
+    assert flow["name"] == "research" and flow["waiting"] == "assistant"  # 产出没记流，流还没动
+    status, _, body = call(base, "/workspaces/toy/outputs/analysis/1")
+    doc = json.loads(body)
+    assert status == 200 and doc["id"] == f"analysis/{doc_dir.name}"
+    assert [f["path"] for f in doc["files"]] == ["analysis.md"]
+    assert call(base, "/workspaces/toy/outputs/analysis/9")[0] == 404
+    assert call(base, "/workspaces/toy/outputs/runs/1")[0] == 404
 
-    assert call(base, f"/workspaces/toy/runs/{run_dir.name}/accept", {"by": ""})[0] == 400
-    status, _, body = call(base, f"/workspaces/toy/runs/{run_dir.name}/accept", {"by": "李四"})
+    assert call(base, "/workspaces/toy/outputs/analysis/1/sign", {"by": ""})[0] == 400
+    status, _, body = call(base, "/workspaces/toy/outputs/analysis/1/sign",
+                           {"by": "李四", "note": "看过了"})
     doc = json.loads(body)
-    assert status == 201 and doc["accept"]["by"] == "李四" and doc["accept"]["stale"] is False
-    (run_dir / "experiment" / "inflight.json").write_text("{}", encoding="utf-8")
-    status, _, body = call(base, f"/workspaces/toy/runs/{run_dir.name}/accept", {"by": "李四"})
-    assert status == 422 and "正在跑" in json.loads(body)["error"]
+    assert status == 201 and doc["signed"]["by"] == "李四" and doc["signed"]["stale"] is False
+    status, _, body = call(base, "/workspaces/toy/outputs/analysis/1/sign", {"by": "李四"})
+    assert status == 422 and "已经签过了" in json.loads(body)["error"]
+    (doc_dir / "analysis.md").write_text("改了", encoding="utf-8")
+    doc = json.loads(call(base, "/workspaces/toy/outputs/analysis/1")[2])
+    assert doc["signed"]["stale"] is True
 
 
 def test_jobs_endpoints(served, tmp_path):
-    """作业清单与单个作业（外层 #63）：run 看板带正在跑的作业与全部作业。"""
+    """作业清单与单个作业（外层 #63）：工作区看板带全部作业。"""
     import os
 
-    from framework.run import jobs
+    from framework.workspace import jobs
     from tests.fixtures.runs_factory import make_run
 
     base, _ = served
-    run_dir = make_run(tmp_path)
+    make_run(tmp_path)
     assert json.loads(call(base, "/workspaces/toy/jobs")[2]) == []
     assert call(base, "/workspaces/toy/jobs/nope")[0] == 404
-    job = jobs.Job(job_id="job-1", cap="experiment", level="run", target=run_dir.name,
-                   argv=["cap", "experiment", run_dir.name], pid=os.getpid(), started_at="t")
-    jobs._save(tmp_path / "workspaces" / "toy" / "jobs", job)
+    job = jobs.Job(job_id="job-1", cap="auto-research", stage="experiment",
+                   argv=["cap", "auto-research", "--continue", "experiment/1"], pid=os.getpid(),
+                   started_at="t", output="experiment/1")
+    jobs._save(tmp_path / "workspaces" / "toy" / ".ai4sci" / "jobs", job)
     status, _, body = call(base, "/workspaces/toy/jobs/job-1")
     assert status == 200 and json.loads(body)["effective_status"] == "running"
-    doc = json.loads(call(base, f"/workspaces/toy/runs/{run_dir.name}")[2])
-    assert doc["job"]["job_id"] == "job-1" and [j["job_id"] for j in doc["jobs"]] == ["job-1"]
-    assert json.loads(call(base, "/workspaces/toy/runs")[2])[0]["job"]["job_id"] == "job-1"
+    doc = json.loads(call(base, "/workspaces/toy")[2])
+    assert [j["job_id"] for j in doc["jobs"]] == ["job-1"] and doc["running"] == 1
+    doc = json.loads(call(base, "/workspaces/toy/outputs/experiment/1")[2])
+    assert [j["job_id"] for j in doc["jobs"]] == ["job-1"]
 
 
 def test_check_workflow_endpoint(served):
@@ -374,7 +397,7 @@ def test_static_page_and_spa_fallback(served):
 
 def test_no_ui_dir_says_how_to_build(tmp_path):
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
-                        workflows=lambda: WORKFLOWS, flows=flows, check_workflow=check_workflow,
+                        workflows=lambda: WORKFLOWS, check_workflow=check_workflow,
                         system_prompts=PROMPTS)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

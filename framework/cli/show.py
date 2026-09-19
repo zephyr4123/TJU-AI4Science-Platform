@@ -1,8 +1,9 @@
-"""`ai4sci show workspaces | task | run <id> | jobs | job <id> | flows | caps | workflows`
+"""`ai4sci show workspaces | workspace | outputs [<stage>] | output <stage>/<n> | jobs | job <id>
+| flows | caps | workflows | templates | template <name>`
 
 在 cli 层。这一组只看不做：不产出文件、不起会话、不改任何东西。与 `ai4sci serve` 的 GET
-端点读的是同一批函数——页面和终端是同一份数据的两张脸。task / run / jobs / flows 看的是
-当前工作区（P-15）；caps / workflows 看的是库。
+端点读的是同一批函数（`chat.boards`）——页面和终端是同一份数据的两张脸。workspace / outputs /
+output / jobs / flows 看的是当前工作区（P-15）；caps / workflows / templates 看的是库。
 """
 
 from __future__ import annotations
@@ -14,93 +15,108 @@ from pathlib import Path
 
 from framework import paths
 from framework.capabilities import discover
-from framework.cli._common import (
-    EXIT_INVALID,
-    EXIT_OK,
-    EXIT_USAGE,
-    current_workspace,
-    open_run_dir,
-)
-from framework.contracts import packs, workflows
-from framework.contracts.capability import COLUMNS, STAGES
-from framework.contracts.report import read_report
-from framework.memory import ledger
-from framework.run import flow_state, jobs, layout, workspace
-from framework.run.checkpoint import read_checkpoint
-from framework.run.context import load_manifest
+from framework.chat import boards
+from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, current_workspace
+from framework.cli.workspace import read_template
+from framework.contracts import output, workflows
+from framework.contracts.capability import COLUMNS
+from framework.contracts.stages import STAGE_SLUGS, STAGES
+from framework.workspace import jobs, outputs, root
 
 
 def cmd_workspaces(args: argparse.Namespace) -> int:
-    """全部工作区：id、标题、在哪。"""
-    for ws in workspace.list_workspaces(workspace.workspaces_root(paths.home())):
-        meta = ws.meta()
-        print(f"{ws.id}\t{meta.get('title') or ws.id}\t{ws.root}")
+    """全部工作区：id、标题、需求确认了没、在哪。"""
+    for ws in root.list_workspaces(root.workspaces_root(paths.home())):
+        state = ws.to_dict()["requirement"]
+        confirmed = f"v{state['version']}" + ("（有改动未确认）" if state["dirty"] else "") \
+            if state["confirmed"] else "未确认"
+        print(f"{ws.id}\t{ws.title()}\t需求 {confirmed}\t{ws.root}")
     return EXIT_OK
 
 
-def cmd_task(args: argparse.Namespace) -> int:
-    """当前工作区的任务包合不合契约：问题一行一条到 stderr，通就打 ok。"""
+def cmd_workspace(args: argparse.Namespace) -> int:
+    """当前工作区的全貌：需求状态、每个阶段有几次产出、每条流走到哪、在等谁、跑着的作业。"""
     ws = current_workspace()
     if isinstance(ws, int):
         return ws
-    if not ws.task.is_dir():
-        print(f"这个工作区还没有任务包：先 ai4sci cap init（{ws.task}）", file=sys.stderr)
-        return EXIT_INVALID
-    problems = packs.validate_task(ws.task, paths.domains_root())
-    if problems:
-        for problem in problems:
-            print(problem, file=sys.stderr)
-        return EXIT_INVALID
-    print(f"ok {ws.id}")
+    detail = boards.workspace_detail(ws, _catalog())
+    if args.json:
+        print(json.dumps(boards.jsonable(detail), ensure_ascii=False, indent=2))
+        return EXIT_OK
+    req = detail["requirement"]
+    dirty = "（有改动未确认）" if req["dirty"] else ""
+    state = (f"v{req['version']} by {req['by']} {req['at']}{dirty}"
+             if req["confirmed"] else "未确认")
+    print(f"workspace\t{ws.id}\t{detail['title']}")
+    print(f"requirement\t{state}")
+    for stage in detail["stages"]:
+        outs = stage["outputs"]
+        if not outs:
+            continue
+        print(f"{stage['slug']}\t{len(outs)} 次")
+        for o in outs:
+            print(f"  {o['id']}\t{o['status']}\t{o['by']}\tfrom={','.join(o['from']) or '-'}"
+                  f"\tsigned={_signed_word(o['signed'])}\t{o['title']}")
+    for flow in detail["flows"]:
+        if flow.get("problems"):
+            print(f"flow\t{flow['name']}\t坏了：{flow['problems'][0]}", file=sys.stderr)
+            continue
+        print(f"flow\t{flow['name']}\tstep={flow['step'] + 1}/{flow['total']}"
+              f"\twaiting={flow['waiting']}")
+    for job in detail["jobs"]:
+        print(f"job\t{job['job_id']}\t{job['effective_status']}\t{job['cap']}"
+              f"\t{job['output'] or '-'}")
     return EXIT_OK
 
 
-def cmd_run(args: argparse.Namespace) -> int:
-    """一个 run 的状态：best、账本尾部、停止原因、分析与验证有没有；末尾账本 × git 对账。"""
+def cmd_outputs(args: argparse.Namespace) -> int:
+    """当前工作区的产出清单，可按阶段筛。"""
     ws = current_workspace()
     if isinstance(ws, int):
         return ws
-    run_dir = open_run_dir(ws, args.run_id)
-    if isinstance(run_dir, int):
-        return run_dir
-    state = read_checkpoint(run_dir)
-    print(f"run_id\t{state['run_id']}")
-    print(f"source\t{load_manifest(run_dir).get('source') or '-'}")  # manifest.source 的读取点
-    print(f"last_iter\t{state['last_iter']}")
-    print(f"best_iter\t{state['best_iter']}")
-    print(f"best_metric\t{state['best_metric']}")
-    print(f"best_commit\t{state['best_commit']}")
-    print(f"stop_reason\t{state.get('stop_reason') or '-'}")
-    ledger_path = layout.ledger(run_dir)
-    rows = ledger.read(ledger_path)
-    print(f"ledger_rows\t{len(rows)}")
-    for row in rows[-args.tail:]:
-        metric = "-" if row.metric is None else f"{row.metric:.6g}"
-        print(f"{row.iter}\t{row.status}\t{metric}\t{row.commit[:12]}\t{row.note}")
-    analysis = layout.analysis_doc(run_dir)
-    print(f"analysis\t{analysis.relative_to(run_dir) if analysis.is_file() else '-'}")
-    report = layout.verify_report(run_dir)
+    if args.stage and args.stage not in STAGE_SLUGS:
+        print(f"阶段目录只认 {STAGE_SLUGS}，得到 {args.stage!r}", file=sys.stderr)
+        return EXIT_USAGE
+    for directory, meta in outputs.list_outputs(ws, args.stage or None):
+        signed = output.signature_state(directory)
+        print(f"{meta.id}\t{meta.status}\t{meta.by}\tfrom={','.join(meta.input_ids) or '-'}"
+              f"\tflow={meta.flow or '-'}\tsigned={_signed_word(signed)}\t{meta.title}")
+    return EXIT_OK
+
+
+def cmd_output(args: argparse.Namespace) -> int:
+    """一次产出：meta、签字、目录里有什么。"""
+    ws = current_workspace()
+    if isinstance(ws, int):
+        return ws
     try:
-        print(f"verify\t{read_report(report)['status'] if report.is_file() else '-'}")
-    except ValueError as exc:
-        # 报告不合约就当没有报告：打出来退 1，别把坏报告的 status 当结论
+        detail = boards.output_detail(ws, args.output)
+    except (ValueError, output.OutputNotFound) as exc:
         print(str(exc), file=sys.stderr)
-        return EXIT_INVALID
-    for job in jobs.jobs_for(ws.jobs, state["run_id"]):
-        print(f"job\t{job.job_id}\t{jobs.effective_status(job)}\t{job.cap}\t{job.result}")
-    flow = flow_state.status(run_dir, ws.jobs)
-    if flow is not None:
-        following = flow["next"]
-        print(f"workflow\t{flow['workflow']}\tstep={flow['step']}/{flow['total']}"
-              f"\twaiting={flow['waiting']}"
-              f"\tnext={'-' if following is None else _next_word(following)}")
-    # 账本 × git 的对账放在这里跑：不对账的状态只是"它自己说它没事"（P-3）
-    problems = ledger.reconcile(ledger_path, layout.work(run_dir))
-    if problems:
-        for problem in problems:
-            print(problem, file=sys.stderr)
-        return EXIT_INVALID
-    return EXIT_OK
+        return EXIT_USAGE
+    if args.json:
+        print(json.dumps(boards.jsonable(detail), ensure_ascii=False, indent=2))
+        return EXIT_OK
+    for key in ("id", "title", "status", "by", "created_at", "finished_at", "flow", "step",
+                "requirement", "result", "error"):
+        value = detail[key]
+        if value not in (None, ""):
+            print(f"{key}\t{value}")
+    print(f"from\t{','.join(detail['from']) or '-'}")
+    signed = detail["signed"]
+    who = f"\t{signed['by']} {signed['signed_at']} {signed['note']}" if signed else ""
+    print(f"signed\t{_signed_word(signed)}{who}")
+    for entry in detail["files"]:
+        print(f"file\t{entry['path']}\t{entry['size']}")
+    return EXIT_OK if detail["status"] != "failed" else EXIT_INVALID
+
+
+def _signed_word(signed) -> str:
+    if not signed:
+        return "-"
+    if isinstance(signed, dict):
+        return "stale" if signed.get("stale") else "yes"
+    return "yes"
 
 
 def cmd_jobs(args: argparse.Namespace) -> int:
@@ -129,7 +145,7 @@ def cmd_job(args: argparse.Namespace) -> int:
 
 
 def _job_line(job: jobs.Job) -> str:
-    return (f"{job.job_id}\t{jobs.effective_status(job)}\t{job.cap}\t{job.target}"
+    return (f"{job.job_id}\t{jobs.effective_status(job)}\t{job.cap}\t{job.output or '-'}"
             f"\tstarted={job.started_at}\tfinished={job.finished_at or '-'}"
             f"\texit={'-' if job.exit_code is None else job.exit_code}\t{job.result}")
 
@@ -146,13 +162,14 @@ def cmd_caps(args: argparse.Namespace) -> int:
                          ensure_ascii=False, indent=2))
         return EXIT_OK
     for stage in STAGES:
-        caps = [d for d in descriptors if d.stage == stage]
+        caps = [d for d in descriptors if d.stage == stage.name]
         if not caps:
-            print(f"{stage}\t-\t这个阶段还没有能力")
+            print(f"{stage.name}\t-\t这个阶段还没有能力"
+                  f"（助理可以 ai4sci output new {stage.slug} 自己写）")
         for d in caps:
             who = "助理" if d.needs_executor else "机器"
             params = " ".join(f"--{p.name.replace('_', '-')}" for p in d.params) or "-"
-            print(f"{stage}\t{d.name}\t{d.title}\t{who}\t{d.level}\t参数 {params}"
+            print(f"{stage.name}\t{d.name}\t{d.title}\t{who}\t参数 {params}"
                   f"\tused_by={','.join(uses.get(d.name, [])) or '-'}")
             for key, label in COLUMNS:
                 print(f"  {label}：{getattr(d, key)}")
@@ -176,8 +193,8 @@ def cmd_flows(args: argparse.Namespace) -> int:
     return _print_flows(ws.flows, args.json)
 
 
-def _print_flows(root: Path, as_json: bool) -> int:
-    found = workflows.describe_dir(root, _catalog())  # 坏文件也是一条，problems 里说原因
+def _print_flows(root_dir: Path, as_json: bool) -> int:
+    found = workflows.describe_dir(root_dir, _catalog())  # 坏文件也是一条，problems 里说原因
     if as_json:
         print(json.dumps(found, ensure_ascii=False, indent=2))
     else:
@@ -191,55 +208,65 @@ def _print_flows(root: Path, as_json: bool) -> int:
     return EXIT_INVALID if any(wf["problems"] for wf in found) else EXIT_OK
 
 
-def _next_word(item: dict) -> str:
-    """进度记录里的下一项，给人念的一句：进入哪个阶段（点了名带能力），或停在哪个断点等谁。"""
-    if item["kind"] == "stop":
-        return f"断点：{item['note'] or '等你确认'}"
-    picks = "、".join(c["cap"] for c in item["caps"])
-    return f"{item['stage']}阶段" + (f"（{picks}）" if picks else "")
-
-
 def _stage_word(item: dict) -> str:
-    """一项一个词：阶段名（点了名带能力），断点画成 ◆（带键的写键名）。"""
+    """一项一个词：阶段名（点了名带能力），断点画成 ◆（带一句话就写）。"""
     if item["kind"] == "stop":
-        return f"◆{item['key'] or ''}"
+        return f"◆{item['note'] or ''}"
     picks = ",".join(c["cap"] for c in item["caps"])
     return f"{item['stage']}({picks})" if picks else item["stage"]
 
 
+def cmd_templates(args: argparse.Namespace) -> int:
+    """库里的需求模板：名字与第一行说明。"""
+    for item in boards.list_templates(paths.templates_root()):
+        print(f"{item['name']}\t{item['title']}\t{item['summary']}")
+    return EXIT_OK
+
+
+def cmd_template(args: argparse.Namespace) -> int:
+    try:
+        print(read_template(args.name), end="")
+    except FileNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    return EXIT_OK
+
+
 def add_parser(groups: argparse._SubParsersAction) -> None:
-    show = groups.add_parser("show", help="只读查询：工作区、任务包、run、作业、流、能力清单")
+    show = groups.add_parser("show", help="只读查询：工作区、产出、作业、流、能力清单、需求模板")
     what = show.add_subparsers(dest="what", required=True)
-
-    spaces = what.add_parser("workspaces", help="列出全部工作区：id、标题、在哪")
+    spaces = what.add_parser("workspaces", help="列出全部工作区：id、标题、需求状态、在哪")
     spaces.set_defaults(func=cmd_workspaces)
-
-    task = what.add_parser("task", help="校验当前工作区的任务包合不合契约")
-    task.set_defaults(func=cmd_task)
-
-    run = what.add_parser("run", help="一个 run 的 best、账本尾部与停止原因；顺带账本 × git 对账")
-    run.add_argument("run_id")
-    run.add_argument("--tail", type=int, default=5, help="账本尾部行数，缺省 5")
-    run.set_defaults(func=cmd_run)
-
+    space = what.add_parser("workspace",
+                            help="当前工作区的全貌：需求、每个阶段的产出、每条流走到哪、作业")
+    space.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
+    space.set_defaults(func=cmd_workspace)
+    outs = what.add_parser("outputs", help="当前工作区的产出清单，可按阶段筛")
+    outs.add_argument("stage", nargs="?", default="", help=f"阶段目录：{' / '.join(STAGE_SLUGS)}")
+    outs.set_defaults(func=cmd_outputs)
+    one = what.add_parser("output", help="一次产出：记录、签字、目录里有什么")
+    one.add_argument("output", metavar="STAGE/N")
+    one.add_argument("--json", action="store_true", help="打 JSON")
+    one.set_defaults(func=cmd_output)
     listing = what.add_parser("jobs", help="当前工作区的作业清单：每个后台作业的状态与结论")
     listing.set_defaults(func=cmd_jobs)
-
-    one = what.add_parser("job", help="一个作业：状态、命令、结论行、日志在哪")
-    one.add_argument("job_id")
-    one.set_defaults(func=cmd_job)
-
+    job = what.add_parser("job", help="一个作业：状态、命令、结论行、日志在哪")
+    job.add_argument("job_id")
+    job.set_defaults(func=cmd_job)
     flows = what.add_parser("flows",
                             help="当前工作区的流实例（flows/*.yaml）：经过哪些阶段、有无问题")
     flows.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     flows.set_defaults(func=cmd_flows)
-
     caps = what.add_parser("caps",
                            help="能力清单：七个研究阶段各有什么能力、每颗五栏说明，带用在哪几条流")
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     caps.set_defaults(func=cmd_caps)
-
     wfs = what.add_parser("workflows",
                           help="库里的工作流（workflows/*.yaml）：经过哪些阶段、有无问题")
     wfs.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     wfs.set_defaults(func=cmd_workflows)
+    tpls = what.add_parser("templates", help="库里的需求模板：通用一份、按学科加")
+    tpls.set_defaults(func=cmd_templates)
+    tpl = what.add_parser("template", help="一份需求模板的原文")
+    tpl.add_argument("name")
+    tpl.set_defaults(func=cmd_template)

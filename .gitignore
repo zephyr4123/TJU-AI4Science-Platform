@@ -19,12 +19,15 @@ __pycache__/
 .venv/
 node_modules/
 
-# ── 运行产物：工作区里跑出来的东西不进 git，需求（task/）与流实例（flows/）进；编辑台的对话不进 ──
-workspaces/*/runs/
-workspaces/*/chats/
-workspaces/*/jobs/
+# ── 运行产物：工作区里跑出来的东西不进 git。样例工作区进 git 的只有需求（requirement.md / .lock 与它的存档）、
+# 原件 materials/、流实例 flows/、设计那包 design/；实验及之后的产出、平台记录都是本机的 ──
+workspaces/*/.ai4sci/*
+!workspaces/*/.ai4sci/requirement/
+workspaces/*/literature/
+workspaces/*/hypothesis/
+workspaces/*/experiment/
+workspaces/*/analysis/
+workspaces/*/writing/
+workspaces/*/verification/
 /studio/
 *.egg-info/
-
-# ── 2026-09-18 之前的旧布局残留（对话与服务日志），迁移脚本没搬的那些；看过没用就删 ──
-runs/

@@ -8,17 +8,17 @@
     只读被改 → 超时 → 缺依赖 → 崩溃 → 结果缺失 / 不合 schema / status 不是 ok → 指标 NaN
 
 崩溃与"没有结果"的边界（M1）：崩溃看的是 stderr 里有没有 traceback，不是只看退出码。
-真任务包的 `launcher.sh` 写着 `set -euo pipefail`，而 harness 契约要求 `evaluate.py`
-拒收产物时用 `SystemExit(码)` 带一句话退出、不打 traceback（tasks/mlp-regression 就是
+真任务的 `launcher.sh` 写着 `set -euo pipefail`，而 harness 契约要求 `evaluate.py`
+拒收产物时用 `SystemExit(码)` 带一句话退出、不打 traceback（样例 mlp-regression 就是
 这么写的）。于是"执行层只 print 了一个分数、什么产物都没写"这种**假成功**在退出码上与
 "跑崩了"长得一模一样。假成功比崩溃更值得单独点名：它是执行层在骗分，修法也完全不同
 （去把产物写出来 vs 去照 stderr 修报错），所以退非 0 而 stderr 没有 traceback 时一律
 先看产物，判 no_results。反过来，退非 0 但 results.json 合法、主指标有限的极端情况仍
 归 crash——产物齐了却非正常退出，说明跑的过程中出了事，这个成绩不能采信。
 
-本模块属于实验内环这个能力（capabilities/experiment/），不是通用层：分类规则、修复
+本模块属于实验内环这个能力（capabilities/auto_research/），不是通用层：分类规则、修复
 提示、取证读法都只对"跑 harness 比分数"这件事成立，别的能力有别的失败谱系。产物本身
-怎么读是契约层的事（`contracts.results.read_results`），这里只判它算哪一类。
+怎么读是实验族共享层的事（`experiment.results.read_results`），这里只判它算哪一类。
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ _CRASH_MARKERS = (TRACEBACK_MARKER, "SyntaxError:")
 HINTS = {
     READONLY_VIOLATED: "只准改 code/ 下的文件；harness/ 与 data/ 是只读的，已回滚到上一个最好版本",
     TIMEOUT: "上一轮超出墙钟预算被杀；请降低计算量（更小的规模 / 更少的轮数），不要加大",
-    MISSING_DEPENDENCY: "上一轮 import 了环境里没有的包；只用标准库与任务包已有的依赖，"
+    MISSING_DEPENDENCY: "上一轮 import 了环境里没有的包；只用标准库与 env/ 已有的依赖，"
                         "不要新增依赖",
     CRASH: "上一轮跑崩了；先照 stderr 摘要修掉报错，改完自己确认语法与形状对得上",
     NO_RESULTS: "上一轮没产出合规的 results.json；train.py 必须真的写出预测产物，光打印分数不算数",
@@ -92,7 +92,7 @@ def executor_failed_verdict(exit_code: int, timed_out: bool) -> Verdict:
 
 
 def gitignored_verdict() -> Verdict:
-    """改动都落在任务包 `.gitignore` 挡住的路径上：git 里留不下东西，按没改处理。"""
+    """改动都落在包 `.gitignore` 挡住的路径上：git 里留不下东西，按没改处理。"""
     return Verdict(NOOP, "改动全被 .gitignore 挡住，未产生 commit")
 
 

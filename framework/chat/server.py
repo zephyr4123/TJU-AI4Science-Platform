@@ -1,8 +1,8 @@
 """网页的后端：HTTP 端点包住 conversation.py 与 boards.py，事件用 SSE 推，页面本身也从这里端出去。
 
 标准库 ThreadingHTTPServer：二十个端点不值得引一个 web 框架。零模型：模型在适配器的子进程里。
-能力清单（`/cap`）、工作流库（`/workflows`）、流实例（`/workspaces/<id>/flows`）与拼流检查
-（`/workflows/check`）由调用方以函数传入——这一层不认识 capabilities，依赖方向不能反过来。
+能力清单（`/cap`）、工作流库（`/workflows`）、拼流检查（`/workflows/check`）与描述符表（流实例的进度要核对
+点名的能力）由调用方以函数传入——这一层不认识 capabilities，依赖方向不能反过来。
 页面是这些端点的客户端，换一种 UI 也是同一套（`ui/README.md`）。
 
 端点按域分前缀（纲领 P-16）：工作区 `/workspaces/<id>/…` 是研究助理的域，`/studio/…` 是造流助理
@@ -10,18 +10,22 @@
 
     GET  /health                            {"ok": true}
     GET  /backends                          每家 agent 后端的旋钮：模型清单、思考深度档位、缺省
-    GET  /stages                            七个研究阶段，按清单顺序
+    GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
     GET  /cap                               能力描述符清单：每颗带 stage、五栏与 used_by
     GET  /workflows                         库：`workflows/*.yaml`，covers / remarks / problems
     POST /workflows                         {name, title, summary, stages[, overwrite]} → 存进库
     POST /workflows/check                   同一个 body，只查不存：covers / remarks / problems
-    GET  /workspaces                        工作区清单：标题、任务包走到哪、几个 run
-    POST /workspaces                        {"id", "title"?} → 新工作区
-    GET  /workspaces/<id>                   工作区 + 任务包细节 + 流实例 + run 清单
-    POST /workspaces/<id>/publish           {"by"} → 发布记录；人的确认，agent 不替人签
-    GET  /workspaces/<id>/flows             流实例：covers / remarks / problems
-    GET  /workspaces/<id>/runs[/<rid>]      run 摘要清单 / 一个 run 的账本、分析、验证、作业
-    POST /workspaces/<id>/runs/<rid>/accept {"by"} → 验收记录
+    GET  /templates                         需求模板的库：名字、标题、一句说明、原文
+    GET  /workspaces                        工作区清单：标题、需求状态、每个阶段几次产出、
+    有没有作业在跑
+    POST /workspaces                        {"id", "title"?, "template"?} → 新工作区（按模板起草
+    requirement.md）
+    GET  /workspaces/<id>                   工作区 + 需求 + 七个阶段的产出 + 每条流实例的进度 + 作业
+    GET  /workspaces/<id>/requirement       需求：原文、按二级标题切的格、确认状态、上一版原文
+    POST /workspaces/<id>/requirement/confirm  {"by"} → 确认需求；人的确认，agent 不替人做
+    GET  /workspaces/<id>/flows             流实例：covers / remarks / problems + 进度
+    GET  /workspaces/<id>/outputs/<stage>/<n>  一次产出：记录、签字、文件清单（小文本带正文）、作业
+    POST /workspaces/<id>/outputs/<stage>/<n>/sign  {"by", "note"?} → 签字记录
     GET  /workspaces/<id>/jobs[/<jid>]      作业清单 / 一个作业
     GET  <域>/chats                         对话清单；<域> 是 /workspaces/<id> 或 /studio
     POST <域>/chats                         {"backend"?, "model"?, "effort"?} → 新对话的 meta
@@ -47,17 +51,18 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from backends import BackendNotFound, Chat, ChatEvent, Tuning, available_backends, get_chat
+from framework import paths
 from framework.chat import boards, conversation, guide, scope
-from framework.contracts import publish
-from framework.contracts.capability import STAGES
-from framework.run import accept, jobs, layout, workspace
-from framework.run.workspace import Workspace
+from framework.contracts import output, requirement, stages
+from framework.contracts.capability import Capability
+from framework.workspace import jobs, outputs, root
 
 LOGGER = logging.getLogger("ai4sci.serve")
 DEFAULT_BACKEND = "claude_code"
 MAX_BODY = 1 << 20
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
-API_ROOTS = ("health", "backends", "stages", "cap", "workflows", "workspaces", "studio")
+API_ROOTS = ("health", "backends", "stages", "cap", "workflows", "templates", "workspaces",
+             "studio")
 INDEX_NAME = "index.html"
 
 
@@ -69,9 +74,9 @@ class ChatServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], *, home: Path,
                  catalog: Callable[[], list[dict[str, Any]]],
                  workflows: Callable[[], list[dict[str, Any]]],
-                 flows: Callable[[Workspace], list[dict[str, Any]]],
                  check_workflow: Callable[[dict[str, Any]], dict[str, Any]],
                  save_workflow: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+                 descriptors: Callable[[], dict[str, Capability]] = dict,
                  chat_factory: Callable[[str], Chat] = get_chat,
                  system_prompts: dict[str, str] | None = None,
                  ui_dir: Path | None = None) -> None:
@@ -79,10 +84,11 @@ class ChatServer(ThreadingHTTPServer):
         self.home = Path(home).resolve()
         self.catalog = catalog
         self.workflows = workflows
-        self.flows = flows
         self.check_workflow = check_workflow
         # 编辑台存流：cli 注入（要对着能力清单核对，chat 层不认识 capabilities）；None 是不让存
         self.save_workflow = save_workflow
+        # 能力描述符表：流实例的进度要按它核对点名的能力；cli 注入，chat 层不认识 capabilities
+        self.descriptors = descriptors
         self.chat_factory = chat_factory
         # 页面构建目录；None 就是没构建，根路径回一句怎么构建，接口照常
         self.ui_dir = None if ui_dir is None else Path(ui_dir).resolve()
@@ -92,7 +98,7 @@ class ChatServer(ThreadingHTTPServer):
 
     @property
     def workspaces_root(self) -> Path:
-        return workspace.workspaces_root(self.home)
+        return root.workspaces_root(self.home)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -126,14 +132,16 @@ class Handler(BaseHTTPRequestHandler):
                                 **asdict(self.server.chat_factory(name).knobs())}
                                for name in available_backends()])
         if parts == ["stages"]:
-            return self._json(list(STAGES))
+            return self._json(stages.to_dicts())
         if parts == ["cap"]:
             return self._json(self.server.catalog())
         if parts == ["workflows"]:
             return self._json(self.server.workflows())
+        if parts == ["templates"]:
+            return self._json(boards.list_templates(paths.templates_root()))
         if parts == ["workspaces"]:
             return self._json([boards.workspace_summary(ws) for ws in
-                               workspace.list_workspaces(self.server.workspaces_root)])
+                               root.list_workspaces(self.server.workspaces_root)])
         found = self._scope(parts)
         if found is None:
             return None
@@ -144,14 +152,16 @@ class Handler(BaseHTTPRequestHandler):
         if ws is None:
             return self._error(HTTPStatus.NOT_FOUND, f"编辑台下只有对话：{url.path}")
         if rest == []:
-            return self._json({**boards.workspace_detail(ws), "flows": self.server.flows(ws)})
+            return self._json(boards.workspace_detail(ws, self.server.descriptors()))
+        if rest == ["requirement"]:
+            return self._json(boards.requirement_detail(ws))
         if rest == ["flows"]:
-            return self._json(self.server.flows(ws))
-        if rest == ["runs"]:
-            return self._json(boards.list_runs(ws))
-        if len(rest) == 2 and rest[0] == "runs":
-            run_dir = self._run_dir(ws, rest[1])
-            return None if run_dir is None else self._json(boards.run_detail(ws, run_dir))
+            return self._json(boards.workspace_detail(ws, self.server.descriptors())["flows"])
+        if len(rest) == 3 and rest[0] == "outputs":
+            try:
+                return self._json(boards.output_detail(ws, f"{rest[1]}/{rest[2]}"))
+            except (ValueError, output.OutputNotFound) as exc:
+                return self._error(HTTPStatus.NOT_FOUND, str(exc))
         if rest == ["jobs"]:
             return self._json([job.to_dict() for job in jobs.list_jobs(ws.jobs)])
         if len(rest) == 2 and rest[0] == "jobs":
@@ -211,10 +221,16 @@ class Handler(BaseHTTPRequestHandler):
             ws_id = body.get("id")
             if not isinstance(ws_id, str) or not ws_id.strip():
                 return self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 id：工作区名")
+            template_name = str(body.get("template") or "generic")
+            template_path = paths.templates_root() / f"{template_name}.md"
+            if not template_path.is_file():
+                return self._error(HTTPStatus.BAD_REQUEST,
+                                   f"库里没有叫 {template_name!r} 的需求模板")
             try:
-                ws = workspace.create(self.server.workspaces_root, ws_id.strip(),
-                                      title=str(body.get("title") or ""))
-            except workspace.WorkspaceInvalid as exc:
+                ws = root.create(self.server.workspaces_root, ws_id.strip(),
+                                 title=str(body.get("title") or ""),
+                                 template=template_path.read_text(encoding="utf-8"))
+            except root.WorkspaceInvalid as exc:
                 status = HTTPStatus.CONFLICT if "已经有" in str(exc) else HTTPStatus.BAD_REQUEST
                 return self._error(status, str(exc))
             return self._json(boards.workspace_summary(ws), HTTPStatus.CREATED)
@@ -251,27 +267,29 @@ class Handler(BaseHTTPRequestHandler):
         ws = where.workspace
         if ws is None:
             return self._error(HTTPStatus.NOT_FOUND, f"编辑台下只有对话：{self.path}")
-        if rest == ["publish"]:
+        if rest == ["requirement", "confirm"]:
             by = self._by(body)
             if by is None:
                 return None
             try:
-                publish.publish_task(ws.task, by=by)
-            except publish.PublishRefused as exc:
+                requirement.confirm(ws.root, by=by)
+            except requirement.ConfirmRefused as exc:
                 return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
-            return self._json(boards.task_detail(ws.task), HTTPStatus.CREATED)
-        if len(rest) == 3 and rest[0] == "runs" and rest[2] == "accept":
-            run_dir = self._run_dir(ws, rest[1])
-            if run_dir is None:
-                return None
+            return self._json(boards.requirement_detail(ws), HTTPStatus.CREATED)
+        if len(rest) == 4 and rest[0] == "outputs" and rest[3] == "sign":
+            oid = f"{rest[1]}/{rest[2]}"
+            try:
+                directory, _ = outputs.find_output(ws, oid)
+            except (ValueError, output.OutputNotFound) as exc:
+                return self._error(HTTPStatus.NOT_FOUND, str(exc))
             by = self._by(body)
             if by is None:
                 return None
             try:
-                accept.accept_run(run_dir, by=by)
-            except accept.AcceptRefused as exc:
+                output.sign(directory, by=by, note=str(body.get("note") or ""))
+            except output.SignRefused as exc:
                 return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
-            return self._json(boards.run_detail(ws, run_dir), HTTPStatus.CREATED)
+            return self._json(boards.output_detail(ws, oid), HTTPStatus.CREATED)
         return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
 
     # ── 内部 ─────────────────────────────────────────────────────────────
@@ -283,12 +301,12 @@ class Handler(BaseHTTPRequestHandler):
             return scope.studio(self.server.home), parts[1:]
         if parts[0] == "workspaces" and len(parts) >= 2:
             ws_id = parts[1]
-            if not workspace.ID_RE.fullmatch(ws_id):
+            if not root.ID_RE.fullmatch(ws_id):
                 self._error(HTTPStatus.NOT_FOUND, f"没有这个工作区：{ws_id}")
                 return None
             try:
-                ws = workspace.load(self.server.workspaces_root / ws_id)
-            except workspace.WorkspaceNotFound:
+                ws = root.load(self.server.workspaces_root / ws_id)
+            except root.WorkspaceNotFound:
                 self._error(HTTPStatus.NOT_FOUND, f"没有这个工作区：{ws_id}")
                 return None
             return scope.for_workspace(ws), parts[2:]
@@ -382,17 +400,10 @@ class Handler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.NOT_FOUND, str(exc))
             return None
 
-    def _run_dir(self, ws: Workspace, run_id: str) -> Path | None:
-        run_dir = ws.runs / run_id
-        if run_id in ("", ".", "..") or "/" in run_id or not layout.checkpoint(run_dir).is_file():
-            self._error(HTTPStatus.NOT_FOUND, f"run 不存在或没有 checkpoint：{run_id}")
-            return None
-        return run_dir
-
     def _by(self, body: dict[str, Any]) -> str | None:
         by = body.get("by")
         if not isinstance(by, str) or not by.strip():
-            self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 by：谁按的键，记在记录上")
+            self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 by：谁确认的，记在记录上")
             return None
         return by.strip()
 

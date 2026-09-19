@@ -11,84 +11,106 @@ from pathlib import Path
 import pytest
 
 from framework.capabilities import analysis
-from framework.contracts.capability import CapabilityFailed, Ports
-from framework.run import layout
+from framework.contracts.capability import CapabilityFailed, Inputs, Ports
+from framework.workspace import outputs
+from tests.fixtures import packs_factory as pf
 from tests.fixtures import runs_factory as rf
 from tests.fixtures.scripted_backend import ScriptedRunner
 from tests.test_experiment_loop import start_run
 
 
 @pytest.fixture(scope="module")
-def run_dir(tmp_path_factory) -> Path:
+def made(tmp_path_factory) -> tuple[Path, pf.Pack]:
     return rf.make_run(tmp_path_factory.mktemp("analysis"))
+
+
+def _out(pack: pf.Pack) -> tuple[Path, Inputs]:
+    """一次新的分析产出目录 + 读 experiment/1 的输入。"""
+    directory, _ = outputs.open_output(pack.workspace, "analysis", title="t", by="analysis",
+                                       inputs=["experiment/1"], params={}, flow=None, step=None,
+                                       requirement=1, chat_id=None)
+    run_dir = pack.workspace.root / "experiment" / "1"
+    return directory, Inputs(pack.workspace.root, (run_dir,), ("experiment/1",))
 
 
 def _runner(*moves) -> ScriptedRunner:
     return ScriptedRunner(list(moves))
 
 
-def test_analysis_writes_the_doc_and_reports_claims(run_dir):
-    runner = _runner({"analysis/analysis.md": rf.good_analysis(run_dir)})
-    line = analysis.run(run_dir, Ports(runner=runner))
-    assert line.startswith("analysis ok\tclaims=4\tcost_usd=0.0100\tpath=analysis/analysis.md")
-    assert layout.analysis_doc(run_dir).is_file()
-    # 执行层日志从 run 目录下的 .ai4sci 搬进了能力目录，跟产物一起留档
-    assert list((run_dir / "analysis" / "executor").iterdir())
-    assert not (run_dir / ".ai4sci").exists()
+def test_analysis_writes_the_doc_and_reports_claims(made):
+    run_dir, pack = made
+    out, inputs = _out(pack)
+    runner = _runner({"analysis.md": rf.good_analysis(run_dir)})
+    line = analysis.run(out, inputs, Ports(runner=runner))
+    assert line.startswith("analysis ok\tclaims=4\tcost_usd=0.0100\tpath=analysis.md")
+    assert (out / "analysis.md").is_file()
+    # 执行层日志从产出目录下的 .ai4sci 搬进了 executor/，跟产物一起留档
+    assert list((out / "executor").iterdir())
+    assert not (out / ".ai4sci").exists()
 
 
-def test_prompt_carries_full_ledger_notebook_diff_and_results(run_dir):
-    runner = _runner({"analysis/analysis.md": rf.good_analysis(run_dir)})
-    analysis.run(run_dir, Ports(runner=runner))
+def test_prompt_carries_full_ledger_notebook_diff_and_results_per_experiment(made):
+    run_dir, pack = made
+    out, inputs = _out(pack)
+    runner = _runner({"analysis.md": rf.good_analysis(run_dir)})
+    analysis.run(out, inputs, Ports(runner=runner))
     prompt = runner.prompts[0]
-    baseline = repr(rf.metrics_of(run_dir)["run_0"]["val_mse"])
-    for token in ("第 1 轮", "第 2 轮", "第 3 轮", "within noise", rf.REPORTS[1],
-                  "diff --git", "run_0：", "run_3：", baseline, "keep", "共跑 3 轮，留下 2 轮"):
+    baseline = repr(rf.metrics_of(run_dir)["baseline"]["val_mse"])
+    for token in ("## 实验 `experiment/1`", "第 1 轮", "第 2 轮", "第 3 轮", "within noise",
+                  rf.REPORTS[1], "diff --git", "experiment/1/baseline：", "experiment/1/iter_3：",
+                  baseline, "keep", "共跑 3 轮，留下 2 轮", "在固定预算下把 val_mse 压到最低"):
         assert token in prompt, token
 
 
-def test_rerun_rotates_the_previous_dir(run_dir):
-    runner = _runner({"analysis/analysis.md": rf.good_analysis(run_dir)})
-    analysis.run(run_dir, Ports(runner=runner))
-    versions = sorted(p.name for p in run_dir.iterdir() if p.name.startswith("analysis_v"))
-    assert versions and (run_dir / versions[-1] / "analysis.md").is_file()
-    assert layout.analysis_doc(run_dir).is_file()
-
-
-def test_missing_section_fails_and_keeps_the_file(run_dir):
+def test_missing_section_fails_and_keeps_the_file(made):
+    run_dir, pack = made
+    out, inputs = _out(pack)
     broken = rf.good_analysis(run_dir).replace("## 数据", "## 数字")
     with pytest.raises(CapabilityFailed, match="缺少小节 ## 数据"):
-        analysis.run(run_dir, Ports(runner=_runner({"analysis/analysis.md": broken})))
-    assert layout.analysis_doc(run_dir).read_text(encoding="utf-8") == broken
+        analysis.run(out, inputs, Ports(runner=_runner({"analysis.md": broken})))
+    assert (out / "analysis.md").read_text(encoding="utf-8") == broken
 
 
-def test_writing_outside_analysis_dir_fails(run_dir):
+def test_writing_outside_the_doc_fails(made):
+    run_dir, pack = made
+    out, inputs = _out(pack)
+
     def move(cwd: Path) -> None:
-        (cwd / "analysis").mkdir(exist_ok=True)
-        (cwd / "analysis" / "analysis.md").write_text(rf.good_analysis(run_dir), encoding="utf-8")
-        with (cwd / "experiment" / "notebook.md").open("a", encoding="utf-8") as fh:
-            fh.write("\n执行层偷偷加了一行\n")
-    with pytest.raises(CapabilityFailed, match="experiment/notebook.md"):
-        analysis.run(run_dir, Ports(runner=_runner(move)))
+        (cwd / "analysis.md").write_text(rf.good_analysis(run_dir), encoding="utf-8")
+        (cwd / "notes.md").write_text("执行层偷偷加了一个文件\n", encoding="utf-8")
+    with pytest.raises(CapabilityFailed, match="notes.md"):
+        analysis.run(out, inputs, Ports(runner=_runner(move)))
 
 
-def test_dead_session_fails(run_dir):
-    runner = ScriptedRunner([{"analysis/analysis.md": rf.good_analysis(run_dir)}], die_at=(1,))
+def test_dead_session_fails(made):
+    run_dir, pack = made
+    out, inputs = _out(pack)
+    runner = ScriptedRunner([{"analysis.md": rf.good_analysis(run_dir)}], die_at=(1,))
     with pytest.raises(CapabilityFailed, match="没走完"):
-        analysis.run(run_dir, Ports(runner=runner))
+        analysis.run(out, inputs, Ports(runner=runner))
 
 
-def test_no_doc_written_fails(run_dir):
-    with pytest.raises(CapabilityFailed, match="没有写出 analysis/analysis.md"):
-        analysis.run(run_dir, Ports(runner=_runner(lambda cwd: None)))
+def test_no_doc_written_fails(made):
+    _, pack = made
+    out, inputs = _out(pack)
+    with pytest.raises(CapabilityFailed, match="没有写出 analysis.md"):
+        analysis.run(out, inputs, Ports(runner=_runner(lambda cwd: None)))
 
 
-def test_run_without_ledger_fails(tmp_path):
-    fresh, _ = start_run(tmp_path)
+def test_experiment_without_ledger_fails_and_inputs_are_required(tmp_path):
+    fresh, pack = start_run(tmp_path)
+    out, _ = outputs.open_output(pack.workspace, "analysis", title="t", by="analysis",
+                                 inputs=[], params={}, flow=None, step=None, requirement=1,
+                                 chat_id=None)
+    with pytest.raises(CapabilityFailed, match="--from experiment/<n>"):
+        analysis.run(out, Inputs(pack.workspace.root), Ports(runner=_runner({})))
     with pytest.raises(CapabilityFailed, match="没有可分析的账本"):
-        analysis.run(fresh, Ports(runner=_runner({})))
+        analysis.run(out, Inputs(pack.workspace.root, (fresh,), ("experiment/1",)),
+                     Ports(runner=_runner({})))
 
 
-def test_runner_port_is_required(run_dir):
+def test_runner_port_is_required(made):
+    _, pack = made
+    out, inputs = _out(pack)
     with pytest.raises(AssertionError, match="执行层端口"):
-        analysis.run(run_dir, Ports())
+        analysis.run(out, inputs, Ports())

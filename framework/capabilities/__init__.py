@@ -4,14 +4,16 @@
 加一个能力就是加一个子包，`discover()` 用 pkgutil 扫一遍，每个子包必须导出
 
     DESCRIPTOR: Capability                       机器可读的自我描述（contracts/capability.py）
-    run(run_dir: Path, ports: Ports, *, <params>) -> str   统一入口；失败 raise CapabilityFailed
-    （task 级能力的第一个参数叫 workspace：它动的是工作区里的任务包，那时还没有 run；纲领 P-15）
+    run(output_dir: Path, inputs: Inputs, ports: Ports, *, <params>) -> str
+                                                 统一入口：读 inputs、往 output_dir 写；失败 raise
+                                                 CapabilityFailed
 
 签名与描述符对不上在这里就断言炸掉，而不是等 CLI 起来才发现某个参数没人读（P-8）。
 `discover()` 是 CLI 与 UI 后端拿能力的唯一入口，测试也走它。
 
 能力之间没有显式的输入输出接口（P-18）：描述符里没有路径表，这里也不查"谁的输入谁产出"。一颗能力
-要的东西盘上没有，它自己开始执行时报错（P-7），协调 agent 读了报错去补——这是它会的事。
+要的东西 `--from` 点名的产出里没有，它自己开始执行时报错（P-7），协调 agent
+读了报错去补——这是它会的事。
 子包名里的下划线在命令名里是连字符（`auto_research/` 就是 `ai4sci cap auto-research`）：包名
 不许带连字符，给人看的名字又不该带下划线。
 """
@@ -26,8 +28,8 @@ from types import ModuleType
 from framework.contracts.capability import Capability
 
 ENTRYPOINT = "run"
-# 前两个参数按 level 定：第一个参数的名字就说明了这个能力动的是什么（工作区 / run 目录）
-LEADING_PARAMS_BY_LEVEL = {"task": ("workspace", "ports"), "run": ("run_dir", "ports")}
+# 前三个参数：产出目录、输入、端口（纲领 P-19：能力是纯函数，显式输入 → 一个产出目录）
+LEADING_PARAMS = ("output_dir", "inputs", "ports")
 
 
 def command_name(package_name: str) -> str:
@@ -57,15 +59,11 @@ def check_capability_module(package_name: str, module: ModuleType) -> Capability
         f"（下划线换连字符：{command_name(package_name)!r}）")
     entry = getattr(module, ENTRYPOINT, None)
     assert callable(entry), f"能力 {package_name} 没有导出 {ENTRYPOINT}()"
-    assert descriptor.level in LEADING_PARAMS_BY_LEVEL, (
-        f"能力 {package_name} 的 level {descriptor.level!r} 还没有入口约定"
-        f"（有的：{tuple(LEADING_PARAMS_BY_LEVEL)}）")
-    leading = LEADING_PARAMS_BY_LEVEL[descriptor.level]
+    leading = LEADING_PARAMS
     params = inspect.signature(entry).parameters
     names = tuple(params)
     assert names[: len(leading)] == leading, (
-        f"能力 {package_name}（level={descriptor.level}）的 {ENTRYPOINT}() 前两个参数必须是 "
-        f"{leading}，得到 {names[:2]}")
+        f"能力 {package_name} 的 {ENTRYPOINT}() 前三个参数必须是 {leading}，得到 {names[:3]}")
     keyword_only = tuple(n for n, p in params.items() if p.kind is inspect.Parameter.KEYWORD_ONLY)
     assert keyword_only == descriptor.param_names(), (
         f"能力 {package_name} 的 {ENTRYPOINT}() 关键字参数 {keyword_only} 与描述符 params "

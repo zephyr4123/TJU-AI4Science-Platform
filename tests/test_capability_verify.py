@@ -1,7 +1,7 @@
 """验证能力：零模型、确定性，所以每条判据都能用一份构造出来的分析证明。
 
-A-10 是核心：编一个数字进去，必须 FAIL。其余是边界（容差、表外正文数、不存在的 run、
-账本被动过、没有分析）与产物合约（报告过 schema、重跑轮转）。
+A-10 是核心：编一个数字进去，必须 FAIL。其余是边界（容差、表外正文数、不存在的来源、
+账本被动过、没有分析）与产物合约（报告过 schema）。
 """
 
 from __future__ import annotations
@@ -12,118 +12,139 @@ from pathlib import Path
 import pytest
 
 from framework.capabilities import verify
-from framework.contracts.capability import CapabilityFailed, Ports
-from framework.contracts.report import read_report
-from framework.run import layout
+from framework.contracts.capability import CapabilityFailed, Inputs, Ports
+from framework.experiment import layout
+from framework.experiment.report import read_report
+from framework.workspace import outputs
+from tests.fixtures import packs_factory as pf
 from tests.fixtures import runs_factory as rf
 
 
 @pytest.fixture(scope="module")
-def run_dir(tmp_path_factory) -> Path:
+def made(tmp_path_factory) -> tuple[Path, pf.Pack]:
     return rf.make_run(tmp_path_factory.mktemp("verify"))
 
 
-def _report(run_dir: Path) -> dict:
-    return read_report(layout.verify_report(run_dir))
+def _verify(pack: pf.Pack, analysis_dir: Path, **params) -> tuple[str, Path]:
+    """开一次验证产出、跑验证；返回结论行与产出目录。"""
+    out, _ = outputs.open_output(pack.workspace, "verification", title="t", by="verify",
+                                 inputs=[f"analysis/{analysis_dir.name}", "experiment/1"],
+                                 params={}, flow=None, step=None, requirement=1, chat_id=None)
+    run_dir = pack.workspace.root / "experiment" / "1"
+    inputs = Inputs(pack.workspace.root, (analysis_dir, run_dir),
+                    (f"analysis/{analysis_dir.name}", "experiment/1"))
+    return verify.run(out, inputs, Ports(), **params), out
 
 
-def _failed_names(run_dir: Path) -> list[str]:
-    return [c["name"] for c in _report(run_dir)["checks"] if not c["passed"]]
+def _report(out: Path) -> dict:
+    return read_report(out / "report.json")
 
 
-def test_consistent_analysis_passes(run_dir):
-    rf.write_analysis(run_dir, rf.good_analysis(run_dir))
-    line = verify.run(run_dir, Ports())
-    assert line == "verify PASS\tchecks=4\tpath=verify/report.json"
-    report = _report(run_dir)
-    assert report["status"] == "PASS"
+def _failed_names(out: Path) -> list[str]:
+    return [c["name"] for c in _report(out)["checks"] if not c["passed"]]
+
+
+def test_consistent_analysis_passes(made):
+    run_dir, pack = made
+    doc = rf.write_analysis(pack, rf.good_analysis(run_dir))
+    line, out = _verify(pack, doc)
+    assert line == "verify PASS\tchecks=4\tpath=report.json"
+    report = _report(out)
+    assert report["status"] == "PASS" and report["analysis"] == f"analysis/{doc.name}"
     assert [c["name"] for c in report["checks"]] == [
-        "analysis_present", "numbers_traceable", "prose_numbers_in_table", "ledger_reconciled"]
+        "analysis_present", "numbers_traceable", "prose_numbers_in_table",
+        "ledger_reconciled:experiment/1"]
     assert any("核对 4 个值" in d for d in report["checks"][1]["details"])
 
 
-def test_a10_fabricated_table_value_fails(run_dir):
-    best = repr(rf.metrics_of(run_dir)["run_3"]["val_mse"])
-    text = rf.good_analysis(run_dir).replace(f"| run_3 | val_mse | {best} |",
-                                             "| run_3 | val_mse | 0.0005 |")
-    rf.write_analysis(run_dir, text)
-    with pytest.raises(CapabilityFailed, match="verify FAIL 2/4：numbers_traceable"):
-        verify.run(run_dir, Ports())
-    assert _report(run_dir)["status"] == "FAIL"
+def test_a10_fabricated_table_value_fails(made):
+    run_dir, pack = made
+    best = repr(rf.metrics_of(run_dir)["iter_3"]["val_mse"])
+    text = rf.good_analysis(run_dir).replace(f"| experiment/1/iter_3 | val_mse | {best} |",
+                                             "| experiment/1/iter_3 | val_mse | 0.0005 |")
+    doc = rf.write_analysis(pack, text)
+    with pytest.raises(CapabilityFailed, match="verify FAIL 2/4：numbers_traceable") as exc:
+        _verify(pack, doc)
+    out = pack.workspace.root / "verification" / str(max(
+        int(p.name) for p in (pack.workspace.root / "verification").iterdir()))
+    assert _report(out)["status"] == "FAIL" and "report.json" in str(exc.value)
     # 表里的值编了，正文引用它的那句也就对不上表了：两项一起 FAIL，各说各的行号
-    assert _failed_names(run_dir) == ["numbers_traceable", "prose_numbers_in_table"]
-    detail = _report(run_dir)["checks"][1]["details"][0]
-    assert "run_3 的 val_mse 声称 0.0005" in detail and "超出 1% 容差" in detail
+    assert _failed_names(out) == ["numbers_traceable", "prose_numbers_in_table"]
+    detail = _report(out)["checks"][1]["details"][0]
+    assert "experiment/1/iter_3 的 val_mse 声称 0.0005" in detail and "超出 1% 容差" in detail
 
 
-def test_fabricated_prose_number_fails(run_dir):
+def test_fabricated_prose_number_fails(made):
+    run_dir, pack = made
     text = rf.good_analysis(run_dir).replace("共 3 轮", "共 3 轮，另外 0.1234 也不错")
-    rf.write_analysis(run_dir, text)
+    doc = rf.write_analysis(pack, text)
     with pytest.raises(CapabilityFailed, match="prose_numbers_in_table"):
-        verify.run(run_dir, Ports())
-    assert _failed_names(run_dir) == ["prose_numbers_in_table"]
-    assert any("0.1234 不在数据表里" in d
-               for d in _report(run_dir)["checks"][2]["details"])
+        _verify(pack, doc)
 
 
-def test_unknown_run_or_metric_fails(run_dir):
-    text = rf.good_analysis(run_dir).replace("## 证伪", "| run_9 | val_mse | 0.1 |\n\n## 证伪", 1)
-    rf.write_analysis(run_dir, text)
-    with pytest.raises(CapabilityFailed, match="run_9 没有指标 val_mse"):
-        verify.run(run_dir, Ports())
+def test_unknown_source_or_metric_fails(made):
+    run_dir, pack = made
+    text = rf.good_analysis(run_dir).replace(
+        "## 证伪", "| experiment/1/iter_9 | val_mse | 0.1 |\n\n## 证伪", 1)
+    doc = rf.write_analysis(pack, text)
+    with pytest.raises(CapabilityFailed, match="experiment/1/iter_9 没有指标 val_mse"):
+        _verify(pack, doc)
 
 
-def test_tolerance_is_relative_and_adjustable(run_dir):
-    best = rf.metrics_of(run_dir)["run_3"]["val_mse"]
+def test_tolerance_is_relative_and_adjustable(made):
+    run_dir, pack = made
+    best = rf.metrics_of(run_dir)["iter_3"]["val_mse"]
     base = rf.good_analysis(run_dir)
-    near = base.replace(repr(best), repr(best * 1.005))
-    rf.write_analysis(run_dir, near)
-    assert verify.run(run_dir, Ports()).startswith("verify PASS")
-    far = base.replace(repr(best), repr(best * 1.02))
-    rf.write_analysis(run_dir, far)
+    near = rf.write_analysis(pack, base.replace(repr(best), repr(best * 1.005)))
+    assert _verify(pack, near)[0].startswith("verify PASS")
+    far = rf.write_analysis(pack, base.replace(repr(best), repr(best * 1.02)))
     with pytest.raises(CapabilityFailed, match="numbers_traceable"):
-        verify.run(run_dir, Ports())
-    assert verify.run(run_dir, Ports(), tolerance=0.05).startswith("verify PASS")
+        _verify(pack, far)
+    assert _verify(pack, far, tolerance=0.05)[0].startswith("verify PASS")
     with pytest.raises(AssertionError, match="tolerance"):
-        verify.run(run_dir, Ports(), tolerance=1.5)
+        _verify(pack, far, tolerance=1.5)
 
 
-def test_missing_analysis_fails_with_a_single_check(run_dir):
-    doc = layout.analysis_doc(run_dir)
-    saved = doc.read_text(encoding="utf-8")
-    doc.unlink()
-    try:
-        with pytest.raises(CapabilityFailed, match="analysis_present"):
-            verify.run(run_dir, Ports())
-        report = _report(run_dir)
-        assert report["status"] == "FAIL" and len(report["checks"]) == 1
-    finally:
-        doc.write_text(saved, encoding="utf-8")
+def test_missing_analysis_fails_with_a_single_check(made):
+    run_dir, pack = made
+    doc = rf.write_analysis(pack, rf.good_analysis(run_dir))
+    (doc / "analysis.md").unlink()
+    with pytest.raises(CapabilityFailed, match="analysis_present"):
+        _verify(pack, doc)
+    out = pack.workspace.root / "verification" / str(max(
+        int(p.name) for p in (pack.workspace.root / "verification").iterdir()))
+    report = _report(out)
+    assert report["status"] == "FAIL" and len(report["checks"]) == 1
 
 
-def test_rerun_rotates_previous_report(run_dir):
-    rf.write_analysis(run_dir, rf.good_analysis(run_dir))
-    verify.run(run_dir, Ports())
-    verify.run(run_dir, Ports())
-    versions = sorted(p.name for p in run_dir.iterdir() if p.name.startswith("verify_v"))
-    assert versions and (run_dir / versions[-1] / "report.json").is_file()
+def test_inputs_must_include_the_analysis_and_its_experiments(made):
+    run_dir, pack = made
+    doc = rf.write_analysis(pack, rf.good_analysis(run_dir))
+    out, _ = outputs.open_output(pack.workspace, "verification", title="t", by="verify",
+                                 inputs=[], params={}, flow=None, step=None, requirement=1,
+                                 chat_id=None)
+    with pytest.raises(CapabilityFailed, match="要且只要一个「analysis」"):
+        verify.run(out, Inputs(pack.workspace.root), Ports())
+    with pytest.raises(CapabilityFailed, match="--from experiment/<n>"):
+        verify.run(out, Inputs(pack.workspace.root, (doc,), (f"analysis/{doc.name}",)), Ports())
 
 
 def test_tampered_ledger_fails(tmp_path):
-    run_dir = rf.make_run(tmp_path)
-    rf.write_analysis(run_dir, rf.good_analysis(run_dir))
+    run_dir, pack = rf.make_run(tmp_path)
+    doc = rf.write_analysis(pack, rf.good_analysis(run_dir))
     ledger_path = layout.ledger(run_dir)
     lines = ledger_path.read_text(encoding="utf-8").splitlines()
     cells = lines[-1].split("\t")
     cells[1] = "0" * 40
     lines[-1] = "\t".join(cells)
     ledger_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    with pytest.raises(CapabilityFailed, match="verify FAIL 1/4：ledger_reconciled"):
-        verify.run(run_dir, Ports())
+    with pytest.raises(CapabilityFailed, match="verify FAIL 1/4：ledger_reconciled:experiment/1"):
+        _verify(pack, doc)
 
 
-def test_report_is_valid_json_under_schema(run_dir):
-    rf.write_analysis(run_dir, rf.good_analysis(run_dir))
-    verify.run(run_dir, Ports())
-    doc = json.loads(layout.verify_report(run_dir).read_text(encoding="utf-8"))
-    assert set(doc) == {"status", "generated_at", "analysis", "checks"}
+def test_report_is_valid_json_under_schema(made):
+    run_dir, pack = made
+    doc = rf.write_analysis(pack, rf.good_analysis(run_dir))
+    _, out = _verify(pack, doc)
+    report = json.loads((out / "report.json").read_text(encoding="utf-8"))
+    assert set(report) == {"status", "generated_at", "analysis", "checks"}

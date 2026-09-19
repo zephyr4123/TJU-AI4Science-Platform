@@ -1,0 +1,16 @@
+id: design/1
+stage: design
+title: 写评分脚本、跑基线
+by: design
+created_at: '2026-09-19T06:59:13+00:00'
+status: ok
+from: []
+params:
+  domain: petab
+flow: null
+step: null
+requirement: 1
+chat_id: null
+finished_at: '2026-09-19T06:59:13+00:00'
+result: 迁移自旧布局
+error: ''

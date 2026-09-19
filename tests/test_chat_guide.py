@@ -8,7 +8,7 @@ import pytest
 
 from framework import paths
 from framework.chat import guide, scope
-from framework.run import workspace
+from framework.workspace import root as workspace
 
 
 def _commands(text: str) -> list[str]:
@@ -38,21 +38,23 @@ def test_missing_or_empty_guide_is_an_error(tmp_path):
 
 
 def test_the_two_scopes_write_to_disjoint_places(tmp_path, monkeypatch):
-    """分权靠白名单：研究助理只写工作区里的三样，造流助理只写库；两组没有交集。"""
+    """分权靠白名单：研究助理只写自己的工作区，造流助理只写库；两组没有交集。"""
     ws = workspace.create(tmp_path / "workspaces", "w1")
     library = tmp_path / "lib" / "workflows"
     library.mkdir(parents=True)
+    templates = tmp_path / "lib" / "templates"
+    templates.mkdir()
     monkeypatch.setenv(paths.WORKFLOWS_ROOT_ENV, str(library))
+    monkeypatch.setenv(paths.TEMPLATES_ROOT_ENV, str(templates))
     research = scope.for_workspace(ws)
     studio = scope.studio(tmp_path)
     assert research.kind == "workspace" and research.cwd == ws.root
-    assert research.allowed_paths == (ws.task, ws.flows, ws.runs) and research.chats == ws.chats
+    assert research.allowed_paths == (ws.root,) and research.chats == ws.platform / "chats"
     assert studio.kind == "studio" and studio.cwd == library.parent
     assert studio.allowed_paths == (library,) and studio.chats == tmp_path / "studio" / "chats"
     assert not set(research.allowed_paths) & set(studio.allowed_paths)
-    assert all(p.is_relative_to(ws.root) for p in research.allowed_paths)
-    # 库对研究助理是只读的：在可读清单里、不在可写清单里；造流助理反过来
-    assert research.readable_paths == (library,) and studio.readable_paths == ()
+    # 两个库对研究助理是只读的：在可读清单里、不在可写清单里；造流助理反过来
+    assert research.readable_paths == (library, templates) and studio.readable_paths == ()
 
 
 def test_bash_rules_only_allow_bare_ai4sci():
@@ -93,8 +95,9 @@ def test_research_guide_takes_flows_and_never_builds_them():
     assert "## 拼一条自己的流" not in text and "workflows/<name>.yaml" not in text
     assert "不要造流" in text and "去编辑台" in text
     assert "不要自己把 `ai4sci cap` 放后台" in text
+    assert "ai4sci show templates" in text and "你不做" in text  # 需求：只写不确认
     for line in _commands(text):
-        assert "tasks/" not in line and "workspaces/" not in line, line
+        assert "task/" not in line and "workspaces/" not in line, line
 
 
 def test_studio_guide_builds_flows_and_never_runs_experiments():
@@ -117,5 +120,5 @@ def test_the_studio_guides_example_workflow_actually_loads_and_passes(tmp_path):
     catalog = {name: module.DESCRIPTOR for name, module in discover().items()}
     assert workflows.workflow_problems(wf, catalog) == []
     [described] = workflows.describe([wf], catalog)
-    assert described["covers"] == ["实验", "分析"] and len(described["remarks"]) == 2
+    assert described["covers"] == ["实验", "分析"] and len(described["remarks"]) == 1
     assert wf.stages[0].picks[0].with_ == {"max_iters": 2}

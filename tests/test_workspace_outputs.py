@@ -1,0 +1,86 @@
+"""产出目录的建、找、列与冻结（P-19）：序号只增不复用；被引用或被签的产出改了就拒读；没成的不能当输入。"""
+
+from __future__ import annotations
+
+import pytest
+
+from framework.contracts import output
+from framework.workspace import outputs
+from framework.workspace import root as ws_mod
+
+
+def _ws(tmp_path):
+    ws = ws_mod.create(ws_mod.workspaces_root(tmp_path), "w")
+    return ws
+
+
+def _open(ws, slug, inputs=(), **kw):
+    fields = {"title": "t", "by": "assistant", "inputs": list(inputs), "params": {},
+              "flow": None, "step": None, "requirement": 1, "chat_id": None, **kw}
+    return outputs.open_output(ws, slug, **fields)
+
+
+def test_numbers_grow_and_never_reuse_and_failures_stay_on_disk(tmp_path):
+    ws = _ws(tmp_path)
+    d1, m1 = _open(ws, "design")
+    assert m1.id == "design/1" and d1 == ws.root / "design" / "1" and m1.status == "running"
+    outputs.close_output(d1, m1, ok=False, line="草稿有问题")
+    assert output.read_meta(d1).status == "failed" and output.read_meta(d1).error == "草稿有问题"
+    d2, m2 = _open(ws, "design")
+    assert m2.id == "design/2"
+    outputs.close_output(d2, m2, ok=True, line="design ok")
+    assert output.read_meta(d2).result == "design ok" and output.read_meta(d2).finished_at
+    # 删掉 2 再开：编号接着最大的已有编号，不复用不是硬保证（目录没了就没了），但不会撞上还在的 1
+    assert [m.id for _, m in outputs.list_outputs(ws)] == ["design/1", "design/2"]
+    assert [m.id for _, m in outputs.list_outputs(ws, "design")] == ["design/1", "design/2"]
+    assert outputs.list_outputs(ws, "experiment") == []
+    assert outputs.find_output(ws, "design/2")[1].id == "design/2"
+    with pytest.raises(output.OutputNotFound, match="没有产出 design/9"):
+        outputs.find_output(ws, "design/9")
+    with pytest.raises(ValueError, match="<阶段目录>/<序号>"):
+        outputs.find_output(ws, "design")
+
+
+def test_inputs_must_exist_be_ok_and_be_unchanged_since_referenced(tmp_path):
+    ws = _ws(tmp_path)
+    d1, m1 = _open(ws, "design")
+    (d1 / "scoring.yaml").write_text("a: 1\n", encoding="utf-8")
+    with pytest.raises(output.OutputChanged, match="没成（running）"):
+        outputs.resolve_inputs(ws, ["design/1"])
+    outputs.close_output(d1, m1, ok=True, line="ok")
+    # 没被引用之前随便改
+    (d1 / "scoring.yaml").write_text("a: 2\n", encoding="utf-8")
+    assert outputs.referenced_hash(ws, "design/1") is None
+    got = outputs.resolve_inputs(ws, ["design/1", "design/1"])
+    assert got.ids == ("design/1",) and got.outputs == (d1,) and got.workspace == ws.root
+    # 被 experiment/1 引用后冻住：hash 记在 experiment/1 的 meta 里
+    e1, me1 = _open(ws, "experiment", inputs=["design/1"])
+    assert me1.inputs[0].id == "design/1" and me1.inputs[0].sha256 == output.tree_hash(d1)
+    assert outputs.referenced_hash(ws, "design/1") == output.tree_hash(d1)
+    outputs.check_frozen(ws, "design/1")  # 没改，过
+    (d1 / "scoring.yaml").write_text("a: 3\n", encoding="utf-8")
+    with pytest.raises(output.OutputChanged, match="改过了"):
+        outputs.resolve_inputs(ws, ["design/1"])
+    with pytest.raises(output.OutputChanged):
+        outputs.check_frozen(ws, "design/1")
+
+
+def test_a_signature_also_freezes(tmp_path):
+    ws = _ws(tmp_path)
+    d1, m1 = _open(ws, "design")
+    (d1 / "x").write_text("1", encoding="utf-8")
+    outputs.close_output(d1, m1, ok=True, line="ok")
+    output.sign(d1, by="me")
+    assert outputs.referenced_hash(ws, "design/1") == output.tree_hash(d1)
+    (d1 / "x").write_text("2", encoding="utf-8")
+    with pytest.raises(output.OutputChanged):
+        outputs.resolve_inputs(ws, ["design/1"])
+
+
+def test_touch_output_keeps_the_same_directory(tmp_path):
+    ws = _ws(tmp_path)
+    d1, m1 = _open(ws, "experiment")
+    outputs.close_output(d1, m1, ok=True, line="stop batch")
+    outputs.touch_output(d1, m1, line="stop again")
+    assert output.read_meta(d1).result == "stop again" and output.read_meta(d1).status == "ok"
+    assert [m.id for _, m in outputs.list_outputs(ws)] == ["experiment/1"]

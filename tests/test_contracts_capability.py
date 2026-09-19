@@ -1,5 +1,5 @@
 """能力描述符与发现：每颗能力都得说清自己属于哪个阶段、五栏（干什么 / 不干什么 / 要带什么进来 /
-留下什么 / 什么时候停）都填了，入口签名与描述符对得上（P-12、P-18）。
+留下什么 / 什么时候停）都填了，入口签名与描述符对得上（P-12、P-18、P-19）。
 
 `discover()` 里的断言是生产路径上的机器判据，这里既证明它对真能力放行，也证明它抓得住
 各种对不上的假模块——一个永远放行的检查器比没有检查器更坏。
@@ -8,19 +8,28 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import ModuleType
 
 import pytest
 
 from framework.capabilities import check_capability_module, command_name, discover
-from framework.contracts.capability import COLUMNS, STAGES, Capability, Param, Ports
+from framework.contracts.capability import (
+    COLUMNS,
+    Capability,
+    CapabilityFailed,
+    Inputs,
+    Param,
+    Ports,
+)
+from framework.contracts.stages import STAGE_NAMES, STAGE_SLUGS, name_of, slug_of
 
 FIVE = {"does": "干", "does_not": "不干", "brings": "带", "leaves": "留", "stops": "停"}
 
 
-def C(name: str, level: str, **kw) -> Capability:
+def C(name: str, **kw) -> Capability:
     """测试用的最小描述符：阶段、标题与五栏给定值，只让每个用例关心自己那一处。"""
-    return Capability(name, level, **{"stage": "实验", "title": "t", **FIVE, **kw})
+    return Capability(name, **{"stage": "实验", "title": "t", **FIVE, **kw})
 
 
 def _module(name: str, descriptor: object, entry: object) -> ModuleType:
@@ -32,11 +41,9 @@ def _module(name: str, descriptor: object, entry: object) -> ModuleType:
     return module
 
 
-def test_discover_finds_the_five_capabilities_and_all_pass_the_checks():
+def test_discover_finds_the_four_capabilities_and_all_pass_the_checks():
     found = discover()
-    assert set(found) == {"init", "design", "auto-research", "analysis", "verify"}
-    assert {found[n].DESCRIPTOR.level for n in ("init", "design", "auto-research")} == {"task"}
-    assert {found[n].DESCRIPTOR.level for n in ("analysis", "verify")} == {"run"}
+    assert set(found) == {"design", "auto-research", "analysis", "verify"}
     for name, module in found.items():
         assert module.DESCRIPTOR.name == name
         json.dumps(module.DESCRIPTOR.to_dict(), ensure_ascii=False)  # UI 后端要能直接吃
@@ -47,12 +54,12 @@ def test_command_name_turns_underscores_into_hyphens():
     assert command_name("verify") == "verify"
 
 
-def test_who_runs_what():
+def test_who_runs_what_and_who_can_continue():
     found = discover()
     assert found["auto-research"].DESCRIPTOR.needs_compute is True
     assert found["analysis"].DESCRIPTOR.needs_compute is False
     assert found["verify"].DESCRIPTOR.needs_executor is False
-    assert found["init"].DESCRIPTOR.needs_executor is False
+    assert {n for n, m in found.items() if m.DESCRIPTOR.continuable} == {"design", "auto-research"}
 
 
 def test_param_names_match_entrypoint_keyword_arguments():
@@ -61,17 +68,15 @@ def test_param_names_match_entrypoint_keyword_arguments():
 
 
 @pytest.mark.parametrize("descriptor, entry, message", [
-    (None, lambda run_dir, ports: "", "没有导出"),
-    (C("other", "run"), lambda run_dir, ports: "", "必须等于子包名"),
-    (C("cap", "run"), None, "没有导出 run"),
-    (C("cap", "run"), lambda ports, run_dir: "", "前两个参数"),
-    (C("cap", "run", params=(Param("k", "int", 1, "h"),)),
-     lambda run_dir, ports: "", "对不上"),
-    (C("cap", "run"), lambda run_dir, ports, *, k=1: "", "对不上"),
-    (C("cap", "run"), lambda run_dir, ports, extra: "", "只许关键字参数"),
-    # task 级的第一个参数叫 workspace：名字说明它动的是哪种目录
-    (C("cap", "task"), lambda run_dir, ports: "", "前两个参数"),
-    (C("cap", "project"), lambda project_dir, ports: "", "还没有入口约定"),
+    (None, lambda output_dir, inputs, ports: "", "没有导出"),
+    (C("other"), lambda output_dir, inputs, ports: "", "必须等于子包名"),
+    (C("cap"), None, "没有导出 run"),
+    (C("cap"), lambda ports, inputs, output_dir: "", "前三个参数"),
+    (C("cap"), lambda run_dir, ports: "", "前三个参数"),
+    (C("cap", params=(Param("k", "int", 1, "h"),)),
+     lambda output_dir, inputs, ports: "", "对不上"),
+    (C("cap"), lambda output_dir, inputs, ports, *, k=1: "", "对不上"),
+    (C("cap"), lambda output_dir, inputs, ports, extra: "", "只许关键字参数"),
 ])
 def test_check_rejects_modules_that_do_not_match(descriptor, entry, message):
     with pytest.raises(AssertionError, match=message):
@@ -79,57 +84,63 @@ def test_check_rejects_modules_that_do_not_match(descriptor, entry, message):
 
 
 def test_check_accepts_a_matching_module_and_maps_hyphens():
-    descriptor = C("cap", "run", params=(Param("k", "int", 1, "h"),))
-    module = _module("cap", descriptor, lambda run_dir, ports, *, k=1: "ok")
+    descriptor = C("cap", params=(Param("k", "int", 1, "h"),))
+    module = _module("cap", descriptor, lambda output_dir, inputs, ports, *, k=1: "ok")
     assert check_capability_module("cap", module) is descriptor
-    hyphened = C("auto-thing", "run")
-    module = _module("auto_thing", hyphened, lambda run_dir, ports: "ok")
+    hyphened = C("auto-thing")
+    module = _module("auto_thing", hyphened, lambda output_dir, inputs, ports: "ok")
     assert check_capability_module("auto_thing", module) is hyphened
 
 
-def test_descriptor_rejects_bad_level_stage_and_duplicate_params():
-    with pytest.raises(AssertionError, match="level"):
-        C("cap", "galaxy")
+def test_descriptor_rejects_bad_stage_and_duplicate_params():
     with pytest.raises(AssertionError, match="阶段"):
-        C("cap", "run", stage="调参")
+        C("cap", stage="调参")
     with pytest.raises(AssertionError, match="重复"):
-        C("cap", "run", params=(Param("k", "int", 1, "h"),) * 2)
+        C("cap", params=(Param("k", "int", 1, "h"),) * 2)
 
 
 @pytest.mark.parametrize("key, label", COLUMNS)
 def test_descriptor_needs_all_five_columns(key, label):
     with pytest.raises(AssertionError, match=f"「{label}」空着"):
-        C("cap", "run", **{key: "  "})
+        C("cap", **{key: "  "})
 
 
 def test_descriptor_needs_a_title_and_no_defaults_for_the_human_copy():
     with pytest.raises(AssertionError, match="title"):
-        C("cap", "run", title=" ")
+        C("cap", title=" ")
     with pytest.raises(TypeError):  # 阶段、标题与五栏都是必填的，不给缺省
-        Capability("cap", "run")  # type: ignore[call-arg]
+        Capability("cap")  # type: ignore[call-arg]
 
 
-def test_every_shipped_capability_sits_in_a_room_with_all_columns_filled():
+def test_every_shipped_capability_sits_in_a_stage_with_all_columns_filled():
     stages = {name: module.DESCRIPTOR.stage for name, module in discover().items()}
-    assert stages == {"init": "假设", "design": "设计", "auto-research": "实验",
-                      "analysis": "分析", "verify": "验证"}
+    assert stages == {"design": "设计", "auto-research": "实验", "analysis": "分析",
+                      "verify": "验证"}
     for module in discover().values():
         d = module.DESCRIPTOR
         assert d.title
-        assert d.to_dict()["stage"] in STAGES  # UI 与 show caps 读的就是这个键
+        doc = d.to_dict()
+        assert doc["stage"] in STAGE_NAMES and doc["stage_slug"] == slug_of(d.stage)
         for key, _ in COLUMNS:
             assert len(getattr(d, key)) > 20, f"{d.name}.{key} 太短，五栏要讲机制"
 
 
+def test_stage_table_maps_both_ways():
+    assert len(STAGE_NAMES) == 7 and len(set(STAGE_SLUGS)) == 7
+    for name, slug in zip(STAGE_NAMES, STAGE_SLUGS, strict=True):
+        assert slug_of(name) == slug and name_of(slug) == name
+        assert slug.isascii() and slug.islower()
+    with pytest.raises(AssertionError):
+        slug_of("调参")
+
+
 def test_param_in_flow_defaults_true_and_invocation_only_ones_are_marked():
     assert Param("k", "int", 1, "h").in_flow is True
-    from framework.capabilities import discover
     catalog = {name: module.DESCRIPTOR for name, module in discover().items()}
     by = {(c, p.name): p.in_flow for c in catalog for p in catalog[c].params}
-    assert by[("auto-research", "run_id")] is False and by[("auto-research", "resume")] is False
+    assert by[("auto-research", "resume")] is False and by[("auto-research", "reason")] is False
     assert by[("auto-research", "max_iters")] is True
-    assert by[("init", "materials")] is False and by[("init", "domain")] is True
-    assert by[("design", "feedback")] is False
+    assert by[("design", "feedback")] is False and by[("design", "domain")] is True
     assert by[("verify", "tolerance")] is True
 
 
@@ -142,3 +153,12 @@ def test_param_rejects_unknown_type_and_bad_name():
 
 def test_ports_default_to_nothing():
     assert Ports() == Ports(runner=None, compute=None)
+
+
+def test_inputs_pick_by_stage_and_demand_exactly_one():
+    inputs = Inputs(Path("/ws"), (Path("/ws/design/1"), Path("/ws/experiment/2")),
+                    ("design/1", "experiment/2"))
+    assert inputs.of_stage("design") == [Path("/ws/design/1")]
+    assert inputs.one_of("experiment", "验证") == Path("/ws/experiment/2")
+    with pytest.raises(CapabilityFailed, match="要且只要一个「analysis」"):
+        inputs.one_of("analysis", "验证")

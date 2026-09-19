@@ -1,216 +1,121 @@
-"""看板读盘：工作区（需求 = 任务包、run 清单）与 run 的细节。纯读盘、零模型。
+"""看板读盘：工作区（需求、七个阶段的产出、每条流走到哪、作业）与一次产出的细节。纯读盘、零模型。
 
 页面是 `ai4sci serve` 的客户端（`ui/README.md`）：这里每个函数就是一个端点的响应体，
 server 只做路由；换一种 UI（TUI）读的也是同一份东西。每个响应体都是能直接 `json.dumps`
 的字典——NaN 在这里就换成 None，浏览器的 JSON.parse 不认 NaN。
+
+按纲领 P-19 只读框架认的东西：需求、meta.yaml、signed.json、流文件、作业。产出目录里其它文件只列名字
+（页面按文件种类通用渲染），不解释内容。
 """
 
 from __future__ import annotations
 
-import json
 import math
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-import yaml
+from framework.contracts import output, requirement, workflows
+from framework.contracts.capability import Capability
+from framework.contracts.stages import STAGES
+from framework.workspace import jobs, outputs, progress
+from framework.workspace.root import Workspace
 
-from framework.contracts import headroom, packs, publish
-from framework.contracts.report import read_report
-from framework.memory import ledger
-from framework.run import accept, flow_state, jobs, layout
-from framework.run.checkpoint import read_checkpoint
-from framework.run.context import load_manifest, primary_metric
-from framework.run.workspace import Workspace
-
-# 任务包走到哪一步。看板按它决定该亮发布还是验收、说哪句「下一步」。
-STAGES = ("drafting", "published", "designed", "baselined")
+# 产出目录里给页面列文件时跳过的：框架的两份文件、环境、git、日志、缓存
+LISTING_IGNORED = frozenset({output.META_NAME, output.SIGNED_NAME, ".venv", ".git", "__pycache__",
+                             ".ai4sci", "executor"})
+LISTING_LIMIT = 200
+# 小文本文件的正文直接带上，页面照渲染；大的与二进制只给名字
+TEXT_SUFFIXES = (".md", ".txt", ".yaml", ".yml", ".json", ".tsv", ".csv")
+TEXT_LIMIT = 200_000
 
 
 # ── 工作区 ───────────────────────────────────────────────────────────────
 def workspace_summary(workspace: Workspace) -> dict[str, Any]:
-    """顶栏切换用的一行：标题、任务包走到哪、几个 run。还没起任务包时 task 是 None。"""
-    has_task = (workspace.task / packs.MANIFEST_NAME).is_file()
-    return {**workspace.to_dict(), "task": task_summary(workspace.task) if has_task else None,
-            "runs": len(_run_dirs(workspace))}
+    """地方栏用的一行：标题、需求状态、每个阶段有几次产出、有没有作业在跑。"""
+    found = outputs.list_outputs(workspace)
+    counts = {s.slug: 0 for s in STAGES}
+    for _, meta in found:
+        counts[meta.stage] += 1
+    return {**workspace.to_dict(), "counts": counts,
+            "running": len(jobs.running_jobs(workspace.jobs))}
 
 
-def workspace_detail(workspace: Workspace) -> dict[str, Any]:
-    """主页面要的一整份：任务包的细节 + 全部 run 的摘要；流实例由 server 从 cli 注入的函数补。"""
-    summary = workspace_summary(workspace)
-    task = task_detail(workspace.task) if summary["task"] is not None else None
-    return {**summary, "task": task, "runs": list_runs(workspace)}
+def workspace_detail(workspace: Workspace, catalog: dict[str, Capability]) -> dict[str, Any]:
+    """主页面要的一整份：需求 + 七个阶段各自的产出 + 每条流实例的进度 + 作业。"""
+    found = outputs.list_outputs(workspace)
+    briefs = {meta.id: output_brief(directory, meta) for directory, meta in found}
+    stages = [{"name": s.name, "slug": s.slug,
+               "outputs": [b for b in briefs.values() if b["stage"] == s.slug]}
+              for s in STAGES]
+    flows = []
+    for described in workflows.describe_dir(workspace.flows, catalog):
+        if described["problems"]:
+            flows.append(described)
+            continue
+        wf = workflows.load_workflow(workspace.flows / f"{described['name']}.yaml")
+        flows.append({**described, **progress.flow_progress(workspace, wf, found)})
+    return {**workspace_summary(workspace), "requirement": requirement_detail(workspace),
+            "stages": stages, "flows": flows,
+            "jobs": [job.to_dict() for job in jobs.list_jobs(workspace.jobs)]}
 
 
 # ── 需求 ─────────────────────────────────────────────────────────────────
-def task_summary(task_dir: Path) -> dict[str, Any]:
-    task_dir = Path(task_dir)
-    manifest = _read_manifest(task_dir)
-    return {
-        "id": packs.task_id_of(task_dir),
-        "title": manifest.get("title") or task_dir.name,
-        "question": manifest.get("question") or "",
-        "domain": manifest.get("domain") or packs.DEFAULT_DOMAIN,
-        "metric": _primary(manifest),
-        "stage": stage(task_dir),
-        "publish": publish_state(task_dir),
-    }
+def requirement_detail(workspace: Workspace) -> dict[str, Any]:
+    """需求文档与确认状态：原文、按二级标题切的格、上一版确认的原文（页面做 diff）。"""
+    text = requirement.read(workspace.root) if workspace.requirement.is_file() else ""
+    state = requirement.status(workspace.root)
+    return {**state, "title": requirement.title(text, workspace.id), "text": text,
+            "sections": [s.to_dict() for s in requirement.sections(text)],
+            "pending": requirement.PLACEHOLDER in text,
+            "confirmed_text": (requirement.confirmed_text(workspace.root)
+                               if state["confirmed"] else None)}
 
 
-def task_detail(task_dir: Path) -> dict[str, Any]:
-    task_dir = Path(task_dir)
-    brief = task_dir / packs.BRIEF_NAME
-    return {
-        **task_summary(task_dir),
-        "manifest": _read_manifest(task_dir),
-        "design": brief.read_text(encoding="utf-8") if brief.is_file() else "",
-        "intake_problems": packs.intake_problems(task_dir),
-        "headroom": headroom_state(task_dir),
-    }
+# ── 产出 ─────────────────────────────────────────────────────────────────
+def output_brief(directory: Path, meta: output.Meta) -> dict[str, Any]:
+    signed = output.signature_state(directory)
+    return {"id": meta.id, "stage": meta.stage, "title": meta.title, "status": meta.status,
+            "by": meta.by, "from": meta.input_ids, "params": meta.params, "flow": meta.flow,
+            "step": meta.step, "requirement": meta.requirement, "chat_id": meta.chat_id,
+            "created_at": meta.created_at, "finished_at": meta.finished_at,
+            "result": meta.result, "error": meta.error, "signed": signed}
 
 
-def publish_state(task_dir: Path) -> dict[str, Any]:
-    """发布记录现在是否有效。`state`：ok / missing（从没发布过，看板用自己的话说）/ invalid
-    （发布过但签的文件改了或记录坏了，`reason` 是 `require_published` 那句话，原样给人看）。"""
-    try:
-        record = publish.require_published(task_dir)
-    except publish.NotPublished as exc:
-        missing = not (Path(task_dir) / publish.PUBLISH_NAME).is_file()
-        return {"ok": False, "state": "missing" if missing else "invalid",
-                "by": None, "at": None, "reason": str(exc)}
-    return {"ok": True, "state": "ok", "by": record["by"], "at": record["published_at"],
-            "reason": None}
+def output_detail(workspace: Workspace, oid: str) -> dict[str, Any]:
+    """一次产出：记录 + 目录里的文件清单（小文本带正文）+ 它的作业。"""
+    directory, meta = outputs.find_output(workspace, oid)
+    files: list[dict[str, Any]] = []
+    for path in sorted(p for p in directory.rglob("*") if p.is_file()):
+        rel = path.relative_to(directory)
+        if any(part in LISTING_IGNORED for part in rel.parts):
+            continue
+        entry: dict[str, Any] = {"path": rel.as_posix(), "size": path.stat().st_size}
+        if path.suffix in TEXT_SUFFIXES and entry["size"] <= TEXT_LIMIT:
+            entry["text"] = path.read_text(encoding="utf-8", errors="replace")
+        files.append(entry)
+        if len(files) >= LISTING_LIMIT:
+            break
+    return {**output_brief(directory, meta), "files": files,
+            "jobs": [job.to_dict() for job in jobs.jobs_for(workspace.jobs, meta.id)]}
 
 
-def stage(task_dir: Path) -> str:
-    """drafting（需求还在聊）→ published（发布了，等接任务）→ designed（harness/ code/ 有了）
-    → baselined（run_0 有了，`run new` 可以开）。只看目录，不跑校验。"""
-    task_dir = Path(task_dir)
-    if not publish_state(task_dir)["ok"]:
-        return "drafting"
-    if not ((task_dir / "harness").is_dir() and (task_dir / "code").is_dir()):
-        return "published"
-    if not (task_dir / "run_0" / "results.json").is_file():
-        return "designed"
-    return "baselined"
+# ── 模板 ─────────────────────────────────────────────────────────────────
+def list_templates(root: Path) -> list[dict[str, str]]:
+    """库里的需求模板：名字、一级标题、第一段说明（模板开头 `>` 引用块或第一段正文）。"""
+    found = []
+    for path in sorted(Path(root).glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        found.append({"name": path.stem, "title": requirement.title(text, path.stem),
+                      "summary": _first_paragraph(text), "text": text})
+    return found
 
 
-def headroom_state(task_dir: Path) -> dict[str, Any] | None:
-    """基线跑完才有预检；跑完但算不出来（manifest 缺字段、results 不合约）把原因当数据给看板。"""
-    task_dir = Path(task_dir)
-    run0 = task_dir / "run_0"
-    if not ((run0 / "results.json").is_file() and (run0 / "sigma.json").is_file()):
-        return None
-    try:
-        found = headroom.assess(task_dir)
-    except (KeyError, ValueError, TypeError) as exc:
-        return {"problems": [f"预检算不出来：{exc!s}"], "summary": None}
-    gates = None
-    if found.room is not None:
-        gates = math.inf if found.gate <= 0 else found.room / found.gate
-    return {
-        "metric": found.metric, "direction": found.direction, "baseline": found.baseline,
-        "sigma": found.sigma, "gate": found.gate, "attainable": found.attainable,
-        "room": found.room, "gates": gates, "problems": found.problems(),
-        "summary": found.summary(),
-    }
-
-
-# ── 结果验收 ─────────────────────────────────────────────────────────────
-def list_runs(workspace: Workspace) -> list[dict[str, Any]]:
-    return [run_summary(workspace, run_dir) for run_dir in _run_dirs(workspace)]
-
-
-def _run_dirs(workspace: Workspace) -> list[Path]:
-    """有 checkpoint 的才算 run；`runs/design/`（接任务的执行层日志）不是。"""
-    if not workspace.runs.is_dir():
-        return []
-    return [p for p in sorted(workspace.runs.iterdir()) if layout.checkpoint(p).is_file()]
-
-
-def run_summary(workspace: Workspace, run_dir: Path) -> dict[str, Any]:
-    run_dir = Path(run_dir)
-    state = read_checkpoint(run_dir)
-    manifest = load_manifest(run_dir)
-    metric = primary_metric(manifest)
-    return {
-        "run_id": state["run_id"],
-        "task": manifest.get("id"),
-        "title": manifest.get("title") or manifest.get("id"),
-        "metric": {"name": metric["name"], "direction": metric["direction"]},
-        "baseline": _baseline(run_dir, metric["name"]),
-        "best_metric": state["best_metric"],
-        "best_iter": state["best_iter"],
-        "last_iter": state["last_iter"],
-        "stop_reason": state.get("stop_reason"),
-        "updated_at": state.get("updated_at"),
-        "cost_usd": ledger.total_cost(layout.ledger(run_dir)),
-        "running": layout.inflight(run_dir).is_file(),
-        # 哪段对话开的（老 run 没有）：页面靠它知道当前对话最近碰的是哪条流
-        "chat_id": state.get("chat_id"),
-        "job": _job_dict(jobs.running_for(workspace.jobs, state["run_id"])),
-        "flow": flow_state.status(run_dir, workspace.jobs),
-        "analysis": layout.analysis_doc(run_dir).is_file(),
-        "verify": verify_state(run_dir),
-        "accept": accept.read_acceptance(run_dir),
-    }
-
-
-def run_detail(workspace: Workspace, run_dir: Path) -> dict[str, Any]:
-    run_dir = Path(run_dir)
-    analysis = layout.analysis_doc(run_dir)
-    journal = layout.journal(run_dir)
-    summary = run_summary(workspace, run_dir)
-    return {
-        **summary,
-        "ledger": [asdict(row) for row in ledger.read(layout.ledger(run_dir))],
-        "jobs": [job.to_dict() for job in jobs.jobs_for(workspace.jobs, summary["run_id"])],
-        "journal": journal.read_text(encoding="utf-8") if journal.is_file() else "",
-        "analysis_text": analysis.read_text(encoding="utf-8") if analysis.is_file() else None,
-    }
-
-
-def _job_dict(job: jobs.Job | None) -> dict[str, Any] | None:
-    return None if job is None else job.to_dict()
-
-
-def verify_state(run_dir: Path) -> dict[str, Any] | None:
-    """没报告 None；报告不合约不当没有——`status: invalid` 带原因，看板要把它亮出来。"""
-    report = layout.verify_report(run_dir)
-    if not report.is_file():
-        return None
-    try:
-        doc = read_report(report)
-    except ValueError as exc:
-        return {"status": "invalid", "error": str(exc)}
-    return doc
-
-
-# ── 内部 ─────────────────────────────────────────────────────────────────
-def _read_manifest(task_dir: Path) -> dict[str, Any]:
-    raw = yaml.safe_load((task_dir / packs.MANIFEST_NAME).read_text(encoding="utf-8"))
-    return raw if isinstance(raw, dict) else {}
-
-
-def _primary(manifest: dict[str, Any]) -> dict[str, Any] | None:
-    """主指标；manifest 还没写好（需求还在聊）时是 None，不是报错。"""
-    metrics = manifest.get("metrics")
-    if not isinstance(metrics, list):
-        return None
-    for metric in metrics:
-        if isinstance(metric, dict) and metric.get("primary"):
-            return {"name": metric.get("name"), "direction": metric.get("direction"),
-                    "attainable": metric.get("attainable")}
-    return None
-
-
-def _baseline(run_dir: Path, metric_name: str) -> float | None:
-    path = layout.work(run_dir) / "run_0" / "results.json"
-    if not path.is_file():
-        return None
-    metrics = json.loads(path.read_text(encoding="utf-8")).get("metrics") or {}
-    value = metrics.get(metric_name)
-    return float(value) if isinstance(value, int | float) else None
+def _first_paragraph(text: str) -> str:
+    for block in text.split("\n\n"):
+        line = block.strip()
+        if line and not line.startswith("#"):
+            return " ".join(line.lstrip("> ").split())
+    return ""
 
 
 def jsonable(value: Any) -> Any:

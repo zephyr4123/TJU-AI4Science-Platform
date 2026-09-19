@@ -15,8 +15,8 @@ from collections.abc import Callable
 
 from backends import BackendNotFound, get_chat
 from framework.chat import conversation, guide, scope
-from framework.run.jobs import Job
-from framework.run.workspace import Workspace
+from framework.workspace.jobs import Job
+from framework.workspace.root import Workspace
 
 LOGGER = logging.getLogger("ai4sci.notify")
 RETRY_S = 15.0
@@ -28,7 +28,7 @@ def message_for(job: Job) -> str:
     """叫醒那一轮的话：作业是哪条命令、结果如何，然后把决定留给 agent。"""
     verdict = "跑完了，退出码 0" if job.exit_code == 0 else f"没跑成，退出码 {job.exit_code}"
     return (f"作业 {job.job_id}（`ai4sci {' '.join(job.argv)}`）{verdict}：\n{job.result}\n\n"
-            "看一眼结果（ai4sci show run / show job），用人话告诉研究者发生了什么、"
+            "看一眼结果（ai4sci show output <id> / show job），用人话告诉研究者发生了什么、"
             "下一步打算怎么办；要调用下一条命令就调，长的照旧 --detach。")
 
 

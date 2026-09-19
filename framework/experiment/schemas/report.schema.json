@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tju-ai4science/schemas/report.schema.json",
+  "$comment": "验证能力的唯一产物形状（workflow.md §3）。status 是全部检查项的与；每项 details 是给协调层看的一行一条，PASS 时也可以有（比如核对了多少个数）。",
+  "title": "ai4sci verify report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "generated_at", "analysis", "checks"],
+  "properties": {
+    "status": {"enum": ["PASS", "FAIL"]},
+    "generated_at": {"type": "string"},
+    "analysis": {"type": "string", "description": "被验证的分析产出的 id（analysis/<n>）"},
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "passed", "details"],
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*(:[a-z]+/[0-9]+)?$"},
+          "passed": {"type": "boolean"},
+          "details": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

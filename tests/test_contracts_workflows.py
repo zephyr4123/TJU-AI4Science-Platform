@@ -19,7 +19,7 @@ summary: >
   摘要
 stages:
   - 假设
-  - 断点: 发布
+  - 断点: 看一眼假设
   - 设计: [design]
   - 断点: 核对评分脚本
   - 实验: {auto-research: {max_iters: 2}}
@@ -35,16 +35,21 @@ def write(tmp_path, text: str) -> None:
     (tmp_path / "w.yaml").write_text(text, encoding="utf-8")
 
 
-def test_shipped_workflow_is_one_line_from_topic_to_verification():
+def test_shipped_workflow_is_one_line_from_design_to_verification():
     found = workflows.load_workflows(paths.workflows_root())
     assert [wf.name for wf in found] == ["research"]
     [wf] = found
     assert workflows.workflow_problems(wf, catalog()) == [] and workflows.remarks(wf) == []
-    assert wf.covered == ["假设", "设计", "实验", "分析", "验证"]
+    assert wf.covered == ["设计", "实验", "分析", "验证"]
     assert wf.caps == ["auto-research"]  # 只点名了实验阶段；别的间由助理看着办
     stops = [r for r in wf.stages if isinstance(r, Stop)]
-    assert [s.key for s in stops] == ["publish", None, "accept"]  # 出厂两个 + 核对评分脚本
-    assert stops[1].note == "核对评分脚本算的是不是你要的数"
+    assert [s.note for s in stops] == ["核对评分脚本算的是不是你要的数", "验收"]
+    # 断点管前一项：设计完要签、验证完要签
+    assert workflows.stop_after(wf, 0) is stops[0] and workflows.stop_after(wf, 4) is stops[1]
+    assert workflows.stop_after(wf, 2) is None
+    assert workflows.matching_step(wf, "auto-research", "实验") == 2
+    assert workflows.matching_step(wf, "analysis", "分析", after=2) == 3
+    assert workflows.matching_step(wf, "design", "设计", after=0) is None
 
 
 def test_stages_parse_in_all_three_spellings(tmp_path):
@@ -52,13 +57,13 @@ def test_stages_parse_in_all_three_spellings(tmp_path):
     [wf] = workflows.load_workflows(tmp_path)
     assert wf.summary == "两行的 摘要"
     assert wf.stages == (
-        Stage("假设"), Stop("publish", "发布"), Stage("设计", (Pick("design"),)),
-        Stop(None, "核对评分脚本"), Stage("实验", (Pick("auto-research", {"max_iters": 2}),)),
+        Stage("假设"), Stop("看一眼假设"), Stage("设计", (Pick("design"),)),
+        Stop("核对评分脚本"), Stage("实验", (Pick("auto-research", {"max_iters": 2}),)),
         Stage("验证"))
     assert wf.to_dict()["stages"][4] == {
         "kind": "stage", "stage": "实验",
         "caps": [{"cap": "auto-research", "with": {"max_iters": 2}}]}
-    assert wf.to_dict()["stages"][1] == {"kind": "stop", "key": "publish", "note": "发布"}
+    assert wf.to_dict()["stages"][1] == {"kind": "stop", "note": "看一眼假设"}
     write(tmp_path, GOOD.replace("- 断点: 核对评分脚本", "- 断点"))  # 光秃秃的断点也行
     [wf] = workflows.load_workflows(tmp_path)
     assert wf.stages[3] == Stop()
@@ -83,12 +88,12 @@ def test_used_by_is_looked_up_from_the_files():
 
 
 def test_pick_params_are_checked_against_the_descriptor(tmp_path):
-    write(tmp_path, GOOD.replace("{max_iters: 2}", "{nope: 1, max_iters: 'x', run_id: r1}"))
+    write(tmp_path, GOOD.replace("{max_iters: 2}", "{nope: 1, max_iters: 'x', resume: true}"))
     [wf] = workflows.load_workflows(tmp_path)
     problems = workflows.workflow_problems(wf, catalog())
     assert len(problems) == 3
     assert "没有的参数 'nope'" in problems[0] and "max_iters 要是 int" in problems[1]
-    assert "run_id 是每次调用时才定的，不写进流" in problems[2]
+    assert "resume 是每次调用时才定的，不写进流" in problems[2]
     write(tmp_path, GOOD.replace("{auto-research: {max_iters: 2}}", "{auto-research: [1]}"))
     with pytest.raises(workflows.WorkflowInvalid, match="「参数名: 值」"):
         workflows.load_workflows(tmp_path)
@@ -101,7 +106,7 @@ def test_a_capability_must_sit_in_its_own_room(tmp_path):
     assert problems == [
         "第 3 项「设计」里的 verify 属于「验证」阶段，不能放在「设计」阶段里",
         "第 3 项「设计」里的 nope：没有这颗能力（有的：['analysis', 'auto-research', 'design', "
-        "'init', 'verify']）"]
+        "'verify']）"]
 
 
 def test_any_order_of_stages_is_fine_including_going_back(tmp_path):
@@ -116,10 +121,8 @@ def test_remarks_are_advice_not_problems(tmp_path):
     write(tmp_path, "name: w\ntitle: t\nsummary: s\nstages: [实验, 分析]\n")
     [wf] = workflows.load_workflows(tmp_path)
     assert workflows.workflow_problems(wf, catalog()) == []
-    assert workflows.remarks(wf) == [
-        "有实验或分析、没有验证：数字没人回溯，结果不能算可信",
-        "「实验」之前没有「发布」断点：需求要人签过才写评分脚本、才开跑，助理到那儿会被拒"]
-    write(tmp_path, GOOD)  # 出厂那种：发布在设计前、末尾有验证
+    assert workflows.remarks(wf) == ["有实验或分析、没有验证：数字没人回溯，结果不能算可信"]
+    write(tmp_path, GOOD)  # 末尾有验证
     [wf] = workflows.load_workflows(tmp_path)
     assert workflows.remarks(wf) == []
 
@@ -127,13 +130,13 @@ def test_remarks_are_advice_not_problems(tmp_path):
 def test_save_workflow_writes_the_shortest_spelling_and_refuses_bad_or_duplicate(tmp_path):
     """编辑台存流（外层 #68）：形状与检查都过了才落盘，存出的文件能被同一套读回来；同名不覆盖。"""
     doc = {"name": "my-look", "title": "我的流", "summary": "看一眼",
-           "stages": ["假设", {"断点": "发布"}, "设计",
+           "stages": ["假设", {"断点": "看一眼"}, "设计",
                      {"实验": {"auto-research": {"max_iters": 2}}},
                      {"分析": ["analysis"]}, {"断点": "看一眼结论"}]}
     saved = workflows.save_workflow(tmp_path, doc, catalog())
     assert saved.name == "my-look"
     text = (tmp_path / "my-look.yaml").read_text(encoding="utf-8")
-    assert "- 假设\n" in text and "- 断点: 发布\n" in text and "- 分析:\n  - analysis\n" in text
+    assert "- 假设\n" in text and "- 断点: 看一眼\n" in text and "- 分析:\n  - analysis\n" in text
     [loaded] = workflows.load_workflows(tmp_path)
     assert loaded == saved
     with pytest.raises(FileExistsError, match="已经有一条"):
@@ -158,8 +161,8 @@ def test_bad_shapes_are_named(tmp_path):
         "不是阶段": GOOD.replace("设计: [design]", "调参: [design]"),
         "第 1 项就是断点": GOOD.replace("  - 假设\n", ""),
         "两个断点挨着": GOOD.replace("  - 设计: [design]\n", ""),
-        "要是一句话": GOOD.replace("断点: 发布", "断点: 3"),
-        "单键映射": GOOD.replace("- 断点: 发布", "- {断点: 发布, 设计: null}"),
+        "要是一句话": GOOD.replace("断点: 看一眼假设", "断点: 3"),
+        "单键映射": GOOD.replace("- 断点: 看一眼假设", "- {断点: 看一眼, 设计: null}"),
         "要是名字的列表": GOOD.replace("[design]", "[3]"),
     }
     for message, text in cases.items():

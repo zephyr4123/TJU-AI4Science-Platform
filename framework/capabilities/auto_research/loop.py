@@ -6,7 +6,7 @@
 
 本模块只剩"一轮怎么走、什么时候停"，以及被杀在半路时怎么对账收尸：
 跑 harness 与结算在 `judge.py`，统计门在 `gate.py`，失败分类与取证在 `failures.py`，
-组 prompt 与起会话在 `framework/executor/`，磁盘状态在 `framework/run/`。
+组 prompt 与起会话在 `framework/executor/`，磁盘状态在 `framework/experiment/`。
 能力之间互不 import（`capabilities/__init__.py`）。
 """
 
@@ -25,10 +25,10 @@ from compute import Compute
 from framework.capabilities.auto_research import failures, gate
 from framework.capabilities.auto_research.judge import append_row, judge_run, read_job, settle
 from framework.executor import prompting, session
-from framework.memory import ledger, notebook
-from framework.run import gitwork, layout
-from framework.run.checkpoint import read_checkpoint, write_checkpoint
-from framework.run.context import RunContext, load_context
+from framework.experiment import gitwork, layout, ledger, notebook
+from framework.experiment import prompting as ledger_prompting
+from framework.experiment.checkpoint import read_checkpoint, write_checkpoint
+from framework.experiment.context import DIRECTION_ZH, RunContext, load_context
 
 LOGGER = logging.getLogger("ai4sci.experiment")
 
@@ -62,8 +62,8 @@ def run_loop(
     """跑到停止条件为止；返回停止原因。
 
     `max_iters` 是**本次增量**而不是这个 run 的总额：上限取
-    `min(manifest.max_iterations, 已跑轮数 + max_iters)`。只有 manifest 触顶（以及
-    不可修复 / patience / 成本这些真正的终局）才写 `experiment/stop.json` 与
+    `min(scoring.max_iterations, 已跑轮数 + max_iters)`。只有 scoring 触顶（以及
+    不可修复 / patience / 成本这些真正的终局）才写 `stop.json` 与
     `checkpoint.stop_reason`；本次配额用完只返回 `batch_exhausted`，什么都不写——
     小批量地跑不该把 run 锁死，要不要继续是协调层的决定（P-10）。
     """
@@ -75,7 +75,7 @@ def run_loop(
         # 有 in-flight 标记就说明上一次被杀在半路：直接往下跑会把那一轮的账漏掉（P-7）
         raise InflightPending(
             f"第 {inflight['iter']} 轮没走完，请跑 "
-            f"ai4sci cap auto-research --run-id {state['run_id']} --resume"
+            f"ai4sci cap auto-research --continue {state['output']} --resume"
         )
     if state.get("stop_reason"):
         # 已经停过的 run 不自己续命：要不要继续是协调层的决定（P-10）
@@ -217,8 +217,12 @@ def _run_iteration(
     _write_inflight(ctx, iter_n)
 
     rows = ledger.read(ctx.ledger_path)
-    result = session.run_executor(
-        ctx, runner, iter_n, PROMPT_TEMPLATE, _prompt_values(ctx, state, rows, iter_n)
+    prompt = prompting.build_prompt(PROMPT_TEMPLATE, _prompt_values(ctx, state, rows, iter_n),
+                                    ctx.domain_extra)
+    # 只许改 code/、日志按轮留档
+    result = session.run_session(
+        runner, prompt, cwd=ctx.work, allowed_paths=[layout.code(ctx.work)],
+        log_dir=layout.executor_logs(ctx.run_dir, iter_n),
     )
     verdict, commit, metric, elapsed = judge_run(ctx, iter_n, result, compute)
     state = settle(ctx, state, iter_n, verdict, commit, metric, elapsed, result)
@@ -277,12 +281,12 @@ def _prompt_values(
             hint = failures.NO_EFFECT_HINT
     return {
         "iter": iter_n, "question": ctx.question, "metric_name": ctx.metric_name,
-        "direction": ctx.direction, "direction_zh": prompting.DIRECTION_ZH[ctx.direction],
+        "direction": ctx.direction, "direction_zh": DIRECTION_ZH[ctx.direction],
         "best_metric": f"{state['best_metric']:.6g}", "best_iter": state["best_iter"],
         "gate": f"{gate.gate(ctx):.6g}", "accept_sigma": f"{ctx.accept_sigma:g}",
         "sigma": f"{ctx.sigma:.6g}", "wall_clock_s": f"{ctx.wall_clock_s:g}",
-        "ledger_tail": prompting.summarize_ledger(rows),
-        "last_round": prompting.last_round_note(rows, hint),
+        "ledger_tail": ledger_prompting.summarize_ledger(rows),
+        "last_round": ledger_prompting.last_round_note(rows, hint),
         "notebook": notebook.read(layout.notebook(ctx.run_dir)),
     }
 

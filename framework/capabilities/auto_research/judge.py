@@ -4,7 +4,7 @@
 `settle` 只负责把结论写进 git、账本、笔记与 checkpoint。前者能被单独喂输入考，
 后者是唯一改磁盘状态的地方。
 
-在 capabilities/experiment/ 内部：它用 gate 比分数、用 failures 分类，被 loop 调用；
+在 capabilities/auto_research/ 内部：它用 gate 比分数、用 failures 分类，被 loop 调用；
 它不 import loop——in-flight 标记的读写留在 loop 那边，`settle` 只做到写完 checkpoint
 为止，清标记由调用方紧接着做（顺序仍是账本 → 笔记 → checkpoint → 清标记）。
 """
@@ -19,14 +19,12 @@ from typing import Any
 from backends import RunResult
 from compute import Compute, Job
 from framework.capabilities.auto_research import failures, gate
-from framework.contracts import env
-from framework.contracts.packs import BUDGET_OVERRUN_RATIO
-from framework.contracts.results import read_results
 from framework.executor.session import executor_report
-from framework.memory import ledger, notebook
-from framework.run import gitwork, layout
-from framework.run.checkpoint import write_checkpoint
-from framework.run.context import RunContext
+from framework.experiment import env, gitwork, layout, ledger, notebook
+from framework.experiment.checkpoint import write_checkpoint
+from framework.experiment.context import RunContext
+from framework.experiment.pack import BUDGET_OVERRUN_RATIO
+from framework.experiment.results import read_results
 
 LOGGER = logging.getLogger("ai4sci.experiment")
 
@@ -54,15 +52,15 @@ def judge_run(
 
     commit = gitwork.commit_paths(ctx.work, ["code"], f"iter {iter_n}: 执行层改动")
     if commit is None:
-        # 快照看得见改动、git 却提交不出东西：任务包自己的 .gitignore 把它们全挡住了。
+        # 快照看得见改动、git 却提交不出东西：包自己的 .gitignore 把它们全挡住了。
         # 这不是执行层越界，但这一轮没有可留可回滚的东西，按"没改"处理并把原因告诉它。
         return failures.gitignored_verdict(), ledger.MISSING, None, math.nan
 
     run_n = layout.iter_run(ctx.run_dir, iter_n)
     before = failures.readonly_hashes(ctx.work)
     compute.put(ctx.work, run_n)
-    # harness 只经 $AI4SCI_PYTHON 起解释器（任务跑在 run 自己的 venv 里），预算与内部重复次数也由
-    # 这里保证给出：launcher 不该再把它们写成常数（packs.md §2）
+    # harness 只经 $AI4SCI_PYTHON 起解释器（任务跑在这次实验自己的 venv 里），预算与内部重复次数也由
+    # 这里保证给出：launcher 不该再把它们写成常数
     job = compute.submit(run_n, LAUNCH_CMD,
                          {env.SEED_ENV: str(ctx.seed),
                           **env.harness_env(ctx.python, ctx.wall_clock_s, ctx.inner_k)},

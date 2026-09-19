@@ -1,7 +1,7 @@
 """依赖方向的机器判据：能用一条命令查的规矩才是规矩。
 
-纲领 §5 给 framework/ 定了单向依赖 `cli → capabilities → executor → memory → run →
-contracts`，外加两条：`backends/` 与 `compute/` 是端口，framework 可以用它们、它们
+纲领 §5 给 framework/ 定了单向依赖 `cli → capabilities → chat → experiment → executor →
+workspace → contracts`，外加两条：`backends/` 与 `compute/` 是端口，framework 可以用它们、它们
 不许反过来 import framework；能力之间互不 import。这些话写在文档里只是标语，靠人
 review 迟早会漏，所以这里用 ast 把每个模块的 import 摊开逐条判。
 
@@ -18,7 +18,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # 从底到顶：下标越大越靠上层，只许 import 下标不大于自己的层（同层与包内随意）。
-LAYERS = ("contracts", "run", "memory", "executor", "chat", "capabilities", "cli")
+LAYERS = ("contracts", "workspace", "executor", "experiment", "chat", "capabilities", "cli")
 # 端口：framework 任何一层都可以 import 它们，它们不许 import framework。
 PORTS = ("backends", "compute", "tools")
 
@@ -111,7 +111,7 @@ def _fake_repo(tmp_path: Path, files: dict[str, str]) -> Path:
 def test_checker_catches_a_reverse_import(tmp_path):
     root = _fake_repo(tmp_path, {
         "framework/contracts/bad.py": "from framework.cli import main\n",
-        "framework/run/fine.py": "from framework.contracts import packs\n",
+        "framework/workspace/fine.py": "from framework.contracts import output\n",
     })
     problems = violations(root)
     assert len(problems) == 1, problems

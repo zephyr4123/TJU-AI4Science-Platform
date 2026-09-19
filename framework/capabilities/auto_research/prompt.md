@@ -29,7 +29,7 @@ $last_round
 
 ## 约束（越界会被判失败并回滚，这一轮就白干了）
 
-- 只改 `code/` 下的文件。`harness/`、`data/`、`run_0/`、`manifest.yaml` 只读，动了立刻判 readonly_violated
+- 只改 `code/` 下的文件。`harness/`、`data/`、`baseline/`、`scoring.yaml` 只读，动了立刻判 readonly_violated
 - 不要写 `results.json` / `predictions.json` 这类结果文件：成绩由 harness 独立跑出来，自报的分数一律不作数
 - 不要跑 git（提交由框架做），也不要自己跑训练或评测：墙钟预算 $wall_clock_s 秒留给框架那一次正式跑
 - 不要新增第三方依赖，环境里没有的包 import 不进来
