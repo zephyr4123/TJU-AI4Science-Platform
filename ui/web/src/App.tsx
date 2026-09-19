@@ -164,9 +164,10 @@ function MainView({ wsId, title, healthy, knobs, view, focus, opened, onOpen, on
     />
   )
   return (
+    // 雾景铺满整行（看板 + 对话那块板底下都是它）：板是悬在风景上的，背景不能到板的左边就断（主人 2026-09-19）
     <div className="relative flex min-h-0 flex-1">
+      <Scene picture={ASSETS.board} veil="mist" />
       <main className="relative min-w-0 flex-1">
-        <Scene picture={ASSETS.board} veil="mist" />
         <div className="relative h-full">
           {view === 'files'
             ? <Files key={focus ?? ''} workspace={wsId} epoch={c.epoch} focus={focus} onOpenBoard={onOpenBoard} />
