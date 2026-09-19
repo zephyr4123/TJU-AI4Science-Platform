@@ -302,8 +302,8 @@
 
 /* 编辑台的画布（React Flow）走 tokens：点阵、边、缩放按钮都跟深浅色（外层 #101） */
 .react-flow {
-  --xy-background-color-default: var(--background);
-  --xy-background-pattern-dots-color-default: color-mix(in oklab, var(--foreground) 16%, transparent);
+  --xy-background-color-default: transparent;
+  --xy-background-pattern-dots-color-default: color-mix(in oklab, var(--foreground) 18%, transparent);
   --xy-edge-stroke-default: var(--muted-foreground);
   --xy-edge-stroke-width-default: 1.5;
   --xy-controls-button-background-color-default: var(--card);

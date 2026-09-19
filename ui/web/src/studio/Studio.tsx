@@ -7,14 +7,15 @@ import {
   ReactFlowProvider, useNodesState, useReactFlow,
 } from '@xyflow/react'
 import { SidebarSimple } from '@phosphor-icons/react'
-import { type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api } from '@/api/client'
 import type { Capability, Workflow, WorkflowCheck } from '@/api/types'
+import { ASSETS } from '@/assets'
 import { ErrorNote, Problems, Skeleton } from '@/components/bits'
+import SquishSwitch from '@/components/reactbits/SquishSwitch'
+import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { coverageSentence } from '@/lib/stages'
 import { useToken } from '@/lib/tokens'
@@ -28,13 +29,16 @@ import {
   remove, type Seed, SEED_MIME, toDraft, WIDTH,
 } from './model'
 import { StageNode, type StageNodeType, StopNode, type StopNodeType } from './nodes'
-import { Palette } from './Palette'
+import { Ladder, Library } from './Palette'
 
 import '@xyflow/react/dist/style.css'
 
 type CanvasNode = StageNodeType | StopNodeType
+/** 取景时给题头、梯子、右上角留出的空 */
+const FIT = { top: '150px', left: '110px', right: '60px', bottom: '70px' } as const
 const NODE_TYPES = { stage: StageNode, stop: StopNode }
 type SetItems = (change: (items: Item[]) => Item[]) => void
+
 
 interface ChatToggle { chatOpen: boolean; onToggleChat: () => void }
 
@@ -85,43 +89,68 @@ function Editor({ stages, workflows, catalog, onSaved, ...chat }: {
                onChange={(next) => setItems((items) => patch(items, next.uid, () => next))} />
   )
 
+  const taken = workflows.some((wf) => wf.name === draft.name.trim())
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <Bar draft={draft} setDraft={setDraft} ok={draft.items.length > 0 && check.data !== null && problems.length === 0} onSaved={onSaved} {...chat} />
-      <div className="relative min-h-0 flex-1">
-        <Canvas items={draft.items} titles={titles} perItem={perItem} selected={selected} onSelect={setSelected} setItems={setItems}
-                onDrop={(seed, index) => add(seed, index)}>
-          <Panel position="top-left" className="!m-3 w-[calc(100%-1.5rem)]">
-            <div className="rounded-xl border bg-card/90 px-3 py-2 shadow-sm backdrop-blur-sm">
-              <Palette stages={stages} workflows={workflows} onAdd={(seed) => add(seed)} onLoad={load} />
-            </div>
-          </Panel>
+    <div className="relative h-full min-h-0">
+      {/* 画布底下一层风景，压到只剩氛围；点阵铺在它上面 */}
+      <Scene picture={ASSETS.studio} veil="mist" />
+      <Canvas items={draft.items} titles={titles} perItem={perItem} selected={selected} onSelect={setSelected} setItems={setItems}
+              onDrop={(seed, index) => add(seed, index)}>
+        {/* 浮在画布上的几块：面板本身不挡鼠标，只有里面的东西接事件 */}
+        <Panel position="top-left" className="pointer-events-none !m-3 flex items-start gap-3">
+          <Button variant="ghost" size="icon-sm" onClick={chat.onToggleChat} aria-label={chat.chatOpen ? '收起对话' : '展开对话'}
+                  className="pointer-events-auto hidden shrink-0 bg-card/70 backdrop-blur-sm lg:inline-flex">
+            <SidebarSimple weight={chat.chatOpen ? 'fill' : 'regular'} />
+          </Button>
+          <div className="pointer-events-auto"><Ladder stages={stages} onAdd={(seed) => add(seed)} /></div>
+          <div className="pointer-events-auto"><Heading draft={draft} setDraft={setDraft} /></div>
+        </Panel>
+        <Panel position="top-right" className="pointer-events-none !m-3 flex flex-col items-end gap-3">
+          <div className="pointer-events-auto flex items-center gap-2">
+            <Library workflows={workflows} onLoad={load} />
+            <Save draft={draft} taken={taken} ok={draft.items.length > 0 && check.data !== null && problems.length === 0} onSaved={onSaved} />
+          </div>
           {wide && inspector && (
-            <Panel position="top-right" className="!mt-[4.25rem] !mr-3 w-[19rem]">
-              <div className="max-h-[calc(100dvh-16rem)] overflow-y-auto rounded-xl border bg-card/90 p-4 shadow-sm backdrop-blur-sm">{inspector}</div>
-            </Panel>
+            <div className="pointer-events-auto max-h-[calc(100dvh-13rem)] w-[19rem] overflow-y-auto rounded-2xl border bg-card/90 p-4 shadow-sm backdrop-blur-sm">{inspector}</div>
           )}
-          <Panel position="bottom-left" className="!m-3 max-w-[28rem]">
-            <Verdict items={draft.items} check={check.data} error={check.error} />
-          </Panel>
-        </Canvas>
-        {!wide && (
-          <Sheet open={current !== null} onOpenChange={(open) => { if (!open) setSelected(null) }}>
-            <SheetContent side="right" className="w-[20rem] overflow-y-auto p-5">
-              <SheetHeader className="sr-only"><SheetTitle>配置</SheetTitle></SheetHeader>
-              {inspector}
-            </SheetContent>
-          </Sheet>
-        )}
+        </Panel>
+        <Panel position="bottom-left" className="!m-3 max-w-[28rem]">
+          <Verdict items={draft.items} check={check.data} error={check.error} />
+        </Panel>
+      </Canvas>
+      {!wide && (
+        <Sheet open={current !== null} onOpenChange={(open) => { if (!open) setSelected(null) }}>
+          <SheetContent side="right" className="w-[20rem] overflow-y-auto p-5">
+            <SheetHeader className="sr-only"><SheetTitle>配置</SheetTitle></SheetHeader>
+            {inspector}
+          </SheetContent>
+        </Sheet>
+      )}
+    </div>
+  )
+}
+
+/** 题头：像图纸的标题栏——宋体大标题、mono 名字、一行说明，都是填空线不是输入框 */
+function Heading({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
+  const field = (k: 'name' | 'title' | 'summary') => (e: ChangeEvent<HTMLInputElement>) =>
+    setDraft((d) => ({ ...d, [k]: e.target.value }))
+  return (
+    <div className="pt-1">
+      <input value={draft.title} onChange={field('title')} placeholder="标题" aria-label="标题" spellCheck={false}
+             className="blank w-[20rem] font-serif text-[1.625rem] leading-tight font-semibold tracking-tight" />
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <input value={draft.name} onChange={field('name')} placeholder="name" aria-label="name" spellCheck={false} autoComplete="off"
+               className="blank w-[9rem] font-mono text-[0.8125rem]" />
+        <span aria-hidden className="text-muted-foreground">·</span>
+        <input value={draft.summary} onChange={field('summary')} placeholder="说明" aria-label="说明" spellCheck={false}
+               className="blank w-[26rem] max-w-[calc(100vw-30rem)] text-[0.875rem]" />
       </div>
     </div>
   )
 }
 
-/** 顶上一条：收起对话、名字、标题、说明、覆盖同名、保存 */
-function Bar({ draft, setDraft, ok, onSaved, chatOpen, onToggleChat }: {
-  draft: Draft; setDraft: (f: (d: Draft) => Draft) => void; ok: boolean; onSaved: () => void
-} & ChatToggle) {
+/** 右上角：保存；名字与库里的重了才出现「覆盖同名」的开关 */
+function Save({ draft, taken, ok, onSaved }: { draft: Draft; taken: boolean; ok: boolean; onSaved: () => void }) {
   const [busy, setBusy] = useState(false)
   const [overwrite, setOverwrite] = useState(false)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -130,7 +159,7 @@ function Bar({ draft, setDraft, ok, onSaved, chatOpen, onToggleChat }: {
     setBusy(true)
     setNote(null)
     try {
-      const saved = await api.saveWorkflow({ ...toDraft(draft), overwrite })
+      const saved = await api.saveWorkflow({ ...toDraft(draft), overwrite: taken && overwrite })
       setNote({ ok: true, text: `已存 ${saved.name}` })
       onSaved()
     } catch (exc) {
@@ -139,23 +168,17 @@ function Bar({ draft, setDraft, ok, onSaved, chatOpen, onToggleChat }: {
       setBusy(false)
     }
   }
-  const field = (k: 'name' | 'title' | 'summary', placeholder: string, className?: string) => (
-    <Input value={draft[k]} placeholder={placeholder} aria-label={placeholder} className={cn('h-8 bg-card', className)}
-           onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))} />
-  )
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-card/60 px-3 py-2">
-      <Button variant="ghost" size="icon-sm" onClick={onToggleChat} aria-label={chatOpen ? '收起对话' : '展开对话'} className="hidden lg:inline-flex">
-        <SidebarSimple weight={chatOpen ? 'fill' : 'regular'} />
+    <div className="flex items-center gap-3">
+      {note && <span className={cn('max-w-[20rem] truncate text-[0.8125rem]', note.ok ? 'text-ok' : 'text-bad')}>{note.text}</span>}
+      {taken && (
+        <label className="flex items-center gap-1.5 text-[0.8125rem] text-wait">
+          覆盖同名<SquishSwitch checked={overwrite} onChange={setOverwrite} ariaLabel="覆盖同名" width={32} height={18} />
+        </label>
+      )}
+      <Button size="sm" className="rounded-full px-4 shadow-sm" onClick={() => void save()} disabled={!ok || !filled || busy || (taken && !overwrite)}>
+        {busy ? '保存中' : '保存'}
       </Button>
-      {field('name', 'name', 'w-[9rem] font-mono')}
-      {field('title', '标题', 'w-[11rem]')}
-      {field('summary', '说明', 'min-w-[12rem] flex-1')}
-      <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground">
-        <Checkbox checked={overwrite} onCheckedChange={(v) => setOverwrite(v === true)} />覆盖同名
-      </label>
-      <Button size="sm" onClick={() => void save()} disabled={!ok || !filled || busy}>{busy ? '保存中' : '保存'}</Button>
-      {note && <span className={cn('text-[0.8125rem]', note.ok ? 'text-ok' : 'text-bad')}>{note.text}</span>}
     </div>
   )
 }
@@ -200,7 +223,7 @@ function Canvas({ items, titles, perItem, selected, onSelect, setItems, onDrop, 
     })
   }, [items, perItem, titles, setNodes, setItems])
   useEffect(() => {
-    const id = requestAnimationFrame(() => void fitView({ padding: 0.25, maxZoom: 1, duration: 200 }))
+    const id = requestAnimationFrame(() => void fitView({ padding: FIT, maxZoom: 1, duration: 200 }))
     return () => cancelAnimationFrame(id)
   }, [items.length, fitView])
 
@@ -240,13 +263,15 @@ function Canvas({ items, titles, perItem, selected, onSelect, setItems, onDrop, 
         onDrop(seed, indexAt(items, at.x, at.y))
       }}
       nodesConnectable={false} edgesFocusable={false} panOnScroll zoomOnScroll={false} minZoom={0.3} maxZoom={1.5}
-      deleteKeyCode={['Backspace', 'Delete']} fitView fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
-      className="bg-background"
+      deleteKeyCode={['Backspace', 'Delete']} fitView fitViewOptions={{ padding: FIT, maxZoom: 1 }}
+      className="!bg-transparent"
     >
       <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
       <Controls showInteractive={false} position="bottom-right" />
       {items.length === 0 && (
-        <Panel position="top-center" className="pointer-events-none !mt-[30%] text-[0.9375rem] text-muted-foreground">拖入阶段</Panel>
+        <Panel position="top-center" className="pointer-events-none !mt-[28%]">
+          <div className="grid h-[4.5rem] w-[13rem] place-items-center rounded-2xl border-2 border-dashed border-muted-foreground/40 font-serif text-[0.9375rem] text-muted-foreground">拖入阶段</div>
+        </Panel>
       )}
       {children}
     </ReactFlow>
