@@ -15,7 +15,7 @@ import { type Pick, shownValue, storedTuning, thinkingWord } from '@/lib/tuning'
 import { useResource } from '@/lib/useResource'
 
 import { Composer } from './Composer'
-import { outcome, reduceTrace, type TraceItem, type TurnOutcome } from './trace'
+import { outcome, reduceTrace, replayTrace, type TraceItem, type TurnOutcome } from './trace'
 import { type Turn, TurnView } from './TurnView'
 
 interface Copy { headline: string; body: string }
@@ -54,8 +54,6 @@ interface LiveTurn {
   outcome: TurnOutcome | null
 }
 
-type Kept = Record<number, { trace: TraceItem[]; outcome: TurnOutcome }>
-
 export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onClose, autoSend, onAutoSent, onStart, onTurnDone,
                            knobs, drawer, intro, welcome }: Props) {
   const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId])
@@ -66,21 +64,19 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onC
   const tuning = storedTuning(pick, current)
   // 助理想着时那个词：按实际用的深度（记着的，或后端缺省）在清单里的位置
   const thinking = thinkingWord(shownValue(tuning.effort, knobs?.effort ?? null), knobs?.efforts ?? [])
-  // 本次打开页面期间跑过的轮次，按轮号留着它做过什么；刷新后只剩落盘的问答
-  const [kept, setKept] = useState<Kept>({})
   const bottom = useRef<HTMLDivElement>(null)
 
   const turns = useMemo<Turn[]>(() => {
+    // 落盘的轮次从它的事件重放：工具调用是对话的一部分，刷新、换对话都还在
     const settled: Turn[] = (doc.data?.history ?? []).map((t) => ({
-      n: t.turn, origin: t.origin, message: t.message, reply: t.reply,
-      trace: kept[t.turn]?.trace ?? [], outcome: kept[t.turn]?.outcome ?? null, live: false,
+      n: t.turn, origin: t.origin, message: t.message, reply: t.reply, ...replayTrace(t.events), live: false,
     }))
     if (live) {
       settled.push({ n: live.n, origin: '人', message: live.message, reply: null, trace: live.trace,
                      outcome: live.outcome, live: live.outcome === null })
     }
     return settled
-  }, [doc.data, kept, live])
+  }, [doc.data, live])
 
   const traceLength = live?.trace.length ?? 0
   useEffect(() => {
@@ -102,9 +98,6 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onC
     } catch (exc) {
       setSendError(exc instanceof Error ? exc.message : String(exc))
     }
-    // 流断了也没有 done：按"没走完"记，不假装成功
-    const final = currentTurn.outcome ?? { costUsd: null, durationS: 0, failed: true }
-    setKept((prev) => ({ ...prev, [n]: { trace: currentTurn.trace, outcome: final } }))
     setLive(null)
     await doc.reload()
     onTurnDone()

@@ -18,7 +18,7 @@
 | 看板 | 端点 | 人在这里做什么 |
 |---|---|---|
 | 工作区 | `GET /workspaces`、`POST /workspaces`（`id` / `title` / `template`）、`GET /workspaces/<id>`、`GET /stages`、`GET /templates` | 地方栏选一个工作区，或按模板起一个（一个工作区一个课题，P-15）；一整份里有需求、七个阶段的产出、每条流的进度、作业 |
-| 对话 | `POST <域>/chats`、`POST <域>/chats/<id>/messages`（SSE）、`GET <域>/chats[/<id>]`、`GET /backends` | 主页面和研究助理说话、编辑台和造流助理说话；助理运行的每条命令以 `tool_use` / `tool_result` 事件流回来；输入框上「模型」「思考」两枚旋钮的清单来自 `GET /backends`（后端自报），选了随消息的 `model` / `effort` 发出去、记进对话 |
+| 对话 | `POST <域>/chats`、`POST <域>/chats/<id>/messages`（SSE）、`GET <域>/chats[/<id>]`、`GET /backends` | 主页面和研究助理说话、编辑台和造流助理说话；助理运行的每条命令以 `tool_use` / `tool_result` 事件流回来，落盘成 `turn-N/trace.jsonl`、随 `history[].events` 回来，页面重放成一行一条的工具调用（不折叠、不翻译）；输入框上「模型」「思考」两枚旋钮的清单来自 `GET /backends`（后端自报），选了随消息的 `model` / `effort` 发出去、记进对话 |
 | 需求 | `GET /workspaces/<id>/requirement`、`POST /workspaces/<id>/requirement/confirm` | 没确认时需求文档就是主页面（按二级标题一格一节，「待填」是空格），人**确认**（`requirement.lock`）；确认后收成顶部一条，助理又改了显示 diff、确认下一版。页面只渲染不编辑，改需求只走对话 |
 | 产出 | `GET /workspaces/<id>/outputs/<stage>/<n>`、`POST …/outputs/<stage>/<n>/sign`、`GET …/jobs[/<jid>]` | 一条流一张表：横向是流经过的阶段（有什么阶段就几列，列头是阶段名 + 能力的人话），纵向是每一列跑过的每一次产出（编号 + 一个词：运行中 / 失败 / 待确认 / 已确认 / 完成），断点是两列之间一道线，右上角一句话说在等谁；点开侧滑看记录（来源、输入、状态）、目录里的文件（小文本直接渲染）、作业；流在这儿有断点就人**确认**（`signed.json`）。不在任何流里的产出只在最底下一行「其它」 |
 | 库 | `GET /workflows`、`POST /workflows`、`POST /workflows/check`、`GET /cap`、`GET /stages` | 编辑台的画布：节点是研究阶段（装能力 + 参数）或断点，边只表示顺序；边拼边查（问题贴到节点上）；存进库。研究者不改库 |
@@ -42,13 +42,13 @@ ai4sci serve       # 起后端并端出页面：http://127.0.0.1:8765
 设计口径在 `docs/PRODUCT.md`（给谁用、反例、原则）与 `docs/DESIGN.md`（色板、字阶、布局）。
 页面先认工作区：最左一条地方栏（先「工作区 / 编辑台」两个世界的开关，工作区世界里再列封面块与「新建」；编辑台是全局一个库，进了编辑台工作区块整段收掉）；没有工作区时主页面是门口那一屏（一句话 + 模板起工作区，循环视频背景）。
 主页面 = 这个工作区的看板铺满 + 右边一列对话（可收，收起后右下角一枚圆形入口）。看板按 `requirement.lock` 在不在分两个状态：没确认，需求文档就是页面（一格一节，底下「确认」）；确认了，需求收成顶部一条，下面一条流一张表（横向阶段、纵向每次产出、断点是列间的线、右上角在等谁），产出点开侧滑。编辑台 = 画布铺满（React Flow：一条线性的链，阶段 / 断点两种节点；左上角阶段梯与题头，右上角库、保存与选中节点的配置；底下一层风景）+ 右下角圆形入口弹出的悬浮对话窗（造流助理）。
-正文只许出现 `lib/humanize.ts` 翻译过的句子；状态码、哈希、命令只在折叠层。
+正文只许出现 `lib/humanize.ts` 翻译过的词；状态码、哈希、命令的输出只在展开层。对话里的工具调用是例外：原样一行（`chat/trace.ts::toolLine`）。
 
 ```
 web/src/
   assets.ts   页面里全部图片 / 视频的 CDN URL，仅此一处（纲领 P-17）；素材清单在 docs/DESIGN.md
   api/        契约：types.ts（响应体的类型）、client.ts（每个端点一个函数，Scope 定域前缀）、sse.ts（事件流）
-  chat/       对话：trace.ts（事件流折成条目，纯函数、有单测）、ChatView（两个域共用，文案由父组件给）/ TurnView / Composer
+  chat/       对话：trace.ts（事件流折成条目、落盘的事件重放、工具行原样，纯函数、有单测）、ChatView（两个域共用，文案由父组件给）/ TurnView（人的气泡、工具行、回答、花费）/ Composer
   places/     Rail（宽屏的地方栏）、PlacesSheet（窄屏的清单）、place.ts（页面此刻在哪）
   workspace/  NewWorkspace（门口那一屏：一句话 + 模板起工作区）
   board/      主页面的看板：Board（按需求确认与否分两个状态；有作业在跑时轮询）、Requirement（未确认的整页 / 确认后的一条 + 侧滑 diff）、Flows（一条流一张表：阶段列、产出卡、断点线、在等谁）、OutputSheet（一次产出的侧滑：记录、文件、确认）、derive.ts（在等谁的一句话、下一步、产出的状态词、断点的短标签，纯函数、有单测）

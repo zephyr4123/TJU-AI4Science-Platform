@@ -50,7 +50,12 @@ def test_deltas_stream_through_but_only_the_full_text_lands_on_disk(tmp_path):
     assert "".join(e.text for e in events if e.kind == "delta") == "你好，研究者"
     lines = (conv.dir / "turn-1" / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert [json.loads(line)["type"] for line in lines] == ["system", "assistant", "result"]
-    assert conv_mod.read_turns(conv)[0]["reply"] == "你好，研究者"
+    turn = conv_mod.read_turns(conv)[0]
+    assert turn["reply"] == "你好，研究者"
+    # trace.jsonl 是同一轮的框架事件（不分后端），delta 不落盘；老轮次没有这个文件就是空列表
+    assert [e["kind"] for e in turn["events"]] == ["init", "text", "done"]
+    (conv.dir / "turn-1" / "trace.jsonl").unlink()
+    assert conv_mod.read_turns(conv)[0]["events"] == []
 
 
 def test_framework_origin_turn_is_labelled_and_chat_id_reaches_the_adapter(tmp_path):

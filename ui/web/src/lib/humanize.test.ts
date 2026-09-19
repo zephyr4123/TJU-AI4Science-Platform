@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { conclusionOf, denialSentence, outputWord, requirementWord, stageSentence, stopSentence, toolSentence, wakeSentence } from './humanize'
+import { conclusionOf, denialSentence, outputWord, requirementWord, stageSentence, stopSentence, wakeSentence } from './humanize'
 
 describe('需求与产出的句子', () => {
   it('需求状态', () => {
@@ -40,27 +40,11 @@ describe('实验的句子', () => {
   })
 })
 
-describe('工具行', () => {
-  it('命令翻成动作', () => {
-    expect(toolSentence('Bash', { command: '.venv/bin/ai4sci cap design' })).toBe('写了评分脚本、跑了基线')
-    expect(toolSentence('Bash', { command: 'ai4sci cap auto-research --continue experiment/1 --resume' })).toBe('接着跑上次中断的实验')
-    expect(toolSentence('Bash', { command: 'ai4sci show workspace' })).toBe('看了工作区走到哪')
-    expect(toolSentence('Bash', { command: 'ai4sci show output experiment/1' })).toBe('看了产出')
-    expect(toolSentence('Bash', { command: 'ai4sci sign design/1 --by x' })).toBe('替人确认了产出（应由人确认）')
-    expect(toolSentence('Bash', { command: 'ai4sci show templates' })).toBe('看了需求模板')
-    expect(toolSentence('Bash', { command: 'ai4sci show workspaces' })).toBe('查了有哪些工作区')
-    expect(toolSentence('Bash', { command: 'ai4sci flow take quick-look' })).toBe('从库里取了一条流')
-    expect(toolSentence('Bash', { command: 'ai4sci show flows' })).toBe('看了这个工作区里的流')
-    expect(toolSentence('Bash', { command: 'ai4sci cap analysis --from experiment/1 --detach' })).toBe('写了分析初稿，放到后台跑')
-    expect(toolSentence('Bash', { command: 'ls -1 materials/' })).toBe('看了目录')
-    expect(toolSentence('Bash', { command: 'python3 -c 1' })).toBe('运行了一条命令')
-    expect(toolSentence('Read', { file_path: '/a/b/w/requirement.md' })).toBe('读了 w/requirement.md')
-    expect(toolSentence('Grep', { pattern: 'a' })).toBe('搜了文件')
-  })
-  it('框架叫醒的那一轮一句话', () => {
+describe('对话里的句子', () => {
+  it('框架叫醒的那一轮：后台作业完成 / 失败 + 那条命令', () => {
     const ok = '作业 job-1（`ai4sci cap auto-research --max-iters 1`）跑完了，退出码 0：\nstop batch_exhausted\n\n看一眼结果'
-    expect(wakeSentence(ok)).toBe('后台作业跑完了（跑了几轮实验）')
-    expect(wakeSentence('作业 job-2（`ai4sci cap analysis --from experiment/1`）没跑成，退出码 1：\nx')).toBe('后台作业没跑成（写了分析初稿）')
+    expect(wakeSentence(ok)).toBe('后台作业完成：ai4sci cap auto-research --max-iters 1')
+    expect(wakeSentence('作业 job-2（`ai4sci cap analysis --from experiment/1`）没跑成，退出码 1：\nx')).toBe('后台作业失败：ai4sci cap analysis --from experiment/1')
     expect(wakeSentence('随便一句 `话`')).toBe('随便一句 话')
   })
   it('被拒的命令一句话', () => {

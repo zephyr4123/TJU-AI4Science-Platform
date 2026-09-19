@@ -101,7 +101,7 @@ export function StopNode({ data, selected }: NodeProps<StopNodeType>) {
           <Signature weight="duotone" aria-hidden className="size-[1.375rem] shrink-0" />
           <ProblemDot problems={data.problems} />
         </div>
-        <p className={cn('mt-2 line-clamp-2 min-h-5 pr-6 text-[0.875rem] leading-snug font-semibold', !data.note && 'font-normal text-wait/60')}>{data.note || '签字'}</p>
+        <p className={cn('mt-2 line-clamp-2 min-h-5 pr-6 text-[0.875rem] leading-snug font-semibold', !data.note && 'font-normal text-wait/60')}>{data.note || '确认'}</p>
         <Numeral n={data.n} className="text-wait/35" />
         <RemoveButton label={`删除第 ${data.n} 项`} onClick={data.onRemove} className="text-wait/70 hover:bg-wait/15 hover:text-wait" />
       </div>

@@ -5,7 +5,9 @@
                           transcript.md       人一句 agent 一句，给人翻
                           inflight.json       正在跑的那一轮；在就拒绝再发
                           turn-N/message.md   这一轮人说的
-                          turn-N/events.jsonl 这一轮 CLI 的原生事件流，一行一个
+                          turn-N/events.jsonl 这一轮 CLI 的原生事件流，一行一个（证据，按后端的形）
+                          turn-N/trace.jsonl  同一轮翻成框架事件（kind / text / tool …），不分后端；
+                                              页面重开对话时靠它把工具调用原样摆回去
 
 域是工作区（研究助理）或编辑台（造流助理），由 chat/scope.py 定；这里只拿到对话目录。
 
@@ -33,6 +35,8 @@ LOGGER = logging.getLogger("ai4sci.chat")
 META_NAME = "meta.json"
 TRANSCRIPT_NAME = "transcript.md"
 INFLIGHT_NAME = "inflight.json"
+EVENTS_NAME = "events.jsonl"
+TRACE_NAME = "trace.jsonl"
 TIMEOUT_ENV = "AI4SCI_COORDINATOR_TIMEOUT_S"
 DEFAULT_TIMEOUT_S = 900.0
 # transcript.md 里一轮的样子；写在 `_close_turn`，读在 `read_turns`，两处必须同步改
@@ -143,10 +147,28 @@ def title(conv: Conversation) -> str | None:
 
 
 def read_turns(conv: Conversation) -> list[dict[str, Any]]:
-    """把 transcript.md 读回成一轮一条 {turn, message, reply}：页面要的是结构，不是 markdown。"""
+    """把 transcript.md 读回成一轮一条 {turn, origin, message, reply, events}：页面要的是结构，
+    不是 markdown。`events` 是这一轮的框架事件（trace.jsonl），工具调用是对话的一部分，重开也在；
+    老的轮次没有这个文件就是空列表。"""
     text = (conv.dir / TRANSCRIPT_NAME).read_text(encoding="utf-8")
-    return [{"turn": int(n), "origin": origin, "message": message.strip(), "reply": reply.strip()}
+    return [{"turn": int(n), "origin": origin, "message": message.strip(), "reply": reply.strip(),
+             "events": _read_trace(conv.dir / f"turn-{n}" / TRACE_NAME)}
             for n, origin, message, reply in TURN_RE.findall(text)]
+
+
+def _read_trace(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def event_payload(event: ChatEvent) -> dict[str, Any]:
+    """一个框架事件出门的形状：SSE 与 trace.jsonl 同一份。NaN 出门前换 None（JSON 没有 NaN）。"""
+    return {"kind": event.kind, "text": event.text, "tool": event.tool,
+            "tool_input": event.tool_input, "is_error": event.is_error,
+            "session_id": event.session_id,
+            "cost_usd": None if math.isnan(event.cost_usd) else event.cost_usd,
+            "duration_s": event.duration_s, "exit_code": event.exit_code}
 
 
 def send(
@@ -180,12 +202,14 @@ def send(
     inflight.write_text(json.dumps({"turn": turn_n,
                                     "started_at": datetime.now(UTC).isoformat(timespec="seconds")}),
                         encoding="utf-8")
-    events_path = turn_dir / "events.jsonl"
+    events_path = turn_dir / EVENTS_NAME
+    trace_path = turn_dir / TRACE_NAME
     timeout = coordinator_timeout_s() if timeout_s is None else timeout_s
     LOGGER.info("chat_turn_start chat_id=%s turn=%d resume=%s model=%s effort=%s", conv.chat_id,
                 turn_n, conv.session_id or "-", conv.model or "-", conv.effort or "-")
     try:
-        with events_path.open("a", encoding="utf-8") as fh:
+        with events_path.open("a", encoding="utf-8") as fh, \
+                trace_path.open("a", encoding="utf-8") as trace_fh:
             for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
                                    system_prompt=system_prompt, allowed_paths=allowed_paths,
                                    bash_rules=bash_rules, readable_paths=readable_paths,
@@ -193,6 +217,8 @@ def send(
                 if event.kind != "delta":  # 逐字片段只往外吐不落盘：证据是完整的 text，不是碎片
                     fh.write(json.dumps(event.raw or _bare(event), ensure_ascii=False) + "\n")
                     fh.flush()
+                    trace_fh.write(json.dumps(event_payload(event), ensure_ascii=False) + "\n")
+                    trace_fh.flush()
                 if event.session_id and event.session_id != conv.session_id:
                     conv.session_id = event.session_id
                     conv.save()

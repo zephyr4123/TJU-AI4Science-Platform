@@ -181,9 +181,14 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
 
     status, _, body = call(base, f"{prefix}/chats/{chat_id}")
     doc = json.loads(body)
-    assert status == 200 and doc["turns"] == 2 and doc["history"] == [
+    assert status == 200 and doc["turns"] == 2
+    assert [{k: v for k, v in t.items() if k != "events"} for t in doc["history"]] == [
         {"turn": 1, "origin": "人", "message": "你好", "reply": "你好"},
         {"turn": 2, "origin": "人", "message": "有几个？", "reply": "三个"}]
+    # 工具调用是对话的一部分：重开对话时 history 里带着这一轮的框架事件，页面照原样摆回去
+    assert [e["kind"] for e in doc["history"][1]["events"]] == [
+        "init", "tool_use", "tool_result", "text", "done"]
+    assert doc["history"][1]["events"][1]["tool_input"] == {"command": "ls"}
     assert "## 第 2 轮" in doc["transcript"]
     status, _, body = call(base, f"{prefix}/chats")
     assert status == 200 and [(c["chat_id"], c["title"]) for c in json.loads(body)] == [

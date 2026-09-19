@@ -40,7 +40,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import mimetypes
 from collections.abc import Callable
 from dataclasses import asdict
@@ -355,12 +354,7 @@ class Handler(BaseHTTPRequestHandler):
             self._sse(event)
 
     def _sse(self, event: ChatEvent) -> None:
-        payload = {"kind": event.kind, "text": event.text, "tool": event.tool,
-                   "tool_input": event.tool_input, "is_error": event.is_error,
-                   "session_id": event.session_id,
-                   "cost_usd": None if math.isnan(event.cost_usd) else event.cost_usd,
-                   "duration_s": event.duration_s, "exit_code": event.exit_code}
-        data = json.dumps(payload, ensure_ascii=False)
+        data = json.dumps(conversation.event_payload(event), ensure_ascii=False)
         self.wfile.write(f"event: {event.kind}\ndata: {data}\n\n".encode())
         self.wfile.flush()
 

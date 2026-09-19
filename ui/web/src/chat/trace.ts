@@ -56,6 +56,13 @@ export function outcome(event: ChatEvent): TurnOutcome {
   return { costUsd: event.cost_usd, durationS: event.duration_s, failed: event.kind === 'error' }
 }
 
+/** 落盘的一轮（history 里的 events）重放成条目与结果：没有 done / error 就是没走完 */
+export function replayTrace(events: readonly ChatEvent[]): { trace: TraceItem[]; outcome: TurnOutcome | null } {
+  const trace = events.reduce<TraceItem[]>(reduceTrace, [])
+  const last = [...events].reverse().find((e) => e.kind === 'done' || e.kind === 'error')
+  return { trace, outcome: last ? outcome(last) : null }
+}
+
 /** 把结果挂到最近一个还没有结果的工具调用上。没有待结果的调用（被拒的命令会同时来一条 denied
  *  和一条 tool_result）就追加到最近那个工具行上，别当成助理说的话显示出来；一个工具行都没有才当文本。 */
 function settle(
@@ -79,10 +86,20 @@ function settle(
   return [...items.slice(0, lastTool), merged, ...items.slice(lastTool + 1)]
 }
 
-/** 工具调用给人看的一句话：Bash 显示命令，读写文件显示路径，其余显示工具名。 */
+/** 工具调用的原样：Bash 就是那条命令，读写文件是「工具名 路径」，其余是工具名。展开层用它。 */
 export function describeTool(tool: string, input: Record<string, unknown>): string {
   const str = (key: string) => (typeof input[key] === 'string' ? (input[key] as string) : null)
   if (tool === 'Bash') return str('command') ?? 'Bash'
   const path = str('file_path') ?? str('path') ?? str('pattern')
   return path ? `${tool} ${path}` : tool
+}
+
+/** 对话里的那一行：同 describeTool，只是路径只留末两段（`Read design/1/scoring.yaml`），命令原样一行。 */
+export function toolLine(tool: string, input: Record<string, unknown>): string {
+  const str = (key: string) => (typeof input[key] === 'string' ? (input[key] as string) : null)
+  if (tool === 'Bash') return (str('command') ?? 'Bash').split('\n')[0]
+  const path = str('file_path') ?? str('path') ?? str('pattern')
+  if (!path) return tool
+  const parts = path.split('/').filter(Boolean)
+  return `${tool} ${parts.slice(-2).join('/')}`
 }

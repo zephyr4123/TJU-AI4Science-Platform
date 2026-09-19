@@ -61,59 +61,13 @@ export function conclusionOf(analysis: string): string {
   return (match ? match[1] : analysis).trim()
 }
 
-// ── 对话里的工具行 ────────────────────────────────────────────────────────
-// 每条命令一句直白的话：查了什么、运行了什么、写了什么。带 --detach 的加一句「放到后台跑」。
-const CLI_SENTENCE: [RegExp, string][] = [
-  [/ai4sci cap design/, '写了评分脚本、跑了基线'],
-  [/ai4sci cap auto-research.*--resume/, '接着跑上次中断的实验'],
-  [/ai4sci cap auto-research.*--(patience|max-iterations|max-cost-usd)/, '给实验续了命，接着跑'],
-  [/ai4sci cap auto-research/, '跑了几轮实验'],
-  [/ai4sci cap analysis/, '写了分析初稿'],
-  [/ai4sci cap verify/, '核对了分析里的数字'],
-  [/ai4sci requirement confirm/, '替人确认了需求（应由人确认）'],
-  [/ai4sci sign\b/, '替人确认了产出（应由人确认）'],
-  [/ai4sci output new/, '开了一次产出'],
-  [/ai4sci show workspaces/, '查了有哪些工作区'],
-  [/ai4sci show workspace\b/, '看了工作区走到哪'],
-  [/ai4sci show outputs?\b/, '看了产出'],
-  [/ai4sci show jobs?\b/, '查了后台作业'],
-  [/ai4sci show flows\b/, '看了这个工作区里的流'],
-  [/ai4sci show caps/, '查了有哪些能力'],
-  [/ai4sci show workflows/, '查了库里有哪些流'],
-  [/ai4sci show templates?\b/, '看了需求模板'],
-  [/ai4sci flow take/, '从库里取了一条流'],
-  [/ai4sci workspace new/, '起了一个工作区'],
-  [/^\s*(ls|find|tree)\b/, '看了目录'],
-  [/^\s*(cat|head|tail|sed -n)\b/, '读了文件'],
-  [/^\s*(grep|rg)\b/, '搜了文件内容'],
-]
-
-/** 工具行的人话：命令翻成动作；文件工具带文件名。 */
-export function toolSentence(tool: string, input: Record<string, unknown>): string {
-  const str = (key: string) => (typeof input[key] === 'string' ? (input[key] as string) : null)
-  if (tool === 'Bash') {
-    const command = str('command') ?? ''
-    const tail = /--detach\b/.test(command) ? '，放到后台跑' : ''
-    for (const [pattern, sentence] of CLI_SENTENCE) if (pattern.test(command)) return sentence + tail
-    return '运行了一条命令'
-  }
-  const path = str('file_path') ?? str('path')
-  const name = path ? path.split('/').filter(Boolean).slice(-2).join('/') : null
-  if (tool === 'Read') return name ? `读了 ${name}` : '读了一个文件'
-  if (tool === 'Write') return name ? `写了 ${name}` : '写了一个文件'
-  if (tool === 'Edit') return name ? `改了 ${name}` : '改了一个文件'
-  if (tool === 'Grep' || tool === 'Glob') return '搜了文件'
-  if (tool === 'WebSearch' || tool === 'WebFetch') return '查了网页'
-  return `用了 ${tool}`
-}
-
-/** 框架来叫醒助理的那一轮，页面上只显示一句：哪件事跑完了或没跑成。 */
+// ── 对话里框架来叫醒的那一轮 ──────────────────────────────────────────────
+/** 框架来叫醒助理的那一轮，页面上只显示一句：后台作业完成 / 失败 + 那条命令。 */
 export function wakeSentence(message: string): string {
   const first = message.split('\n')[0]
   const found = /^作业 \S+（`([^`]+)`）(跑完了|没跑成)/.exec(first)
   if (!found) return first.replace(/`/g, '').slice(0, 80)
-  const what = toolSentence('Bash', { command: found[1] }).replace(/，放到后台跑$/, '')
-  return `后台作业${found[2]}（${what}）`
+  return `后台作业${found[2] === '跑完了' ? '完成' : '失败'}：${found[1]}`
 }
 
 /** 被拒的命令，原因翻成一句话；不是认识的拒绝原因就原样给。 */

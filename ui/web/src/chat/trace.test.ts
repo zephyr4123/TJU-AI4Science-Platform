@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ChatEvent } from '@/api/types'
 
-import { describeTool, reduceTrace } from './trace'
+import { describeTool, reduceTrace, replayTrace, toolLine } from './trace'
 
 const ev = (partial: Partial<ChatEvent> & { kind: ChatEvent['kind'] }): ChatEvent => ({
   text: '', tool: '', tool_input: {}, is_error: false, session_id: 's', cost_usd: null,
@@ -77,5 +77,31 @@ describe('delta 逐字攒段', () => {
     items = reduceTrace(items, ev('delta', '下一步'))
     expect(items).toHaveLength(2)
     expect(items[1]).toEqual({ kind: 'text', text: '下一步', streaming: true })
+  })
+})
+
+describe('toolLine', () => {
+  it('命令原样只留第一行，路径只留末两段', () => {
+    expect(toolLine('Bash', { command: 'ai4sci show workspace' })).toBe('ai4sci show workspace')
+    expect(toolLine('Bash', { command: 'ls -1\nls -2' })).toBe('ls -1')
+    expect(toolLine('Read', { file_path: '/a/b/design/1/scoring.yaml' })).toBe('Read 1/scoring.yaml')
+    expect(toolLine('Read', { file_path: '/a/b/w/requirement.md' })).toBe('Read w/requirement.md')
+    expect(toolLine('Grep', { pattern: 'x' })).toBe('Grep x')
+    expect(toolLine('WebSearch', {})).toBe('WebSearch')
+  })
+})
+
+describe('replayTrace', () => {
+  it('落盘的事件重放成条目，done 给结果；没有 done 就是没走完', () => {
+    const events = [
+      ev({ kind: 'init' }), ev({ kind: 'tool_use', tool: 'Bash', tool_input: { command: 'ls' } }),
+      ev({ kind: 'tool_result', text: 'a\nb' }), ev({ kind: 'text', text: '两个' }),
+      ev({ kind: 'done', text: '两个', cost_usd: 0.02, duration_s: 3 }),
+    ]
+    const { trace, outcome } = replayTrace(events)
+    expect(trace.map((t) => t.kind)).toEqual(['tool', 'text'])
+    expect(outcome).toEqual({ costUsd: 0.02, durationS: 3, failed: false })
+    expect(replayTrace(events.slice(0, 3)).outcome).toBeNull()
+    expect(replayTrace([]).trace).toEqual([])
   })
 })

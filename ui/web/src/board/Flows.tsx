@@ -14,10 +14,12 @@ const STATE_WORD: Record<OutputState, string> = {
   running: '运行中', failed: '失败', pending: '待确认', confirmed: '已确认', done: '完成',
 }
 
+/** 一列底下列哪些能力：流点名的（靛色小片），或没点名时这个阶段能用的（素色小片） */
+export interface ColumnCaps { titles: string[]; named: boolean }
+
 export function Flows({ doc, capsOf, onOpen }: {
   doc: WorkspaceDetail
-  /** 一个阶段里有哪些能力的人话标题（流没点名时列这个阶段能用的） */
-  capsOf: (stage: ResearchStage, named: string[]) => string[]
+  capsOf: (stage: ResearchStage, named: string[]) => ColumnCaps
   onOpen: (oid: string) => void
 }) {
   const nameOf: NameOf = (slug) => doc.stages.find((s) => s.slug === slug)?.name ?? slug
@@ -51,7 +53,7 @@ export function Flows({ doc, capsOf, onOpen }: {
 /** 一条流一张表：题头（名字 + 在等谁）、一行列（阶段列与断点线交替） */
 function FlowTable({ flow, pending, nameOf, capsOf, onOpen }: {
   flow: FlowProgress; pending: Set<string>; nameOf: NameOf
-  capsOf: (stage: ResearchStage, named: string[]) => string[]; onOpen: (oid: string) => void
+  capsOf: (stage: ResearchStage, named: string[]) => ColumnCaps; onOpen: (oid: string) => void
 }) {
   const broken = flow.problems.length > 0 || !flow.items
   const sentence = waitingSentence(flow, pending, nameOf)
@@ -80,9 +82,9 @@ function FlowTable({ flow, pending, nameOf, capsOf, onOpen }: {
   )
 }
 
-/** 一列：阶段名、这一步的能力（人话）、下面一张一张产出；当前那列靛色边框，没到的虚线 */
+/** 一列：阶段名、「能力」标签 + 小片、下面一张一张产出；当前那列靛色边框，没到的虚线 */
 function StageColumn({ item, flow, pending, caps, current, runningOutput, onOpen }: {
-  item: Extract<FlowProgressItem, { kind: 'stage' }>; flow: FlowProgress; pending: Set<string>; caps: string[]
+  item: Extract<FlowProgressItem, { kind: 'stage' }>; flow: FlowProgress; pending: Set<string>; caps: ColumnCaps
   current: boolean; runningOutput: string | null; onOpen: (oid: string) => void
 }) {
   const step = flow.step ?? -1
@@ -96,7 +98,14 @@ function StageColumn({ item, flow, pending, caps, current, runningOutput, onOpen
         {createElement(stageIcon(item.stage), { weight: 'duotone', 'aria-hidden': true, className: cn('size-4 shrink-0', current ? 'text-primary' : reached ? 'text-foreground/70' : 'text-muted-foreground/60') })}
         <span className="font-serif text-[1rem] font-semibold">{item.stage}</span>
       </div>
-      <p className="mt-0.5 truncate text-[0.75rem] text-muted-foreground" title={caps.join('、')}>{caps.length ? caps.join('、') : '无内置能力'}</p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        <span className="mr-0.5 text-[0.6875rem] text-muted-foreground">能力</span>
+        {caps.titles.length === 0 && <span className="text-[0.6875rem] text-muted-foreground/70">无</span>}
+        {caps.titles.map((title) => (
+          <span key={title} className={cn('rounded-md px-1.5 py-0.5 text-[0.6875rem] leading-tight',
+                                          caps.named ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{title}</span>
+        ))}
+      </div>
       <ul className="mt-2 space-y-1.5">
         {item.outputs.map((o) => <OutputCard key={o.id} output={o} state={outputState(o, pending)} onOpen={() => onOpen(o.id)} />)}
         {showNext && <li className="rounded-lg border border-dashed border-primary/60 px-2.5 py-1.5 text-[0.8125rem] text-primary">下一步</li>}

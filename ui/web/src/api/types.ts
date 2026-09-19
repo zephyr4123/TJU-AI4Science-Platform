@@ -199,6 +199,8 @@ export interface TurnRecord {
   origin: '人' | '框架'
   message: string
   reply: string
+  /** 这一轮的框架事件（落盘的 trace.jsonl，不含 delta）：工具调用是对话的一部分，重开也在 */
+  events: ChatEvent[]
 }
 
 export interface ChatDoc extends ChatMeta {

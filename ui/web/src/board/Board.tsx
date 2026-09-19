@@ -35,8 +35,8 @@ export function Board({ workspace, epoch }: { workspace: string; epoch: number }
   const data = doc.data
   const catalog = caps.data
   const capsOf = (stage: string, named: string[]) => (named.length
-    ? named.map((name) => catalog.find((c) => c.name === name)?.title ?? name)
-    : catalog.filter((c) => c.stage === stage).map((c) => c.title))
+    ? { titles: named.map((name) => catalog.find((c) => c.name === name)?.title ?? name), named: true }
+    : { titles: catalog.filter((c) => c.stage === stage).map((c) => c.title), named: false })
   const waiting = needsSign(data.flows)
 
   if (!data.requirement.confirmed) {
