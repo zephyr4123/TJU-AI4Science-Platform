@@ -3,7 +3,8 @@
 // 一张表）与文件（盘上的目录树与文件内容，只读），页眉上切换，对话在右边两个镜头都在。编辑台是全局一个库：画布 + 造流助理的
 // 悬浮对话窗（外层 #100），和工作区是两个平行的世界：地方栏上是一个开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换
 // （P-16）。页面只是 `ai4sci serve` 的客户端。
-import { ChatCircle } from '@phosphor-icons/react'
+import { ChatsCircle } from '@phosphor-icons/react'
+import { useReducedMotion } from 'motion/react'
 import { type ReactNode, useState } from 'react'
 
 import { api, inWorkspace, STUDIO } from '@/api/client'
@@ -14,12 +15,13 @@ import { ChatView } from '@/chat/ChatView'
 import { Band } from '@/components/Band'
 import { Scene } from '@/components/Scene'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { Button } from '@/components/ui/button'
+import SpecularButton from '@/components/reactbits/SpecularButton'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Files } from '@/files/Files'
 import { stageSentence } from '@/lib/humanize'
+import { useToken } from '@/lib/tokens'
 import { useChats } from '@/lib/useChats'
 import { useMediaQuery, WIDE } from '@/lib/useMediaQuery'
 import { useResource } from '@/lib/useResource'
@@ -173,11 +175,7 @@ function MainView({ wsId, title, healthy, knobs, view, focus, opened, onOpen, on
             ? <Files key={focus ?? ''} workspace={wsId} epoch={c.epoch} focus={focus} onOpenBoard={onOpenBoard} />
             : <Board workspace={wsId} epoch={c.epoch} opened={opened} onOpen={onOpen} onOpenFiles={onOpenFiles} />}
         </div>
-        {!open && (
-          <Button size="icon-lg" className="absolute right-5 bottom-5 rounded-full shadow-lg" onClick={() => setChatOpen(true)} aria-label="展开对话">
-            <ChatCircle weight="duotone" className="size-5" />
-          </Button>
-        )}
+        {!open && <ChatEntry onOpen={() => setChatOpen(true)} />}
       </main>
       {wide ? (
         // 对话是一块悬在雾景上的板，不是一列（主人：border-l 一刀切出来的全高区域像拼上去的）：四周留 12px，
@@ -198,6 +196,23 @@ function MainView({ wsId, title, healthy, knobs, view, focus, opened, onOpen, on
           </SheetContent>
         </Sheet>
       )}
+    </div>
+  )
+}
+
+/** 对话收起后右下角的入口：一颗带字的玻璃键（主人：小圆钮太小、看不出是干什么的），工作区与编辑台同一颗 */
+export function ChatEntry({ onOpen }: { onOpen: () => void }) {
+  const still = useReducedMotion() === true
+  const indigo = useToken('--primary')
+  const card = useToken('--card')
+  const ink = useToken('--foreground')
+  return (
+    <div className="absolute right-5 bottom-5 z-10">
+      <SpecularButton size="lg" radius={18} tint={card} tintOpacity={0.78} blur={12} textColor={ink} lineColor={indigo} baseColor={ink}
+                      intensity={1.1} speed={still ? 0 : 0.35} followMouse={!still} autoAnimate={false} onClick={onOpen}
+                      className="shadow-lg ring-1 ring-foreground/10">
+        <span className="inline-flex items-center gap-2"><ChatsCircle weight="fill" className="size-5 text-primary" />打开对话</span>
+      </SpecularButton>
     </div>
   )
 }

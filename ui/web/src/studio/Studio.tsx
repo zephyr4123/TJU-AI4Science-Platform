@@ -6,7 +6,7 @@ import {
   Background, BackgroundVariant, type Edge, MarkerType, type Node, type OnSelectionChangeFunc, Panel, ReactFlow,
   ReactFlowProvider, useNodesState, useReactFlow,
 } from '@xyflow/react'
-import { ArrowsInLineHorizontal, ChatsCircle, X } from '@phosphor-icons/react'
+import { ArrowsInLineHorizontal } from '@phosphor-icons/react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ChangeEvent, type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -15,11 +15,10 @@ import type { Capability, Workflow, WorkflowCheck } from '@/api/types'
 import { ASSETS } from '@/assets'
 import { ErrorNote, Problems, Skeleton } from '@/components/bits'
 import GlassSurface from '@/components/reactbits/GlassSurface'
-import { Magnet } from '@/components/reactbits/Magnet'
+import { ChatEntry } from '@/App'
 import SquishSwitch from '@/components/reactbits/SquishSwitch'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
-import { Spark } from '@/keys/Spark'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { coverageSentence } from '@/lib/stages'
 import { useToken } from '@/lib/tokens'
@@ -157,36 +156,27 @@ function Heading({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) =
   )
 }
 
-/** 右下角：一枚圆形玻璃入口（靠近会被吸过去），点开在角上长出一扇悬浮的对话窗 */
+/** 右下角：悬浮的对话窗默认开着（主人：对话默认展开，人手动关）；关了剩一颗带字的玻璃键（和工作区同一颗） */
 function ChatDock({ chat }: { chat: (close: () => void) => ReactNode }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   const still = useReducedMotion() === true
-  const indigo = useToken('--primary')
   const close = () => setOpen(false)
   return (
-    <div className="absolute right-4 bottom-4 z-10 flex flex-col items-end gap-3">
+    <>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div key="window" style={{ transformOrigin: 'bottom right' }}
                       initial={{ opacity: 0, scale: still ? 1 : 0.9, y: still ? 0 : 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: still ? 1 : 0.9, y: still ? 0 : 12 }} transition={{ duration: still ? 0 : 0.22, ease: [0.2, 0.8, 0.2, 1] }}
-                      className="h-[min(38rem,calc(100dvh-9rem))] w-[26rem] max-w-[calc(100vw-2rem)]">
+                      className="absolute right-4 bottom-4 z-10 h-[min(38rem,calc(100dvh-9rem))] w-[26rem] max-w-[calc(100vw-2rem)]">
             <GlassSurface borderRadius={22} height="100%" className="h-full shadow-lg">
               <div className="h-full overflow-hidden rounded-[20px]">{chat(close)}</div>
             </GlassSurface>
           </motion.div>
         )}
       </AnimatePresence>
-      <Magnet>
-        <Spark color={indigo}>
-          <button type="button" onClick={() => setOpen((v) => !v)} aria-label={open ? '收起对话' : '对话'} aria-expanded={open}
-                  className={cn('grid size-14 place-items-center rounded-full border shadow-lg backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                                open ? 'border-primary bg-primary text-primary-foreground' : 'border-white/40 bg-card/70 text-primary hover:bg-card')}>
-            {open ? <X weight="bold" className="size-6" /> : <ChatsCircle weight="fill" className="size-7" />}
-          </button>
-        </Spark>
-      </Magnet>
-    </div>
+      {!open && <ChatEntry onOpen={() => setOpen(true)} />}
+    </>
   )
 }
 
