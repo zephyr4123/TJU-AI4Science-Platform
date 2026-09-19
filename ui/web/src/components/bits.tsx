@@ -34,7 +34,7 @@ export function ErrorNote({ text, className }: { text: string; className?: strin
   )
 }
 
-/** 问题清单：一行一条、原样给人看（发布前检查、预检）。 */
+/** 问题清单：一行一条、原样给人看（流的检查、预检）。 */
 export function Problems({ items, tone = 'bad' }: { items: string[]; tone?: 'bad' | 'warn' }) {
   if (items.length === 0) return null
   return (

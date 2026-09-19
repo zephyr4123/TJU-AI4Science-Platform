@@ -1,4 +1,4 @@
-"""对 `runs/<run_id>/work/` 那个独立 git 仓的全部操作。
+"""对 `experiment/<n>/work/` 那个独立 git 仓的全部操作。
 
 为什么 git 是状态载体（纲领 workflow.md §2）：分支 tip 永远是当前最好的版本，
 被弃的尝试 reset 掉但先存进 `refs/attempts/`——这样"回到 best"是一条命令，

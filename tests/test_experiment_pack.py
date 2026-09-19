@@ -42,7 +42,7 @@ def test_domain_defaults_to_generic_when_absent(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# manifest
+# scoring.yaml
 # --------------------------------------------------------------------------
 def test_missing_primary_metric(tmp_path):
     scoring = pf.default_scoring()
@@ -65,7 +65,7 @@ def test_bad_direction(tmp_path):
     assert "metrics/0/direction" in report
 
 
-def test_unknown_manifest_field_is_rejected(tmp_path):
+def test_unknown_scoring_field_is_rejected(tmp_path):
     """P-8 反过来用：没有读取点的字段（本轮的 conditions）不进 schema，写了就判不合法。"""
     scoring = pf.default_scoring()
     scoring["conditions"] = [{"name": "uniform"}]
@@ -139,7 +139,7 @@ def test_broken_yaml_becomes_a_problem_not_a_traceback(tmp_path):
     assert "scoring.yaml" in report and "YAML 语法错误" in report
 
 
-def test_missing_manifest(tmp_path):
+def test_missing_scoring(tmp_path):
     pack = pf.make_pack(tmp_path)
     (pack.pack / "scoring.yaml").unlink()
     assert "scoring.yaml" in problems_of(pack)
@@ -192,7 +192,7 @@ def test_empty_code_dir(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# run_0
+# baseline
 # --------------------------------------------------------------------------
 def test_missing_repeats(tmp_path):
     pack = pf.make_pack(tmp_path)

@@ -239,7 +239,7 @@
         transparent 72%, color-mix(in oklab, var(--background) 55%, transparent) 100%);
   }
 
-  /* 铺整块面板的画面上的纱幕：压到只剩一点氛围，字照常读（对话正文、脊柱那一列） */
+  /* 铺整块面板的画面上的纱幕：压到只剩一点氛围，字照常读（对话正文、看板） */
   .veil-mist {
     background: color-mix(in oklab, var(--background) 70%, transparent);
   }
@@ -259,7 +259,6 @@
   .t-label {
     @apply text-[0.8125rem] leading-[1.4] text-muted-foreground;
   }
-  /* 脊柱那一列的方格纸：只铺在这一列，上下淡出 */
   /* 页面里所有 markdown 用同一套排版：设计说明、分析、助理回复 */
   .prose-ai4sci {
     @apply prose prose-sm max-w-[68ch] text-foreground prose-headings:font-serif prose-headings:font-semibold

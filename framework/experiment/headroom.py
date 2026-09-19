@@ -31,7 +31,7 @@ DEFAULT_MIN_DELTA = 0.0
 def gate_height(accept_sigma: float, sigma: float, min_delta: float) -> float:
     """统计门的高度：`max(accept_sigma×σ, min_delta)`。
 
-    σ 会退化：run_0 的几次重复完全一致时 σ=0，`accept_sigma×σ` 也就是 0，那时任何
+    σ 会退化：baseline/ 的几次重复完全一致时 σ=0，`accept_sigma×σ` 也就是 0，那时任何
     一点点差值都算"改进"，统计门形同虚设。`budget.min_delta` 是这种情况下的兜底最小
     改进量，两者取大的那个——门只会被抬高，不会被放低（M4）。
     """
@@ -55,13 +55,14 @@ class Headroom:
         out: list[str] = []
         if self.gate == 0:
             out.append(
-                "统计门是 0：run_0 的重复跑完全一致（σ=0）且 manifest 没写 budget.min_delta，"
-                "任何噪声都会算改进；给 min_delta 一个最小改进量，或者把 run_0 重跑出真实的 σ")
+                "统计门是 0：baseline/ 的重复跑完全一致（σ=0）且 scoring.yaml 没写 "
+                "budget.min_delta，任何噪声都会算改进；给 min_delta 一个最小改进量，"
+                "或者把基线重跑出真实的 σ")
         if self.room is not None:
             if self.room < 0:
                 out.append(
                     f"尽头值填错了：基线 {self.metric}={self.baseline:.6g} 已经比 attainable="
-                    f"{self.attainable:.6g} 还好，改 manifest 的 metrics[].attainable")
+                    f"{self.attainable:.6g} 还好，改 scoring.yaml 的 metrics[].attainable")
             elif self.gate > 0 and self.room <= self.gate:
                 out.append(
                     f"这道题在这个门下无解：基线 {self.metric}={self.baseline:.6g} 离尽头 "

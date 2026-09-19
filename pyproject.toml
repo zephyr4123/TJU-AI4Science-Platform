@@ -24,20 +24,20 @@ build-backend = "setuptools.build_meta"
 include = ["framework*", "backends*", "compute*", "tools*"]
 
 # schema 与提示模板是框架在运行时要读的文件，不是文档：不随包带走，装出来的 ai4sci
-# 会在第一次校验任务包或拼提示时才发现文件不在。读取点：
-#   contracts/packs.py::_load_schema、contracts/results.py::SCHEMA_PATH
-#   capabilities/experiment/loop.py::PROMPT_TEMPLATE（模板跟着能力走，不在 framework 根）
+# 会在第一次校验设计那包或拼提示时才发现文件不在。读取点：
+#   experiment/pack.py::SCHEMA_DIR（scoring / results / report 三份 schema）
+#   capabilities/<能力>/prompt.md（模板跟着能力走，不在 framework 根）
 [tool.setuptools.package-data]
-"framework.contracts" = ["schemas/*.json"]
-"framework.capabilities.experiment" = ["prompt.md"]
+"framework.experiment" = ["schemas/*.json"]
+"framework.capabilities.design" = ["prompt.md"]
+"framework.capabilities.auto_research" = ["prompt.md"]
 "framework.capabilities.analysis" = ["prompt.md"]
-"framework.capabilities.init" = ["manifest.yaml", "design.md"]
-"framework.executor" = ["design_prompt.md"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["runs", "tasks/*/code", "tasks/*/run_0"]
+# 样例工作区里设计那包的基线代码是执行层写的，各有自己的 venv 与 lint 规则（design 能力 --isolated 跑 ruff）
+extend-exclude = ["workspaces/*/design/*/code", "workspaces/*/design/*/baseline"]
 
 [tool.ruff.lint]
 # BLE：裸 except 与 except Exception 不带 raise 直接报错，这是红线「不吞异常」的机器判据

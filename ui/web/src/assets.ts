@@ -56,7 +56,7 @@ export const ASSETS = {
     srcSet: `${CDN}/image/chat-clouds-1200.jpg 1200w, ${CDN}/image/chat-clouds-2400.jpg 2400w`,
     alt: '淡彩的云',
   } satisfies Picture,
-  /** 脊柱那一列底下的一层：层层山影，黑白 */
+  /** 看板底下的一层：层层山影，黑白 */
   board: {
     src: `${CDN}/image/board-ridges-1200.jpg`,
     alt: '层层的山影',

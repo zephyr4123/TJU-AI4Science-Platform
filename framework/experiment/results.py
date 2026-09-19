@@ -4,7 +4,7 @@
 （`capabilities/experiment/failures.py`）。分开之后，别的能力（分析、验证）要读同一份
 产物时不必去 import 实验内环。
 
-`schemas/results.schema.json` 是唯一的判据来源，与 `packs.py` 校验 run_0 时用的是同一份。
+`schemas/results.schema.json` 是唯一的判据来源，与 `pack.py` 校验 baseline/ 时用的是同一份。
 """
 
 from __future__ import annotations

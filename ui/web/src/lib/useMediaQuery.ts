@@ -1,9 +1,9 @@
-// 一个媒体查询的布尔值：窄屏时脊柱收进抽屉、编辑台上下叠，靠它切。
+// 一个媒体查询的布尔值：窄屏时对话收进抽屉、编辑台上下叠，靠它切。
 import { useEffect, useState, useSyncExternalStore } from 'react'
 
 import { isDark, onThemeChange } from './theme'
 
-/** 宽屏：脊柱常驻右栏、编辑台左右分栏 */
+/** 宽屏：对话常驻右栏、编辑台左右分栏 */
 export const WIDE = '(min-width: 64rem)'
 
 export function useMediaQuery(query: string): boolean {

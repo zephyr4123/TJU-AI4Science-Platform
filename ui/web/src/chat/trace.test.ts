@@ -57,8 +57,8 @@ describe('reduceTrace', () => {
 
 describe('describeTool', () => {
   it('Bash 显示命令，文件工具显示路径，其余显示工具名', () => {
-    expect(describeTool('Bash', { command: 'ai4sci show tasks' })).toBe('ai4sci show tasks')
-    expect(describeTool('Read', { file_path: '/x/manifest.yaml' })).toBe('Read /x/manifest.yaml')
+    expect(describeTool('Bash', { command: 'ai4sci show workspaces' })).toBe('ai4sci show workspaces')
+    expect(describeTool('Read', { file_path: '/x/scoring.yaml' })).toBe('Read /x/scoring.yaml')
     expect(describeTool('WebSearch', { query: 'q' })).toBe('WebSearch')
   })
 })

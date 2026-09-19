@@ -1,4 +1,4 @@
-// 画布类组件（ElectricBorder、ShinyText）吃的是颜色值不是 var()：从 CSS 变量里读出来，跟着深浅色变（系统切了，或页眉的开关拨了）。
+// 画布类组件（ShinyText、React Flow）吃的是颜色值不是 var()：从 CSS 变量里读出来，跟着深浅色变（系统切了，或页眉的开关拨了）。
 import { useEffect, useState } from 'react'
 
 import { onThemeChange } from './theme'

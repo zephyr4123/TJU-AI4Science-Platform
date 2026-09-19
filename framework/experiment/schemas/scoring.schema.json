@@ -82,7 +82,7 @@
         "min_delta": {
           "type": "number",
           "minimum": 0,
-          "description": "统计门的兜底最小改进量：门取 max(accept_sigma×σ, min_delta)。run_0 的重复跑完全一致时 σ=0，统计门会退化成 0（任何差值都算改进），那时必须显式给它；不写按 0（读取点：framework/runstate.py::load_context，判据在 loop.py::_gate）"
+          "description": "统计门的兜底最小改进量：门取 max(accept_sigma×σ, min_delta)。baseline/ 的重复跑完全一致时 σ=0，统计门会退化成 0（任何差值都算改进），那时必须显式给它；不写按 0（读取点：framework/runstate.py::load_context，判据在 loop.py::_gate）"
         },
         "patience": {
           "type": "integer",
