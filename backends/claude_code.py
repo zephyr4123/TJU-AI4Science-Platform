@@ -233,7 +233,13 @@ class ClaudeCodeChat:
     自动挪到后台，一轮结束后台子进程约 5 秒后被杀——实测 `cap auto-research --max-iters 3` 第 4 轮
     死在半路。所以起会话时 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` 关掉全部后台机制，并把
     Bash 超时抬到与本轮超时一样长：唯一会杀它的只有我们自己的定时器，杀了会报"这一轮超过 N 秒"。
+
+    花费：`--resume` 时 result 事件的 `total_cost_usd` 是整段会话到此刻的累计，不是这一轮的（实测
+    2026-09-19：七轮单调递增 0.165 → 0.284，`modelUsage` 的 token 数也是累计），所以报 `"session"`，
+    这一轮花了多少由框架减。
     """
+
+    cost_reporting = "session"
 
     def __init__(self, cli: str = "claude") -> None:
         self.cli = cli

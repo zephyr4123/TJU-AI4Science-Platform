@@ -141,7 +141,12 @@ class Chat(Protocol):
     适配器要让 agent 调用的命令拿得到它（环境变量 `AI4SCI_CHAT_ID`），后台作业跑完才知道叫醒谁。
     `tuning` 是这一轮用什么模型、什么思考深度（外层 #86）：None 或字段为 None 就用后端缺省；
     `knobs()` 报这家 CLI 有哪些刻度，页面与终端只许从里面选。
+    `cost_reporting` 说清 `done.cost_usd` 是什么：`"turn"` 是这一轮的花费；`"session"` 是续接的
+    整段会话到此刻的累计（Claude Code 的 `--resume` 就这样报），框架自己减上一轮的累计得到这一轮的。
+    报错了就是页面上一句「你是什么模型」显示 $0.28（实测 2026-09-19：那一轮实际 $0.014）。
     """
+
+    cost_reporting: str
 
     def knobs(self) -> Knobs: ...
 

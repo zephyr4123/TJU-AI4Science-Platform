@@ -154,3 +154,25 @@ def test_empty_message_and_timeout_env(tmp_path, monkeypatch):
     monkeypatch.setenv("AI4SCI_COORDINATOR_TIMEOUT_S", "-1")
     with pytest.raises(AssertionError):
         conv_mod.coordinator_timeout_s()
+
+
+def test_session_cumulative_cost_is_turned_into_per_turn_cost(tmp_path):
+    """Claude Code `--resume` 的 result.total_cost_usd 是整段会话的累计（实测七轮 0.165 → 0.284）：
+    报 cost_reporting="session" 的后端，这一轮 = 这次报的 − 上次报的；换了会话从零算；NaN 照传。
+    以前按轮累加的是累计值，meta 里的总花费被算成 $1.58，实际 $0.33。"""
+    conv = conv_mod.new_conversation(tmp_path / "chats", "scripted", tmp_path)
+    chat = ScriptedChat([reply("一", cost=0.10), reply("二", cost=0.15),
+                         reply("三", cost=0.02, session="sess-0002"), reply("四", cost=float("nan"),
+                                                                            session="sess-0002")],
+                        cost_reporting="session")
+    costs = [drain(conv, chat, f"第 {i} 轮")[-1].cost_usd for i in range(1, 5)]
+    assert costs[:3] == pytest.approx([0.10, 0.05, 0.02])
+    assert costs[3] != costs[3], "NaN 照传，不填 0"
+    assert conv.cost_usd == pytest.approx(0.17) and conv.session_cost_usd == pytest.approx(0.02)
+    # 落盘的 trace 与 SSE 同一份：done 里记的是这一轮的花费
+    turn2 = conv_mod.read_turns(conv)[1]["events"][-1]
+    assert turn2["kind"] == "done" and turn2["cost_usd"] == pytest.approx(0.05)
+    # 按轮报的后端不减
+    plain = ScriptedChat([reply("一", cost=0.10), reply("二", cost=0.15)])
+    conv2 = conv_mod.new_conversation(tmp_path / "chats2", "scripted", tmp_path)
+    assert [drain(conv2, plain, "x")[-1].cost_usd for _ in range(2)] == pytest.approx([0.10, 0.15])

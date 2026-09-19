@@ -61,10 +61,14 @@ def failure(why: str) -> list[ChatEvent]:
 
 
 class ScriptedChat:
-    def __init__(self, turns: list[list[ChatEvent]], knobs: Knobs = KNOBS) -> None:
+    cost_reporting = "turn"
+
+    def __init__(self, turns: list[list[ChatEvent]], knobs: Knobs = KNOBS,
+                 cost_reporting: str = "turn") -> None:
         self.turns = list(turns)
         self.calls: list[dict] = []
         self._knobs = knobs
+        self.cost_reporting = cost_reporting
 
     def knobs(self) -> Knobs:
         return self._knobs

@@ -72,6 +72,9 @@ class Conversation:
     session_id: str | None = None
     turns: int = 0
     cost_usd: float = 0.0
+    # 后端上次报的这段会话的累计花费（`Chat.cost_reporting == "session"` 的后端才用得上）：
+    # 这一轮的花费 = 这次报的 − 它；换了会话就从零算
+    session_cost_usd: float = 0.0
     # 这段对话上次选的模型与思考深度（外层 #86）：每轮可改、改了记住；None 是后端缺省
     model: str | None = None
     effort: str | None = None
@@ -207,6 +210,7 @@ def send(
     timeout = coordinator_timeout_s() if timeout_s is None else timeout_s
     LOGGER.info("chat_turn_start chat_id=%s turn=%d resume=%s model=%s effort=%s", conv.chat_id,
                 turn_n, conv.session_id or "-", conv.model or "-", conv.effort or "-")
+    prior_session = conv.session_id
     try:
         with events_path.open("a", encoding="utf-8") as fh, \
                 trace_path.open("a", encoding="utf-8") as trace_fh:
@@ -214,14 +218,16 @@ def send(
                                    system_prompt=system_prompt, allowed_paths=allowed_paths,
                                    bash_rules=bash_rules, readable_paths=readable_paths,
                                    chat_id=conv.chat_id, tuning=conv.tuning):
+                if event.session_id and event.session_id != conv.session_id:
+                    conv.session_id = event.session_id
+                    conv.save()
+                if event.kind in ("done", "error"):  # 先把花费换成这一轮的，落盘与出门都是它
+                    event.cost_usd = _turn_cost(conv, chat, event, prior_session)
                 if event.kind != "delta":  # 逐字片段只往外吐不落盘：证据是完整的 text，不是碎片
                     fh.write(json.dumps(event.raw or _bare(event), ensure_ascii=False) + "\n")
                     fh.flush()
                     trace_fh.write(json.dumps(event_payload(event), ensure_ascii=False) + "\n")
                     trace_fh.flush()
-                if event.session_id and event.session_id != conv.session_id:
-                    conv.session_id = event.session_id
-                    conv.save()
                 if event.kind in ("done", "error"):
                     _close_turn(conv, turn_n, message, event, origin)
                 yield event
@@ -233,6 +239,18 @@ def _next_turn(directory: Path) -> int:
     taken = [int(p.name.split("-", 1)[1]) for p in directory.glob("turn-*")
              if p.is_dir() and p.name.split("-", 1)[1].isdigit()]
     return max(taken, default=0) + 1
+
+
+def _turn_cost(conv: Conversation, chat: Chat, event: ChatEvent,
+               prior_session: str | None) -> float:
+    """这一轮花了多少：后端按轮报就照收；按会话累计报（Claude Code `--resume`）就减上一轮的累计，
+    会话换了（prior_session 不是现在这个）就从零算。NaN 照传，不填 0。"""
+    reported = event.cost_usd
+    if chat.cost_reporting != "session" or math.isnan(reported):
+        return reported
+    previous = conv.session_cost_usd if conv.session_id == prior_session else 0.0
+    conv.session_cost_usd = reported
+    return reported - previous if reported >= previous else reported
 
 
 def _bare(event: ChatEvent) -> dict[str, Any]:
