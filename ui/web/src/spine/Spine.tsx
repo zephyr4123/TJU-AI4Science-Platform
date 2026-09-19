@@ -69,10 +69,8 @@ export function Spine({ workspace, epoch, chatId }: { workspace: string; epoch: 
 
   return (
     <div className="h-full space-y-3 overflow-y-auto px-5 pt-5 pb-8">
-      {/* 这块板叫什么、怎么用，一眼看到（主人：没字用户不知道是啥） */}
       <header className="px-1 pb-1">
         <h2 className="font-serif text-[1.125rem] leading-snug font-semibold"><FoldText text="工作流" /></h2>
-        <p className="mt-0.5 text-[0.8125rem] text-muted-foreground">每条走到哪、在等谁，点开看细节。</p>
       </header>
       {guide && (
         <TaskLane workspace={doc.data} guide={guide} reload={doc.reload} titleOf={titleOf}
@@ -87,7 +85,7 @@ export function Spine({ workspace, epoch, chatId }: { workspace: string; epoch: 
           <span className="font-serif font-semibold text-foreground/80">{flow.title}</span>
           {flow.problems.length > 0
             ? <span className="text-bad">{flow.problems[0]}</span>
-            : <span>备着，{flow.stages.length} 项，还没开跑</span>}
+            : <span>{flow.stages.length} 项，未开始</span>}
         </p>
       ))}
     </div>

@@ -1,12 +1,12 @@
 // 窄屏的地方栏：页眉左端的玻璃标记就是入口，点开一张从左边拉出来的清单。和宽屏的 Rail 同一个结构——先「工作区 / 编辑台」两个世界，
-// 再列当前世界的内容：主页面世界是逐条浮现的工作区（reactbits AnimatedList 改装）与末行「新建」，编辑台世界里没有可切的东西。
+// 再列当前世界的内容：主页面世界是逐条浮现的工作区（reactbits AnimatedList 改装）与末行「新建」，编辑台世界里没有可切的东西，这段就空着。
 import { Blueprint, Flask, FolderSimplePlus, Folders } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import { coverOf } from '@/assets'
 import { AnimatedList } from '@/components/reactbits/AnimatedList'
 import { GlassIcon } from '@/components/reactbits/GlassIcon'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { stageSentence } from '@/lib/humanize'
 import { cn } from '@/lib/utils'
 
@@ -28,10 +28,9 @@ export function PlacesSheet({ workspaces, place, onPick, onNew, onWorld }: Place
           <GlassIcon icon={<Flask weight="fill" className="size-[1.05em]" />} label="AI4Science" />
         </button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-[20rem] gap-0 p-0">
+      <SheetContent side="left" className="w-[20rem] gap-0 p-0" aria-describedby={undefined}>
         <SheetHeader className="px-5 pt-5 pb-2">
           <SheetTitle className="font-serif text-[1.125rem] font-semibold">AI4Science</SheetTitle>
-          <SheetDescription>工作区各有自己的对话，编辑台只有一个。</SheetDescription>
         </SheetHeader>
         <div role="tablist" aria-label="世界" className="grid grid-cols-2 gap-2 px-5 pt-2 pb-3">
           <button type="button" role="tab" aria-selected={world === 'workspace'} onClick={go(() => onWorld('workspace'))} className={tab('workspace')}>
@@ -68,9 +67,7 @@ export function PlacesSheet({ workspaces, place, onPick, onNew, onWorld }: Place
               </button>
             </div>
           </>
-        ) : (
-          <p className="px-5 py-3 text-sm text-muted-foreground">库只有一个，不分工作区。</p>
-        )}
+        ) : null}
       </SheetContent>
     </Sheet>
   )

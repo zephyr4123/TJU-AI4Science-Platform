@@ -10,7 +10,7 @@ import { Dot } from '@/components/bits'
 import { AnimatedList } from '@/components/reactbits/AnimatedList'
 import { GlareHover } from '@/components/reactbits/GlareHover'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { chatTitle, usd, when } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -27,10 +27,9 @@ interface Props {
   /** 这一边是谁的对话：工作区的标题或「编辑台」 */
   title: string
   /** 这一边的对话是干什么的，一句话 */
-  description: string
 }
 
-export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect, onNew, cover, title, description }: Props) {
+export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect, onNew, cover, title }: Props) {
   const [open, setOpen] = useState(false)
   const ordered = chats ? [...chats].sort((a, b) => b.chat_id.localeCompare(a.chat_id)) : null
   return (
@@ -43,11 +42,10 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
           {ordered && ordered.length > 0 && <span className="tabular text-muted-foreground">{ordered.length}</span>}
         </GlareHover>
       </SheetTrigger>
-      <SheetContent side="left" className="w-[20rem] gap-0 p-0">
+      <SheetContent side="left" className="w-[20rem] gap-0 p-0" aria-describedby={undefined}>
         <Band picture={cover} veil="foot" className="h-36 shrink-0">
           <div className="flex h-full flex-col justify-end px-5 pb-4">
             <SheetTitle className="font-serif text-[1.125rem] font-semibold">{title}</SheetTitle>
-            <SheetDescription className="mt-0.5">{description}</SheetDescription>
           </div>
         </Band>
         <div className="px-4 py-3">

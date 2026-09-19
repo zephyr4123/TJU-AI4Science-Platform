@@ -64,7 +64,6 @@ export function NewWorkspace({ existing, onCreated, onCancel }: {
       <div className="relative mx-auto grid min-h-full max-w-[72rem] items-center gap-12 px-6 py-16 sm:px-8 lg:grid-cols-[1fr_22rem]">
         <div className="min-w-0">
           <h1 className="font-serif text-[2.25rem] leading-[1.2] font-semibold tracking-tight text-balance">要解决什么？</h1>
-          <p className="t-body mt-3 text-muted-foreground">一句话就够。一个工作区，一份需求。</p>
 
           <GlassSurface borderRadius={22} className="mt-10 max-w-[36rem] focus-within:ring-3 focus-within:ring-ring/35">
             <div className="flex items-center gap-2 p-2">

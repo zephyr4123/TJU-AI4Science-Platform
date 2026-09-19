@@ -1,6 +1,6 @@
 // 壳：左边地方栏（先选世界：工作区 / 编辑台，再选工作区），右边页眉 + 当前地方的内容（外层 #58 #64 #70 #79）。
-// 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的对话 + 流程脊柱。编辑台是全局一个库：造流助理的对话 + 工作流墙、
-// 七段货架、拼流台，和工作区是两个平行的世界：地方栏上是一个开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。页面只是 `ai4sci serve` 的客户端。
+// 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的对话 + 流程脊柱。编辑台是全局一个库：编辑台助理的对话 + 画布
+// （外层 #100），和工作区是两个平行的世界：地方栏上是一个开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。页面只是 `ai4sci serve` 的客户端。
 import { type ReactNode, useState } from 'react'
 
 import { api, inWorkspace, STUDIO } from '@/api/client'
@@ -68,7 +68,7 @@ export default function App() {
           {place && (
             <Top place={place} menu={wide ? null : <PlacesSheet {...places} />}
                  title={place.kind === 'studio' ? '编辑台' : place.kind === 'door' ? '新建工作区' : current?.title ?? place.id}
-                 note={place.kind === 'studio' ? '不分工作区' : current && place.kind === 'workspace' ? stageSentence(current) : null} />
+                 note={current && place.kind === 'workspace' ? stageSentence(current) : null} />
           )}
           {place?.kind === 'studio'
             ? <StudioView healthy={healthy} knobs={knobs} />
@@ -84,7 +84,7 @@ export default function App() {
   )
 }
 
-/** 页眉只属于当前地方：工作区的标题 + 走到哪，底下封面糊成一抹颜色（换工作区就换色）；编辑台是库的横幅；门口宽屏不要页眉（画面铺满），窄屏留一条放入口。 */
+/** 页眉只属于当前地方：工作区的标题 + 走到哪，底下封面糊成一抹颜色（换工作区就换色）；编辑台一条横幅；门口宽屏不要页眉（画面铺满），窄屏留一条放入口。 */
 function Top({ place, title, note, menu }: { place: Place; title: string; note: string | null; menu: ReactNode }) {
   if (place.kind === 'door' && !menu) return null
   const picture = place.kind === 'studio' ? ASSETS.studio : place.kind === 'workspace' ? coverOf(place.id) : null
@@ -116,15 +116,12 @@ function MainView({ wsId, title, healthy, knobs }: { wsId: string; title: string
         boardOpen={open} onToggleBoard={() => setBoardOpen(!open)}
         autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
         knobs={knobs}
-        intro={{ lede: '先说清课题。', body: '想解决什么、数据在哪、什么算好。' }}
-        welcome={{
-          headline: '把实验交给助理。',
-          body: '你只做两件事：发布需求，验收结果。',
-        }}
+        intro={{ lede: '课题', body: '问题、数据、评价指标。' }}
+        welcome={{ headline: '课题', body: '问题、数据、评价指标。' }}
         drawer={
           <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                       creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
-                      cover={coverOf(wsId)} title={title} description="这个工作区的对话" />
+                      cover={coverOf(wsId)} title={title} />
         }
       />
       {wide ? (
@@ -150,29 +147,28 @@ function MainView({ wsId, title, healthy, knobs }: { wsId: string; title: string
   )
 }
 
-/** 编辑台：左边造流助理的对话（窄一列，库才是主角），右边工作流墙、货架、拼流台。 */
+/** 编辑台：左边助理的对话（窄一列，可收起，画布才是主角），右边画布。 */
 function StudioView({ healthy, knobs }: { healthy: boolean | null; knobs: Backend | null }) {
   const c = useChats(STUDIO)
+  const [chatOpen, setChatOpen] = useState(true)
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      <div className="flex h-[45dvh] shrink-0 flex-col border-b lg:h-auto lg:w-[30rem] lg:border-r lg:border-b-0">
+      <div className={cn('flex h-[40dvh] shrink-0 flex-col border-b lg:h-auto lg:w-[26rem] lg:border-r lg:border-b-0 xl:w-[30rem]',
+                         !chatOpen && 'lg:hidden')}>
         <ChatView
           key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current}
           autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
           knobs={knobs}
-          intro={{ lede: '说清要拼什么流。', body: '给谁用、从哪步起、要不要验证。' }}
-          welcome={{
-            headline: '把能力拼成流。',
-            body: '存进库，研究者取走就能跑。',
-          }}
+          intro={{ lede: '工作流', body: '阶段、能力、断点。' }}
+          welcome={{ headline: '工作流', body: '阶段、能力、断点。' }}
           drawer={
             <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                         creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
-                        cover={ASSETS.studio} title="编辑台" description="编辑台的对话" />
+                        cover={ASSETS.studio} title="编辑台" />
           }
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto"><Studio epoch={c.epoch} /></div>
+      <div className="min-h-0 flex-1"><Studio epoch={c.epoch} chatOpen={chatOpen} onToggleChat={() => setChatOpen((v) => !v)} /></div>
     </div>
   )
 }
