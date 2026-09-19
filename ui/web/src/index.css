@@ -283,30 +283,12 @@
   }
 }
 
-/* 编辑台的画布（React Flow）走 tokens：点阵、边、缩放按钮都跟深浅色（外层 #101） */
+/* 编辑台的画布（React Flow）走 tokens：点阵与边跟深浅色；自带的缩放按钮与署名不要（外层 #101） */
 .react-flow {
   --xy-background-color-default: transparent;
   --xy-background-pattern-dots-color-default: color-mix(in oklab, var(--foreground) 18%, transparent);
   --xy-edge-stroke-default: var(--muted-foreground);
   --xy-edge-stroke-width-default: 1.5;
-  --xy-controls-button-background-color-default: var(--card);
-  --xy-controls-button-background-color-hover-default: var(--accent);
-  --xy-controls-button-color-default: var(--muted-foreground);
-  --xy-controls-button-color-hover-default: var(--foreground);
-  --xy-controls-button-border-color-default: var(--border);
-  --xy-controls-box-shadow-default: none;
   --xy-selection-background-color-default: color-mix(in oklab, var(--primary) 8%, transparent);
   --xy-selection-border-default: 1px solid color-mix(in oklab, var(--primary) 50%, transparent);
-  --xy-attribution-background-color-default: transparent;
-}
-.react-flow__controls {
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.react-flow__attribution {
-  margin: 0 0 1.35rem 7.75rem; /* 缩放按钮的右边 */
-}
-.react-flow__attribution a {
-  color: var(--muted-foreground);
 }

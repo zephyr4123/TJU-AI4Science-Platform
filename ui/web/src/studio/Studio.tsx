@@ -3,7 +3,7 @@
 // （POST /workflows/check），问题贴到节点上；存成 workflows/<name>.yaml。坐标不进文件，按顺序自动排、放不下换行。
 // 造流助理是右下角一枚圆形入口，点开在角上弹出一扇悬浮的对话窗（主人：画布是主角，chat 是辅助）。它每说完一轮 epoch 加一，库就重读。
 import {
-  Background, BackgroundVariant, Controls, type Edge, MarkerType, type Node, type OnSelectionChangeFunc, Panel, ReactFlow,
+  Background, BackgroundVariant, type Edge, MarkerType, type Node, type OnSelectionChangeFunc, Panel, ReactFlow,
   ReactFlowProvider, useNodesState, useReactFlow,
 } from '@xyflow/react'
 import { ChatsCircle, X } from '@phosphor-icons/react'
@@ -298,12 +298,11 @@ function Canvas({ items, titles, perItem, selected, onSelect, setItems, onDrop, 
         const at = screenToFlowPosition({ x: e.clientX, y: e.clientY })
         onDrop(seed, indexAt(items, at.x, at.y))
       }}
-      nodesConnectable={false} edgesFocusable={false} panOnScroll zoomOnScroll={false} minZoom={0.3} maxZoom={1.5} attributionPosition="bottom-left"
+      nodesConnectable={false} edgesFocusable={false} panOnScroll zoomOnScroll={false} minZoom={0.3} maxZoom={1.5} proOptions={{ hideAttribution: true }}
       deleteKeyCode={['Backspace', 'Delete']} fitView fitViewOptions={{ padding: FIT, maxZoom: 1 }}
       className="!bg-transparent"
     >
       <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
-      <Controls showInteractive={false} position="bottom-left" orientation="horizontal" className="!m-4" />
       {items.length === 0 && (
         <Panel position="top-center" className="pointer-events-none !mt-[28%]">
           <div className="grid h-[4.5rem] w-[13rem] place-items-center rounded-2xl border-2 border-dashed border-muted-foreground/40 font-serif text-[0.9375rem] text-muted-foreground">拖入阶段</div>
