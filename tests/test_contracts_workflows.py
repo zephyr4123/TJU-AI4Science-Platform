@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import pytest
+import yaml
 
 from framework import paths
 from framework.capabilities import discover
@@ -165,3 +166,19 @@ def test_bad_shapes_are_named(tmp_path):
         write(tmp_path, text)
         with pytest.raises(workflows.WorkflowInvalid, match=message):
             workflows.load_workflows(tmp_path)
+
+
+def test_layout_is_optional_and_round_trips(tmp_path):
+    write(tmp_path, GOOD + "layout:\n" + "".join(f"  - [{i * 264}, 0]\n" for i in range(6)))
+    [wf] = workflows.load_workflows(tmp_path)
+    assert wf.layout is not None and len(wf.layout) == 6 and wf.layout[1] == (264.0, 0.0)
+    assert wf.to_dict()["layout"][1] == [264.0, 0.0]
+    raw = yaml.safe_load((tmp_path / "w.yaml").read_text(encoding="utf-8"))
+    saved = workflows.save_workflow(tmp_path / "out", raw, catalog())
+    assert saved.layout == wf.layout
+    text = (tmp_path / "out" / "w.yaml").read_text(encoding="utf-8")
+    assert "layout:\n- [0, 0]\n- [264, 0]\n" in text
+    write(tmp_path, GOOD + "layout: [[0, 0]]\n")
+    with pytest.raises(workflows.WorkflowInvalid, match="layout 要是与 stages 一样长"):
+        workflows.load_workflows(tmp_path)
+

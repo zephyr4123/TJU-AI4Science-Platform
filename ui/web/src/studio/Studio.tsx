@@ -6,7 +6,7 @@ import {
   Background, BackgroundVariant, type Edge, MarkerType, type Node, type OnSelectionChangeFunc, Panel, ReactFlow,
   ReactFlowProvider, useNodesState, useReactFlow,
 } from '@xyflow/react'
-import { ChatsCircle, X } from '@phosphor-icons/react'
+import { ArrowsInLineHorizontal, ChatsCircle, X } from '@phosphor-icons/react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ChangeEvent, type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -29,8 +29,8 @@ import { cn } from '@/lib/utils'
 
 import { Inspector } from './Inspector'
 import {
-  type Draft, EMPTY, fromSeed, fromWorkflow, indexAt, insertAt, type Item, layout, moveTo, parseSeed, patch, problemIndices,
-  remove, type Seed, SEED_MIME, toDraft, WIDTH,
+  append, arranged, type Draft, dropAt, EMPTY, fromWorkflow, type Item, parseSeed, patch, place, positions, problemIndices,
+  remove, type Seed, SEED_MIME, tidy, toDraft,
 } from './model'
 import { StageNode, type StageNodeType, StopNode, type StopNodeType } from './nodes'
 import { Ladder, Library } from './Palette'
@@ -83,7 +83,7 @@ function Editor({ stages, workflows, catalog, onSaved, chat }: {
     return out
   }, [check.data])
 
-  const add = (seed: Seed, index = draft.items.length) => setItems((items) => insertAt(items, index, fromSeed(seed)))
+  const add = (seed: Seed) => setItems((items) => append(items, seed))
   const load = (wf: Workflow) => { setDraft(fromWorkflow(wf)); setSelected(null) }
   const current = selected === null ? null : draft.items.find((it) => it.uid === selected) ?? null
   const inspector = current && (
@@ -96,8 +96,7 @@ function Editor({ stages, workflows, catalog, onSaved, chat }: {
     <div className="relative min-h-0 min-w-0 flex-1">
       {/* 画布底下一层风景，压到只剩氛围；点阵铺在它上面 */}
       <Scene picture={ASSETS.studio} veil="mist" />
-      <Canvas items={draft.items} titles={titles} perItem={perItem} selected={selected} onSelect={setSelected} setItems={setItems}
-              onDrop={(seed, index) => add(seed, index)}>
+      <Canvas items={draft.items} titles={titles} perItem={perItem} selected={selected} onSelect={setSelected} setItems={setItems}>
         {/* 浮在画布上的几块：面板本身不挡鼠标，只有里面的东西接事件 */}
         <Panel position="top-left" className="pointer-events-none !m-4 flex items-start gap-4">
           <div className="pointer-events-auto"><Ladder stages={stages} onAdd={(seed) => add(seed)} /></div>
@@ -105,6 +104,12 @@ function Editor({ stages, workflows, catalog, onSaved, chat }: {
         </Panel>
         <Panel position="top-right" className="pointer-events-none !m-4 flex flex-col items-end gap-3">
           <div className="pointer-events-auto flex items-center gap-2">
+            {arranged(draft.items) && (
+              <Button variant="outline" size="sm" className="rounded-full bg-card/85 backdrop-blur-sm" title="回到自动排"
+                      onClick={() => setItems(tidy)}>
+                <ArrowsInLineHorizontal data-icon="inline-start" />整理
+              </Button>
+            )}
             <Library workflows={workflows} onLoad={load} />
             <Save draft={draft} taken={taken} ok={draft.items.length > 0 && check.data !== null && problems.length === 0} onSaved={onSaved} />
           </div>
@@ -233,24 +238,24 @@ function Verdict({ items, check, error }: { items: Item[]; check: WorkflowCheck 
 }
 
 // ── 画布 ──────────────────────────────────────────────────────────────────
-function Canvas({ items, titles, perItem, selected, onSelect, setItems, onDrop, children }: {
+function Canvas({ items, titles, perItem, selected, onSelect, setItems, children }: {
   items: Item[]; titles: Map<string, string>; perItem: Map<number, string[]>
   selected: number | null; onSelect: (uid: number | null) => void
-  setItems: SetItems; onDrop: (seed: Seed, index: number) => void
+  setItems: SetItems
   children: ReactNode
 }) {
   const { screenToFlowPosition, fitView } = useReactFlow()
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>([])
   const arrow = useToken('--muted-foreground')
 
-  // 项 → 节点：位置按顺序排；选中态从上一版节点带过来，重排不丢
+  // 项 → 节点：摆过的在摆的地方、没摆过的自动排；选中态从上一版节点带过来，重排不丢
   useEffect(() => {
-    const slots = layout(items)
+    const at = positions(items)
     setNodes((prev) => {
       const was = new Set(prev.filter((n) => n.selected).map((n) => n.id))
       return items.map((item, i): CanvasNode => {
         const id = String(item.uid)
-        const base = { id, position: { x: slots[i].x, y: slots[i].y }, selected: was.has(id) }
+        const base = { id, position: at[i], selected: was.has(id) }
         const problems = perItem.get(i) ?? []
         const onRemove = () => setItems((all) => remove(all, item.uid))
         if (item.kind === 'stop') return { ...base, type: 'stop', data: { n: i + 1, note: item.note, problems, onRemove } }
@@ -263,11 +268,11 @@ function Canvas({ items, titles, perItem, selected, onSelect, setItems, onDrop, 
     return () => cancelAnimationFrame(id)
   }, [items.length, fitView])
 
-  // 同一行左进右出；换行的那条从上一项底下出、下一项顶上进
+  // 下一项在右边就左进右出；在下面（换行、或人摆到下面去了）就从上一项底下出、下一项顶上进
   const edges = useMemo<Edge[]>(() => {
-    const slots = layout(items)
+    const at = positions(items)
     return items.slice(1).map((item, i) => {
-      const wraps = slots[i + 1].row !== slots[i].row
+      const wraps = at[i + 1].y - at[i].y > 60
       return {
         id: `${items[i].uid}-${item.uid}`, source: String(items[i].uid), target: String(item.uid), type: 'smoothstep',
         sourceHandle: wraps ? 'b' : 'r', targetHandle: wraps ? 't' : 'l', deletable: false, selectable: false, focusable: false,
@@ -287,8 +292,7 @@ function Canvas({ items, titles, perItem, selected, onSelect, setItems, onDrop, 
   return (
     <ReactFlow<CanvasNode>
       nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodesChange={onNodesChange} onSelectionChange={onSelectionChange}
-      onNodeDragStop={(_, node: Node) => setItems((all) =>
-        moveTo(all, Number(node.id), node.position.x + WIDTH[node.type as 'stage' | 'stop'] / 2, node.position.y + (node.measured?.height ?? 80) / 2))}
+      onNodeDragStop={(_, node: Node) => setItems((all) => place(all, Number(node.id), { x: node.position.x, y: node.position.y }))}
       onNodesDelete={(gone) => setItems((all) => all.filter((it) => !gone.some((n) => n.id === String(it.uid))))}
       onDragOver={(e: DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
       onDrop={(e: DragEvent) => {
@@ -296,7 +300,7 @@ function Canvas({ items, titles, perItem, selected, onSelect, setItems, onDrop, 
         if (!seed) return
         e.preventDefault()
         const at = screenToFlowPosition({ x: e.clientX, y: e.clientY })
-        onDrop(seed, indexAt(items, at.x, at.y))
+        setItems((all) => dropAt(all, seed, at.x, at.y))
       }}
       nodesConnectable={false} edgesFocusable={false} panOnScroll zoomOnScroll={false} minZoom={0.3} maxZoom={1.5} proOptions={{ hideAttribution: true }}
       deleteKeyCode={['Backspace', 'Delete']} fitView fitViewOptions={{ padding: FIT, maxZoom: 1 }}

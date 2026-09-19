@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import type { Workflow } from '@/api/types'
 
 import {
-  fromWorkflow, indexAt, insertAt, layout, moveTo, parseParam, problemIndices, ROW_PITCH, ROW_WIDTH, setParam, stageItem, stopItem,
-  toDraft, toggleCap, WIDTH,
+  append, autoLayout, dropAt, fromWorkflow, indexAt, insertAt, parseParam, place, positions, problemIndices, ROW_PITCH, ROW_WIDTH,
+  setParam, stageItem, stopItem, tidy, toDraft, toggleCap, WIDTH,
 } from './model'
 
 const strip = (draft: ReturnType<typeof fromWorkflow>) => draft.items.map((it) => (it.kind === 'stop' ? { note: it.note } : { stage: it.stage, caps: it.caps }))
@@ -27,7 +27,7 @@ describe('画布 ↔ 文件', () => {
   })
   it('库里的一条载入画布时参数跟着来，名字照旧', () => {
     const wf = {
-      name: 'research', title: 't', summary: 's', covers: [], remarks: [], problems: [],
+      name: 'research', title: 't', summary: 's', covers: [], remarks: [], problems: [], layout: null,
       stages: [
         { kind: 'stage', stage: '实验', caps: [{ cap: 'auto-research', with: { max_iters: 3 } }] },
         { kind: 'stop', key: 'accept', note: '验收' },
@@ -39,32 +39,52 @@ describe('画布 ↔ 文件', () => {
   })
 })
 
-describe('排版与拖放', () => {
+describe('位置与顺序', () => {
   const items = [stageItem('假设'), stopItem('发布'), stageItem('设计')]
-  it('一行从左到右，断点窄', () => {
-    const slots = layout(items)
-    expect(slots.map((s) => s.width)).toEqual([WIDTH.stage, WIDTH.stop, WIDTH.stage])
-    expect(slots[1].x).toBeGreaterThan(slots[0].x + WIDTH.stage)
-    expect(slots.every((s) => s.row === 0)).toBe(true)
-  })
-  it('一行放不下就换行：出厂那条 8 项分两行', () => {
+  it('没摆过就自动排：一行从左到右，断点窄，放不下换行（出厂那条 8 项分两行）', () => {
+    const at = autoLayout(items)
+    expect(at.every((p) => p.y === 0)).toBe(true)
+    expect(at[1].x).toBe(WIDTH.stage + 56)
     const research = [stageItem('假设'), stopItem('发布'), stageItem('设计'), stopItem('核对'), stageItem('实验'), stageItem('分析'), stageItem('验证'), stopItem('验收')]
-    const slots = layout(research)
-    expect(slots.map((s) => s.row)).toEqual([0, 0, 0, 0, 1, 1, 1, 1])
-    expect(slots[4]).toMatchObject({ x: 0, y: ROW_PITCH })
-    expect(Math.max(...slots.map((s) => s.x + s.width))).toBeLessThanOrEqual(ROW_WIDTH)
+    const rows = autoLayout(research).map((p) => p.y / ROW_PITCH)
+    expect(rows).toEqual([0, 0, 0, 0, 1, 1, 1, 1])
+    expect(Math.max(...autoLayout(research).map((p, i) => p.x + WIDTH[research[i].kind]))).toBeLessThanOrEqual(ROW_WIDTH)
   })
-  it('落点在哪几项的中点右边，就插在它们后面；落在下一行就排到末尾', () => {
+  it('摆过的按摆的，其余仍自动排；整理后全部回到自动排', () => {
+    const moved = place(items, items[2].uid, { x: 900, y: 0 })
+    expect(positions(moved)[2]).toEqual({ x: 900, y: 0 })
+    expect(positions(moved)[0]).toEqual(autoLayout(moved)[0])
+    expect(tidy(moved).every((it) => it.pos === undefined)).toBe(true)
+  })
+  it('落点在哪几项的中点右边，就插在它们后面；落在下一带就排到末尾', () => {
     expect(indexAt(items, -10, 0)).toBe(0)
     expect(indexAt(items, WIDTH.stage / 2 + 1, 0)).toBe(1)
     expect(indexAt(items, 10_000, 0)).toBe(3)
     expect(indexAt(items, 0, ROW_PITCH)).toBe(3)
     expect(insertAt(items, 1, stopItem('x')).map((it) => it.kind)).toEqual(['stage', 'stop', 'stop', 'stage'])
+    const dropped = dropAt(items, { kind: 'stage', stage: '实验' }, 400, 10)
+    expect(dropped.map((it) => it.kind)).toEqual(['stage', 'stop', 'stage', 'stage'])
+    expect(dropped[2].pos).toEqual({ x: 400 - WIDTH.stage / 2, y: -30 })
   })
-  it('拖一个节点到最右边，它就排到最后；拖回原处顺序不变', () => {
-    const moved = moveTo(items, items[0].uid, 10_000, 0)
-    expect(moved.map((it) => it.uid)).toEqual([items[1].uid, items[2].uid, items[0].uid])
-    expect(moveTo(items, items[0].uid, 0, 0).map((it) => it.uid)).toEqual(items.map((it) => it.uid))
+  it('拖到最左边就排第一、留在松手处；拖到下一带就排到最后；点一下加到末尾接在最后一项右边', () => {
+    const first = place(items, items[2].uid, { x: -300, y: 0 })
+    expect(first.map((it) => it.uid)).toEqual([items[2].uid, items[0].uid, items[1].uid])
+    expect(first[0].pos).toEqual({ x: -300, y: 0 })
+    const down = place(items, items[0].uid, { x: 0, y: ROW_PITCH })
+    expect(down.map((it) => it.uid)).toEqual([items[1].uid, items[2].uid, items[0].uid])
+    const more = append(first, { kind: 'stop', note: '' })
+    expect(more[3].pos).toBeUndefined()
+    const more2 = append(place(items, items[2].uid, { x: 900, y: 0 }), { kind: 'stop', note: '' })
+    expect(more2[3].pos).toEqual({ x: 900 + WIDTH.stage + 56, y: 0 })
+  })
+  it('摆过才把坐标写进文件；库里带 layout 的载入时照它摆', () => {
+    const draft = { name: 'r', title: 't', summary: 's', items }
+    expect(toDraft(draft).layout).toBeUndefined()
+    const moved = { ...draft, items: place(items, items[2].uid, { x: 900.4, y: 0 }) }
+    expect(toDraft(moved).layout).toEqual([[0, 0], [WIDTH.stage + 56, 0], [900, 0]])
+    const wf = { name: 'x', title: 't', summary: 's', covers: [], remarks: [], problems: [], layout: [[5, 6], [7, 8]],
+      stages: [{ kind: 'stage', stage: '假设', caps: [] }, { kind: 'stop', key: null, note: '' }] } as Workflow
+    expect(fromWorkflow(wf).items.map((it) => it.pos)).toEqual([{ x: 5, y: 6 }, { x: 7, y: 8 }])
   })
 })
 

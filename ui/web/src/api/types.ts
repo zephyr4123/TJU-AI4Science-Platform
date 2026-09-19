@@ -280,6 +280,8 @@ export interface WorkflowDraft {
   title: string
   summary: string
   stages: DraftItem[]
+  /** 画布上每一项的坐标（与 stages 一样长），人摆过才带 */
+  layout?: [number, number][]
   overwrite?: boolean
 }
 
@@ -294,6 +296,8 @@ export interface Workflow {
   title: string
   summary: string
   stages: FlowItem[]
+  /** 画布上每一项的坐标（与 stages 一样长）；没人摆过就是 null */
+  layout: [number, number][] | null
   /** 经过哪几个阶段，按出现顺序去重 */
   covers: ResearchStage[]
   /** 提醒，不是问题：比如做了实验没验证 */

@@ -16,6 +16,9 @@
       - 分析: [analysis]                         # 点名但不带参数也行
       - 验证
       - 断点: 验收
+    layout:                      # 可选：画布上每一项的坐标，与 stages 一样长；框架只原样存取
+      - [0, 0]
+      - [264, 0]
 
 阶段之间没有显式的输入输出接口：检查只看阶段名对不对、点名的能力在不在那个阶段、参数名与类型对不对、断点位置合不合法
 （不能开头就是断点、不能两个断点挨着）。一个阶段里要的东西盘上有没有，是那颗能力开始执行时自己查的（P-7）。
@@ -84,6 +87,8 @@ class Workflow:
     title: str
     summary: str
     stages: tuple[Stage | Stop, ...] = ()
+    """页面画布上每一项的坐标（与 stages 一样长），人摆过才有；框架不读它。"""
+    layout: tuple[tuple[float, float], ...] | None = None
 
     @property
     def caps(self) -> list[str]:
@@ -101,7 +106,8 @@ class Workflow:
 
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "title": self.title, "summary": self.summary,
-                "stages": [r.to_dict() for r in self.stages]}
+                "stages": [r.to_dict() for r in self.stages],
+                "layout": [list(xy) for xy in self.layout] if self.layout else None}
 
 
 def load_workflows(root: Path) -> list[Workflow]:
@@ -159,7 +165,20 @@ def parse_workflow(filename: str, raw: Any) -> Workflow:
             raise WorkflowInvalid(
                 f"{filename}: 第 {i} 项与第 {i + 1} 项都是断点：两个断点挨着等于一个")
     return Workflow(name=name, title=title.strip(), summary=" ".join(summary.split()),
-                    stages=stages)
+                    stages=stages, layout=_layout(filename, raw.get("layout"), len(stages)))
+
+
+def _layout(filename: str, raw: Any, count: int) -> tuple[tuple[float, float], ...] | None:
+    """页面的坐标块：没有就没有；有就得是与 stages 一样长的 [x, y] 列表。"""
+    if raw is None:
+        return None
+    ok = (isinstance(raw, list) and len(raw) == count
+          and all(isinstance(xy, list) and len(xy) == 2
+                  and all(isinstance(v, int | float) and not isinstance(v, bool) for v in xy)
+                  for xy in raw))
+    if not ok:
+        raise WorkflowInvalid(f"{filename}: layout 要是与 stages 一样长的 [x, y] 列表")
+    return tuple((float(x), float(y)) for x, y in raw)
 
 
 def _item(filename: str, index: int, raw: Any) -> Stage | Stop:
@@ -227,10 +246,23 @@ def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability
     doc: dict[str, Any] = {"name": workflow.name, "title": workflow.title,
                            "summary": workflow.summary,
                            "stages": [_item_doc(item) for item in workflow.stages]}
+    if workflow.layout:
+        doc["layout"] = [_Row((round(x), round(y))) for x, y in workflow.layout]
     Path(root).mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=100),
                     encoding="utf-8")
     return workflow
+
+
+class _Row(list):
+    """layout 里的一对坐标：写成一行 `[x, y]`，不拆成两行。"""
+
+
+def _represent_row(dumper: yaml.SafeDumper, data: _Row) -> yaml.Node:
+    return dumper.represent_sequence("tag:yaml.org,2002:seq", list(data), flow_style=True)
+
+
+yaml.SafeDumper.add_representer(_Row, _represent_row)
 
 
 def _item_doc(item: Stage | Stop) -> Any:
