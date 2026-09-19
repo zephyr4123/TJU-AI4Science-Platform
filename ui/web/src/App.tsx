@@ -179,10 +179,14 @@ function MainView({ wsId, title, healthy, knobs, view, focus, opened, onOpen, on
         )}
       </main>
       {wide ? (
-        <aside className={cn('relative h-full shrink-0 border-l transition-[width] duration-200',
-                             open ? 'w-[30rem]' : 'w-0 overflow-hidden border-l-0')}
+        // 对话是一块悬在雾景上的板，不是一列（主人：border-l 一刀切出来的全高区域像拼上去的）：四周留 12px，
+        // 和文件镜头的内容面同一种材料——圆角、长而软的投影、一圈 6% 的 ring；板和看板之间露出的雾景就是分隔
+        <aside className={cn('relative h-full shrink-0 transition-[width] duration-200',
+                             open ? 'w-[31.5rem]' : 'w-0 overflow-hidden')}
                aria-label="对话" aria-hidden={!open}>
-          <div className="relative h-full w-[30rem]">{chat}</div>
+          <div className="relative my-3 mr-3 h-[calc(100%-1.5rem)] w-[30rem] overflow-hidden rounded-2xl bg-card shadow-[0_1px_2px_rgb(0_0_0/0.05),0_18px_44px_-22px_rgb(0_0_0/0.28)] ring-1 ring-foreground/[0.06]">
+            {chat}
+          </div>
         </aside>
       ) : (
         <Sheet open={open} onOpenChange={setChatOpen}>

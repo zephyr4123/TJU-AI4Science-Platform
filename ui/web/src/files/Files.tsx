@@ -59,7 +59,7 @@ export function Files({ workspace, epoch, focus, onOpenBoard }: {
                  meaning={meaning} order={(entries) => orderRoot(entries, data)} onToggle={toggle} onSelect={setSelected} />
       </nav>
       <section aria-label="内容"
-               className="my-3 min-w-0 overflow-auto rounded-l-2xl bg-card shadow-[0_1px_2px_rgb(0_0_0/0.05),0_18px_44px_-22px_rgb(0_0_0/0.28)] ring-1 ring-foreground/[0.06]">
+               className="my-3 mr-3 min-w-0 overflow-auto rounded-2xl bg-card shadow-[0_1px_2px_rgb(0_0_0/0.05),0_18px_44px_-22px_rgb(0_0_0/0.28)] ring-1 ring-foreground/[0.06]">
         {picked.kind === 'output'
           ? (
             <>
