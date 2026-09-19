@@ -1,8 +1,8 @@
-// 起一个工作区：一句话就够（外层 #79 #80，主人：别像表单）。玻璃输入框（和对话输入框同一只壳）里写要解决什么，回车即建；
-// 文件夹名从标题里推（lib/slug），小字里可以改；右边一张封面（reactbits TiltedCard 改装）随名字换——封面本来就是按名字挑的
-// （assets.coverOf），名字一变封面就换，让人看见这就是自己的工作区。输入框下面一排需求模板（库里 `templates/`，通用一份、按学科几份），
-// 选一份就照它起草 requirement.md，进主页面时助理接着问。底下铺循环视频（浅色云雾、深色光线汇聚）。字要少。
-import { ArrowRight, PencilSimple } from '@phosphor-icons/react'
+// 起一个工作区：一句话就够（外层 #79 #80 #109，主人：别像表单）。玻璃输入框（和对话输入框同一只壳）里写要解决什么，回车即建；
+// 文件夹名从标题里推（lib/slug），是内部 id，不给人看也不让人填；右边一张封面（reactbits TiltedCard 改装）随名字换——封面本来就是
+// 按名字挑的（assets.coverOf），名字一变封面就换，让人看见这就是自己的工作区。输入框下面一行学科（库里 `templates/`，通用一份、
+// 按学科几份）：选哪个学科，requirement.md 就照哪份模板起草，进主页面时助理接着问。底下铺循环视频（浅色云雾、深色光线汇聚）。字要少。
+import { ArrowRight } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type KeyboardEvent, useState } from 'react'
 
@@ -15,12 +15,12 @@ import GlassSurface from '@/components/reactbits/GlassSurface'
 import ShinyText from '@/components/reactbits/ShinyText'
 import { TiltedCard } from '@/components/reactbits/TiltedCard'
 import { Button } from '@/components/ui/button'
-import { ID_RE, suggestId } from '@/lib/slug'
+import { suggestId } from '@/lib/slug'
 import { useResource } from '@/lib/useResource'
 import { useToken } from '@/lib/tokens'
 import { cn } from '@/lib/utils'
 
-/** 模板名给人看的字：库里按学科加一份，这里加一个词；没写的照 name 显示 */
+/** 模板名给人看的学科：库里按学科加一份，这里加一个词；没写的照 name 显示 */
 const TEMPLATE_WORD: Record<string, string> = { generic: '通用', ai: '人工智能', cs: '计算机', materials: '材料' }
 
 export function NewWorkspace({ existing, onCreated, onCancel }: {
@@ -29,8 +29,6 @@ export function NewWorkspace({ existing, onCreated, onCancel }: {
   onCancel?: () => void
 }) {
   const [title, setTitle] = useState('')
-  // 研究者自己改过的文件夹名；清空就回到按标题推
-  const [named, setNamed] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const templates = useResource(api.templates, [])
@@ -39,11 +37,8 @@ export function NewWorkspace({ existing, onCreated, onCancel }: {
   const muted = useToken('--muted-foreground')
   const still = useReducedMotion()
 
-  const taken = existing.map((w) => w.id)
-  const id = named.trim() || suggestId(title, taken, new Date())
-  const wellFormed = ID_RE.test(id)
-  const dup = taken.includes(id)
-  const ready = title.trim() !== '' && wellFormed && !dup && !busy
+  const id = suggestId(title, existing.map((w) => w.id), new Date())
+  const ready = title.trim() !== '' && !busy
 
   const create = async () => {
     setBusy(true)
@@ -86,20 +81,8 @@ export function NewWorkspace({ existing, onCreated, onCancel }: {
             </div>
           </GlassSurface>
 
-          <div className="mt-3 flex min-h-7 max-w-[36rem] flex-wrap items-center gap-x-4 gap-y-1 text-[0.8125rem] text-muted-foreground">
-            <label className={cn('flex h-7 items-center gap-1.5 rounded-full border bg-card/70 pr-2.5 pl-2 backdrop-blur-sm transition-colors focus-within:border-primary',
-                                 (!wellFormed || dup) && 'border-bad text-bad')}>
-              <PencilSimple className="size-3.5" />
-              <input
-                value={id} onChange={(event) => setNamed(event.target.value)} spellCheck={false} autoComplete="off" aria-label="文件夹名"
-                style={{ width: `${Math.max(id.length, 4) + 1}ch` }}
-                className="bg-transparent font-mono text-[0.8125rem] text-foreground outline-none"
-              />
-            </label>
-            {!wellFormed ? <span className="text-bad">只能小写英文、数字、连字符，字母开头</span>
-              : dup ? <span className="text-bad">重名了</span>
-                : busy ? (still ? <span>建目录</span> : <ShinyText text="建目录" color={muted} shineColor={indigo} speed={2} />)
-                  : null}
+          <div className="mt-3 flex min-h-7 max-w-[36rem] items-center gap-x-4 text-[0.8125rem] text-muted-foreground">
+            {busy && (still ? <span>建目录</span> : <ShinyText text="建目录" color={muted} shineColor={indigo} speed={2} />)}
             {onCancel && (
               <button type="button" onClick={onCancel}
                       className="ml-auto underline decoration-border underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
@@ -108,15 +91,19 @@ export function NewWorkspace({ existing, onCreated, onCancel }: {
             )}
           </div>
           {templates.data && templates.data.length > 0 && (
-            <div role="radiogroup" aria-label="需求模板" className="mt-6 flex max-w-[36rem] flex-wrap gap-2">
-              {[...templates.data].sort((a, b) => Number(b.name === 'generic') - Number(a.name === 'generic')).map((t) => (
-                <button key={t.name} type="button" role="radio" aria-checked={template === t.name} title={t.summary}
-                        onClick={() => setTemplate(t.name)}
-                        className={cn('h-8 rounded-full border px-3 text-[0.8125rem] backdrop-blur-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring',
-                                      template === t.name ? 'border-primary bg-primary/10 text-primary' : 'bg-card/70 text-muted-foreground hover:border-primary/50 hover:text-foreground')}>
-                  {TEMPLATE_WORD[t.name] ?? t.name}
-                </button>
-              ))}
+            <div className="mt-6 max-w-[36rem]">
+              <div role="radiogroup" aria-label="学科" className="flex flex-wrap items-center gap-2">
+                <span className="mr-1 text-[0.8125rem] text-muted-foreground">学科</span>
+                {[...templates.data].sort((a, b) => Number(b.name === 'generic') - Number(a.name === 'generic')).map((t) => (
+                  <button key={t.name} type="button" role="radio" aria-checked={template === t.name} title={t.summary}
+                          onClick={() => setTemplate(t.name)}
+                          className={cn('h-8 rounded-full border px-3 text-[0.8125rem] backdrop-blur-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring',
+                                        template === t.name ? 'border-primary bg-primary/10 text-primary' : 'bg-card/70 text-muted-foreground hover:border-primary/50 hover:text-foreground')}>
+                    {TEMPLATE_WORD[t.name] ?? t.name}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[0.75rem] text-muted-foreground/80">需求提纲按学科起草</p>
             </div>
           )}
           {error && <ErrorNote text={error} className="mt-3" />}
@@ -128,7 +115,7 @@ export function NewWorkspace({ existing, onCreated, onCancel }: {
               <p className={cn('font-serif text-[1.25rem] leading-snug font-semibold text-balance', !title.trim() && 'text-muted-foreground')}>
                 {title.trim() || '你的课题'}
               </p>
-              <p className="mt-1 font-mono text-[0.75rem] text-muted-foreground">{id}</p>
+              <p className="mt-1 text-[0.75rem] text-muted-foreground">{TEMPLATE_WORD[template] ?? template}</p>
             </div>
           </TiltedCard>
         </div>
