@@ -1,218 +1,137 @@
-// 编辑台的库那一半（外层 #58 #68 #74 #98）：上面是工作流墙（一流一卡），下面是七个研究阶段的货架 + 拼流台。
-// 拼流就是排阶段、往阶段里挂能力、阶段之间插断点（纲领 P-18）：点货架上的阶段名加一个阶段，点能力挂进去，
-// 边拼边问后端有没有问题（POST /workflows/check），存成 workflows/<name>.yaml。三张清单都从后端读，页面不写死。
-// 左边那位造流助理每说完一轮 epoch 加一，墙就重读——它可能刚存了一条。
-import { ArrowDown, ArrowUp, CaretDown, HandPalm, X } from '@phosphor-icons/react'
-import { createElement, type ReactNode, useState } from 'react'
+// 编辑台：一张画布（React Flow，Dify 用的同一个引擎），一条线性的链——节点是研究阶段（装能力 + 参数）或断点，边只表示顺序
+// （纲领 P-18；外层 #100 #101）。顶上一条阶段 / 断点 / 库，右边是选中节点的配置；边拼边问后端有没有问题（POST /workflows/check），
+// 问题贴到节点上；存成 workflows/<name>.yaml。坐标不进文件，按顺序自动排、放不下换行。三张清单都从后端读，页面不写死。
+// 左边那位助理每说完一轮 epoch 加一，库就重读——它可能刚存了一条。
+import {
+  Background, BackgroundVariant, Controls, type Edge, MarkerType, type Node, type OnSelectionChangeFunc, Panel, ReactFlow,
+  ReactFlowProvider, useNodesState, useReactFlow,
+} from '@xyflow/react'
+import { SidebarSimple } from '@phosphor-icons/react'
+import { type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api } from '@/api/client'
-import { ASSETS } from '@/assets'
-import type { Capability, DraftItem, FlowItem, Workflow, WorkflowDraft } from '@/api/types'
-import { Band } from '@/components/Band'
-import { Empty, ErrorNote, Problems, Skeleton } from '@/components/bits'
-import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
+import type { Capability, Workflow, WorkflowCheck } from '@/api/types'
+import { ErrorNote, Problems, Skeleton } from '@/components/bits'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { LEVEL_COPY } from '@/lib/humanize'
-import { actorOf, coverageSentence, groupByStage, itemIcon, itemLabel, stageIcon } from '@/lib/stages'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { coverageSentence } from '@/lib/stages'
+import { useToken } from '@/lib/tokens'
+import { useMediaQuery, WIDE } from '@/lib/useMediaQuery'
 import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 
-/** 拼流台上的一项：与后端的 FlowItem 同形，只是断点还没分出是不是出厂的那两个（那是后端按「发布」「验收」认的） */
-type BenchItem = { kind: 'stage'; stage: string; caps: string[] } | { kind: 'stop'; note: string }
-interface Draft { name: string; title: string; summary: string; items: BenchItem[] }
-const EMPTY: Draft = { name: '', title: '', summary: '', items: [] }
+import { Inspector } from './Inspector'
+import {
+  type Draft, EMPTY, fromSeed, fromWorkflow, indexAt, insertAt, type Item, layout, moveTo, parseSeed, patch, problemIndices,
+  remove, type Seed, SEED_MIME, toDraft, WIDTH,
+} from './model'
+import { StageNode, type StageNodeType, StopNode, type StopNodeType } from './nodes'
+import { Palette } from './Palette'
 
-/** 五栏的标题，顺序与后端 `COLUMNS` 一致 */
-const COLUMNS: [keyof Pick<Capability, 'does' | 'does_not' | 'brings' | 'leaves' | 'stops'>, string][] = [
-  ['does', '干什么'], ['does_not', '不干什么'], ['brings', '要带什么进来'], ['leaves', '留下什么'], ['stops', '什么时候停'],
-]
+import '@xyflow/react/dist/style.css'
 
-export function Studio({ epoch }: { epoch: number }) {
+type CanvasNode = StageNodeType | StopNodeType
+const NODE_TYPES = { stage: StageNode, stop: StopNode }
+type SetItems = (change: (items: Item[]) => Item[]) => void
+
+interface ChatToggle { chatOpen: boolean; onToggleChat: () => void }
+
+export function Studio({ epoch, ...chat }: { epoch: number } & ChatToggle) {
   const stages = useResource(api.stages, [])
   const workflows = useResource(api.workflows, [epoch])
   const catalog = useResource(api.capabilities, [])
-  const [draft, setDraft] = useState<Draft>(EMPTY)
   const loading = [stages, workflows, catalog].some((r) => r.loading && !r.data)
-  const titles = new Map<string, string>()
-  for (const cap of catalog.data ?? []) titles.set(cap.name, cap.title)
-  const titleOf = (name: string) => titles.get(name)
-
-  /** 点货架上的能力：最后一项是同一个阶段就挂进去，否则新开一个阶段 */
-  const hang = (cap: Capability) => setDraft((d) => {
-    const last = d.items[d.items.length - 1]
-    if (last && last.kind === 'stage' && last.stage === cap.stage) {
-      if (last.caps.includes(cap.name)) return d
-      return { ...d, items: [...d.items.slice(0, -1), { ...last, caps: [...last.caps, cap.name] }] }
-    }
-    return { ...d, items: [...d.items, { kind: 'stage', stage: cap.stage, caps: [cap.name] }] }
-  })
-  const addStage = (stage: string) => setDraft((d) => ({ ...d, items: [...d.items, { kind: 'stage', stage, caps: [] }] }))
-
+  const errors = [stages.error, workflows.error, catalog.error].filter((e): e is string => e !== null)
+  if (loading) return <div className="p-6"><Skeleton lines={6} /></div>
+  if (!stages.data || !workflows.data || !catalog.data) {
+    return <div className="space-y-2 p-6">{errors.map((e) => <ErrorNote key={e} text={e} />)}</div>
+  }
   return (
-    <div>
-      <Band picture={ASSETS.studio} veil="foot" className="h-44">
-        <header className="mx-auto flex h-full max-w-[76rem] flex-col justify-end px-8 pb-5">
-          <h1 className="font-serif text-[1.5rem] font-semibold">库</h1>
-          <p className="t-body mt-1 text-muted-foreground">排阶段，挂能力，插断点，存进库。</p>
-        </header>
-      </Band>
-      <div className="mx-auto max-w-[76rem] space-y-12 px-8 py-8">
-      {stages.error && <ErrorNote text={stages.error} />}
-      {workflows.error && <ErrorNote text={workflows.error} />}
-      {catalog.error && <ErrorNote text={catalog.error} />}
-      {loading && <Skeleton lines={6} />}
-
-      {workflows.data && (
-        <section className="space-y-4">
-          <h2 className="t-lede">工作流 {workflows.data.length}</h2>
-          {workflows.data.length === 0 && <Empty title="还没有工作流" />}
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {workflows.data.map((wf) => (
-              <WorkflowCard key={wf.name} workflow={wf} titleOf={titleOf}
-                            onLoad={() => setDraft(fromWorkflow(wf))} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {catalog.data && stages.data && (
-        <section className="grid gap-8 lg:grid-cols-[1fr_24rem]">
-          <div className="min-w-0 space-y-4">
-            <h2 className="t-lede">七个研究阶段 · 能力 {catalog.data.length}</h2>
-            <p className="t-body text-muted-foreground">点阶段名加一个阶段；点能力挂进最后一个阶段。</p>
-            <ol className="flex gap-3 overflow-x-auto pb-2">
-              {groupByStage(stages.data, catalog.data).map(({ stage, caps }) => (
-                <li key={stage} className="w-[12rem] shrink-0 space-y-2">
-                  <button type="button" onClick={() => addStage(stage)} title={`加一个${stage}阶段`}
-                          className="flex w-full items-center gap-1.5 rounded-lg px-1 py-1 text-left font-serif text-[0.9375rem] font-semibold transition-colors hover:bg-accent/40">
-                    <StageMark stage={stage} className="text-primary" />{stage}
-                  </button>
-                  {caps.length === 0
-                    ? <p className="rounded-xl border border-dashed px-3 py-4 text-[0.8125rem] text-muted-foreground">这个阶段还没有能力</p>
-                    : caps.map((cap) => <CapChip key={cap.name} cap={cap} onHang={() => hang(cap)} />)}
-                </li>
-              ))}
-            </ol>
-          </div>
-          <Bench draft={draft} setDraft={setDraft} titleOf={titleOf} stages={stages.data}
-                 onSaved={() => void workflows.reload()} />
-        </section>
-      )}
-      </div>
-    </div>
+    <ReactFlowProvider>
+      <Editor stages={stages.data} workflows={workflows.data} catalog={catalog.data} onSaved={() => void workflows.reload()} {...chat} />
+    </ReactFlowProvider>
   )
 }
 
-/** 一个阶段的图标：货架的标题、能力卡、工作流卡上走过的几个阶段都用它 */
-function StageMark({ stage, className }: { stage: string; className?: string }) {
-  return createElement(stageIcon(stage), { weight: 'duotone', 'aria-label': stage, className: cn('size-4 shrink-0', className) })
-}
+function Editor({ stages, workflows, catalog, onSaved, ...chat }: {
+  stages: string[]; workflows: Workflow[]; catalog: Capability[]; onSaved: () => void
+} & ChatToggle) {
+  const wide = useMediaQuery(WIDE)
+  const [draft, setDraft] = useState<Draft>(EMPTY)
+  const [selected, setSelected] = useState<number | null>(null)
+  const setItems: SetItems = useCallback((change) => setDraft((d) => ({ ...d, items: change(d.items) })), [])
+  const titles = useMemo(() => new Map(catalog.map((c) => [c.name, c.title])), [catalog])
 
-// ── 工作流墙 ──────────────────────────────────────────────────────────────
-function WorkflowCard({ workflow, titleOf, onLoad }: { workflow: Workflow; titleOf: (cap: string) => string | undefined; onLoad: () => void }) {
-  return (
-    <SpotlightCard spotlight="color-mix(in oklab, var(--primary) 14%, transparent)" className="flex flex-col p-5">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="font-serif text-[1.0625rem] font-semibold">{workflow.title}</h3>
-        <span className="flex shrink-0 gap-1 pt-1 text-primary">
-          {workflow.covers.map((stage) => <StageMark key={stage} stage={stage} />)}
-        </span>
-      </div>
-      <p className="mt-0.5 font-mono text-[0.75rem] text-muted-foreground">{workflow.name}</p>
-      <p className="mt-2 text-[0.875rem] leading-relaxed">{workflow.summary}</p>
-      <p className="t-label mt-2">{coverageSentence(workflow.covers)}</p>
-      <ol className="mt-3 space-y-1 text-[0.8125rem] text-muted-foreground">
-        {workflow.stages.map((item, i) => (
-          <li key={i} className="flex items-center gap-2">
-            {createElement(itemIcon(item), { className: 'size-3.5 shrink-0', 'aria-hidden': true })}
-            <span className={cn('min-w-0 truncate', item.kind === 'stop' && 'text-wait')}>
-              {item.kind === 'stop' ? `停：${itemLabel(item, titleOf)}` : itemLabel(item, titleOf)}
-            </span>
-          </li>
-        ))}
-      </ol>
-      {workflow.remarks.map((remark) => <p key={remark} className="mt-2 text-[0.8125rem] text-wait">{remark}</p>)}
-      <Problems items={workflow.problems} />
-      <div className="mt-4 flex justify-end">
-        <Button variant="outline" size="sm" onClick={onLoad}>照着拼</Button>
-      </div>
-    </SpotlightCard>
-  )
-}
-
-/** 货架上的一颗能力：点标题挂进拼流台，点箭头展开五栏。 */
-function CapChip({ cap, onHang }: { cap: Capability; onHang: () => void }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="rounded-xl border bg-card">
-      <div className="flex items-start">
-        <button type="button" onClick={onHang}
-                className="flex min-w-0 flex-1 items-start gap-2 rounded-l-xl px-3 py-2.5 text-left transition-colors hover:bg-accent/40">
-          <StageMark stage={cap.stage} className="mt-1 text-muted-foreground" />
-          <span className="min-w-0">
-            <span className="block text-[0.9375rem] font-medium">{cap.title}</span>
-            <span className="mt-0.5 block text-[0.75rem] text-muted-foreground">{actorOf(cap)}，{LEVEL_COPY[cap.level]}</span>
-          </span>
-        </button>
-        <button type="button" aria-label={open ? '收起说明' : '展开说明'} aria-expanded={open} onClick={() => setOpen((v) => !v)}
-                className="grid size-9 shrink-0 place-items-center rounded-r-xl text-muted-foreground hover:bg-accent/40 hover:text-foreground">
-          <CaretDown className={cn('size-3.5 transition-transform duration-200', open && 'rotate-180')} />
-        </button>
-      </div>
-      {open && (
-        <dl className="space-y-2 border-t px-3 py-2.5 text-[0.75rem] leading-relaxed">
-          {COLUMNS.map(([key, label]) => (
-            <div key={key}>
-              <dt className="font-medium text-foreground">{label}</dt>
-              <dd className="text-muted-foreground">{cap[key]}</dd>
-            </div>
-          ))}
-          {cap.params.length > 0 && (
-            <div>
-              <dt className="font-medium text-foreground">参数</dt>
-              <dd className="font-mono text-muted-foreground">{cap.params.map((p) => p.name).join(' · ')}</dd>
-            </div>
-          )}
-        </dl>
-      )}
-    </div>
-  )
-}
-
-// ── 拼流台 ────────────────────────────────────────────────────────────────
-function Bench({ draft, setDraft, titleOf, stages, onSaved }: {
-  draft: Draft; setDraft: (f: (d: Draft) => Draft) => void; titleOf: (cap: string) => string | undefined
-  stages: string[]; onSaved: () => void
-}) {
+  // 边拼边查：形状同文件；空画布不问
   const doc = toDraft(draft)
   const key = JSON.stringify(doc.stages)
   const check = useResource(() => (draft.items.length ? api.checkWorkflow(doc) : Promise.resolve(null)), [key])
+  const problems = check.data?.problems ?? []
+  const perItem = useMemo(() => {
+    const out = new Map<number, string[]>()
+    for (const text of check.data?.problems ?? []) {
+      for (const i of problemIndices(text)) out.set(i, [...(out.get(i) ?? []), text])
+    }
+    return out
+  }, [check.data])
+
+  const add = (seed: Seed, index = draft.items.length) => setItems((items) => insertAt(items, index, fromSeed(seed)))
+  const load = (wf: Workflow) => { setDraft(fromWorkflow(wf)); setSelected(null) }
+  const current = selected === null ? null : draft.items.find((it) => it.uid === selected) ?? null
+  const inspector = current && (
+    <Inspector key={current.uid} item={current} catalog={catalog}
+               onChange={(next) => setItems((items) => patch(items, next.uid, () => next))} />
+  )
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <Bar draft={draft} setDraft={setDraft} ok={draft.items.length > 0 && check.data !== null && problems.length === 0} onSaved={onSaved} {...chat} />
+      <div className="relative min-h-0 flex-1">
+        <Canvas items={draft.items} titles={titles} perItem={perItem} selected={selected} onSelect={setSelected} setItems={setItems}
+                onDrop={(seed, index) => add(seed, index)}>
+          <Panel position="top-left" className="!m-3 w-[calc(100%-1.5rem)]">
+            <div className="rounded-xl border bg-card/90 px-3 py-2 shadow-sm backdrop-blur-sm">
+              <Palette stages={stages} workflows={workflows} onAdd={(seed) => add(seed)} onLoad={load} />
+            </div>
+          </Panel>
+          {wide && inspector && (
+            <Panel position="top-right" className="!mt-[4.25rem] !mr-3 w-[19rem]">
+              <div className="max-h-[calc(100dvh-16rem)] overflow-y-auto rounded-xl border bg-card/90 p-4 shadow-sm backdrop-blur-sm">{inspector}</div>
+            </Panel>
+          )}
+          <Panel position="bottom-left" className="!m-3 max-w-[28rem]">
+            <Verdict items={draft.items} check={check.data} error={check.error} />
+          </Panel>
+        </Canvas>
+        {!wide && (
+          <Sheet open={current !== null} onOpenChange={(open) => { if (!open) setSelected(null) }}>
+            <SheetContent side="right" className="w-[20rem] overflow-y-auto p-5">
+              <SheetHeader className="sr-only"><SheetTitle>配置</SheetTitle></SheetHeader>
+              {inspector}
+            </SheetContent>
+          </Sheet>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** 顶上一条：收起对话、名字、标题、说明、覆盖同名、保存 */
+function Bar({ draft, setDraft, ok, onSaved, chatOpen, onToggleChat }: {
+  draft: Draft; setDraft: (f: (d: Draft) => Draft) => void; ok: boolean; onSaved: () => void
+} & ChatToggle) {
   const [busy, setBusy] = useState(false)
   const [overwrite, setOverwrite] = useState(false)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
-
-  const update = (i: number, patch: Partial<BenchItem>) =>
-    setDraft((d) => ({ ...d, items: d.items.map((s, j) => (j === i ? ({ ...s, ...patch } as BenchItem) : s)) }))
-  const remove = (i: number) => setDraft((d) => ({ ...d, items: d.items.filter((_, j) => j !== i) }))
-  const move = (i: number, dir: -1 | 1) => setDraft((d) => {
-    const items = [...d.items]
-    const j = i + dir
-    if (j < 0 || j >= items.length) return d
-    ;[items[i], items[j]] = [items[j], items[i]]
-    return { ...d, items }
-  })
-  const unhang = (i: number, cap: string) => setDraft((d) => ({
-    ...d, items: d.items.map((s, j) => (j === i && s.kind === 'stage' ? { ...s, caps: s.caps.filter((c) => c !== cap) } : s)),
-  }))
-  const addStop = (text: string) => setDraft((d) => ({ ...d, items: [...d.items, { kind: 'stop', note: text }] }))
-
+  const filled = draft.name.trim() !== '' && draft.title.trim() !== '' && draft.summary.trim() !== ''
   const save = async () => {
     setBusy(true)
     setNote(null)
     try {
-      const saved = await api.saveWorkflow({ ...doc, overwrite })
-      setNote({ ok: true, text: `已存：${saved.name}` })
+      const saved = await api.saveWorkflow({ ...toDraft(draft), overwrite })
+      setNote({ ok: true, text: `已存 ${saved.name}` })
       onSaved()
     } catch (exc) {
       setNote({ ok: false, text: exc instanceof Error ? exc.message : String(exc) })
@@ -220,120 +139,116 @@ function Bench({ draft, setDraft, titleOf, stages, onSaved }: {
       setBusy(false)
     }
   }
-  const problems = check.data?.problems ?? []
-  const canSave = draft.name.trim() !== '' && draft.title.trim() !== '' && draft.summary.trim() !== ''
-    && draft.items.length > 0 && problems.length === 0 && !busy
-
+  const field = (k: 'name' | 'title' | 'summary', placeholder: string, className?: string) => (
+    <Input value={draft[k]} placeholder={placeholder} aria-label={placeholder} className={cn('h-8 bg-card', className)}
+           onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))} />
+  )
   return (
-    <aside className="self-start rounded-2xl border bg-card p-5 lg:sticky lg:top-6">
-      <h2 className="font-serif text-[1.0625rem] font-semibold">拼流台</h2>
-      <div className="mt-3 space-y-2">
-        <Input value={draft.name} placeholder="名字（小写英文、连字符）" aria-label="工作流名字"
-               className="bg-card font-mono" onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
-        <Input value={draft.title} placeholder="标题" aria-label="工作流标题" className="bg-card"
-               onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} />
-        <Input value={draft.summary} placeholder="一句话说明" aria-label="工作流说明" className="bg-card"
-               onChange={(e) => setDraft((d) => ({ ...d, summary: e.target.value }))} />
-      </div>
-      <ol className="mt-4 space-y-2">
-        {draft.items.length === 0 && (
-          <li className="rounded-xl border border-dashed px-3 py-4 text-[0.8125rem] text-muted-foreground">
-            从左边点阶段或能力。
-          </li>
-        )}
-        {draft.items.map((item, i) => (
-          <li key={i} className={cn('flex items-start gap-2 rounded-xl border px-3 py-2', item.kind === 'stop' ? 'border-wait/60 bg-wait-soft' : 'bg-card')}>
-            <span className="mt-1 w-4 shrink-0 text-right text-[0.8125rem] font-semibold tabular">{item.kind === 'stop' ? '◆' : i + 1}</span>
-            <div className="min-w-0 flex-1">
-              {item.kind === 'stage' ? (
-                <>
-                  <div className="flex items-center gap-1.5 text-[0.875rem] font-medium"><StageMark stage={item.stage} className="text-primary" />{item.stage}</div>
-                  {item.caps.length === 0
-                    ? <p className="mt-0.5 text-[0.75rem] text-muted-foreground">不点名，助理看着办</p>
-                    : (
-                      <ul className="mt-1 flex flex-wrap gap-1">
-                        {item.caps.map((cap) => (
-                          <li key={cap} className="flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[0.75rem]">
-                            {titleOf(cap) ?? cap}
-                            <button type="button" aria-label={`去掉 ${titleOf(cap) ?? cap}`} onClick={() => unhang(i, cap)}
-                                    className="text-muted-foreground hover:text-foreground"><X className="size-3" /></button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center gap-1.5 text-[0.875rem] font-medium text-wait"><HandPalm className="size-4" />断点</div>
-                  <input value={item.note} aria-label={`第 ${i + 1} 项要人确认什么`} placeholder="要人确认什么（「发布」「验收」是出厂的两个）"
-                         onChange={(e) => update(i, { note: e.target.value })}
-                         className="w-full bg-transparent text-[0.8125rem] outline-none placeholder:text-muted-foreground focus-visible:underline" />
-                </>
-              )}
-            </div>
-            <span className="flex shrink-0 gap-0.5">
-              <IconButton label="上移" onClick={() => move(i, -1)}><ArrowUp /></IconButton>
-              <IconButton label="下移" onClick={() => move(i, 1)}><ArrowDown /></IconButton>
-              <IconButton label="去掉" onClick={() => remove(i)}><X /></IconButton>
-            </span>
-          </li>
-        ))}
-      </ol>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={() => addStop('')}>加断点</Button>
-        <Button variant="outline" size="sm" onClick={() => addStop('发布')}>发布</Button>
-        <Button variant="outline" size="sm" onClick={() => addStop('验收')}>验收</Button>
-      </div>
-      <div className="mt-4 space-y-1.5 text-[0.8125rem]">
-        {draft.items.length > 0 && check.data && (
-          <p className={cn(problems.length ? 'text-bad' : 'text-ok')}>
-            {problems.length ? '有问题' : `没问题，${coverageSentence(check.data.covers)}`}
-          </p>
-        )}
-        {check.data?.remarks.map((r) => <p key={r} className="text-wait">{r}</p>)}
-        <Problems items={problems} />
-        {check.error && <ErrorNote text={check.error} />}
-      </div>
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground">
-          <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />
-          覆盖同名
-        </label>
-        <Button onClick={() => void save()} disabled={!canSave}>{busy ? '保存中' : '保存'}</Button>
-      </div>
-      {note && <p className={cn('mt-3 text-[0.8125rem] leading-relaxed', note.ok ? 'text-ok' : 'text-bad')}>{note.text}</p>}
-      <p className="mt-3 text-[0.75rem] text-muted-foreground">{stages.length} 个阶段任意排，阶段之间不做数据流校验。</p>
-    </aside>
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-card/60 px-3 py-2">
+      <Button variant="ghost" size="icon-sm" onClick={onToggleChat} aria-label={chatOpen ? '收起对话' : '展开对话'} className="hidden lg:inline-flex">
+        <SidebarSimple weight={chatOpen ? 'fill' : 'regular'} />
+      </Button>
+      {field('name', 'name', 'w-[9rem] font-mono')}
+      {field('title', '标题', 'w-[11rem]')}
+      {field('summary', '说明', 'min-w-[12rem] flex-1')}
+      <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted-foreground">
+        <Checkbox checked={overwrite} onCheckedChange={(v) => setOverwrite(v === true)} />覆盖同名
+      </label>
+      <Button size="sm" onClick={() => void save()} disabled={!ok || !filled || busy}>{busy ? '保存中' : '保存'}</Button>
+      {note && <span className={cn('text-[0.8125rem]', note.ok ? 'text-ok' : 'text-bad')}>{note.text}</span>}
+    </div>
   )
 }
 
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+/** 左下角：检查结果。通过就说经过哪几个阶段；有问题一条一条列；提醒是琥珀色 */
+function Verdict({ items, check, error }: { items: Item[]; check: WorkflowCheck | null; error: string | null }) {
+  if (items.length === 0 || (!check && !error)) return null
   return (
-    <button type="button" aria-label={label} onClick={onClick}
-            className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground [&_svg]:size-3.5">
+    <div className="space-y-1.5 rounded-xl border bg-card/90 px-3 py-2 text-[0.8125rem] shadow-sm backdrop-blur-sm">
+      {error && <ErrorNote text={error} />}
+      {check && check.problems.length === 0 && <p className="text-ok">通过 · {coverageSentence(check.covers)}</p>}
+      {check?.remarks.map((r) => <p key={r} className="text-wait">{r}</p>)}
+      {check && <Problems items={check.problems} />}
+    </div>
+  )
+}
+
+// ── 画布 ──────────────────────────────────────────────────────────────────
+function Canvas({ items, titles, perItem, selected, onSelect, setItems, onDrop, children }: {
+  items: Item[]; titles: Map<string, string>; perItem: Map<number, string[]>
+  selected: number | null; onSelect: (uid: number | null) => void
+  setItems: SetItems; onDrop: (seed: Seed, index: number) => void
+  children: ReactNode
+}) {
+  const { screenToFlowPosition, fitView } = useReactFlow()
+  const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>([])
+  const arrow = useToken('--muted-foreground')
+
+  // 项 → 节点：位置按顺序排；选中态从上一版节点带过来，重排不丢
+  useEffect(() => {
+    const slots = layout(items)
+    setNodes((prev) => {
+      const was = new Set(prev.filter((n) => n.selected).map((n) => n.id))
+      return items.map((item, i): CanvasNode => {
+        const id = String(item.uid)
+        const base = { id, position: { x: slots[i].x, y: slots[i].y }, selected: was.has(id) }
+        const problems = perItem.get(i) ?? []
+        const onRemove = () => setItems((all) => remove(all, item.uid))
+        if (item.kind === 'stop') return { ...base, type: 'stop', data: { n: i + 1, note: item.note, problems, onRemove } }
+        return { ...base, type: 'stage', data: { n: i + 1, stage: item.stage, caps: item.caps.map((p) => titles.get(p.cap) ?? p.cap), problems, onRemove } }
+      })
+    })
+  }, [items, perItem, titles, setNodes, setItems])
+  useEffect(() => {
+    const id = requestAnimationFrame(() => void fitView({ padding: 0.25, maxZoom: 1, duration: 200 }))
+    return () => cancelAnimationFrame(id)
+  }, [items.length, fitView])
+
+  // 同一行左进右出；换行的那条从上一项底下出、下一项顶上进
+  const edges = useMemo<Edge[]>(() => {
+    const slots = layout(items)
+    return items.slice(1).map((item, i) => {
+      const wraps = slots[i + 1].row !== slots[i].row
+      return {
+        id: `${items[i].uid}-${item.uid}`, source: String(items[i].uid), target: String(item.uid), type: 'smoothstep',
+        sourceHandle: wraps ? 'b' : 'r', targetHandle: wraps ? 't' : 'l', deletable: false, selectable: false, focusable: false,
+        markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: arrow },
+      }
+    })
+  }, [items, arrow])
+
+  const onSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes: picked }) => {
+    onSelect(picked.length === 1 ? Number(picked[0].id) : null)
+  }, [onSelect])
+  // 选中的项被删了（节点上的 ×、Backspace），面板跟着收
+  useEffect(() => {
+    if (selected !== null && !items.some((it) => it.uid === selected)) onSelect(null)
+  }, [items, selected, onSelect])
+
+  return (
+    <ReactFlow<CanvasNode>
+      nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodesChange={onNodesChange} onSelectionChange={onSelectionChange}
+      onNodeDragStop={(_, node: Node) => setItems((all) =>
+        moveTo(all, Number(node.id), node.position.x + WIDTH[node.type as 'stage' | 'stop'] / 2, node.position.y + (node.measured?.height ?? 80) / 2))}
+      onNodesDelete={(gone) => setItems((all) => all.filter((it) => !gone.some((n) => n.id === String(it.uid))))}
+      onDragOver={(e: DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+      onDrop={(e: DragEvent) => {
+        const seed = parseSeed(e.dataTransfer.getData(SEED_MIME))
+        if (!seed) return
+        e.preventDefault()
+        const at = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+        onDrop(seed, indexAt(items, at.x, at.y))
+      }}
+      nodesConnectable={false} edgesFocusable={false} panOnScroll zoomOnScroll={false} minZoom={0.3} maxZoom={1.5}
+      deleteKeyCode={['Backspace', 'Delete']} fitView fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
+      className="bg-background"
+    >
+      <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
+      <Controls showInteractive={false} position="bottom-right" />
+      {items.length === 0 && (
+        <Panel position="top-center" className="pointer-events-none !mt-[30%] text-[0.9375rem] text-muted-foreground">拖入阶段</Panel>
+      )}
       {children}
-    </button>
+    </ReactFlow>
   )
-}
-
-/** 拼流台 → 文件同形的 JSON：不点名的阶段一个名字、点名的一个清单、断点一个词或「断点: 一句话」。 */
-function toDraft(draft: Draft): WorkflowDraft {
-  const stages: DraftItem[] = draft.items.map((item) => {
-    if (item.kind === 'stop') return item.note.trim() ? { 断点: item.note.trim() } : '断点'
-    return item.caps.length ? { [item.stage]: item.caps } : item.stage
-  })
-  return { name: draft.name.trim(), title: draft.title.trim(), summary: draft.summary.trim(), stages }
-}
-
-function fromWorkflow(wf: Workflow): Draft {
-  return {
-    name: `${wf.name}-2`, title: wf.title, summary: wf.summary,
-    items: wf.stages.map(fromItem),
-  }
-}
-
-function fromItem(item: FlowItem): BenchItem {
-  if (item.kind === 'stop') return { kind: 'stop', note: item.note }
-  // 参数在页面上还没有位置：照着拼时只带名字，参数由取走的研究助理改（P-15）
-  return { kind: 'stage', stage: item.stage, caps: item.caps.map((c) => c.cap) }
 }

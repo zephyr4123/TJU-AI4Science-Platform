@@ -1,4 +1,4 @@
-// 工作流墙的卡，从 reactbits 的 SpotlightCard 捞来改装（MIT，https://reactbits.dev/components/spotlight-card）：
+// 画布上阶段节点的卡，从 reactbits 的 SpotlightCard 捞来改装（MIT，https://reactbits.dev/components/spotlight-card）：
 // 底色与描边走 tokens，聚光的颜色由调用方给（靛的淡光）。
 import { type MouseEventHandler, type ReactNode, useRef, useState } from 'react'
 

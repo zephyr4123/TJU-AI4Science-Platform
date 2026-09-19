@@ -240,6 +240,8 @@ export interface CapabilityParam {
   help?: string
   default?: unknown
   type?: string
+  /** 假的是每次调用时才定的（哪个 run、接不接着跑），流里写不了 */
+  in_flow?: boolean
 }
 
 /** 七个研究阶段之一（`GET /stages` 给顺序）；能力描述符的 `stage` 取值。 */
