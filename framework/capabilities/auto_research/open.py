@@ -84,20 +84,16 @@ def open_experiment(
 
 
 def _snapshot_domain(domain_dir: Path, run_dir: Path) -> None:
-    """领域包的实验追加段与全部 skill 随实验快照一份；没有就不留，也不回退到别的领域。
+    """领域包的实验追加段随实验快照一份，跑起来后不回头看领域包；没有就不留，也不回退到别的领域。
 
-    skill 走 prompt 而不是执行层 CLI 的原生 skill 目录：执行层的隔离参数把原生加载关掉了
-    （纲领 domains.md，Q-2）。快照进来是为了跑起来后不回头看领域包。
+    领域 skill 不快照：它们按名字进执行层的 `<available_skills>` 清单，执行层 `ai4sci skill show`
+    时读的是库里的现版本，读了什么在那一轮的事件流里（纲领 P-22）。
     """
     src = domain_dir / "prompts" / "experiment.md"
     if src.is_file():
         dst = layout.domain_prompt(run_dir)
         dst.parent.mkdir(exist_ok=True)
         shutil.copy2(src, dst)
-    for skill in sorted((domain_dir / "skills").glob("*/SKILL.md")):
-        dst = layout.domain_skills(run_dir) / f"{skill.parent.name}.md"
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(skill, dst)
 
 
 def extend_experiment(

@@ -4,13 +4,15 @@
 （造流程）；两份各配一段前言。可写目录在 `chat/scope.py`，指南只管说话。
 服务起的会话用 `--setting-sources ""` 隔离，什么都不读，所以这里显式塞。指南在仓根 `coordinator/`，
 不在 framework 包里：装成包运行时这个文件不在，读不到就明说，不悄悄给一份空指南。
+研究助理的 system prompt 里还有一份 skill 清单（`<available_skills>`，纲领 P-22）：通用库里的，
+起会话时扫；领域 skill 不给协调层（P-11）。流程助理不跑东西，不给清单。
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from framework import paths
+from framework import paths, skills
 
 WORKSPACE = "workspace"
 STUDIO = "studio"
@@ -50,6 +52,13 @@ PREAMBLES = {
   哪条被拒就如实说被拒。
 - 要做的事没有对应的命令（比如想跑一段 python）：不要绕，停下来告诉研究者
   「平台还没有这个功能」，缺口记下来是平台的事。
+- 工具包：指南前面「工具包」一节列的 skill 是你随时能用的（解析论文这类）。用到哪个就
+  `ai4sci skill show <name>` 读全文、照它写的命令跑；产物写进 `materials/`（解析出来的东西也是原件，
+  只追加，不改已有的文件）。
+- 联网：研究者给的是链接不是文件、要查论文有没有公开的代码与数据、库的 API 或报错拿不准、
+  要近期的事实——这些时候去查，用你**自带的联网搜索与网页读取工具**；不要在 Bash 里用 curl / wget
+  之类命令去凑（也没放行），不要拿记忆里的版本号、API 当事实。查到的东西写进文件时带上来源链接，
+  研究者要能回头核。
 - 长命令（跑实验、写分析、写评分脚本）加 `--detach`：立刻拿到作业号，这一轮就可以结束，不要干等。
   跑完框架会以「框架」的身份开新一轮把结果告诉你，你再向研究者汇报。研究者中途问进度：
   `ai4sci show job <作业号>` 或 `ai4sci show workspace`。不要自己放后台、不要排"稍后叫醒"：
@@ -91,4 +100,10 @@ def system_prompt(kind: str, guide_path: Path | None = None) -> str:
         raise GuideMissing(f"助理的指南是空的：{guide_path}")
     # 库在哪是起服务的人定的（AI4SCI_WORKFLOWS_ROOT），前言里写实路径，agent 不用去找
     preamble = PREAMBLES[kind].replace("{library}", str(paths.workflows_root()))
-    return preamble.strip() + "\n\n" + text + "\n"
+    parts = [preamble.strip()]
+    if kind == WORKSPACE:
+        catalog = skills.catalog_text(skills.for_coordinator())  # 没有 skill 就是空串，不输出空块
+        if catalog:
+            parts.append(catalog.strip())
+    parts.append(text)
+    return "\n\n".join(parts) + "\n"

@@ -17,9 +17,9 @@ from pathlib import Path
 import yaml
 
 from backends import Runner
+from framework import skills
 from framework.executor import prompting, session
 from framework.experiment import pack as packs
-from framework.experiment.context import strip_frontmatter
 
 LOGGER = logging.getLogger("ai4sci.design")
 TEMPLATE = Path(__file__).resolve().parent / "prompt.md"
@@ -79,12 +79,12 @@ def draft(
         "requirement": requirement.strip(),
         "hypothesis": (f"## 假设（假设阶段的产出，设计要能检验它）\n\n{hypothesis.strip()}"
                        if hypothesis.strip() else ""),
-        "skills": _read_skills(domain_dir / "skills"),
         "current": current or "scoring.yaml、harness/ 与 code/ 还是空的，从零写。",
         "feedback": f"## 这次要改什么\n\n{feedback.strip()}" if feedback.strip() else "",
         "lint_select": LINT_SELECT, "lint_line_length": LINT_LINE_LENGTH,
     }
-    prompt = prompting.build_prompt(TEMPLATE, values)
+    prompt = prompting.build_prompt(
+        TEMPLATE, values, skills=skills.for_executor(domain, domains_root=domains_root))
 
     log_dir, number = _next_session_dir(pack / LOG_DIRNAME)
     log_dir.mkdir(parents=True)
@@ -145,18 +145,6 @@ def _stamp_domain(pack: Path, domain: str) -> None:
         return
     raw["domain"] = domain
     path.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
-
-
-def _read_skills(skills_dir: Path) -> str:
-    """领域包全部 skill 正文，去 frontmatter；与实验快照里的注入同一格式（`### skill: <名>`）。"""
-    parts = []
-    for skill in sorted(skills_dir.glob("*/SKILL.md")):
-        body = strip_frontmatter(skill.read_text(encoding="utf-8")).strip()
-        if body:
-            parts.append(f"### skill: {skill.parent.name}\n\n{body}")
-    return "\n\n".join(parts) or (
-        "（这个领域包没有 skill：只用标准库与 env/requirements.lock 里列出的库。）"
-    )
 
 
 def _current_files(pack: Path) -> str:

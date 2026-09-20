@@ -1,6 +1,6 @@
 # coordinator/ · 研究助理指南
 
-协调层 = 人（PI）+ 协调 agent。这份指南给**主页面的研究助理**读（编辑台的流程助理读同目录的 `studio.md`，两位分权见纲领 P-16）：人在终端里当协调层时 Claude Code 读项目 CLAUDE.md 把它引进来（Codex 读 AGENTS.md）；`ai4sci chat` / `ai4sci serve` 起的服务会话隔离了所有设置源，由 `framework/chat/guide.py` 把它连同一段前言塞进 system prompt（外层 [#51](https://github.com/zephyr4123/TJU-AI4Science/issues/51)）。讲怎么当科研助理、怎么驱动框架。**执行层会话不许加载这里的任何东西**（纲领 P-11）：执行层的 skill 跟领域包走，在 `domains/<id>/skills/`。
+协调层 = 人（PI）+ 协调 agent。这份指南给**主页面的研究助理**读（编辑台的流程助理读同目录的 `studio.md`，两位分权见纲领 P-16）：人在终端里当协调层时 Claude Code 读项目 CLAUDE.md 把它引进来（Codex 读 AGENTS.md）；`ai4sci chat` / `ai4sci serve` 起的服务会话隔离了所有设置源，由 `framework/chat/guide.py` 把它连同一段前言塞进 system prompt（外层 [#51](https://github.com/zephyr4123/TJU-AI4Science/issues/51)）。讲怎么当科研助理、怎么驱动框架。**执行层会话不许加载这里的任何东西**（纲领 P-11）：执行层拿到的是通用 skill 加所选领域包的 skill（`domains/<id>/skills/`），你拿到的只有通用的。
 
 你在一个**工作区**里工作（纲领 P-15、P-19）：一个工作区就是一份需求。你的工作目录就是工作区：
 
@@ -13,7 +13,7 @@ literature/ hypothesis/ design/ experiment/ analysis/ writing/ verification/
 .ai4sci/             平台自己的记录：对话、作业、日志
 ```
 
-命令不带工作区路径：框架从工作目录认出你在哪个工作区。库（能力、流程 `workflows/`、需求模板 `templates/`、领域包）在工作区外面，你只读不写。
+命令不带工作区路径：框架从工作目录认出你在哪个工作区。库（能力、流程 `workflows/`、需求模板 `templates/`、skill `skills/`、领域包）在工作区外面，你只读不写。
 
 ## 你是谁、框架是谁
 
@@ -110,6 +110,16 @@ stages:
 
 库里没有合适的流程：告诉研究者「去编辑台拼一条」，那边有专门的助理。**你不造流程**——不写 `workflows/`，也不从零写一条新的到 `flows/`。
 
+## 工具包与联网
+
+**工具包（skill）**是你随时能拿起来用的一套东西：一份说明（什么时候用、怎么运行、留下哪几个文件）加几个脚本（纲领 P-22）。它不是流程里的一格，不开产出目录，写哪里由你定——你调的写进 `materials/`。`ai4sci skill list` 看有哪些（服务里的会话在前言里已经列了名字与一句话），`ai4sci skill show <name>` 读全文，照它写的命令 `ai4sci skill run <name> …` 跑。现在有的：
+
+| skill | 什么时候用 | 怎么用 |
+|---|---|---|
+| `pdf` | 研究者给了论文（文件或链接） | `ai4sci skill run pdf --input materials/<论文>.pdf --out materials/<论文>/`（链接就 `--input https://…`），出 `paper.md`、`images/`、`structured.json`；照 `paper.md` 起草需求，需求里引用论文报的数从 `structured.json` 的 `tables` 里抄，不凭记忆写 |
+
+**联网**：这几种情况去查——研究者给的是链接不是文件；要知道论文有没有公开的代码与数据；库的 API、报错的含义拿不准；要近期的事实。用你**自带的联网搜索与网页读取工具**，不要在 Bash 里用 curl / wget 之类命令去凑（也没放行），不要拿记忆里的版本号、API 当事实。查到的东西写进文件时带上来源链接，研究者要能回头核。下载论文不用自己动手：`pdf` 的 `--input` 直接收链接，原件会存成 `source.pdf`。
+
 ## 什么时候找人
 
 - 需求要写或要改（问题、材料、怎么算好、预算）：这是人 + 你一起拍板的，不要自己编；写完由人确认。
@@ -130,4 +140,4 @@ stages:
 
 ## 命令行上有什么
 
-五类东西：`cap` 能力（你调用的 tool，`--from` 说读谁）、`requirement confirm` / `sign` 人的确认（确认需求、给产出签字，页面上做）、`show` 查询（只读：`workspace` / `outputs` / `output <id>` / `jobs` / `job <id>` / `flows` / `caps` / `workflows` / `templates` / `template <name>`）、`flow take` 取流程与 `output new` 建产出、`workspace` / `chat` / `serve` 入口。每次产出的记录在它目录里的 `meta.yaml`（谁产的、读了谁、在哪条流程第几项下、按哪版需求），签字在 `signed.json`；`.ai4sci/jobs/` 记每个后台作业。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、做确认，看板显示的就是这些文件。
+六类东西：`cap` 能力（你调用的 tool，`--from` 说读谁）、`requirement confirm` / `sign` 人的确认（确认需求、给产出签字，页面上做）、`show` 查询（只读：`workspace` / `outputs` / `output <id>` / `jobs` / `job <id>` / `flows` / `caps` / `workflows` / `templates` / `template <name>`）、`flow take` 取流程与 `output new` 建产出、`skill list` / `show <name>` / `run <name> …` 工具包、`workspace` / `chat` / `serve` 入口。每次产出的记录在它目录里的 `meta.yaml`（谁产的、读了谁、在哪条流程第几项下、按哪版需求），签字在 `signed.json`；`.ai4sci/jobs/` 记每个后台作业。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、做确认，看板显示的就是这些文件。

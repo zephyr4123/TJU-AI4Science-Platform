@@ -14,6 +14,7 @@ import shutil
 from pathlib import Path
 
 from backends import Runner, RunResult
+from framework.skills import EXECUTOR_BASH_RULES
 
 EXECUTOR_TIMEOUT_ENV = "AI4SCI_EXECUTOR_TIMEOUT_S"
 DEFAULT_EXECUTOR_TIMEOUT_S = 900.0
@@ -36,12 +37,13 @@ def run_session(
     """起一次执行层会话，然后把它写在 `cwd/.ai4sci/` 下的事件流搬到 `log_dir`。
 
     `allowed_paths` 只是"尽量收紧"的意图，各家 CLI 的权限模型对不齐；真正的门是回来
-    之后按 `changed_files` 判越界，那是能力的事（纲领 §5）。
+    之后按 `changed_files` 判越界，那是能力的事（纲领 §5）。Bash 只放行 `ai4sci skill *`：
+    执行层面前只有工具包（纲领 P-22），能力与签字是协调层的。
     """
     result = runner.run(
         prompt=prompt, cwd=cwd,
         timeout_s=executor_timeout_s() if timeout_s is None else timeout_s,
-        allowed_paths=allowed_paths,
+        allowed_paths=allowed_paths, bash_rules=EXECUTOR_BASH_RULES,
     )
     stash_executor_logs(cwd, log_dir)
     return result

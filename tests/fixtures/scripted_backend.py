@@ -51,10 +51,12 @@ class ScriptedRunner:
         self.reports: list[str] = []
 
     def run(
-        self, prompt: str, cwd: Path, timeout_s: float, allowed_paths: list[Path]
+        self, prompt: str, cwd: Path, timeout_s: float, allowed_paths: list[Path],
+        bash_rules: tuple[str, ...] = (),
     ) -> RunResult:
         self.calls += 1
         self.prompts.append(prompt)
+        self.bash_rules = bash_rules  # 框架给执行层放行了哪些命令，测试对账（只该有 ai4sci skill）
         assert timeout_s > 0 and allowed_paths, "runner 的调用形状变了，剧本要跟着改"
         if self.raise_at is not None and self.calls == self.raise_at:
             raise self.exception

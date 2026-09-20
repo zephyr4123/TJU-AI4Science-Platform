@@ -1,9 +1,9 @@
 """`ai4sci` 命令行：协调层驱动框架的唯一入口（workflow.md §5）。
 
-平台在命令行上就五类东西：`cap` 能力（agent 调用，读产出、产出目录）、`requirement confirm` /
+平台在命令行上就六类东西：`cap` 能力（agent 调用，读产出、产出目录）、`requirement confirm` /
 `sign` 人的确认（确认需求、给产出签字）、`show` 查询（只读）、`flow take` 取流程与 `output new`
-建产出、`workspace` / `chat` / `serve` 入口。每类一个模块，本文件只做两件事：把它们的 parser
-装配起来、导出 `main`。
+建产出、`skill` 工具包（清单、读一个、起它的脚本；两层 agent 都能用，P-22）、`workspace` / `chat` /
+`serve` 入口。每类一个模块，本文件只做两件事：把它们的 parser 装配起来、导出 `main`。
 四层里的最上面一层，可以 import 下面任何一层；反过来没有任何一层认识 CLI。
 
 每条子命令只干一件事、跑完就退，用退出码表态，不常驻、不等人（P-10）；
@@ -19,7 +19,18 @@ from __future__ import annotations
 import argparse
 import sys
 
-from framework.cli import cap, chat, flow, output, requirement, serve, show, sign, workspace
+from framework.cli import (
+    cap,
+    chat,
+    flow,
+    output,
+    requirement,
+    serve,
+    show,
+    sign,
+    skill,
+    workspace,
+)
 
 __all__ = ["build_parser", "main"]
 
@@ -34,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     show.add_parser(groups)
     flow.add_parser(groups)
     output.add_parser(groups)
+    skill.add_parser(groups)
     workspace.add_parser(groups)
     chat.add_parser(groups)
     serve.add_parser(groups)

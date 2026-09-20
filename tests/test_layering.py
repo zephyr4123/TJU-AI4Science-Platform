@@ -1,8 +1,8 @@
 """依赖方向的机器判据：能用一条命令查的规矩才是规矩。
 
 纲领 §5 给 framework/ 定了单向依赖 `cli → capabilities → chat → experiment → executor →
-workspace → contracts`，外加两条：`backends/` 与 `compute/` 是端口，framework 可以用它们、它们
-不许反过来 import framework；能力之间互不 import。这些话写在文档里只是标语，靠人
+workspace → skills → contracts`，外加两条：`backends/` 与 `compute/` 是端口，framework 可以用它们、
+它们不许反过来 import framework；能力之间互不 import。这些话写在文档里只是标语，靠人
 review 迟早会漏，所以这里用 ast 把每个模块的 import 摊开逐条判。
 
 判的是 import 语句本身而不是运行时依赖：静态、不用装环境、也不受 import 顺序影响。
@@ -18,7 +18,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # 从底到顶：下标越大越靠上层，只许 import 下标不大于自己的层（同层与包内随意）。
-LAYERS = ("contracts", "workspace", "executor", "experiment", "chat", "capabilities", "cli")
+LAYERS = ("contracts", "skills", "workspace", "executor", "experiment", "chat", "capabilities",
+          "cli")
 # 端口：framework 任何一层都可以 import 它们，它们不许 import framework。
 PORTS = ("backends", "compute", "tools")
 

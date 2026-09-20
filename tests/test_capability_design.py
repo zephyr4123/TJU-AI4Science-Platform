@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from framework import paths
 from framework.capabilities import design as design_cap
 from framework.capabilities.design import drafting as design
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
@@ -129,16 +130,24 @@ def test_good_draft_is_sealed_lint_clean_validates_and_gets_the_domain(ws):
     assert not (pack / ".ai4sci").exists()
 
 
-def test_prompt_carries_requirement_hypothesis_skills_rules_and_escaped_dollars(ws):
+def test_prompt_carries_requirement_hypothesis_skills_rules_and_escaped_dollars(ws, monkeypatch,
+                                                                                 tmp_path):
+    """领域 skill 只以清单进提示（名字 + 一句话），正文由执行层 `ai4sci skill show` 按需读（P-22）；
+    执行层的 Bash 白名单只有 `ai4sci skill *`。"""
+    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-generic-skills"))
+    (tmp_path / "no-generic-skills").mkdir()
     pack = new_pack(ws[0])
     runner, _ = run_design(ws, pack, GOOD_DRAFT, hypothesis="### hypothesis.md\n\n加一层会更好")
     prompt = runner.prompts[0]
-    for token in ("在固定预算下把 val_mse 压到最低", "## 假设", "加一层会更好", "### skill: toy",
-                  "别 import 第三方库", design.LINT_SELECT, str(design.LINT_LINE_LENGTH),
+    for token in ("在固定预算下把 val_mse 压到最低", "## 假设", "加一层会更好", "## 工具包",
+                  "<skill><name>toy</name><description>夹具 skill</description></skill>",
+                  "ai4sci skill show", "## 联网", "自带的联网搜索",
+                  design.LINT_SELECT, str(design.LINT_LINE_LENGTH),
                   "从零写", '"$AI4SCI_PYTHON"', "${AI4SCI_PYTHON:?", "scoring.yaml"):
         assert token in prompt, token
-    assert "description: 夹具 skill" not in prompt  # frontmatter 不进提示
+    assert "别 import 第三方库" not in prompt, "skill 正文不进提示，执行层按需 show"
     assert "这次要改什么" not in prompt
+    assert runner.bash_rules == ("Bash(ai4sci skill *)",)
 
 
 def test_unknown_domain_fails_before_the_session(ws):

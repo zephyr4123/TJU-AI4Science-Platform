@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from framework.experiment import layout
-from framework.experiment.pack import primary_metric, read_scoring
+from framework.experiment.pack import DEFAULT_DOMAIN, primary_metric, read_scoring
 
 DEFAULT_PATIENCE = 5  # scoring 不写 budget.patience 时的缺省（读取点在 load_context）
 DEFAULT_MIN_DELTA = 0.0  # scoring 不写 budget.min_delta 时的缺省（读取点同上）
@@ -48,6 +48,7 @@ class RunContext:
     max_cost_usd: float | None
     seed: int
     python: Path
+    domain: str  # 设计时选的领域包：执行层的 skill 清单按它拼（纲领 P-22）
     domain_extra: str
 
 
@@ -55,29 +56,20 @@ class RunContext:
 # 配置读取点：每个都在这里断言一次，非法值就抛，不静默回落默认（P-7 / P-8）
 # --------------------------------------------------------------------------
 def read_domain_extra(run_dir: Path) -> str:
-    """执行层提示末尾的「领域约定」：领域包的能力追加段 + 全部 skill 正文，都从产出目录里的快照读。
+    """执行层提示末尾的「领域约定」：领域包的实验追加段，从产出目录里的快照读。
 
-    没有快照就是空串，调用方（prompting.build_prompt）见空串不追加。skill 文件与 Claude Code
-    原生 SKILL.md 同格式，这里只取正文、去掉 frontmatter——那段元数据是给 CLI 索引用的，
-    塞进 prompt 只会占地方。
+    没有快照就是空串，调用方（prompting.build_prompt）见空串不追加。领域 skill 不在这里：
+    它们走 `<available_skills>` 清单，执行层按需 `ai4sci skill show`（纲领 P-22）。
     """
-    parts: list[str] = []
     prompt = layout.domain_prompt(run_dir)
-    if prompt.is_file():
-        parts.append(prompt.read_text(encoding="utf-8").strip())
-    for skill in sorted(layout.domain_skills(run_dir).glob("*.md")):
-        body = strip_frontmatter(skill.read_text(encoding="utf-8")).strip()
-        if body:
-            parts.append(f"### skill: {skill.stem}\n\n{body}")
-    return "\n\n".join(parts)
+    return prompt.read_text(encoding="utf-8").strip() if prompt.is_file() else ""
 
 
-def strip_frontmatter(text: str) -> str:
-    """去掉开头的 `---` … `---` 块；没有 frontmatter 原样返回。"""
-    if not text.startswith("---"):
-        return text
-    end = text.find("\n---", 3)
-    return text if end == -1 else text[end + 4 :]
+def read_domain(run_dir: Path) -> str:
+    """这次实验按哪个领域包开的：scoring 快照里的 `domain`（设计时 `--domain` 盖的章）。"""
+    domain = load_scoring(run_dir).get("domain", DEFAULT_DOMAIN)
+    assert isinstance(domain, str) and domain, f"scoring.domain 要是领域包名：{domain!r}"
+    return domain
 
 
 def load_scoring(run_dir: Path) -> dict[str, Any]:
@@ -131,5 +123,6 @@ def load_context(run_dir: Path) -> RunContext:
         accept_sigma=float(budget["accept_sigma"]), min_delta=min_delta,
         wall_clock_s=float(budget["wall_clock_s"]), inner_k=inner_k,
         max_iterations=int(budget["max_iterations"]), patience=patience, max_cost_usd=max_cost,
-        seed=int(seed), python=python, domain_extra=read_domain_extra(run_dir),
+        seed=int(seed), python=python, domain=read_domain(run_dir),
+        domain_extra=read_domain_extra(run_dir),
     )

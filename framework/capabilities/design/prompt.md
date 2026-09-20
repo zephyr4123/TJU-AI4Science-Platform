@@ -11,7 +11,7 @@
 ## 硬规矩
 
 1. **只写 `scoring.yaml`、`harness/` 与 `code/` 下的文件。** 不碰 `data/`、`env/`。不写 `harness/SHA256SUMS`（框架生成）。
-2. 你这个会话没有 Bash，不能运行代码。写完之后由框架改权限、算校验和、跑 lint、跑校验，报错会喂回给你。每一行想清楚再写，宁可简单。
+2. 你不能运行代码。你能运行的命令只有文末工具包里的 `ai4sci skill …`；写完之后由框架改权限、算校验和、跑 lint、跑校验，报错会喂回给你。每一行想清楚再写，宁可简单。
 3. 脚本里起 Python 只准写 `"$$AI4SCI_PYTHON"`，绝不能写裸 `python` / `python3`：任务跑在自己的 venv 里，这个变量由框架或 make_run0.sh 给。
 4. `evaluate.py` 是评分脚本：**指标必须由它用 `data/` 重算**，不许读 `code/` 自己报的分数；`code/` 只产出产物文件。
 5. 拒收产物（文件缺失、形状不对、NaN、越界）时：打一句话到 stderr，`raise SystemExit(非零)`，**不写 results.json，不抛 traceback**。
@@ -59,9 +59,9 @@ $requirement
 
 $hypothesis
 
-## 工具链（在任务的 venv 里实测过的 API；没写的不要猜）
+## 工具链
 
-$skills
+领域的库怎么用（实测过的 API、不能用的 API）在文末工具包里对应的 skill 里：先 `ai4sci skill show <name>` 读完再写；skill 里没写的 API 不要猜，拿不准就联网查（见文末）。工具包里没有这个领域的 skill，就只用标准库与 `env/requirements.lock` 里列出的库。
 
 ## 参考骨架（形状照抄，内容按本任务改）
 

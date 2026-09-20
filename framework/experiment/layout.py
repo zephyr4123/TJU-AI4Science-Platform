@@ -115,11 +115,6 @@ def domain_prompt(run_dir: Path) -> Path:
     return Path(run_dir) / "prompts" / "experiment-domain.md"
 
 
-def domain_skills(run_dir: Path) -> Path:
-    """领域包 skills/*/SKILL.md 的快照目录，一个 skill 一个 `<name>.md`。"""
-    return Path(run_dir) / "prompts" / "skills"
-
-
 def venv(run_dir: Path) -> Path:
     """这次实验自己的任务环境；开工时按 work/env/ 建，跑起来后不回头看设计那包的 .venv。"""
     return Path(run_dir) / env.VENV_DIRNAME

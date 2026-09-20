@@ -19,7 +19,14 @@ import pytest
 
 from backends import BackendNotFound, Runner, RunResult, available_backends, get_backend
 from backends._snapshot import diff, snapshot
-from backends.claude_code import ClaudeCodeRunner, final_metrics, kill_tree, parse_events
+from backends.claude_code import (
+    WEB_TOOLS,
+    ClaudeCodeRunner,
+    build_env,
+    final_metrics,
+    kill_tree,
+    parse_events,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "claude_stream_sample.jsonl"
 
@@ -61,6 +68,51 @@ def test_argv_turns_allowed_paths_into_absolute_tool_rules(tmp_path: Path):
     assert f"Read(//{str(tmp_path).lstrip('/')}/**)" in rules
     # 没给 bash_rules 就一条 Bash 规则都不该有：Bash 是绕开路径白名单的口子
     assert not [r for r in rules if r.startswith("Bash(")]
+    with_skill = ClaudeCodeRunner().build_argv("改点东西", tmp_path, [code],
+                                               ("Bash(ai4sci skill *)",))
+    assert "Bash(ai4sci skill *)" in with_skill[with_skill.index("--allowedTools"):]
+
+
+def test_argv_grants_the_clis_own_web_tools_on_both_layers(tmp_path: Path):
+    """主人 2026-09-20：联网只用 CLI 自带的工具。实测 dontAsk 下 WebSearch 不在白名单就被拒，
+    拒绝信息还教 agent「用别的工具试」，它于是拿 curl 硬凑；两层的白名单都要带上。"""
+    from backends.claude_code import ClaudeCodeChat
+
+    assert WEB_TOOLS == ("WebSearch", "WebFetch")
+    runner = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path])
+    chat = ClaudeCodeChat().build_argv("hi", tmp_path, session_id=None, system_prompt="",
+                                       allowed_paths=[], bash_rules=())
+    for argv in (runner, chat):
+        rules = argv[argv.index("--allowedTools") + 1:argv.index("--max-turns")]
+        assert all(tool in rules for tool in WEB_TOOLS), rules
+
+
+def test_runner_uses_the_same_env_as_chat_so_bare_ai4sci_resolves(monkeypatch, tmp_path: Path):
+    """执行层要跑 `ai4sci skill …`（纲领 P-22）：venv 的 bin 在 PATH 上、后台关掉、Bash 超时对齐。
+    断言 Popen 收到的就是 build_env 的结果，而不是继承的裸环境。"""
+    seen: dict = {}
+
+    class FakeProc:
+        pid = os.getpid()
+        returncode = 0
+        stdout = iter(())
+        stderr = iter(())
+
+        def wait(self, timeout=None):
+            return 0
+
+    def fake_popen(argv, **kw):
+        seen["env"] = kw["env"]
+        return FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("PATH", "/usr/bin")
+    with pytest.raises(RuntimeError, match="没有 result 事件"):
+        ClaudeCodeRunner().run("hi", tmp_path, 7.0, [tmp_path])
+    env = seen["env"]
+    assert env["PATH"].endswith(str(Path(sys.executable).parent))
+    assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
+    assert env["BASH_MAX_TIMEOUT_MS"] == "7000"
 
 
 def test_argv_carries_isolation_flags_and_never_bypasses_permissions(tmp_path: Path):
@@ -288,7 +340,7 @@ def test_get_chat_returns_chat_shaped_object():
 def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
     """外层 #57：长命令不许被 CLI 挪到后台，Bash 超时抬到本轮超时，杀它的只能是我们的定时器。"""
     monkeypatch.setenv("KEEP_ME", "1")
-    env = ClaudeCodeChat().build_env(900.0)
+    env = build_env(900.0)
     assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
     assert env["BASH_DEFAULT_TIMEOUT_MS"] == env["BASH_MAX_TIMEOUT_MS"] == "900000"
     assert env["KEEP_ME"] == "1"  # 继承本进程环境（AI4SCI_EXECUTOR_MODEL 等要传给协调 agent）
@@ -303,11 +355,11 @@ def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatc
     import sys
 
     monkeypatch.setenv("PATH", "/usr/bin")
-    env = ClaudeCodeChat().build_env(1.0)
+    env = build_env(1.0)
     assert env["PATH"].startswith(f"/usr/bin{os.pathsep}")  # 追加在后，系统命令在前
     assert shutil.which("ai4sci", path=env["PATH"]) == str(Path(sys.executable).parent / "ai4sci")
     monkeypatch.delenv("PATH")
-    assert ClaudeCodeChat().build_env(1.0)["PATH"] == str(Path(sys.executable).parent)
+    assert build_env(1.0)["PATH"] == str(Path(sys.executable).parent)
 
 
 def test_translate_turns_text_deltas_into_delta_events_and_ignores_thinking():
@@ -354,9 +406,9 @@ def test_chat_env_carries_the_chat_id_to_the_buttons_the_agent_presses(monkeypat
     from framework.workspace.jobs import CHAT_ID_ENV
 
     assert CHAT_ID_ENV == "AI4SCI_CHAT_ID"  # 适配器抄的那份名字与 framework 的对账
-    assert ClaudeCodeChat().build_env(1.0, "chat-1")[CHAT_ID_ENV] == "chat-1"
+    assert build_env(1.0, "chat-1")[CHAT_ID_ENV] == "chat-1"
     monkeypatch.setenv(CHAT_ID_ENV, "chat-stale")
-    assert CHAT_ID_ENV not in ClaudeCodeChat().build_env(1.0)
+    assert CHAT_ID_ENV not in build_env(1.0)
 
 
 def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path, monkeypatch):

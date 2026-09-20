@@ -132,14 +132,14 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, sections: int = 4) ->
 - 只往 `output_dir` 写。`meta.yaml` 与 `signed.json` 是框架写的，不要碰。
 - 缺东西开工就报错：`raise CapabilityFailed("论文初稿要分析阶段的 analysis.md：--from analysis/<n>")`。说清缺哪个阶段的哪个文件，助理读了报错去补。
 - 失败 `raise CapabilityFailed`，不降级不兜底；产出目录留着，meta 记 `status: failed`。
-- 起执行层的能力：提示模板放子包里的 `prompt.md`；领域包给这一族的补充在 `domains/<包>/prompts/<族>.md`，skill 在 `domains/<包>/skills/*/SKILL.md`，由你这个能力快照进产出目录再进提示（看 `auto_research/open.py::_snapshot_domain`）。
+- 起执行层的能力：提示模板放子包里的 `prompt.md`，交给 `executor.prompting.build_prompt`，它会接上通用段——领域包给这一族的补充（`domains/<包>/prompts/<族>.md`，由你这个能力快照进产出目录再传进去，看 `auto_research/open.py::_snapshot_domain`）、skill 清单（`skills.for_executor(domain)`，通用 + 所选领域包的，执行层按需 `ai4sci skill show`）、联网规矩。执行层会话的 Bash 只放行 `ai4sci skill *`（`executor.session`）。
 - 能力互不 import。同族共用的读写放 `framework/<族>/`，`tests/test_layering.py` 查。
 
 不用写的：CLI 子命令、`--from` / `--flow` / `--continue` / `--detach`、页面上的节点与能力小片、`show caps`——都从描述符生成。
 
 ## skill 呢
 
-skill 不是一格。它是随某个执行层能力进去的一篇说明书，自己不写盘、不出现在流程里。想让一个 skill 变成流程里的一格，把它包成能力：描述符 + `run` 起执行层 + 留下本阶段主文件。「只写说明书不写代码的能力」还没有，见外层 open-questions Q-14。
+skill 不是一格。它是 agent 的工具包（纲领 P-22）：一份说明加几个脚本，协调层与执行层随时能用，不开产出目录，写哪里由调用它的人定。想让一个 skill 变成流程里的一格，把它包成能力：描述符 + `run` 里调 `ai4sci skill run <name> --out <output_dir>`（或直接起执行层）+ 留下本阶段主文件。接一个 skill 看 `docs/add-a-skill.md`。
 
 ## 测试
 

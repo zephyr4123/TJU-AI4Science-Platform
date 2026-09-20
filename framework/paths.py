@@ -1,10 +1,10 @@
 """仓根与几个根目录的读取点，全框架只此一处（纲领 P-15：读数据根的只有这里）。
 
 两类目录分开想：随代码走的**库**——流程库 `workflows/`、需求模板 `templates/`、领域包 `domains/`、
-两位助理的指南 `coordinator/`、页面构建 `ui/web/dist`——缺省都在仓根下；随使用长出来的**数据**
-——工作区 `workspaces/`、编辑台的对话 `studio/`——根是 `AI4SCI_HOME`，0.x 缺省也是仓根。
-四个环境变量各自
-只在这里读一次、断言一次：指向的不是目录当场炸，不静默回落（P-7 / P-8）。
+skill 库 `skills/`、两位助理的指南 `coordinator/`、页面构建 `ui/web/dist`——缺省都在仓根下；
+随使用长出来的**数据**——工作区 `workspaces/`、编辑台的对话 `studio/`——根是 `AI4SCI_HOME`，
+0.x 缺省也是仓根。五个环境变量各自只在这里读一次、断言一次：指向的不是目录当场炸，
+不静默回落（P-7 / P-8）。
 
 `parents[1]` 是 framework/paths.py 往上两级，即仓根——搬包时这个数字要跟着改，所以它只在这一处出现。
 """
@@ -19,9 +19,11 @@ HOME_ENV = "AI4SCI_HOME"
 WORKFLOWS_ROOT_ENV = "AI4SCI_WORKFLOWS_ROOT"
 DOMAINS_ROOT_ENV = "AI4SCI_DOMAINS_ROOT"
 TEMPLATES_ROOT_ENV = "AI4SCI_TEMPLATES_ROOT"
+SKILLS_ROOT_ENV = "AI4SCI_SKILLS_ROOT"
 WORKFLOWS_DIRNAME = "workflows"
 DOMAINS_DIRNAME = "domains"
 TEMPLATES_DIRNAME = "templates"
+SKILLS_DIRNAME = "skills"
 GUIDES_DIRNAME = "coordinator"
 
 
@@ -42,6 +44,11 @@ def domains_root() -> Path:
 def templates_root() -> Path:
     """需求模板的库：通用一份、按学科加；建工作区时照它起草 requirement.md（纲领 P-19）。"""
     return _root(TEMPLATES_ROOT_ENV, REPO_ROOT / TEMPLATES_DIRNAME)
+
+
+def skills_root() -> Path:
+    """平台通用的 skill 库（纲领 P-22）；领域包自己的在 `domains/<包>/skills/`，不在这里。"""
+    return _root(SKILLS_ROOT_ENV, REPO_ROOT / SKILLS_DIRNAME)
 
 
 def _root(env: str, default: Path) -> Path:

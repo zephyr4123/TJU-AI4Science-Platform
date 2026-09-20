@@ -1,12 +1,13 @@
 # 本地与 CI 共用的入口：CI 跑的就是 `make check`，发版流水线跑的就是 `make package`。
 # 技术栈：Python，venv 隔离（红线：依赖不装全局）。依赖钉在 requirements.lock，改依赖走 `make lock`。
 # 页面是 ui/web 的 Node 项目，依赖钉在 package-lock.json，只装在 ui/web/node_modules。
-.PHONY: check changelog lint test venv lock package release ui ui-check
+# skill 的脚本各自带依赖（PEP 723 + 锁文件），环境在 uv 的全机缓存里，`make skills` 预热（纲领 P-22）。
+.PHONY: check changelog lint test venv lock package release ui ui-check skills
 
 VENV := .venv
 PY   := $(VENV)/bin/python
 
-check: changelog lint test ui-check ## 全部门禁（页面的门禁也在里面）
+check: changelog lint skills test ui-check ## 全部门禁（skill 预热与页面的门禁也在里面）
 
 changelog:                         ## CHANGELOG.md 格式校验
 	.github/scripts/changelog.sh check
@@ -26,6 +27,9 @@ lock: venv                         ## 改了 pyproject 的依赖后重新钉版�
 
 lint: venv                         ## 静态检查：ruff（含裸 except 门禁）
 	$(VENV)/bin/ruff check .
+
+skills: venv                       ## skill 门禁与预热：SKILL.md 合规范、每个脚本锁文件对得上、环境建好（唯一联网的一步）
+	$(PY) -m framework.skills
 
 test: venv                         ## 框架测试；真 CLI 冒烟测试要 AI4SCI_LIVE=1
 	$(PY) -m pytest

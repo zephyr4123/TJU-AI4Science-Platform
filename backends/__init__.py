@@ -48,6 +48,11 @@ class Runner(Protocol):
 
     `allowed_paths` 是"只许改这些目录"的意图；各家 CLI 的权限模型语义对不齐，
     适配器只负责尽量收紧，真正的门是 runner 事后拿 `changed_files` 判（纲领 §5）。
+    `bash_rules` 是放行的命令前缀（执行层只有 `ai4sci skill *`，纲领 P-22）；不给就一条 Bash
+    都不放。
+    联网：适配器必须放行这家 CLI **自带**的联网搜索与网页读取工具（Claude Code 是 WebSearch /
+    WebFetch），不能让 agent 拿 Bash 里的 curl 去凑——实测 dontAsk 下不放行就被拒，拒绝信息还教它
+    「用别的工具试试」（主人 2026-09-20）。
     """
 
     def run(
@@ -56,6 +61,7 @@ class Runner(Protocol):
         cwd: Path,
         timeout_s: float,
         allowed_paths: list[Path],
+        bash_rules: tuple[str, ...] = (),
     ) -> RunResult: ...
 
 
@@ -136,8 +142,9 @@ class Chat(Protocol):
 
     `session_id=None` 开新会话，否则续接；每一轮至少吐一个 `init`（带 session id）和
     一个 `done` 或 `error`。`system_prompt` 是协调层指南；`allowed_paths` 与 `bash_rules`
-    的语义同 `Runner`：尽量收紧，各家 CLI 的权限模型对不齐；`readable_paths` 是工作目录之外
-    「能读不能写」的目录（研究助理看流程库用，P-16）。`chat_id` 是这段对话的名字：
+    的语义同 `Runner`：尽量收紧，各家 CLI 的权限模型对不齐，自带的联网工具同样必须放行；
+    `readable_paths` 是工作目录之外「能读不能写」的目录（研究助理看流程库用，P-16）。
+    `chat_id` 是这段对话的名字：
     适配器要让 agent 调用的命令拿得到它（环境变量 `AI4SCI_CHAT_ID`），后台作业跑完才知道叫醒谁。
     `tuning` 是这一轮用什么模型、什么思考深度（外层 #86）：None 或字段为 None 就用后端缺省；
     `knobs()` 报这家 CLI 有哪些刻度，页面与终端只许从里面选。

@@ -16,32 +16,35 @@ platform/
 │   ├── capabilities/  一个能力一个子包（design/ 评分脚本与基线、auto_research/ 自动实验、analysis/ 分析初稿、verify/ 数字核对），互不 import，各带五栏描述符
 │   ├── chat/          两位助理的对话、看板读盘、HTTP + SSE 服务
 │   ├── experiment/    实验这一族能力私下的约定：scoring.yaml 与三份 schema、env 与 uv venv、预检、账本、笔记、结果
-│   ├── executor/      组 prompt、起执行层会话、留档日志
+│   ├── executor/      组 prompt（通用段：领域约定、skill 清单、联网）、起执行层会话、留档日志
 │   ├── workspace/     工作区的磁盘：根、产出目录、流程的进度、后台作业
+│   ├── skills/        skill 库的读取点：扫两处库、校验 SKILL.md 与脚本、拼清单、uv run 起脚本
 │   └── contracts/     框架认的东西：阶段表、需求与确认、产出与签字、流程文件、能力描述符
 ├── backends/      执行层适配器：claude_code.py …
 ├── compute/       算力适配器：local.py …
 ├── tools/         确定性脚本
-├── domains/       领域包，按工具链命名（generic/ 兜底、petab/ 参数估计）；prompts/ 与 skills/ 随实验快照进执行层提示
+├── domains/       领域包，按工具链命名（generic/ 兜底、petab/ 参数估计）；prompts/ 随实验快照进执行层提示，skills/ 进执行层的 skill 清单
+├── skills/        skill 库（纲领 P-22）：一个目录一个，agentskills.io 格式；pdf/ 解析论文
 ├── workflows/     流程库：阶段 + 断点的走法，编辑台改；工作区取实例
 ├── templates/     需求模板库：generic.md 通用，ai.md / cs.md / materials.md 按学科加
 ├── workspaces/    一个工作区一个课题：<id>/{requirement.md, requirement.lock, materials/, flows/, <七个阶段>/<n>/, .ai4sci/}；样例 mlp-regression 玩具、boehm-nll、rahman-nll
 ├── studio/        编辑台的对话，不进 git
-├── docs/          start-a-workspace.md：接一个课题；add-a-capability.md：接一个能力
+├── docs/          start-a-workspace.md：接一个课题；add-a-capability.md：接一个能力；add-a-skill.md：接一个 skill
 ├── tests/         框架测试
-├── Makefile       check / venv / lock / package / release
+├── Makefile       check / venv / lock / skills / package / release
 └── CHANGELOG.md
 ```
 
 工作区的根是需求（纲领 P-19）：`requirement.md` 由人和助理对话后由助理按模板写，人确认（`requirement.lock`）之后阶段才开工，这是框架唯一内置的门。七个阶段各一个目录，每次执行一个编号子目录 `<stage>/<n>/`，`meta.yaml` 记它读了哪几次产出（`from`，带 sha256）；被下游引用或人签过字的产出就冻结。断点由拼流程的人定：一个断点 = 上一项的产出要人签字下游才能读，零个断点就是全自动。
 
-命令行上：`cap` 能力（agent 调用的 tool，纯函数：`--from STAGE/N` 点名读什么，`--flow` 挂到哪条流程，`--detach` 起成后台作业）、`requirement confirm` 确认需求、`sign STAGE/N` 给产出签字、`output new` 不经能力开一次产出、`show` 查询、`flow take` 取流程、`workspace` / `chat` / `serve` 入口。命令不带工作区路径：cd 进 `workspaces/<id>/`，CLI 往上找 `requirement.md`（纲领 P-15）。两位助理分权（P-16）：主页面的研究助理只用流程，编辑台的流程助理只造流程。依赖只许自上而下：`cli → capabilities → chat → experiment → executor → workspace → contracts`；`backends/` 与 `compute/` 是端口，framework 用它们、它们不认识 framework。这条规矩由 `tests/test_layering.py` 用 ast 逐条查。
+命令行上：`cap` 能力（agent 调用的 tool，纯函数：`--from STAGE/N` 点名读什么，`--flow` 挂到哪条流程，`--detach` 起成后台作业）、`requirement confirm` 确认需求、`sign STAGE/N` 给产出签字、`output new` 不经能力开一次产出、`show` 查询、`flow take` 取流程、`skill list / show / run` 工具包、`workspace` / `chat` / `serve` 入口。命令不带工作区路径：cd 进 `workspaces/<id>/`，CLI 往上找 `requirement.md`（纲领 P-15）。两位助理分权（P-16）：主页面的研究助理只用流程，编辑台的流程助理只造流程。依赖只许自上而下：`cli → capabilities → chat → experiment → executor → workspace → skills → contracts`；`backends/` 与 `compute/` 是端口，framework 用它们、它们不认识 framework。这条规矩由 `tests/test_layering.py` 用 ast 逐条查。
 
 ## 怎么跑
 
 ```bash
 make venv                                   # 建 .venv，按 requirements.lock 装依赖（含 uv）
-make check                                  # 门禁：CHANGELOG 校验 + ruff + pytest + 页面
+make skills                                 # skill 门禁与预热：每个脚本按锁文件建好环境（唯一联网的一步，make check 也会跑）
+make check                                  # 门禁：CHANGELOG 校验 + ruff + skills + pytest + 页面
 cd workspaces/mlp-regression && ../../.venv/bin/ai4sci show workspace   # 这个工作区：需求状态、七个阶段各有什么、流程走到哪
 AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会花钱，CI 不跑
 ```

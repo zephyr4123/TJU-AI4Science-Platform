@@ -31,6 +31,9 @@ from backends._snapshot import diff, snapshot
 # 自定义 agent（P-11）。执行层再加 --no-session-persistence（一次性会话，不留）；协调层
 # 不加：多轮靠 --resume 续接，靠的就是 CLI 自己的会话持久化
 ISOLATION_ARGS = ("--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands")
+# CLI 自带的联网工具，两层都放行（端口要求）。实测 2026-09-20：dontAsk 下不在白名单就被拒，
+# 拒绝信息还说「可以用别的工具试」，agent 于是拿 Bash 里的 curl 硬凑；白名单加上后搜索与读页都通
+WEB_TOOLS = ("WebSearch", "WebFetch")
 # 与 framework/run/jobs.py 的 CHAT_ID_ENV 同名：适配器不 import framework（端口方向），
 # 名字抄一份，测试对账
 CHAT_ID_ENV = "AI4SCI_CHAT_ID"
@@ -65,6 +68,31 @@ def _default_effort() -> str | None:
     assert raw in {c.id for c in EFFORTS}, \
         f"{EFFORT_ENV} 只认 {', '.join(c.id for c in EFFORTS)}，得到 {raw!r}"
     return raw
+
+
+def build_env(timeout_s: float, chat_id: str | None = None) -> dict[str, str]:
+    """两层会话共用的子进程环境：继承本进程，外加 venv 的 bin 进 PATH、关后台、Bash 超时对齐本轮。
+
+    agent 敲的是裸 `ai4sci`（纲领 P-14：它面前只有这一个入口，不写路径不挂前缀），
+    所以起它的服务得让这个名字找得到：把自己解释器所在的 bin 目录**追加**到 PATH 末尾。
+    追加不是前置：不让 venv 里的 python / ruff 遮住系统的，agent 用不到它们。
+    不 resolve：venv 的 python 是指向系统解释器的软链，解析完就是系统 bin，里面没有 ai4sci
+    （实测 #60 第一次真跑就栽在这）。
+    关后台与超时对齐（外层 #57）：`claude -p` 里 Bash 超过 CLI 自己的缺省超时（2 分钟）会被自动
+    挪到后台，一轮结束后台子进程约 5 秒后被杀；所以 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` 关掉
+    全部后台机制，并把 Bash 超时抬到与本轮超时一样长——唯一会杀它的只有我们自己的定时器。
+    `chat_id` 只有协调层有：agent 调用的命令从环境里知道自己属于哪段对话，`--detach` 的作业记下它，
+    跑完叫醒（外层 #63）；不给就不留上一段的。"""
+    millis = str(int(timeout_s * 1000))
+    bin_dir = str(Path(sys.executable).parent)
+    inherited = os.environ.get("PATH", "")
+    path = f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir
+    env = {**os.environ, "PATH": path, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+           "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis}
+    env.pop(CHAT_ID_ENV, None)
+    if chat_id:
+        env[CHAT_ID_ENV] = chat_id
+    return env
 
 
 def _abs_glob(path: Path) -> str:
@@ -114,18 +142,18 @@ def kill_tree(pid: int) -> list[int]:
 
 
 class ClaudeCodeRunner:
-    def __init__(self, cli: str = "claude", bash_rules: tuple[str, ...] = ()) -> None:
-        # bash_rules 显式传入而不是默认放行：dontAsk 下只读 Bash（grep/ls/wc）本就自动放行，
-        # 写操作（sed -i）实测被拒——默认不给 Bash 规则，才守得住"只能改 allowed_paths"。
+    def __init__(self, cli: str = "claude") -> None:
         self.cli = cli
-        self.bash_rules = tuple(bash_rules)
 
-    def build_argv(self, prompt: str, cwd: Path, allowed_paths: list[Path]) -> list[str]:
+    def build_argv(self, prompt: str, cwd: Path, allowed_paths: list[Path],
+                   bash_rules: tuple[str, ...] = ()) -> list[str]:
+        # bash_rules 由调用方显式给而不是默认放行：dontAsk 下只读 Bash（grep/ls/wc）本就自动放行，
+        # 写操作（sed -i）实测被拒——不给 Bash 规则，才守得住"只能改 allowed_paths"
         rules: list[str] = []
         for path in allowed_paths:
             rules += [f"Edit({_abs_glob(path)})", f"Write({_abs_glob(path)})"]
         rules.append(f"Read({_abs_glob(cwd)})")  # 读整个工作目录：harness 与 data 要看得见
-        rules += self.bash_rules
+        rules += [*bash_rules, *WEB_TOOLS]
         argv = [self.cli, "-p", prompt, "--output-format", "stream-json", "--verbose",
                 "--permission-mode", "dontAsk", *EXECUTOR_ISOLATION_ARGS,
                 "--allowedTools", *rules,
@@ -137,17 +165,18 @@ class ClaudeCodeRunner:
         return argv
 
     def run(self, prompt: str, cwd: Path, timeout_s: float,
-            allowed_paths: list[Path]) -> RunResult:
+            allowed_paths: list[Path], bash_rules: tuple[str, ...] = ()) -> RunResult:
         before = snapshot(cwd)
-        argv = self.build_argv(prompt, cwd, allowed_paths)
+        argv = self.build_argv(prompt, cwd, allowed_paths, bash_rules)
         raw: list[str] = []
         err: list[str] = []
         started = time.monotonic()
         # start_new_session：自成进程组，超时时 killpg 能一起带走 CLI 派生的子进程（sleep 之类）
         # stdin 必须给 DEVNULL：实测不给的话 CLI 会等 3 秒 stdin 再继续
+        # 环境与协调层同一份：裸 `ai4sci` 找得到、关后台、Bash 超时对齐本轮（skill 脚本会跑几分钟）
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True)
+                                text=True, start_new_session=True, env=build_env(timeout_s))
         # stdout 与 stderr 各一个线程排空。只读 stdout 的话，CLI 往 stderr 写满管道缓冲区
         # 就会卡住，表面上是"超时"，真正原因是没人读它（实测 CLI 会往 stderr 打 Warning）
         readers = [threading.Thread(target=lambda: raw.extend(proc.stdout), daemon=True),
@@ -229,10 +258,9 @@ class ClaudeCodeChat:
     模型记得第一轮的内容，result 事件的 session_id 与第一轮相同；两轮共 $0.02。
     事件边跑边出：stdout 逐行读、逐行翻译，stderr 另起线程排空（同 Runner 的教训）。
 
-    长命令不许进后台（外层 #57）：`claude -p` 里 Bash 超过 CLI 自己的缺省超时（2 分钟）会被
-    自动挪到后台，一轮结束后台子进程约 5 秒后被杀——实测 `cap auto-research --max-iters 3` 第 4 轮
-    死在半路。所以起会话时 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` 关掉全部后台机制，并把
-    Bash 超时抬到与本轮超时一样长：唯一会杀它的只有我们自己的定时器，杀了会报"这一轮超过 N 秒"。
+    长命令不许进后台（外层 #57，`build_env`）：实测 `cap auto-research --max-iters 3` 第 4 轮死在
+    半路，因为 Bash 被 CLI 挪到后台、一轮结束就被杀；现在唯一会杀它的只有我们自己的定时器，杀了会报
+    "这一轮超过 N 秒"。
 
     花费：`--resume` 时 result 事件的 `total_cost_usd` 是整段会话到此刻的累计，不是这一轮的（实测
     2026-09-19：七轮单调递增 0.165 → 0.284，`modelUsage` 的 token 数也是累计），所以报 `"session"`，
@@ -254,27 +282,6 @@ class ClaudeCodeChat:
             models = (*MODELS, Choice(model, model, "环境里给的"))
         return Knobs(models=models, efforts=EFFORTS, model=model, effort=_default_effort())
 
-    @staticmethod
-    def build_env(timeout_s: float, chat_id: str | None = None) -> dict[str, str]:
-        """子进程环境：继承本进程，外加 venv 的 bin 进 PATH、关后台、Bash 超时对齐本轮超时。
-
-        协调 agent 敲的是裸 `ai4sci`（纲领 P-14：它面前只有这一个入口，不写路径不挂前缀），
-        所以起它的服务得让这个名字找得到：把自己解释器所在的 bin 目录**追加**到 PATH 末尾。
-        追加不是前置：不让 venv 里的 python / ruff 遮住系统的，agent 用不到它们。
-        不 resolve：venv 的 python 是指向系统解释器的软链，解析完就是系统 bin，里面没有 ai4sci
-        （实测 #60 第一次真跑就栽在这）。"""
-        millis = str(int(timeout_s * 1000))
-        bin_dir = str(Path(sys.executable).parent)
-        inherited = os.environ.get("PATH", "")
-        path = f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir
-        env = {**os.environ, "PATH": path, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
-               "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis}
-        # agent 调用的命令从这里知道自己属于哪段对话：`--detach` 的作业记下它，跑完叫醒（外层 #63）
-        env.pop(CHAT_ID_ENV, None)
-        if chat_id:
-            env[CHAT_ID_ENV] = chat_id
-        return env
-
     def build_argv(
         self, message: str, cwd: Path, *, session_id: str | None, system_prompt: str,
         allowed_paths: list[Path], bash_rules: tuple[str, ...],
@@ -288,7 +295,7 @@ class ClaudeCodeChat:
         # dontAsk 下不被拒；Edit / Write 的白名单没有它，写照旧被拒
         for path in readable_paths:
             rules.append(f"Read({_abs_glob(path)})")
-        rules += bash_rules
+        rules += [*bash_rules, *WEB_TOOLS]
         argv = [self.cli, "-p", message, "--output-format", "stream-json", "--verbose",
                 "--include-partial-messages",  # 逐字吐（端口的 delta 事件，外层 #65）
                 "--permission-mode", "dontAsk", *ISOLATION_ARGS,
@@ -329,7 +336,7 @@ class ClaudeCodeChat:
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, start_new_session=True,
-                                env=self.build_env(timeout_s, chat_id))
+                                env=build_env(timeout_s, chat_id))
         drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
         drain.start()
         # 超时由定时器杀树：主线程在逐行读 stdout，不能同时 wait(timeout)

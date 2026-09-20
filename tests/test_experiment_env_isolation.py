@@ -2,7 +2,8 @@
 
 - run new 按 work/env/ 建 runs/<id>/.venv，任务目录里的 .venv 不被拷进 work/
 - harness 经框架跑时，解释器落在 run 自己的 .venv 下（A-12 的机器证据）
-- 领域包的 prompts/experiment.md 与 skills/*/SKILL.md 随 run 快照，进执行层提示的「领域约定」段
+- 领域包的 prompts/experiment.md 随 run 快照，进执行层提示的「领域约定」段；领域 skill 不快照，
+  以清单（名字 + 一句话）进执行层提示的「工具包」段（纲领 P-22）
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from compute.local import LocalCompute
+from framework import paths
 from framework.capabilities.auto_research import run_loop
 from framework.capabilities.auto_research.open import EnvBuildError
 from framework.experiment import env, layout
@@ -72,8 +74,11 @@ def test_open_clears_the_half_built_experiment_when_the_env_cannot_be_built(tmp_
     assert [p.name for p in run_dir.iterdir()] == ["meta.yaml"], "铺了一半的要清掉，只留框架的账"
 
 
-def test_domain_prompt_and_skills_are_snapshotted_and_injected(tmp_path):
+def test_domain_prompt_is_snapshotted_and_skills_go_in_as_a_catalog(tmp_path, monkeypatch):
     pack = make_loop_pack(tmp_path)
+    monkeypatch.setenv(paths.DOMAINS_ROOT_ENV, str(pack.domains_root))
+    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-generic-skills"))
+    (tmp_path / "no-generic-skills").mkdir()
     domain = pack.domains_root / "generic"
     (domain / "prompts").mkdir()
     (domain / "prompts" / "experiment.md").write_text("实验时只调学习率。\n", encoding="utf-8")
@@ -82,22 +87,26 @@ def test_domain_prompt_and_skills_are_snapshotted_and_injected(tmp_path):
 
     run_dir = open_run(pack)
     assert layout.domain_prompt(run_dir).is_file()
-    assert (layout.domain_skills(run_dir) / "petab.md").is_file()
-
+    assert not (run_dir / "prompts" / "skills").exists(), "skill 不快照：按名字进清单"
     extra = read_domain_extra(run_dir)
-    assert "实验时只调学习率。" in extra
-    assert "### skill: petab" in extra and "边界不许动" in extra
-    assert "description: 夹具 skill" not in extra, "frontmatter 是给 CLI 索引的，不进 prompt"
+    assert extra == "实验时只调学习率。"
 
     runner = ScriptedRunner([train_for_mse(0.001)])
     run_loop(run_dir, runner, LocalCompute(), max_iters=1)
-    assert "## 领域约定" in runner.prompts[0] and "边界不许动" in runner.prompts[0]
+    prompt = runner.prompts[0]
+    assert "## 领域约定" in prompt and "实验时只调学习率。" in prompt
+    assert "<skill><name>petab</name><description>夹具 skill</description></skill>" in prompt
+    assert "边界不许动" not in prompt, "skill 正文不进提示，执行层 ai4sci skill show 按需读"
+    assert runner.bash_rules == ("Bash(ai4sci skill *)",)
 
 
-def test_domain_without_prompt_or_skills_injects_nothing(tmp_path):
+def test_domain_without_prompt_or_skills_injects_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-generic-skills"))
+    (tmp_path / "no-generic-skills").mkdir()
     pack = make_loop_pack(tmp_path)
     run_dir = open_run(pack)
     assert read_domain_extra(run_dir) == ""
     runner = ScriptedRunner([train_for_mse(0.001)])
     run_loop(run_dir, runner, LocalCompute(), max_iters=1)
+    assert "## 工具包" not in runner.prompts[0], "没有 skill 不输出空清单"
     assert "## 领域约定" not in runner.prompts[0]
