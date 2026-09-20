@@ -681,3 +681,23 @@ def test_serve_helpers_check_a_draft_and_list_the_catalog():
     assert catalog["auto-research"]["used_by"] == ["research"] and catalog["verify"]["does"]
     assert [w["name"] for w in serve._workflows()] == ["research"]
     assert set(serve._descriptor_map()) == {"design", "auto-research", "analysis", "verify"}
+
+
+def test_env_resolve_writes_a_complete_lock_into_materials(tmp_path, monkeypatch, capsys):
+    """外层 #117：研究者没有环境，助理按包名算清单（会联网），写进 materials/env/。"""
+    from framework.cli import main
+    from framework.workspace import root as workspace
+
+    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
+    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    assert main(["env", "resolve", "requests"]) == 2  # 没 python-version 又没 --python
+    assert "--python" in capsys.readouterr().err
+    assert main(["env", "resolve", "--python", "3", "requests"]) == 2
+    capsys.readouterr()
+    assert main(["env", "resolve", "--python", "3.12", "requests"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("ok materials/env/requirements.lock\tpython=3.12\tpins=")
+    lock = (ws.materials / "env" / "requirements.lock").read_text(encoding="utf-8")
+    assert "requests==" in lock and "urllib3==" in lock
+    assert (ws.materials / "env" / "python-version").read_text(encoding="utf-8") == "3.12\n"
+    assert main(["env", "resolve", "idna"]) == 0  # 第二次不用再给 --python

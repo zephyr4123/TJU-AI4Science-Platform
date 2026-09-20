@@ -12,6 +12,11 @@
 为什么用 uv：一条工具把找解释器、拉解释器、建 venv、按 lock 同步四件事做完，且是 pip 可装的
 轮子，能钉进平台自己的 requirements.lock。uv 不在或解释器拉不下来就抛 `EnvBuildError`，
 绝不静默退回到平台 venv（P-7）。
+
+清单必须完整（每个包的传递依赖都钉在里面，`uv pip sync` 是精确安装、不补依赖）：建完 venv
+`uv pip check` 一遍，缺依赖在开跑前报，不是跑到 import 才炸。研究者没有现成环境时（非工程师的
+常态）由 `resolve_lock` 按几个包名算出完整清单（`uv pip compile`），助理用 `ai4sci env resolve`
+调它，不再手写（外层 #117：手写的三行清单让基线一 import 就 ModuleNotFoundError）。
 """
 
 from __future__ import annotations
@@ -21,7 +26,9 @@ import logging
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 LOGGER = logging.getLogger("ai4sci.env")
@@ -43,7 +50,7 @@ START_EPOCH_ENV = "AI4SCI_START_EPOCH"
 SEED_ENV = "AI4SCI_SEED"
 GUARANTEED_ENV = (PYTHON_ENV, BUDGET_ENV, INNER_K_ENV, START_EPOCH_ENV)
 
-_VERSION_RE = re.compile(r"^(\d+)\.(\d+)$")
+VERSION_RE = re.compile(r"^(\d+)\.(\d+)$")
 # 钉死的一行：名字（可带 extras）== 版本；别的写法（>=、URL、-e）一律不收
 _PIN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9._,\s-]+\])?==[A-Za-z0-9.!+*-]+$")
 _STDERR_TAIL = 1500
@@ -94,7 +101,7 @@ def read_env(task_dir: Path) -> tuple[EnvSpec | None, list[str]]:
         )
     else:
         version = version_path.read_text(encoding="utf-8").strip()
-        if not _VERSION_RE.match(version):
+        if not VERSION_RE.match(version):
             problems.append(
                 f"{label}{PYTHON_VERSION_NAME}: 期望 <major>.<minor> 如 3.14，实际 {version!r}"
             )
@@ -150,6 +157,8 @@ def build_venv(task_dir: Path, venv_dir: Path) -> Path:
     else:
         LOGGER.info("env_build venv=%s requirements=0 skip_sync", venv_dir)
 
+    if spec.requirements:
+        _check_complete(uv, python, env_dir(task_dir) / REQUIREMENTS_NAME)
     probe = _run([str(python), "-c",
                   "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"],
                  what="核对解释器版本")
@@ -161,6 +170,54 @@ def build_venv(task_dir: Path, venv_dir: Path) -> Path:
     LOGGER.info("env_build venv=%s python=%s requirements=%d",
                 venv_dir, spec.python_version, len(spec.requirements))
     return python
+
+
+def _check_complete(uv: list[str], python: Path, lock: Path) -> None:
+    """`uv pip check`：装进去的包要么依赖齐全，要么这份清单就是不完整的，现在报、不等 import 炸。"""
+    proc = subprocess.run([*uv, "pip", "check", "--python", str(python)],
+                          capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        detail = (proc.stdout + proc.stderr).strip()[-_STDERR_TAIL:]
+        raise EnvBuildError(
+            f"{lock} 不完整：装完缺依赖（uv pip check）：\n{detail}\n"
+            "清单要是 pip freeze 那样把传递依赖都钉上的；没有现成环境就用 "
+            "ai4sci env resolve <包名>… 重新算一份"
+        )
+
+
+def resolve_lock(target_env: Path, python_version: str, packages: list[str]) -> Path:
+    """按几个包名算出完整的清单写进 `<target_env>/requirements.lock`（`uv pip compile`，会联网）；
+    `python-version` 一并写。返回锁文件路径。解析失败带 uv 的 stderr 抛 EnvBuildError。
+
+    按本机平台解析（不 `--universal`）：换机器（GPU 服务器）要在那台机器上重新算，清单头部写明。
+    """
+    assert VERSION_RE.match(python_version), f"python-version 要是 X.Y：{python_version!r}"
+    assert packages and all(p.strip() for p in packages), "至少给一个包名"
+    if importlib.util.find_spec("uv") is None:
+        raise EnvBuildError("uv 不在平台 venv 里，算不了清单：跑 make venv 重装"
+                            "（pyproject 已声明 uv）")
+    target_env = Path(target_env)
+    target_env.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        wanted = Path(tmp) / "requirements.in"
+        wanted.write_text("\n".join(p.strip() for p in packages) + "\n", encoding="utf-8")
+        proc = _run([sys.executable, "-m", "uv", "pip", "compile", "--quiet", "--no-header",
+                     "--no-annotate", "--python-version", python_version, str(wanted)],
+                    what=f"uv pip compile（{', '.join(packages)}）")
+    pins = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    bad = [line for line in pins if not _PIN_RE.match(line)]
+    assert not bad, f"uv pip compile 出了不是 name==version 的行：{bad}"
+    stamp = datetime.now(UTC).strftime("%Y-%m-%d")
+    header = (f"# 由 ai4sci env resolve 于 {stamp} 按 PyPI 算出的完整清单（uv pip compile，"
+              f"Python {python_version}，本机平台）。\n"
+              f"# 要的包：{' '.join(packages)}；其余是它们的传递依赖。换机器（如 GPU 服务器）要在"
+              "那台机器上重新算。\n")
+    (target_env / PYTHON_VERSION_NAME).write_text(python_version + "\n", encoding="utf-8")
+    lock = target_env / REQUIREMENTS_NAME
+    lock.write_text(header + "\n".join(pins) + "\n", encoding="utf-8")
+    LOGGER.info("env_resolve target=%s python=%s packages=%d pins=%d",
+                target_env, python_version, len(packages), len(pins))
+    return lock
 
 
 def _run(argv: list[str], *, what: str) -> subprocess.CompletedProcess[str]:

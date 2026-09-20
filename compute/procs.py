@@ -1,4 +1,4 @@
-"""杀进程树：本地算力后端自己的一份。
+"""杀进程树：本地算力后端与框架的作业停止共用的一份（`workspace.jobs.stop` 也 import 它）。
 
 为什么不 import `backends.claude_code.kill_tree`：依赖只指向一个方向，
 `compute/` 与 `backends/` 是两根正交的轴，互不 import（CLAUDE.md 目录约定）。

@@ -111,9 +111,16 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, domain: str = packs.D
 
 def _prepare(pack: Path, workspace: Path) -> None:
     """第一次进这个目录：原件搬进 data/（env/ 除外），原件里的 env/ 搬成包的 env/。
-    第二次（--continue）什么都不动：草稿在，别覆盖。"""
+    第二次（--continue）什么都不动：草稿在，别覆盖；但 materials/env/ 与包里的 env/ 对不上就
+    明说「环境变了，重开一次」——执行层碰不到也不许碰 env/，让它空跑一轮是浪费（外层 #117）。"""
     materials = Path(workspace) / MATERIALS_DIRNAME
     if (pack / "data").exists():
+        changed = _env_changed(materials / env.ENV_DIRNAME, pack / env.ENV_DIRNAME)
+        if changed:
+            raise CapabilityFailed(
+                f"{MATERIALS_DIRNAME}/{env.ENV_DIRNAME}/ 与这次设计的 env/ 对不上"
+                f"（{', '.join(changed)}）：环境变了不能接着改，重开一次设计：ai4sci cap design"
+                "（会是下一个 design/<n>）")
         return
     if not materials.is_dir():
         raise CapabilityFailed(f"工作区没有 {MATERIALS_DIRNAME}/：研究者的原件要放在那里")
@@ -128,6 +135,17 @@ def _prepare(pack: Path, workspace: Path) -> None:
     shutil.copytree(src_env, pack / env.ENV_DIRNAME)
     LOGGER.info("design_prepare pack=%s data_files=%d",
                 pack, sum(1 for p in (pack / "data").rglob("*") if p.is_file()))
+
+
+def _env_changed(source: Path, snapshot: Path) -> list[str]:
+    """两边的 python-version 与 requirements.lock 逐个比内容；不一样的文件名列出来。"""
+    names = (env.PYTHON_VERSION_NAME, env.REQUIREMENTS_NAME)
+    changed = []
+    for name in names:
+        a, b = source / name, snapshot / name
+        if (a.read_bytes() if a.is_file() else None) != (b.read_bytes() if b.is_file() else None):
+            changed.append(name)
+    return changed
 
 
 def _read_text_files(directory: Path) -> str:

@@ -9,6 +9,14 @@
 ## [Unreleased]
 
 ### 新增
+- `ai4sci job stop <作业号>`（外层 [#115](https://github.com/zephyr4123/TJU-AI4Science/issues/115)，第一轮 PINNs 闭环里研究者说「先停一下」、助理如实答「平台没有停作业的命令」）：`workspace.jobs.stop` 杀整棵进程树（`compute.procs.kill_tree`，原 `_procs` 改成公开模块），作业记 `stopped` 与谁停的，它开的那次产出记失败「人停的」；不在跑的（结束的、lost 的）拒停。页面：流程题头「运行中」旁一枚「停止」，两下才停（`POST /workspaces/<id>/jobs/<jid>/stop`）。研究助理指南「什么时候找人」加一句。
+- `ai4sci env resolve [--python X.Y] <包名>…`（外层 [#117](https://github.com/zephyr4123/TJU-AI4Science/issues/117)，小白研究者「环境这些我不太懂」，助理手写的三行清单让基线一 import 就 `ModuleNotFoundError`）：`experiment.env.resolve_lock` 用 `uv pip compile` 按几个包名算出钉死传递依赖的完整清单写进 `materials/env/`（头部注明来源与「换机器要重算」）；指南改成教助理用它、不手写。`env.build_venv` 建完 `uv pip check`，清单不完整在开跑前报、指到 `env resolve`。
+
+### 变更
+- 设计草稿封 harness 之前先 `ruff --fix-only --select I` 修 import 顺序（外层 [#116](https://github.com/zephyr4123/TJU-AI4Science/issues/116)：design/1、design/2 都只因一条 I001 被判失败，各让执行层重来 13 分钟、1.6 美元）；别的规则照旧报。
+- `cap design --continue design/<n>` 在 `materials/env/` 与包里 `env/` 对不上时拒绝并说「环境变了，重开一次设计」（外层 [#117](https://github.com/zephyr4123/TJU-AI4Science/issues/117)：助理补全清单后 `--continue`，执行层碰不到也不许碰 env/，空跑一轮）。
+
+### 新增
 - skill 系统（纲领 P-22，外层 [#113](https://github.com/zephyr4123/TJU-AI4Science/issues/113)）：agent 的工具包，协调层与执行层随时能用，不开产出目录、不进流程。`skills/` 通用库（`AI4SCI_SKILLS_ROOT`）与 `domains/<包>/skills/` 领域库，一个目录一个，格式照 agentskills.io（`SKILL.md` frontmatter 只用 name / description / license / compatibility / metadata，自定义键 `ai4sci-` 前缀；正文五百行以内）；脚本 PEP 723 自带依赖 + `uv lock --script` 锁文件进仓，`uv run --locked --offline` 起，环境在 uv 全机缓存，不建工作区级 venv。`framework/skills/`（`contracts` 之上新的一层：扫库校验、两层各自的清单、拼 `<available_skills>`、起脚本）；`ai4sci skill list | show <name> | run <name> [--script <文件>] [参数…]`；清单由框架注入——研究助理的 system prompt 接通用 skill 的清单（`chat/guide.py`），执行层 prompt 接通用 + 所选领域包的（`executor/prompting.build_prompt` 的通用段），不靠任何 agent 原生的 skill 加载；执行层会话的 Bash 白名单 `ai4sci skill *`（`Runner.run` 加 `bash_rules`），执行层子进程与协调层同一份环境（venv bin 进 PATH、关后台、Bash 超时对齐本轮）。`make skills`：SKILL.md 与脚本门禁、`uv lock --check` + `uv sync` 预热、探测 `ai4sci-system-tools`，在 `make check` 里。第一个 skill `pdf`：论文 PDF（本地或链接）→ `paper.md` + `images/` + `structured.json`（分节、表格、图注、公式图、参考文献、题目作者年份 DOI arXiv、链接），后端 pymupdf4llm 1.28 版面模式，PINNs（arXiv 1711.10561）22 页 1.7 s，四张表的数与原文一致；MinerU 4.0.4 basic 同一篇实测（27.6 s、1.2 GB venv 带 torch、常驻服务）记在 `skills/pdf/references/backends.md`，不当缺省。`docs/add-a-skill.md`；`tests/test_skills.py`。
 - 联网（主人：agent 该知道什么时候搜、只用自带的联网工具，别拿 curl 硬凑）：实测 `dontAsk` 下 WebSearch / WebFetch 不在白名单就被拒、拒绝信息还教它「用别的工具试」；两层适配器的白名单加上 CLI 自带的联网工具（`backends.claude_code.WEB_TOOLS`，端口文档写成要求），研究助理的前言与指南、执行层 prompt 的通用段写了什么时候查、只用自带工具、查到的带来源。
 

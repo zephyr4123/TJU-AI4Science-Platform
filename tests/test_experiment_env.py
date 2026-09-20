@@ -108,3 +108,26 @@ def test_build_venv_surfaces_uv_failure_with_stderr(tmp_path, monkeypatch):
     task_dir = make_env(tmp_path, version="3.999")
     with pytest.raises(env.EnvBuildError, match="uv venv --python 3.999"):
         env.build_venv(task_dir, task_dir / env.VENV_DIRNAME)
+
+
+# ── 清单要完整（外层 #117）：会联网（PyPI），CI 有网 ─────────────────────
+def test_resolve_lock_pins_transitive_deps_and_incomplete_lock_fails_before_running(tmp_path):
+    """按包名算出的清单带传递依赖；只钉顶层包的手写清单建完 venv 就报「不完整」，不等 import 炸。"""
+    target = tmp_path / "materials" / "env"
+    lock = env.resolve_lock(target, THIS_PYTHON, ["requests"])
+    assert lock == target / "requirements.lock"
+    assert (target / "python-version").read_text(encoding="utf-8") == THIS_PYTHON + "\n"
+    spec, problems = env.read_env(tmp_path / "materials")
+    assert problems == [] and spec is not None
+    names = [line.split("==")[0] for line in spec.requirements]
+    assert "requests" in names and "urllib3" in names and "idna" in names
+    assert lock.read_text(encoding="utf-8").startswith("# 由 ai4sci env resolve")
+    with pytest.raises(AssertionError, match="X.Y"):
+        env.resolve_lock(target, "3", ["requests"])
+
+    only_top = [line for line in spec.requirements if line.startswith("requests==")]
+    (tmp_path / "task").mkdir()
+    task_dir = make_env(tmp_path / "task", requirements="\n".join(only_top) + "\n")
+    with pytest.raises(env.EnvBuildError, match="不完整") as exc:
+        env.build_venv(task_dir, task_dir / env.VENV_DIRNAME)
+    assert "env resolve" in str(exc.value) and "urllib3" in str(exc.value)

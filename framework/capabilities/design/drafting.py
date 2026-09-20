@@ -114,6 +114,7 @@ def draft(
         )
 
     _stamp_domain(pack, domain)
+    _ruff_fix_imports(pack)  # 封之前修：SHA256SUMS 记的得是修完的文件
     sealed = packs.seal_harness(pack)
     lint = _ruff(pack)
     validate = packs.validate_pack(pack, domains_root, require_baseline=False)
@@ -173,6 +174,31 @@ def _next_session_dir(executor_root: Path) -> tuple[Path, int]:
              if p.is_dir() and p.name.split("-", 1)[1].isdigit()]
     number = max(taken, default=0) + 1
     return executor_root / f"session-{number}", number
+
+
+# 封 harness 之前自动修的规则：只有 import 排序这类纯格式、ruff 能安全改的。真跑时两版草稿都只因
+# 一条 I001 被判失败、各让执行层重来 13 分钟（外层 #116）——格式不是执行层该花一轮的事
+LINT_AUTOFIX = "I"
+
+
+def _ruff_fix_imports(pack: Path) -> None:
+    """对 harness/ 跑 `ruff --fix-only --select I`：只修 import 排序，别的规则不动、留给检查报。"""
+    hdir = pack / "harness"
+    if not hdir.is_dir():
+        return
+    proc = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "--isolated", "--no-cache", "--fix-only",
+         "--select", LINT_AUTOFIX, "--line-length", str(LINT_LINE_LENGTH), "harness"],
+        cwd=pack, capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0 or "No module named ruff" in proc.stderr:
+        raise DesignFailed(
+            f"ruff --fix-only 跑不起来（退出码 {proc.returncode}）："
+            f"{proc.stderr.strip().splitlines()[-1:] or '无输出'}；"
+            "平台 venv 里要有 ruff（requirements.lock）"
+        )
+    if proc.stdout.strip():
+        LOGGER.info("design_ruff_fix pack=%s %s", pack, proc.stdout.strip().splitlines()[-1])
 
 
 def _ruff(pack: Path) -> list[str]:

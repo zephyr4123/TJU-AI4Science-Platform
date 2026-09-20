@@ -32,6 +32,7 @@
     GET  /workspaces/<id>/file?path=<file>  一个文件：文本带正文（大的截断），二进制 text 为 null
     GET  /workspaces/<id>/raw?path=<file>   文件原样端出（图片让浏览器显示）；出了工作区一律 422
     GET  /workspaces/<id>/jobs[/<jid>]      作业清单 / 一个作业
+    POST /workspaces/<id>/jobs/<jid>/stop   {"by"} → 人叫停：杀进程树，作业记 stopped、产出记 failed
     GET  <域>/chats                         对话清单；<域> 是 /workspaces/<id> 或 /studio
     POST <域>/chats                         {"backend"?, "model"?, "effort"?} → 新对话的 meta
     GET  <域>/chats/<cid>                   meta + transcript + history
@@ -316,6 +317,17 @@ class Handler(BaseHTTPRequestHandler):
             except output.SignRefused as exc:
                 return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
             return self._json(boards.output_detail(ws, oid), HTTPStatus.CREATED)
+        if len(rest) == 3 and rest[0] == "jobs" and rest[2] == "stop":
+            by = self._by(body)
+            if by is None:
+                return None
+            try:
+                job = jobs.stop(ws, rest[1], by=by)
+            except jobs.JobNotFound as exc:
+                return self._error(HTTPStatus.NOT_FOUND, str(exc))
+            except (jobs.JobNotRunning, output.OutputNotFound) as exc:
+                return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
+            return self._json(job.to_dict(), HTTPStatus.CREATED)
         return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
 
     # ── 内部 ─────────────────────────────────────────────────────────────

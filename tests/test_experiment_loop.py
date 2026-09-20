@@ -20,8 +20,8 @@ import pytest
 import yaml
 
 from compute import Job
-from compute._procs import group_alive
 from compute.local import LocalCompute
+from compute.procs import group_alive
 from framework.capabilities.auto_research import (
     InflightPending,
     ResumeMismatch,

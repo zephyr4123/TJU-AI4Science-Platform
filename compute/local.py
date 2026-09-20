@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from compute import ExitStatus, Job
-from compute._procs import group_alive, kill_tree
+from compute.procs import group_alive, kill_tree
 
 # 快照不带过去的目录：`.git` 是 work/ 的状态载体（run_N 是只读快照，不该有仓）；
 # `.ai4sci` 是执行层事件流日志、`__pycache__` 是字节码，带过去只会让每轮快照越滚越大；

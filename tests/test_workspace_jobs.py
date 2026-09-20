@@ -84,3 +84,45 @@ def test_running_record_with_dead_pid_is_lost_not_done(tmp_path: Path):
     with pytest.raises(jobs.JobNotFound):
         jobs.load(tmp_path / "jobs", "nope")
     assert jobs.list_jobs(tmp_path / "empty") == []
+
+
+def test_stop_kills_the_whole_tree_and_closes_the_output(tmp_path: Path):
+    """外层 #115：人叫停——作业自成会话，它下面再开的进程组也要一起死；记录 stopped、产出 failed。
+    已经不在跑的（停过的、lost 的）不许再停：对着尸体说「停了」是假话。"""
+    from framework.contracts import output
+    from framework.workspace import outputs
+
+    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
+    directory, _ = outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
+                                       flow=None, step=None, requirement=1, chat_id=None)
+    # 顶上一个 python 自成会话，再起一个自成进程组的孙子（像执行层的 Bash、harness 的 launcher）
+    proc = subprocess.Popen(
+        [sys.executable, "-c",
+         "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; "
+         "time.sleep(300)'], start_new_session=True); time.sleep(300)"],
+        start_new_session=True)
+    time.sleep(1.0)
+    grandchild = subprocess.run(["pgrep", "-P", str(proc.pid)], capture_output=True, text=True)
+    assert grandchild.stdout.split(), "夹具该有一个孙进程"
+    record = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=proc.pid,
+                      started_at="t", output="design/1")
+    ws.jobs.mkdir(parents=True)
+    (ws.jobs / "job-s.json").write_text(json.dumps(record.__dict__), encoding="utf-8")
+
+    stopped = jobs.stop(ws, "job-s", by="zephyr")
+    proc.wait(timeout=5)
+    assert stopped.status == "stopped" and stopped.exit_code is None and "zephyr" in stopped.result
+    assert jobs.effective_status(jobs.load(ws.jobs, "job-s")) == "stopped"
+    for pid in grandchild.stdout.split():  # 孙进程也死了，不留孤儿烧 CPU
+        assert subprocess.run(["ps", "-p", pid, "-o", "stat="], capture_output=True,
+                              text=True).stdout.strip() in ("", "Z")
+    meta = output.read_meta(directory)
+    assert meta.status == "failed" and "人停的" in meta.error
+    with pytest.raises(jobs.JobNotRunning, match="stopped"):
+        jobs.stop(ws, "job-s", by="zephyr")
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    (ws.jobs / "job-l.json").write_text(json.dumps({**record.__dict__, "job_id": "job-l",
+                                                    "pid": dead.pid}), encoding="utf-8")
+    with pytest.raises(jobs.JobNotRunning, match="lost"):
+        jobs.stop(ws, "job-l", by="zephyr")

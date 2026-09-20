@@ -27,7 +27,7 @@ literature/ hypothesis/ design/ experiment/ analysis/ writing/ verification/
 
 需求没确认，任何阶段都不开工。所以进工作区第一件事是看 `ai4sci show workspace` 里需求的状态：
 
-- **未确认**：只做一件事——和研究者把 `requirement.md` 写清楚。先 `ai4sci show templates` 看库里有哪些模板（通用一份、按学科几份），`ai4sci show template <name>` 看原文，照合适的那份问：问题是什么、材料在哪、怎么算好、预算多少、最后要什么。问清一格写一格，直接改 `requirement.md`（页面照它渲染，二级标题各一格，「待填」是空格子）。大纲不是规定：不适用的格删掉，缺的格加上。研究者的原件让他放进 `materials/`，环境的 pip freeze 与 Python 版本放 `materials/env/`（设计阶段要用）。写好了告诉研究者「可以确认了」——**确认是研究者在页面上做的，你不做**（终端里是 `ai4sci requirement confirm`）。
+- **未确认**：只做一件事——和研究者把 `requirement.md` 写清楚。先 `ai4sci show templates` 看库里有哪些模板（通用一份、按学科几份），`ai4sci show template <name>` 看原文，照合适的那份问：问题是什么、材料在哪、怎么算好、预算多少、最后要什么。问清一格写一格，直接改 `requirement.md`（页面照它渲染，二级标题各一格，「待填」是空格子）。大纲不是规定：不适用的格删掉，缺的格加上。研究者的原件让他放进 `materials/`，环境的 pip freeze 与 Python 版本放 `materials/env/`（设计阶段要用）；研究者没有现成环境（非工程师的常态），就 `ai4sci env resolve --python <X.Y> <包名>…`——按几个包名算出钉死传递依赖的完整清单写进 `materials/env/`，**不要手写清单**（手写的只有顶层包，建环境会报「不完整」）。写好了告诉研究者「可以确认了」——**确认是研究者在页面上做的，你不做**（终端里是 `ai4sci requirement confirm`）。
 - **已确认**：取流程、跑阶段。
 - **有改动未确认**：研究者要求改需求，你改了 `requirement.md` 之后就是这个状态——所有阶段又关上了，研究者看过 diff 再确认一次成下一版。
 
@@ -67,7 +67,7 @@ ai4sci cap verify --from analysis/1 --from experiment/1   # 核对数字 → ver
 
 ### 设计阶段：写评分脚本、跑基线
 
-前提：需求确认了；`materials/` 里有数据与研究者能跑的脚本，`materials/env/` 里有 `python-version` 与 `requirements.lock`（pip freeze）；`domains/<d>/` 有领域包（缺省 generic，`--domain` 换）。
+前提：需求确认了；`materials/` 里有数据与研究者能跑的脚本，`materials/env/` 里有 `python-version` 与 `requirements.lock`（pip freeze，或 `ai4sci env resolve` 算的）；`materials/env/` 改了之后 `--continue design/<n>` 会拒（环境变了），重开一次 `ai4sci cap design`；`domains/<d>/` 有领域包（缺省 generic，`--domain` 换）。
 
 `ai4sci cap design --detach`（执行层用哪个模型是起服务的人配的，你不用管）。框架把原件搬进 `design/1/data/`、`env/`，起执行层照需求写 `scoring.yaml`（指标、方向、预算、统计门）、`harness/` 与 `code/` 草稿（只放行这三样），回来自己加执行位、写 SHA256SUMS、跑 ruff、跑契约校验，都过了就接着按 `env/` 建环境、跑 `make_run0.sh` 出 `baseline/`、算预检；stdout 一行结论，带 `baseline / sigma / gate / room`。草稿有问题就停在前半段：一行一条在 stderr、退 1，把 stderr 喂回去 `ai4sci cap design --continue design/1 --feedback @<文件> --detach`，执行层会看到现状文件照着改；**不要自己替它改 harness**。预检没过（门是 0、或基线到尽头不到一个门）也退 1 并说清，别硬跑。日志在 `design/1/executor/session-N/`。不要自己 `bash make_run0.sh`：基线的预算与 `budget.inner_k` 和内环用同一组环境变量，框架起才对。
 
@@ -124,6 +124,7 @@ stages:
 
 - 需求要写或要改（问题、材料、怎么算好、预算）：这是人 + 你一起拍板的，不要自己编；写完由人确认。
 - 走到断点：停下来，把该看的念给人听；人没签不往下走。
+- 研究者要停正在跑的作业：`ai4sci job stop <作业号>`（`ai4sci show jobs` 看作业号），停了作业记 stopped、那次产出记失败；页面上也有同一个动作。
 - 续跑对账对不上（`ResumeMismatch`）、账本 × git 对不上、产出被改过（hash 对不上）：框架不猜，你也不猜。
 - 验证 FAIL 不是执行层写错数，而是产物本身有问题（results.json 不合约、harness 被动过）。
 - 想换方向、停止项目。
@@ -140,4 +141,4 @@ stages:
 
 ## 命令行上有什么
 
-六类东西：`cap` 能力（你调用的 tool，`--from` 说读谁）、`requirement confirm` / `sign` 人的确认（确认需求、给产出签字，页面上做）、`show` 查询（只读：`workspace` / `outputs` / `output <id>` / `jobs` / `job <id>` / `flows` / `caps` / `workflows` / `templates` / `template <name>`）、`flow take` 取流程与 `output new` 建产出、`skill list` / `show <name>` / `run <name> …` 工具包、`workspace` / `chat` / `serve` 入口。每次产出的记录在它目录里的 `meta.yaml`（谁产的、读了谁、在哪条流程第几项下、按哪版需求），签字在 `signed.json`；`.ai4sci/jobs/` 记每个后台作业。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、做确认，看板显示的就是这些文件。
+六类东西：`cap` 能力（你调用的 tool，`--from` 说读谁）、`requirement confirm` / `sign` 人的确认（确认需求、给产出签字，页面上做）、`show` 查询（只读：`workspace` / `outputs` / `output <id>` / `jobs` / `job <id>` / `flows` / `caps` / `workflows` / `templates` / `template <name>`）、`flow take` 取流程与 `output new` 建产出、`job stop <作业号>` 停作业、`env resolve` 按包名算环境清单、`skill list` / `show <name>` / `run <name> …` 工具包、`workspace` / `chat` / `serve` 入口。每次产出的记录在它目录里的 `meta.yaml`（谁产的、读了谁、在哪条流程第几项下、按哪版需求），签字在 `signed.json`；`.ai4sci/jobs/` 记每个后台作业。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、做确认，看板显示的就是这些文件。

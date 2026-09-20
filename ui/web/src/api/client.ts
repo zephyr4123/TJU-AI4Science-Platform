@@ -6,6 +6,7 @@
 import type {
   Backend, Capability, ChatDoc, ChatMeta, DirListing, FileContent, OutputDetail, RequirementDetail,
   StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
+  Job,
 } from './types'
 
 export type Scope = { kind: 'workspace'; id: string } | { kind: 'studio' }
@@ -74,6 +75,9 @@ export const api = {
   output: (id: string, oid: string) => request<OutputDetail>(`${ws(id)}/outputs/${oid}`),
   sign: (id: string, oid: string, by: string, note: string) =>
     request<OutputDetail>(`${ws(id)}/outputs/${oid}/sign`, post({ by, note })),
+  /** 人叫停一个后台作业：杀进程树，作业记 stopped、它的产出记失败（外层 #115） */
+  stopJob: (id: string, jobId: string, by: string) =>
+    request<Job>(`${ws(id)}/jobs/${jobId}/stop`, post({ by })),
   /** 文件镜头：目录一层、一个文件的正文、原样端出的 URL（图片直接当 src） */
   files: (id: string, path: string) => request<DirListing>(`${ws(id)}/files?path=${encodeURIComponent(path)}`),
   file: (id: string, path: string) => request<FileContent>(`${ws(id)}/file?path=${encodeURIComponent(path)}`),

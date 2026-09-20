@@ -38,7 +38,7 @@ export function Board({ workspace, doc, caps, opened, onOpen, onOpenFiles }: {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-[80rem] space-y-5 px-5 pt-5 pb-12 sm:px-6">
         <RequirementStrip workspace={workspace} requirement={data.requirement} reload={doc.reload} />
-        <Flows doc={data} capsOf={capsOf} onOpen={onOpen} />
+        <Flows doc={data} capsOf={capsOf} onOpen={onOpen} onChanged={doc.reload} />
       </div>
       <OutputSheet workspace={workspace} doc={data} catalog={catalog} oid={opened} onClose={() => onOpen(null)} onOpen={onOpen}
                    onChanged={doc.reload}

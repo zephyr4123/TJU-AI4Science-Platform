@@ -8,7 +8,8 @@
 
 记录只写两次：起的时候（running）、结束的时候（done / failed，由子进程自己回写）。中途死了
 （机器重启、`kill -9`）记录停在 running，`effective_status` 拿 pid 探一下不在了就报 lost——
-不猜它跑完没有（P-7）。
+不猜它跑完没有（P-7）。人叫停（`ai4sci job stop`，外层 #115）是第三种结束：框架杀整棵进程树，
+记录写 stopped 与谁停的，作业开的那次产出记 failed 与原因。
 """
 
 from __future__ import annotations
@@ -24,16 +25,24 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from compute.procs import kill_tree
+from framework.workspace import outputs
+from framework.workspace.root import Workspace
+
 LOGGER = logging.getLogger("ai4sci.jobs")
 # 子进程凭它知道自己是哪个作业，跑完回写记录；起作业的进程看到它就拒绝再 --detach
 JOB_ID_ENV = "AI4SCI_JOB_ID"
 # 调用命令的那段对话：chat 层起 agent 时设，作业记下来，跑完好知道该叫醒谁
 CHAT_ID_ENV = "AI4SCI_CHAT_ID"
-STATUSES = ("running", "done", "failed")
+STATUSES = ("running", "done", "failed", "stopped")
 
 
 class JobNotFound(FileNotFoundError):
     """没有这个作业号。"""
+
+
+class JobNotRunning(ValueError):
+    """要停的作业已经不在跑了（done / failed / stopped / lost），没什么可停的。"""
 
 
 @dataclass
@@ -110,6 +119,31 @@ def finish(jobs_dir: Path, job_id: str, *, exit_code: int, result: str) -> Job:
     job.finished_at = datetime.now(UTC).isoformat(timespec="seconds")
     _save(jobs_dir, job)
     LOGGER.info("job_finish job_id=%s status=%s exit_code=%d", job_id, job.status, exit_code)
+    return job
+
+
+def stop(ws: Workspace, job_id: str, *, by: str) -> Job:
+    """人叫停：杀作业的整棵进程树（它自成会话，pgid 就是 pid；执行层的 Bash、harness 的 launcher
+    各自还会开新的进程组，所以趟树逐组杀），记录写 stopped 与谁停的；作业开的那次产出还是 running
+    的话替它记 failed（子进程被杀，没人回写）。cli 与 serve 共用这一个函数。
+
+    只停真在跑的：已经结束的、lost 的都抛 JobNotRunning——对着一具尸体报「停了」是假话（P-7）。
+    """
+    job = load(ws.jobs, job_id)
+    state = effective_status(job)
+    if state != "running":
+        raise JobNotRunning(f"作业 {job_id} 不在跑（{state}），停不了")
+    killed = kill_tree(job.pid, job.pid)
+    job.status = "stopped"
+    job.exit_code = None
+    job.result = f"人停的（{by}）"
+    job.finished_at = datetime.now(UTC).isoformat(timespec="seconds")
+    _save(ws.jobs, job)
+    LOGGER.info("job_stop job_id=%s by=%s killed_pgids=%s", job_id, by, killed)
+    if job.output:
+        directory, meta = outputs.find_output(ws, job.output)
+        if meta.status == "running":
+            outputs.close_output(directory, meta, ok=False, line=job.result)
     return job
 
 

@@ -1,10 +1,12 @@
 // 需求确认之后的主页面：一条流程一张表。横向是流程经过的阶段（有什么阶段就几列），纵向是每一列跑过的每一次产出；
 // 断点是两列之间的一道线。右上角一句话说在等谁。流程没经过的阶段不出现；不在任何流程里的产出只在最底下一行「其它」。
 import { CheckCircle, Signature } from '@phosphor-icons/react'
-import { createElement } from 'react'
+import { createElement, useState } from 'react'
 
+import { api } from '@/api/client'
 import type { FlowOutput, FlowProgress, FlowProgressItem, ResearchStage, WorkspaceDetail } from '@/api/types'
-import { Dot, Problems } from '@/components/bits'
+import { Dot, ErrorNote, Problems } from '@/components/bits'
+import { useSigner } from '@/lib/useSigner'
 import { stageIcon } from '@/lib/stages'
 import { cn } from '@/lib/utils'
 
@@ -17,10 +19,11 @@ const STATE_WORD: Record<OutputState, string> = {
 /** 一列底下列哪些能力：流程点名的（靛色小片），或没点名时这个阶段能用的（素色小片）；名直接显示、一行 hover */
 export interface ColumnCaps { caps: { title: string; brief: string }[]; named: boolean }
 
-export function Flows({ doc, capsOf, onOpen }: {
+export function Flows({ doc, capsOf, onOpen, onChanged }: {
   doc: WorkspaceDetail
   capsOf: (stage: ResearchStage, named: string[]) => ColumnCaps
   onOpen: (oid: string) => void
+  onChanged: () => Promise<void>
 }) {
   const nameOf: NameOf = (slug) => doc.stages.find((s) => s.slug === slug)?.name ?? slug
   const pending = needsSign(doc.flows)
@@ -29,7 +32,7 @@ export function Flows({ doc, capsOf, onOpen }: {
     <div className="space-y-6">
       {doc.flows.length === 0 && <p className="t-label">尚未选定流程。与助理说明照哪条流程进行。</p>}
       {doc.flows.map((flow) => (
-        <FlowTable key={flow.name} flow={flow} pending={pending} nameOf={nameOf} capsOf={capsOf} onOpen={onOpen} />
+        <FlowTable key={flow.name} workspace={doc.id} flow={flow} pending={pending} nameOf={nameOf} capsOf={capsOf} onOpen={onOpen} onChanged={onChanged} />
       ))}
       {loose.length > 0 && (
         <section aria-label="其它">
@@ -51,9 +54,10 @@ export function Flows({ doc, capsOf, onOpen }: {
 }
 
 /** 一条流程一张表：题头（标题 + 在等谁）、一行列（阶段列与断点线交替） */
-function FlowTable({ flow, pending, nameOf, capsOf, onOpen }: {
-  flow: FlowProgress; pending: Set<string>; nameOf: NameOf
+function FlowTable({ workspace, flow, pending, nameOf, capsOf, onOpen, onChanged }: {
+  workspace: string; flow: FlowProgress; pending: Set<string>; nameOf: NameOf
   capsOf: (stage: ResearchStage, named: string[]) => ColumnCaps; onOpen: (oid: string) => void
+  onChanged: () => Promise<void>
 }) {
   const broken = flow.problems.length > 0 || !flow.items
   const sentence = waitingSentence(flow, pending, nameOf)
@@ -63,8 +67,11 @@ function FlowTable({ flow, pending, nameOf, capsOf, onOpen }: {
     <section className="rounded-2xl border bg-card/80 p-5 backdrop-blur-sm" aria-label={flow.title}>
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <span className="font-serif text-[1.0625rem] font-semibold">{flow.title}</span>
-        <span className={cn('text-[0.875rem]', broken ? 'text-bad' : flow.waiting === 'sign' ? 'font-semibold text-wait' : flow.waiting === 'job' ? 'text-primary' : 'text-muted-foreground')}>
-          {sentence}
+        <span className="flex items-center gap-3">
+          <span className={cn('text-[0.875rem]', broken ? 'text-bad' : flow.waiting === 'sign' ? 'font-semibold text-wait' : flow.waiting === 'job' ? 'text-primary' : 'text-muted-foreground')}>
+            {sentence}
+          </span>
+          {flow.waiting === 'job' && flow.job && <StopKey workspace={workspace} jobId={flow.job.job_id} onChanged={onChanged} />}
         </span>
       </header>
       {broken ? <div className="mt-3"><Problems items={flow.problems} /></div> : (
@@ -150,5 +157,37 @@ function StopLine({ item, flow }: { item: Extract<FlowProgressItem, { kind: 'sto
       </span>
       <span className={cn('mt-1 text-center text-[0.6875rem] leading-tight whitespace-nowrap', state === 'pending' ? 'font-semibold text-wait' : state === 'signed' ? 'text-ok' : 'text-muted-foreground')}>{label}</span>
     </li>
+  )
+}
+
+/** 停一个正在跑的作业：第一下只是拉开保险（变红），第二下才停（外层 #115）。署名与确认键同一个。 */
+function StopKey({ workspace, jobId, onChanged }: { workspace: string; jobId: string; onChanged: () => Promise<void> }) {
+  const [signer] = useSigner()
+  const [armed, setArmed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const press = async () => {
+    if (!armed) { setArmed(true); return }
+    setBusy(true)
+    setError(null)
+    try {
+      await api.stopJob(workspace, jobId, signer.trim() || '研究者')
+      await onChanged()
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : String(exc))
+    } finally {
+      setBusy(false)
+      setArmed(false)
+    }
+  }
+  return (
+    <span className="flex items-center gap-2">
+      <button type="button" onClick={press} onBlur={() => setArmed(false)} disabled={busy}
+              className={cn('rounded-lg border px-2.5 py-1 text-[0.8125rem] transition-colors focus-visible:outline-2 focus-visible:outline-ring',
+                            armed ? 'border-bad bg-bad/10 text-bad' : 'bg-card/80 text-muted-foreground hover:text-foreground')}>
+        {busy ? '停止中' : armed ? '确认停止' : '停止'}
+      </button>
+      {error && <ErrorNote text={error} />}
+    </span>
   )
 }

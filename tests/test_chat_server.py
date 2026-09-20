@@ -497,3 +497,34 @@ def test_save_workflow_endpoint_maps_errors_to_status_codes(served):
     assert status == 201 and json.loads(body)["covers"] == ["实验"]
     assert call(base, "/workflows", {**doc, "stages": []})[0] == 422
     assert call(base, "/workflows", {**doc, "name": "taken"})[0] == 409
+
+
+def test_stop_job_endpoint_kills_and_records(served, tmp_path):
+    """外层 #115：页面上的「停止」与 `ai4sci job stop` 同一个函数；不在跑的 422、没有的 404。"""
+    import subprocess
+    import sys
+    import time
+
+    from framework.workspace import jobs, outputs
+    from framework.workspace import root as workspace
+
+    base, _ = served
+    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
+    directory, _ = outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
+                                       flow=None, step=None, requirement=1, chat_id=None)
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"],
+                            start_new_session=True)
+    time.sleep(0.3)
+    ws.jobs.mkdir(parents=True)
+    record = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=proc.pid,
+                      started_at="t", output="design/1")
+    (ws.jobs / "job-s.json").write_text(json.dumps(record.__dict__), encoding="utf-8")
+    assert call(base, "/workspaces/w1/jobs/job-s/stop", {"by": ""})[0] == 400
+    status, _, body = call(base, "/workspaces/w1/jobs/job-s/stop", {"by": "李四"})
+    doc = json.loads(body)
+    assert status == 201 and doc["status"] == "stopped" and "李四" in doc["result"]
+    proc.wait(timeout=5)
+    assert call(base, "/workspaces/w1/jobs/job-s/stop", {"by": "李四"})[0] == 422
+    assert call(base, "/workspaces/w1/jobs/nope/stop", {"by": "李四"})[0] == 404
+    status, _, body = call(base, "/workspaces/w1/outputs/design/1")
+    assert json.loads(body)["status"] == "failed"

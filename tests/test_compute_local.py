@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 
 from compute import ComputeNotFound, ExitStatus, Job, available_computes, get_compute
-from compute._procs import group_alive
 from compute.local import LocalCompute
+from compute.procs import group_alive
 
 
 def _wait_group_gone(pgid: int, limit_s: float = 5.0) -> bool:

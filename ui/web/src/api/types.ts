@@ -90,8 +90,8 @@ export interface Job {
   argv: string[]
   pid: number
   started_at: string
-  status: 'running' | 'done' | 'failed'
-  effective_status: 'running' | 'done' | 'failed' | 'lost'
+  status: 'running' | 'done' | 'failed' | 'stopped'
+  effective_status: 'running' | 'done' | 'failed' | 'stopped' | 'lost'
   finished_at: string | null
   exit_code: number | null
   result: string

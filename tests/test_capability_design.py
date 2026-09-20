@@ -206,6 +206,23 @@ def test_lint_problems_come_back_as_a_list(ws):
     assert outcome.validate_problems == []
 
 
+def test_import_order_is_fixed_before_sealing_not_reported(ws):
+    """外层 #116：I001 这种 ruff 能安全修的纯格式问题，框架自己修完再封，不让执行层重来一轮；
+    别的规则（没用的 import）照旧报。SHA256SUMS 记的是修完的文件。"""
+    workspace, domains = ws
+    pack = new_pack(workspace)
+    unsorted = pf.EVALUATE_PY.replace("import json\nimport sys\n", "import sys\nimport json\n")
+    _, outcome = run_design(ws, pack, {**GOOD_DRAFT, "harness/evaluate.py": unsorted})
+    assert outcome.problems == [], outcome.problems
+    text = (pack / "harness" / "evaluate.py").read_text(encoding="utf-8")
+    assert "import json\nimport sys\n" in text
+    assert packs.validate_pack(pack, domains, require_baseline=False) == []  # 校验和是修完的
+    draft = {**GOOD_DRAFT, "harness/evaluate.py": "import sys\nimport os\n" + pf.EVALUATE_PY}
+    _, outcome = run_design(ws, new_pack(workspace), draft)
+    assert [p for p in outcome.lint_problems if "I001" in p] == []
+    assert any("F401" in p for p in outcome.lint_problems)
+
+
 def test_second_session_sees_current_files_and_feedback(ws):
     workspace, domains = ws
     pack = new_pack(workspace)
@@ -258,3 +275,18 @@ def test_capability_entry_runs_draft_then_baseline_and_reads_hypothesis(ws, monk
     line = design_cap.run(pack, inputs, Ports(runner=runner), feedback="别裸调 python")
     assert line.startswith("design ok\t") and "auto-research --from design/1" in line
     assert (pack / "baseline" / "sigma.json").is_file()
+
+
+def test_continue_refuses_when_materials_env_changed(ws, monkeypatch):
+    """外层 #117：研究者（或助理）改了 materials/env/ 之后 `--continue` 不能悄悄接着用旧环境：
+    明说「环境变了，重开一次」，不让执行层空跑一轮。"""
+    workspace, domains = ws
+    monkeypatch.setattr(design_cap.paths, "domains_root", lambda: domains)
+    pack = new_pack(workspace)
+    run_design(ws, pack, GOOD_DRAFT)
+    pf.write_env(workspace.materials, requirements="numpy==2.3.1\n")  # 事后补了依赖
+    runner = ScriptedRunner([{"harness/evaluate.py": pf.EVALUATE_PY}])
+    inputs = Inputs(workspace.root, (), ())
+    with pytest.raises(CapabilityFailed, match="requirements.lock.*重开一次设计"):
+        design_cap.run(pack, inputs, Ports(runner=runner), feedback="改一版")
+    assert runner.calls == 0
