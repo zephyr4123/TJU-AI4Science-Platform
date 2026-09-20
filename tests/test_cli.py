@@ -702,3 +702,20 @@ def test_env_resolve_writes_a_complete_lock_into_materials(tmp_path, monkeypatch
     assert "requests==" in lock and "urllib3==" in lock
     assert (ws.materials / "env" / "python-version").read_text(encoding="utf-8") == "3.12\n"
     assert main(["env", "resolve", "idna"]) == 0  # 第二次不用再给 --python
+
+
+def test_env_use_records_the_existing_interpreter(tmp_path, monkeypatch, capsys):
+    """P-23 的两问：研究者选「用现成的」→ materials/env/ 记解释器与它的 pip freeze。"""
+    from framework.cli import main
+    from framework.workspace import root as workspace
+
+    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
+    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    assert main(["env", "use", "--compute", "local", "python"]) == 2  # 要绝对路径
+    assert main(["env", "use", "--compute", "nope", sys.executable]) == 1
+    assert "没有叫 'nope'" in capsys.readouterr().err
+    assert main(["env", "use", "--compute", "local", sys.executable]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("ok materials/env/\tcompute=local\tpython=") and "不隔离" in out
+    assert (ws.materials / "env" / "interpreter").read_text(encoding="utf-8") == \
+        f"local:{sys.executable}\n"

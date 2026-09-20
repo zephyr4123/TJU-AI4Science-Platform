@@ -95,6 +95,8 @@ class Probe:
     gpu: str = ""
     python: str = ""
     uv: str = ""
+    # 机器上已有的 Python 环境（盘点给人选：隔离新建还是用现成的）：{name, python, version, torch}
+    envs: list[dict] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -102,7 +104,7 @@ class Probe:
 
     def to_dict(self) -> dict:
         return {"ok": self.ok, "items": [list(i) for i in self.items], "hostname": self.hostname,
-                "gpu": self.gpu, "python": self.python, "uv": self.uv}
+                "gpu": self.gpu, "python": self.python, "uv": self.uv, "envs": list(self.envs)}
 
 
 @runtime_checkable
@@ -111,6 +113,7 @@ class Compute(Protocol):
 
     kind: str
     uv: list[str]  # 在这台机器上起 uv 的 argv 前缀：本地是 `python -m uv`，远端是 `uv`
+    scratch: str  # 这台机器上跑探测类短命令的目录（`run` 会建），不属于任何产出
 
     def remote_dir_for(self, local_dir: Path) -> str: ...
 

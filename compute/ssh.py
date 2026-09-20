@@ -66,6 +66,10 @@ class SshCompute:
     def uv(self) -> list[str]:
         return ["uv"]
 
+    @property
+    def scratch(self) -> str:
+        return f"{self.root}/.scratch"
+
     def remote_dir_for(self, local_dir: Path) -> str:
         return f"{self.root}/{Path(local_dir).resolve().as_posix().lstrip('/')}"
 
@@ -134,6 +138,7 @@ class SshCompute:
         日志 cat 回来。
         """
         try:
+            self._sh(f"mkdir -p {shlex.quote(remote_dir)}")  # 探测类短命令的目录不在就建
             job = self.submit(remote_dir, cmd, env, timeout_s)
         except SshError as exc:
             return Outcome(exit_code=255, stdout="", stderr=str(exc))
@@ -170,7 +175,8 @@ class SshCompute:
                   "echo $!")
         proc = self._sh(script)  # cd 不进去、建不了 .job 都在这儿炸，不会拿到一个假 pid
         pid = int(proc.stdout.strip().splitlines()[-1])
-        local = self.local_dir_for(remote_dir) / JOB_DIRNAME
+        local = (self.local_dir_for(remote_dir) if remote_dir.startswith(self.root + "/")
+                 else Path(remote_dir)) / JOB_DIRNAME
         self._live[pid] = time.time()
         # 日志路径记本地镜像：get 回来之后就在那儿，读 stderr 尾巴的人不用知道远端
         return Job(pid=pid, pgid=pid, started_at=time.time(), remote_dir=remote_dir,
@@ -244,6 +250,20 @@ echo GPU=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev
 mkdir -p {shlex.quote(self.root)} \\
   && echo DISK=$(df -h {shlex.quote(self.root)} | awk 'NR==2{{print $4}}')
 echo RSYNC=$(command -v rsync)
+__envs="$(conda env list --json 2>/dev/null | grep -o '"/[^"]*"' | tr -d '"')"
+__cands="$(for __e in $__envs; do echo "$__e/bin/python"; done)"
+for __py in $__cands /usr/bin/python3 /usr/local/bin/python3; do
+  [ -x "$__py" ] || continue
+  "$__py" - "$__py" <<'__PY' 2>/dev/null
+import sys
+try:
+    import torch
+    torch_v = torch.__version__ + (" cuda" if torch.cuda.is_available() else " no-cuda")
+except Exception:  # noqa: BLE001  盘点用：装没装、能不能 import 都是答案
+    torch_v = "-"
+print("ENV=" + sys.argv[1] + "\t" + sys.version.split()[0] + "\t" + torch_v)
+__PY
+done
 """
         out = self._sh(script, timeout_s=_PROBE_TIMEOUT_S, check=False)
         text = out.stdout
@@ -261,7 +281,29 @@ echo RSYNC=$(command -v rsync)
                             f"{self.root} 剩 {disk}" if disk else f"{self.root} 建不出来"))
         rsync = _field(text, "RSYNC")
         probe.items.append(("rsync", bool(rsync), rsync or "远端没有 rsync：apt install rsync"))
+        probe.envs = _envs(text)
+        probe.items.append(("已有环境", True, "；".join(
+            f"{e['name']} {e['version']} torch {e['torch']}" for e in probe.envs) or "没盘点到"))
         return probe
+
+
+def _envs(text: str) -> list[dict]:
+    """`ENV=<python>\t<版本>\t<torch>` 行 → 机器上已有的环境清单，给人选用哪个。"""
+    envs: list[dict] = []
+    for line in text.splitlines():
+        if not line.startswith("ENV="):
+            continue
+        parts = line[4:].split("\t")
+        if len(parts) != 3:
+            continue
+        python, version, torch = parts
+        name = "conda base" if "/miniconda" in python or "/anaconda" in python else python
+        if "/envs/" in python:
+            name = "conda " + python.split("/envs/")[1].split("/")[0]
+        elif python.startswith("/usr/"):
+            name = "系统"
+        envs.append({"name": name, "python": python, "version": version, "torch": torch})
+    return envs
 
 
 def _field(text: str, key: str) -> str:

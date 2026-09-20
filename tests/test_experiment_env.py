@@ -131,3 +131,42 @@ def test_resolve_lock_pins_transitive_deps_and_incomplete_lock_fails_before_runn
     with pytest.raises(env.EnvBuildError, match="不完整") as exc:
         env.build_venv(task_dir, task_dir / env.VENV_DIRNAME)
     assert "env resolve" in str(exc.value) and "urllib3" in str(exc.value)
+
+
+# ── 用机器上现成的环境（P-23 的两问）─────────────────────────────────────
+def test_interpreter_file_makes_build_use_the_existing_python_only_on_that_compute(tmp_path):
+    from compute.local import LocalCompute
+
+    task_dir = make_env(tmp_path, requirements="")
+    (task_dir / "env" / "interpreter").write_text(f"local:{sys.executable}\n", encoding="utf-8")
+    spec, problems = env.read_env(task_dir)
+    assert problems == [] and spec.interpreter == ("local", sys.executable)
+    python = env.build_venv_on(LocalCompute(), str(task_dir), str(task_dir / ".venv"))
+    assert python == sys.executable and not (task_dir / ".venv").exists()  # 没建 venv
+    other = LocalCompute()
+    other.name = "autodl"
+    with pytest.raises(env.EnvBuildError, match="换了机器要重选"):
+        env.build_venv_on(other, str(task_dir), str(task_dir / ".venv"))
+    (task_dir / "env" / "python-version").write_text("3.9\n", encoding="utf-8")
+    with pytest.raises(env.EnvBuildError, match="版本对不上"):
+        env.build_venv_on(LocalCompute(), str(task_dir), str(task_dir / ".venv"))
+    (task_dir / "env" / "interpreter").write_text("nocolon\n", encoding="utf-8")
+    _, problems = env.read_env(task_dir)
+    assert any("interpreter" in p and "绝对路径" in p for p in problems)
+
+
+def test_use_interpreter_freezes_the_existing_env_and_resolve_switches_back(tmp_path):
+    from compute.local import LocalCompute
+
+    target = tmp_path / "materials" / "env"
+    env.use_interpreter(target, LocalCompute(), sys.executable)
+    assert (target / "interpreter").read_text(encoding="utf-8") == f"local:{sys.executable}\n"
+    assert (target / "python-version").read_text(encoding="utf-8").strip() == THIS_PYTHON
+    lock = (target / "requirements.lock").read_text(encoding="utf-8")
+    assert lock.startswith("# 算力 local 上现成的环境") and "pyyaml==" in lock.lower()
+    spec, problems = env.read_env(tmp_path / "materials")
+    assert problems == [] and spec.interpreter == ("local", sys.executable)
+    with pytest.raises(env.EnvBuildError, match="起不来"):
+        env.use_interpreter(target, LocalCompute(), "/nope/python")
+    env.resolve_lock(target, THIS_PYTHON, ["packaging"])  # 回到隔离新建：interpreter 文件删掉
+    assert not (target / "interpreter").exists()

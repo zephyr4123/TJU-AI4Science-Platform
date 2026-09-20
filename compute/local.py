@@ -12,6 +12,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -40,6 +41,10 @@ class LocalCompute:
         """本机的 uv 是平台 venv 里的那份（与 experiment/env.py 同一份），不找系统 PATH 上的。"""
         return [sys.executable, "-m", "uv"]
 
+    @property
+    def scratch(self) -> str:
+        return str(Path(tempfile.gettempdir()) / "ai4sci-scratch")
+
     def remote_dir_for(self, local_dir: Path) -> str:
         return str(Path(local_dir).resolve())
 
@@ -65,7 +70,8 @@ class LocalCompute:
 
     def run(self, remote_dir: str, cmd: list[str], env: dict[str, str],
             timeout_s: float) -> Outcome:
-        """同步跑一条短命令（建 venv、算清单）；超时按非零退出报，不吞。"""
+        """同步跑一条短命令（建 venv、算清单、探测）；目录不在就建；超时按非零退出报，不吞。"""
+        Path(remote_dir).mkdir(parents=True, exist_ok=True)
         try:
             proc = subprocess.run(cmd, cwd=remote_dir, env={**os.environ, **env},
                                   stdin=subprocess.DEVNULL, capture_output=True, text=True,

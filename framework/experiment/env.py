@@ -37,6 +37,11 @@ LOGGER = logging.getLogger("ai4sci.env")
 ENV_DIRNAME = "env"
 PYTHON_VERSION_NAME = "python-version"
 REQUIREMENTS_NAME = "requirements.lock"
+# 第三个文件，可选：`<算力名字>:<那台机器上的解释器>`——研究者选了「用机器上现成的环境」
+# （P-23 的两问）。在时不建 venv，直接拿那个解释器当 AI4SCI_PYTHON；requirements.lock 是那个
+# 环境的 pip freeze（出处留档）。
+# 换了机器就拒：现成的环境只在那一台上
+INTERPRETER_NAME = "interpreter"
 VENV_DIRNAME = ".venv"
 # harness 经这个环境变量拿到任务 venv 的解释器：框架提交 harness 时设，
 # make_run0.sh 缺省指到任务目录的 .venv
@@ -65,6 +70,8 @@ class EnvBuildError(RuntimeError):
 class EnvSpec:
     python_version: str
     requirements: tuple[str, ...]
+    # (算力名字, 解释器路径)：用机器上现成的环境；None 是隔离新建
+    interpreter: tuple[str, str] | None = None
 
 
 def harness_env(python: Path, wall_clock_s: float, inner_k: int) -> dict[str, str]:
@@ -125,9 +132,19 @@ def read_env(task_dir: Path) -> tuple[EnvSpec | None, list[str]]:
                 continue
             requirements.append(line)
 
+    interpreter = None
+    interp_path = edir / INTERPRETER_NAME
+    if interp_path.is_file():
+        raw = interp_path.read_text(encoding="utf-8").strip()
+        name, _, path = raw.partition(":")
+        if not name or not path.startswith("/"):
+            problems.append(f"{label}{INTERPRETER_NAME}: 期望 <算力名字>:<绝对路径>，实际 {raw!r}")
+        else:
+            interpreter = (name, path)
     if problems:
         return None, problems
-    return EnvSpec(python_version=version, requirements=tuple(requirements)), []
+    return EnvSpec(python_version=version, requirements=tuple(requirements),
+                   interpreter=interpreter), []
 
 
 def build_venv(task_dir: Path, venv_dir: Path) -> Path:
@@ -152,6 +169,8 @@ def build_venv_on(compute: Compute, task_dir: str, venv_dir: str) -> str:
     spec, problems = read_env(local_task)
     if spec is None:
         raise EnvBuildError("env/ 不合约，建不了环境：\n" + "\n".join(problems))
+    if spec.interpreter is not None:
+        return _existing_interpreter(compute, spec)
     if compute.kind == "local" and importlib.util.find_spec("uv") is None:
         raise EnvBuildError(
             "uv 不在平台 venv 里，建不了任务环境：跑 `make venv` 重装（pyproject 已声明 uv），"
@@ -187,6 +206,33 @@ def build_venv_on(compute: Compute, task_dir: str, venv_dir: str) -> str:
     LOGGER.info("env_build compute=%s venv=%s python=%s requirements=%d",
                 compute.kind, venv_dir, spec.python_version, len(spec.requirements))
     return python
+
+
+def _existing_interpreter(compute: Compute, spec: EnvSpec) -> str:
+    """研究者选了机器上现成的环境：只在那一台上认；解释器要在、版本要对上，不建 venv。"""
+    wanted, python = spec.interpreter
+    actual = compute_name(compute)
+    if actual != wanted:
+        raise EnvBuildError(
+            f"这份环境是算力 {wanted!r} 上现成的解释器（{python}），现在要在 {actual!r} 上跑："
+            "换了机器要重选——ai4sci env use --compute <名字> <解释器>，"
+            "或 ai4sci env resolve 隔离新建")
+    version_probe = "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
+    outcome = compute.run(compute.scratch, [python, "-c", version_probe], {}, 60)
+    if not outcome.ok:
+        raise EnvBuildError(f"算力 {wanted!r} 上的解释器 {python} 起不来："
+                            f"{outcome.stderr.strip()[-500:]}")
+    actual_version = outcome.stdout.strip().splitlines()[-1] if outcome.stdout.strip() else ""
+    if actual_version != spec.python_version:
+        raise EnvBuildError(
+            f"{python} 的版本对不上：env/ 记的是 {spec.python_version}，实际 {actual_version!r}")
+    LOGGER.info("env_existing compute=%s python=%s", wanted, python)
+    return python
+
+
+def compute_name(compute: Compute) -> str:
+    """适配器在清单里的名字（`computes.instance` 起的时候贴上）；没贴就按种类（local）。"""
+    return str(getattr(compute, "name", compute.kind))
 
 
 def _local_mirror(compute: Compute, remote_dir: str) -> Path:
@@ -247,9 +293,47 @@ def resolve_lock(target_env: Path, python_version: str, packages: list[str],
     (target_env / PYTHON_VERSION_NAME).write_text(python_version + "\n", encoding="utf-8")
     lock = target_env / REQUIREMENTS_NAME
     lock.write_text(header + "\n".join(pins) + "\n", encoding="utf-8")
+    (target_env / INTERPRETER_NAME).unlink(missing_ok=True)  # 算了清单 = 回到隔离新建
     LOGGER.info("env_resolve target=%s python=%s packages=%d pins=%d",
                 target_env, python_version, len(packages), len(pins))
     return lock
+
+
+def use_interpreter(target_env: Path, compute: Compute, python: str) -> Path:
+    """研究者选了机器上现成的环境：探它的版本、`pip freeze` 当清单（出处留档）、写 `interpreter`。
+    返回 env 目录。解释器起不来、没有 pip 都抛 EnvBuildError。"""
+    name = compute_name(compute)
+    version_probe = "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
+    probe = compute.run(compute.scratch, [python, "-c", version_probe], {}, 60)
+    if not probe.ok:
+        raise EnvBuildError(f"算力 {name!r} 上的解释器 {python} 起不来："
+                            f"{probe.stderr.strip()[-500:]}")
+    version = probe.stdout.strip().splitlines()[-1]
+    assert VERSION_RE.match(version), f"解释器报的版本不是 X.Y：{version!r}"
+    frozen = compute.run(compute.scratch, [python, "-m", "pip", "freeze"], {}, 300)
+    if not frozen.ok:
+        raise EnvBuildError(f"{python} 里没有 pip，列不出它装了什么："
+                            f"{frozen.stderr.strip()[-500:]}")
+    pins, odd = [], []
+    for line in frozen.stdout.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        (pins if _PIN_RE.match(line) else odd).append(line)
+    target_env = Path(target_env)
+    target_env.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y-%m-%d")
+    header = (f"# 算力 {name} 上现成的环境 {python} 于 {stamp} 的 pip freeze"
+              "（研究者选的「用现成的」，不隔离、不由平台建；出处留档用）。\n"
+              "# 换机器时这份清单不能照装，要重选环境或 ai4sci env resolve 隔离新建。\n")
+    if odd:
+        header += "# 下面这些行不是 name==version（本地路径、可编辑安装），照录不装：\n"
+        header += "".join(f"#   {line}\n" for line in odd)
+    (target_env / PYTHON_VERSION_NAME).write_text(version + "\n", encoding="utf-8")
+    (target_env / REQUIREMENTS_NAME).write_text(header + "\n".join(pins) + "\n", encoding="utf-8")
+    (target_env / INTERPRETER_NAME).write_text(f"{name}:{python}\n", encoding="utf-8")
+    LOGGER.info("env_use compute=%s python=%s version=%s pins=%d", name, python, version, len(pins))
+    return target_env
 
 
 def _run(argv: list[str], *, what: str) -> subprocess.CompletedProcess[str]:

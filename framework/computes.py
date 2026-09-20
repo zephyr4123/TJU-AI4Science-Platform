@@ -159,9 +159,11 @@ def _parse_entry(name: str, doc: Any) -> tuple[Entry | None, str]:
 
 
 def instance(name: str, registry: Registry | None = None) -> Compute:
-    """名字 → 适配器。"""
+    """名字 → 适配器；清单里的名字贴在适配器上（`env/interpreter` 认的是名字）。"""
     entry = (registry or load()).get(name)
-    return get_compute(entry.kind, **entry.params)
+    compute = get_compute(entry.kind, **entry.params)
+    compute.name = name
+    return compute
 
 
 def default_name() -> str:
