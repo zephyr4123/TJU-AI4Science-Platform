@@ -16,7 +16,23 @@
 | 扫描件 | 不做 OCR（关掉了） | 可 OCR |
 | 联网 | 只在 `make skills` 预热 | 首次要 `mineru-kit models download --tier basic`（HuggingFace，4 分 41 秒）；遥测默认开（`MINERU_TELEMETRY=off` 关）；`--pages` 缺省只前 10 页，要 `all` |
 
-**结论：缺省用 pymupdf4llm。** 两家在「起草需求、核对表里的数」这两个用途上给的数一样；MinerU 多出来的是公式 LaTeX，代价是 15 倍耗时、10 倍体积、一个常驻服务——常驻服务不合 skill 的形状（脚本、`uv run --offline`、跑完退出，纲领 P-22）。什么时候切：复现的课题要抄论文里的公式（PDE、损失函数）时，先用 MinerU 手工出一份 `paper.md` 放进 `materials/`，等第二个这样的课题出现再决定要不要把它包成 `--script mineru` 的第二个脚本。
+**结论（主人 2026-09-20 定）：缺省用 pymupdf4llm，MinerU 是备选，真碰到复杂的再部署。** 两家在「起草需求、核对表里的数」这两个用途上给的数一样；MinerU 多出来的是公式 LaTeX，代价是 15 倍耗时、10 倍体积、一个常驻服务——常驻服务不合 skill 的形状（脚本、`uv run --offline`、跑完退出，纲领 P-22）。什么时候切：复现的课题要抄论文里的公式（PDE、损失函数）时，先用 MinerU 手工出一份 `paper.md` 放进 `materials/`，等第二个这样的课题出现再决定要不要把它包成 `--script mineru` 的第二个脚本。
+
+## 备选：MinerU 部署成服务
+
+MinerU 4.0 自己的形状就是一个服务（`parse_server.local.self_hosted_url` 就是给自建解析服务器用的），真要用它不在本机装，而是：
+
+```
+算力服务器（Linux + GPU）            本机 / 工作区
+┌──────────────────────────┐        ┌──────────────────────────────┐
+│ mineru server（常驻）     │ HTTP   │ 本 skill 的第二个脚本          │
+│ tier standard / advanced │◀───────│ --script mineru：传 PDF、收   │
+│ 公式 LaTeX、表、图、OCR    │        │ paper.md + JSON，落到 --out   │
+└──────────────────────────┘        └──────────────────────────────┘
+                                     地址走环境变量 AI4SCI_MINERU_URL（纲领 P-14）
+```
+
+触发条件：第一篇「复现要抄论文公式」的论文出现。到那时先在实验室服务器起一个 `mineru server`、加 `--script mineru` 跑通那一篇；GPU 档（OmniDocBench 95.75）确实比 basic（86.47）好、且成了常用路径，再拿数据去申请资源。三样产物的契约不变。
 
 ## 复现 MinerU 的实测
 
