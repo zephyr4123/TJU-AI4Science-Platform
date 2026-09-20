@@ -503,12 +503,22 @@ def test_cap_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch
 
 
 # ── 基线：跑 make_run0.sh，环境变量与内环同一组，跑完预检 ───────────────────
+# 记下拿到的环境变量，再像真脚本那样从头写出 baseline/（基线 0.5、三次重复 σ=0.02）
 MAKE_RUN0_RECORDING = (
     "#!/usr/bin/env bash\nset -euo pipefail\n"
     ': "${AI4SCI_INNER_K:?}"\n: "${AI4SCI_BUDGET_S:?}"\n'
-    'TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"\n'
+    'TASK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"\ncd "$TASK_DIR"\n'
     'printf \'{"inner_k": "%s", "budget": "%s", "python": "%s"}\' '
-    '"$AI4SCI_INNER_K" "$AI4SCI_BUDGET_S" "$AI4SCI_PYTHON" > "$TASK_DIR/baseline-env.json"\n'
+    '"$AI4SCI_INNER_K" "$AI4SCI_BUDGET_S" "$AI4SCI_PYTHON" > baseline-env.json\n'
+    "rm -rf baseline && mkdir -p baseline/repeats\n"
+    "doc() { printf '{\"metrics\": {\"val_mse\": %s}, \"elapsed_s\": 1.0, \"seed\": %s, "
+    "\"status\": \"ok\"}' \"$1\" \"$2\"; }\n"
+    "doc 0.5 42 > baseline/results.json\n"
+    "doc 0.5 42 > baseline/repeats/results-42.json\n"
+    "doc 0.52 43 > baseline/repeats/results-43.json\n"
+    "doc 0.48 44 > baseline/repeats/results-44.json\n"
+    "printf '{\"val_mse\": {\"sigma\": 0.02, \"seeds\": [42, 43, 44], "
+    "\"values\": [0.5, 0.52, 0.48]}}' > baseline/sigma.json\n"
 )
 
 
@@ -544,6 +554,42 @@ def test_baseline_stops_when_the_headroom_check_fails_or_the_script_is_missing(t
     (pack.pack / "harness" / "make_run0.sh").unlink()
     with pytest.raises(CapabilityFailed, match="make_run0.sh"):
         run_baseline(pack.pack, LocalCompute())
+
+
+class _ElsewhereCompute(LocalCompute):
+    """像远端那样：任务目录同步到另一处去跑，产物再拿回来（`get` 只加不删，同 ssh）。"""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__()
+        self._root = root
+
+    def remote_dir_for(self, local_dir: Path) -> str:
+        return str(self._root / Path(local_dir).name)
+
+
+def test_baseline_replaces_the_old_baseline_instead_of_merging_into_it(tmp_path):
+    """第一轮真任务：远端脚本 rm -rf 了 baseline/ 再写新的，拿回来却只加不删——上一版基线的
+    results-<seed>.json 留在本地 repeats/ 里，人签了字、实验阶段一数文件数就拒开。基线跑之前本地
+    那份要删干净，跑完按开跑那套合约查全：design ok 就等于 auto-research 会接。"""
+    from framework.capabilities.design.baseline import run_baseline
+    from framework.contracts.capability import CapabilityFailed
+
+    scoring = pf.default_scoring()
+    scoring["metrics"][0]["attainable"] = 0.3
+    pack = pf.make_pack(tmp_path, scoring=scoring, seeds=(47, 48, 49, 50, 51),
+                        values=(0.5, 0.52, 0.48, 0.5, 0.5))
+    (pack.pack / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
+    stale = {p.name for p in (pack.pack / "baseline" / "repeats").iterdir()}
+    assert stale == {f"results-{s}.json" for s in (47, 48, 49, 50, 51)}
+    line = run_baseline(pack.pack, _ElsewhereCompute(tmp_path / "box"))
+    assert line.startswith("inner_k=1\tbaseline=0.5\tsigma=0.02\tgate=0.04\t")
+    fresh = {p.name for p in (pack.pack / "baseline" / "repeats").iterdir()}
+    assert fresh == {"results-42.json", "results-43.json", "results-44.json"}
+    # 脚本写出的 baseline/ 不合约（重复次数与 repeat_k 对不上）也在这里拦下，不留给实验阶段
+    broken = MAKE_RUN0_RECORDING.replace("doc 0.48 44 > baseline/repeats/results-44.json\n", "")
+    (pack.pack / "harness" / "make_run0.sh").write_text(broken, encoding="utf-8")
+    with pytest.raises(CapabilityFailed, match=r"实验阶段会拒开\）：\n.*repeat_k=3"):
+        run_baseline(pack.pack, _ElsewhereCompute(tmp_path / "box"))
 
 
 # ── chat：终端里和两位助理聊 ────────────────────────────────────────────────

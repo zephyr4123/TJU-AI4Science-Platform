@@ -16,6 +16,7 @@
 - 接机器先盘点、再问研究者两个问题（主人 2026-09-20：非工程师要能选、要清楚怎么回事）：ssh 适配器 `check` 盘点那台机器上已有的 Python 环境（conda 各环境 + 系统 python：解释器路径、版本、torch 版本与 cuda）；`ai4sci env use --compute <名字> <解释器绝对路径>` 选「用现成的」——探版本、`pip freeze` 当清单（出处留档）、写 `materials/env/interpreter`（`<算力名字>:<解释器>`），设计与实验在那台机器上直接用它、不建 venv，换机器拒；`env resolve` 仍是「隔离新建」并清掉 `interpreter`。研究助理指南「算力」一节写死两问（隔离新建还是用现成的、用哪个）与两边的取舍。端口加 `scratch`（探测类短命令的目录），`Probe` 加 `envs`，适配器实例带清单里的 `name`。
 
 ### 修复
+- 基线跑完从远端拿回来只加不删（`get` 不 `--delete`，本地可能有远端没有的东西），远端脚本自己 `rm -rf baseline/` 再写新的，本地 `baseline/repeats/` 里却留着上一版的 `results-<seed>.json`：演练 design/5 第二版基线（重复种子 47、52）拿回来后本地有 7 个文件，人签了字、实验阶段一数文件数就拒开（外层 [#118](https://github.com/zephyr4123/TJU-AI4Science/issues/118)）。`run_baseline` 跑之前把本地 `baseline/` 删干净，跑完按开跑那套合约 `validate_pack` 查全——「design ok」就等于 auto-research 会接，不再有设计说过、实验说不过的缝。
 - 设计第二版的提示把 harness/ 里评分脚本算出来的二进制（`exact_solution.npz`）当文本贴了进去，NUL 字节让起执行层的 Popen 直接炸、作业停在 running 变 lost（演练 design/5 第二版）：二进制只报名字与大小。平台自己的异常（不是能力说的失败）也把作业记 failed、产出记 failed 再抛，不再变 lost（外层 [#118](https://github.com/zephyr4123/TJU-AI4Science/issues/118)）。
 
 ### 变更

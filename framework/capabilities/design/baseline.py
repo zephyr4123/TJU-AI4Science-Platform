@@ -6,14 +6,21 @@
 
 跑完不停下来等人看基线：原来那个人工停点看的三四个数（基线、σ、门、尽头）机器能算
 （`experiment.headroom`），判无解就抛并说清，否则把数字写在结论行里。
+
+baseline/ 整个是这一次 make_run0.sh 的产物：跑之前把本地那份删干净，跑完拿回来的才是全部，
+拿回来先按开跑的那套合约（`pack.validate_pack` 查全）核一遍——「design ok」就等于
+auto-research 会接。第一轮真任务里远端脚本自己 rm -rf 了 baseline/，但拿回来（`get`）只加不删，
+上一版基线的 5 个 results-<seed>.json 留在本地 repeats/ 里，人签了字、实验阶段一数文件就拒开。
 """
 
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
 from compute import Compute
+from framework import paths
 from framework.contracts.capability import CapabilityFailed
 from framework.experiment import env, headroom
 from framework.experiment import pack as packs
@@ -39,6 +46,9 @@ def run_baseline(pack: Path, compute: Compute) -> str:
         raise CapabilityFailed(
             f"{packs.SCORING_NAME} 的 budget.inner_k 要是正整数，实际 {inner_k!r}")
     repeat_k = budget.get("repeat_k", 3)
+    stale = pack / packs.BASELINE_DIRNAME
+    if stale.is_dir():
+        shutil.rmtree(stale)  # 本机算力时和远端是同一个目录，删一次就够
     remote = compute.remote_dir_for(pack)
     compute.sync(pack, remote)
     # 环境是基线的一部分，不是人要记得先跑的另一条命令；建不出来就是基线跑不了
@@ -56,6 +66,9 @@ def run_baseline(pack: Path, compute: Compute) -> str:
     compute.get(remote, pack)
     if not outcome.ok:
         raise CapabilityFailed(f"make_run0.sh 退出码 {outcome.exit_code}，基线不可信")
+    problems = packs.validate_pack(pack, paths.domains_root())
+    if problems:
+        raise CapabilityFailed("基线跑完了，那包不合约（实验阶段会拒开）：\n" + "\n".join(problems))
     try:
         room = headroom.assess(pack)
     except FileNotFoundError as exc:
