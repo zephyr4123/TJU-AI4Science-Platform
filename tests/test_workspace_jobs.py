@@ -126,3 +126,50 @@ def test_stop_kills_the_whole_tree_and_closes_the_output(tmp_path: Path):
                                                     "pid": dead.pid}), encoding="utf-8")
     with pytest.raises(jobs.JobNotRunning, match="lost"):
         jobs.stop(ws, "job-l", by="zephyr")
+
+
+def test_stop_also_cancels_whatever_runs_under_the_output_on_its_compute(tmp_path, monkeypatch):
+    """外层 #118：产出在别的机器上跑（meta 记着 compute），本机杀了树远端的 uv pip sync 还在装——
+    停作业要连那台机器上这次产出目录下的一并杀；远端没杀成不吞，记录照写 stopped 再抛。"""
+    from compute import ComputeError
+    from framework import computes
+    from framework.contracts import output
+    from framework.workspace import outputs
+
+    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
+    label = {"name": "box", "kind": "ssh", "hostname": "h", "gpu": ""}
+    directory, _ = outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
+                                       flow=None, step=None, requirement=1, chat_id=None,
+                                       compute=label)
+    calls: list[str] = []
+
+    class Box:
+        def remote_dir_for(self, local_dir):
+            return f"/box{Path(local_dir).resolve()}"
+
+        def cancel_under(self, remote_dir):
+            calls.append(remote_dir)
+            if remote_dir.endswith("/1") and len(calls) > 1:
+                raise ComputeError("ssh 起不来")
+            return [7]
+
+    monkeypatch.setattr(computes, "instance", lambda name: Box() if name == "box" else None)
+
+    def running_job(job_id: str) -> None:
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"],
+                                start_new_session=True)
+        record = jobs.Job(job_id=job_id, cap="design", stage="design", argv=[], pid=proc.pid,
+                          started_at="t", output="design/1")
+        ws.jobs.mkdir(parents=True, exist_ok=True)
+        (ws.jobs / f"{job_id}.json").write_text(json.dumps(record.__dict__), encoding="utf-8")
+
+    running_job("job-a")
+    stopped = jobs.stop(ws, "job-a", by="zephyr")
+    assert stopped.status == "stopped" and calls == [f"/box{directory.resolve()}"]
+    assert output.read_meta(directory).status == "failed"
+    # 远端够不着：本机照样停了、记录说清远端没停，错抛给叫停的人
+    running_job("job-b")
+    with pytest.raises(ComputeError, match="ssh 起不来"):
+        jobs.stop(ws, "job-b", by="zephyr")
+    again = jobs.load(ws.jobs, "job-b")
+    assert again.status == "stopped" and "box 上的没停下来" in again.result

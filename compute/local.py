@@ -131,6 +131,10 @@ class LocalCompute:
     def cancel(self, job: Job) -> None:
         kill_tree(job.pid, job.pgid)
 
+    def cancel_under(self, remote_dir: str) -> list[int]:
+        """本机的作业是起它的那个进程的子孙：人叫停时 `kill_tree` 趟树已经把它们带走，这里没活。"""
+        return []
+
     def get(self, remote_dir: str, local_dir: Path) -> None:
         remote_dir, local_dir = Path(remote_dir), Path(local_dir)
         if remote_dir.resolve() == local_dir.resolve():

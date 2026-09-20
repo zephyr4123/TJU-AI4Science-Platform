@@ -25,7 +25,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from compute import ComputeError
 from compute.procs import kill_tree
+from framework import computes
 from framework.workspace import outputs
 from framework.workspace.root import Workspace
 
@@ -125,7 +127,10 @@ def finish(jobs_dir: Path, job_id: str, *, exit_code: int, result: str) -> Job:
 def stop(ws: Workspace, job_id: str, *, by: str) -> Job:
     """人叫停：杀作业的整棵进程树（它自成会话，pgid 就是 pid；执行层的 Bash、harness 的 launcher
     各自还会开新的进程组，所以趟树逐组杀），记录写 stopped 与谁停的；作业开的那次产出还是 running
-    的话替它记 failed（子进程被杀，没人回写）。cli 与 serve 共用这一个函数。
+    的话替它记 failed（子进程被杀，没人回写）。产出是在别的机器上跑的（meta 记着 `compute`），
+    那台机器上这次产出目录下还在跑的也一并杀（`cancel_under`）——演练里本机杀了、远端的
+    uv pip sync 还在装（外层 #118）。远端没杀成不吞：记录照写 stopped，把错抛给叫停的人。
+    cli 与 serve 共用这一个函数。
 
     只停真在跑的：已经结束的、lost 的都抛 JobNotRunning——对着一具尸体报「停了」是假话（P-7）。
     """
@@ -140,10 +145,22 @@ def stop(ws: Workspace, job_id: str, *, by: str) -> Job:
     job.finished_at = datetime.now(UTC).isoformat(timespec="seconds")
     _save(ws.jobs, job)
     LOGGER.info("job_stop job_id=%s by=%s killed_pgids=%s", job_id, by, killed)
-    if job.output:
-        directory, meta = outputs.find_output(ws, job.output)
-        if meta.status == "running":
-            outputs.close_output(directory, meta, ok=False, line=job.result)
+    if not job.output:
+        return job
+    directory, meta = outputs.find_output(ws, job.output)
+    if meta.status == "running":
+        outputs.close_output(directory, meta, ok=False, line=job.result)
+    name = (meta.compute or {}).get("name")
+    if name and name != computes.LOCAL:
+        compute = computes.instance(name)
+        try:
+            remote_killed = compute.cancel_under(compute.remote_dir_for(directory))
+        except ComputeError as exc:
+            job.result += f"；{name} 上的没停下来：{exc}"
+            _save(ws.jobs, job)
+            raise
+        LOGGER.info("job_stop_remote job_id=%s compute=%s killed_pgids=%s",
+                    job_id, name, remote_killed)
     return job
 
 

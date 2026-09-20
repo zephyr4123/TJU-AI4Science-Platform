@@ -85,7 +85,33 @@ def test_submit_script_starts_a_session_and_records_the_exit_code(monkeypatch, t
     assert "nohup setsid bash -c" in seen["script"] and "exit.code" in seen["script"]
     assert f"rm -f {JOB_DIRNAME}/exit.code" in seen["script"]  # 同目录连着两次 submit 不读旧的
     assert "export AI4SCI_SEED=42" in seen["script"]
+    assert f"tee {JOB_DIRNAME}/pgid" in seen["script"]  # 人叫停时另一个进程凭它下手
     assert Path(job.stderr_path) == (tmp_path / "run").resolve() / JOB_DIRNAME / "stderr.log"
+
+
+def test_cancel_under_kills_only_live_groups_of_this_directory(monkeypatch, tmp_path):
+    """人叫停时下手的是另一个进程，只知道产出目录：远端脚本找目录下每个 .job/pgid，跑完的
+    （有 exit.code）不碰、进程组号被别人复用的（组长 cwd 不是这个目录）不碰，其余先 TERM 再
+    KILL，报回杀了谁。"""
+    ssh = _ssh()
+    seen: dict = {}
+
+    class Proc:
+        returncode = 0
+        stdout = "4242\n4300\n"
+        stderr = ""
+
+    def fake_sh(script, **kw):
+        seen["script"] = script
+        return Proc()
+
+    monkeypatch.setattr(ssh, "_sh", fake_sh)
+    remote = ssh.remote_dir_for(tmp_path / "design" / "4")
+    assert ssh.cancel_under(remote) == [4242, 4300]
+    script = seen["script"]
+    assert f"find {remote} -path '*/{JOB_DIRNAME}/pgid'" in script  # 路径没空格时 quote 不加引号
+    assert "exit.code" in script and "/proc/$pg/cwd" in script
+    assert "kill -TERM -- -$pg" in script and "kill -KILL -- -$pg" in script
 
 
 # ── 按人的清单（不联网）─────────────────────────────────────────────────────

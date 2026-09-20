@@ -132,9 +132,19 @@ class Compute(Protocol):
 
     def cancel(self, job: Job) -> None: ...
 
+    def cancel_under(self, remote_dir: str) -> list[int]:
+        """杀这个目录（含子目录）下所有还在跑的作业，返回杀掉的进程组；没有 Job 句柄也能停——
+        人叫停时下手的是另一个进程（`ai4sci job stop`），它只知道产出目录在哪台机器的哪儿。"""
+        ...
+
     def get(self, remote_dir: str, local_dir: Path) -> None: ...
 
     def check(self) -> Probe: ...
+
+
+class ComputeError(RuntimeError):
+    """那台机器够不着或它上面的命令起不来（连不上、密钥不对、rsync 失败）；各适配器的错都是
+    它的子类，framework 只认这一个。"""
 
 
 class ComputeNotFound(ValueError):

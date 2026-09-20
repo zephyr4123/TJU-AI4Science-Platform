@@ -15,6 +15,9 @@
 ### 新增
 - 接机器先盘点、再问研究者两个问题（主人 2026-09-20：非工程师要能选、要清楚怎么回事）：ssh 适配器 `check` 盘点那台机器上已有的 Python 环境（conda 各环境 + 系统 python：解释器路径、版本、torch 版本与 cuda）；`ai4sci env use --compute <名字> <解释器绝对路径>` 选「用现成的」——探版本、`pip freeze` 当清单（出处留档）、写 `materials/env/interpreter`（`<算力名字>:<解释器>`），设计与实验在那台机器上直接用它、不建 venv，换机器拒；`env resolve` 仍是「隔离新建」并清掉 `interpreter`。研究助理指南「算力」一节写死两问（隔离新建还是用现成的、用哪个）与两边的取舍。端口加 `scratch`（探测类短命令的目录），`Probe` 加 `envs`，适配器实例带清单里的 `name`。
 
+### 修复
+- `ai4sci job stop` 只杀了本机的进程树，远端那台机器上的 `uv pip sync` 还在装（演练里研究者叫停 design/4 之后实测；外层 [#118](https://github.com/zephyr4123/TJU-AI4Science/issues/118)）：端口加 `cancel_under(remote_dir)`——ssh 适配器 submit 时把进程组号写进 `.job/pgid`，停作业时按产出 meta 记的算力连过去，找这次产出目录下每个 `.job/pgid`，跑完的（有 exit.code）不碰、进程组号被复用的（组长 cwd 不是这个目录）不碰，其余先 TERM 再 KILL；本机的作业在进程树里杀树已带走。远端够不着不吞：记录照写 stopped、`result` 说清哪台没停、错抛给叫停的人。`compute.ComputeError` 是各适配器错误的共同基类（`SshError` 继承它），framework 只认它。
+
 ### 变更
 - 研究助理指南「算力」两问改口（主人 2026-09-20 演练拍板）：租来的第三方平台（AutoDL 这类）一律用镜像自带的现成环境、租的时候就选好带 PyTorch + CUDA 的镜像，别自己装隔离环境（实测装 CUDA 版 torch 两个多小时没完）；隔离新建只在实验室自己的机器上谈；「你看着办」按机器是谁的定。
 ### 变更

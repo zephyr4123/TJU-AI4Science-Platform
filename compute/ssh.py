@@ -20,11 +20,12 @@ import subprocess
 import time
 from pathlib import Path
 
-from compute import ExitStatus, Job, Outcome, Probe
+from compute import ComputeError, ExitStatus, Job, Outcome, Probe
 
 IGNORED = (".git", ".ai4sci", "__pycache__", ".venv", ".job")
 JOB_DIRNAME = ".job"
 EXIT_FILE = "exit.code"
+PGID_FILE = "pgid"  # 远端进程组号，人叫停时另一个进程凭它下手
 _POLL_S = 5.0
 _CONNECT_TIMEOUT_S = 20
 _PROBE_TIMEOUT_S = 300  # 装 uv 要联网，给足
@@ -47,7 +48,7 @@ if [ -n "$__idx" ]; then
 fi"""
 
 
-class SshError(RuntimeError):
+class SshError(ComputeError):
     """ssh / rsync 本身失败（连不上、密钥不对、远端命令起不来）。信息带 stderr。"""
 
 
@@ -175,7 +176,7 @@ class SshCompute:
                   f"{exports}\n"
                   f"nohup setsid bash -c {inner}"
                   f" > {JOB_DIRNAME}/stdout.log 2> {JOB_DIRNAME}/stderr.log < /dev/null &\n"
-                  "echo $!")
+                  f"echo $! | tee {JOB_DIRNAME}/{PGID_FILE}")
         proc = self._sh(script)  # cd 不进去、建不了 .job 都在这儿炸，不会拿到一个假 pid
         pid = int(proc.stdout.strip().splitlines()[-1])
         local = (self.local_dir_for(remote_dir) if remote_dir.startswith(self.root + "/")
@@ -211,6 +212,28 @@ class SshCompute:
         return ExitStatus(exit_code=code, timed_out=timed_out,
                           elapsed_s=time.time() - job.started_at,
                           stdout_path=job.stdout_path, stderr_path=job.stderr_path)
+
+    def cancel_under(self, remote_dir: str) -> list[int]:
+        """杀目录下所有还在跑的远端作业：找每个 `.job/pgid`，跑完的（有 exit.code）不碰，
+        进程组号被别的进程复用了的（组长的 cwd 不是这个目录）不碰，其余先 TERM 再 KILL。
+        演练里 `ai4sci job stop` 杀了本机的作业进程，远端的 uv pip sync 却还在装（外层 #118）。"""
+        q = shlex.quote(remote_dir)
+        script = (
+            f"test -d {q} || exit 0\n"
+            f"killed=\"\"\n"
+            f"for f in $(find {q} -path '*/{JOB_DIRNAME}/{PGID_FILE}' 2>/dev/null); do\n"
+            f"  j=$(dirname \"$f\"); d=$(dirname \"$j\"); pg=$(cat \"$f\")\n"
+            f"  [ -f \"$j/{EXIT_FILE}\" ] && continue\n"
+            "  cwd=$(readlink /proc/$pg/cwd 2>/dev/null)\n"
+            "  [ \"$cwd\" = \"$(readlink -f \"$d\")\" ] || continue\n"
+            "  kill -TERM -- -$pg 2>/dev/null && killed=\"$killed $pg\"\n"
+            "done\n"
+            "[ -n \"$killed\" ] && sleep 1\n"
+            "for pg in $killed; do kill -KILL -- -$pg 2>/dev/null; echo $pg; done\n"
+            "true"
+        )
+        out = self._sh(script).stdout
+        return [int(tok) for tok in out.split() if tok.isdigit()]
 
     def cancel(self, job: Job) -> None:
         """远端杀整组：先 TERM 再 KILL；组不在了不算错。"""
