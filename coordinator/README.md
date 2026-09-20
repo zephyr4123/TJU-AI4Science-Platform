@@ -55,7 +55,7 @@ ai4sci show templates                              # 需求模板：通用一份
 ai4sci show workspace                              # 需求状态、每个阶段有哪几次产出、每条流程走到哪、在等谁
 ai4sci show workflows                              # 库里有哪几条、每条经过哪几个阶段
 ai4sci flow take research                          # 取成工作区的实例 flows/research.yaml，按这份需求改
-ai4sci cap design --detach                         # 写评分脚本、跑基线 → design/1；立刻拿到作业号，跑完框架来叫你
+ai4sci cap design --detach                         # 写评分脚本、跑基线 → design/1；开了产出就拿到作业号，跑完框架来叫你
 ai4sci cap auto-research --from design/1 --max-iters 5 --detach   # 开实验 → experiment/1，一轮一轮改
 ai4sci show output experiment/1                    # 这次产出的记录、签字、目录里有什么
 ai4sci cap auto-research --continue experiment/1 --max-iters 5 --detach   # 接着跑一批
@@ -63,7 +63,7 @@ ai4sci cap analysis --from experiment/1 --detach   # 写分析初稿 → analysi
 ai4sci cap verify --from analysis/1 --from experiment/1   # 核对数字 → verification/1
 ```
 
-工作区只有一条流程时不用说照哪条；几条就每个加 `--flow <name>`。框架把这次产出记在流程的哪一项下，`show workspace` 里每条流程一行 `step=… waiting=…` 说走到哪、在等谁（等作业、等人签、轮到你、走完）。`--detach` 把长命令起成作业：命令立刻返回 `job <作业号>`，你这一轮到此为止；作业跑完，框架以「框架」的身份开新一轮把结论行给你，你再看 `show workspace` 向研究者汇报。研究者中途问进度就 `ai4sci show job <作业号>`。
+工作区只有一条流程时不用说照哪条；几条就每个加 `--flow <name>`。框架把这次产出记在流程的哪一项下，`show workspace` 里每条流程一行 `step=… waiting=…` 说走到哪、在等谁（等作业、等人签、轮到你、走完）。`--detach` 把长命令起成作业：作业开了产出命令就返回 `job <作业号> … output=<产出 id>`，你这一轮到此为止；起了当场没开起来的（输入被改过、设计那包不合约）命令直接退 1 把原因带回来，别说「开了」；作业跑完，框架以「框架」的身份开新一轮把结论行给你，你再看 `show workspace` 向研究者汇报。研究者中途问进度就 `ai4sci show job <作业号>`。
 
 ### 设计阶段：写评分脚本、跑基线
 
@@ -79,7 +79,8 @@ ai4sci cap verify --from analysis/1 --from experiment/1   # 核对数字 → ver
 
 | 看到 | 意思 | 然后 |
 |---|---|---|
-| `cap ... --detach` 返回 `job <作业号>` | 作业在后台跑，这一轮结束 | 什么都不用做；跑完框架会开新一轮告诉你。研究者问进度就 `show job <作业号>` |
+| `cap ... --detach` 返回 `job <作业号> … output=<id>` | 作业在后台跑，这一轮结束 | 什么都不用做；跑完框架会开新一轮告诉你。研究者问进度就 `show job <作业号>` |
+| `cap ... --detach` 退 1 | 起了当场没开起来 | 照那句话处理（改输入、找人），别告诉研究者「开了」 |
 | `cap auto-research` 返回 `batch_exhausted` | 这批配额用完，实验没停 | 想继续就 `--continue experiment/<n>` 再跑一批 |
 | 返回 `patience` / `unrecoverable` / `max_cost_usd` / `max_iterations` | 实验停了，`stop.json` 有原因 | 读 `notebook.md` 决定：加预算（`--continue experiment/<n> --patience 9 --reason ...`，改预算、清停止标记后接着跑）、回设计阶段再开一次、还是就此分析 |
 | `cap auto-research` 退 1 说有 in-flight | 上次被杀在半路 | `--continue experiment/<n> --resume`；对不上就停下来找人，不要手改 checkpoint |

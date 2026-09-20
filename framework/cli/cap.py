@@ -11,7 +11,9 @@
   2. `--from` 的每个产出都得在、成了、没被改过（冻结，`workspace.outputs.resolve_inputs`）；
   3. 照流程跑时查断点：流程说输入那个阶段完了要人签，签字不在或过期就拒；
   4. 在自己的阶段下开一个产出目录、写 running 的 meta，跑完记 ok / failed；
-  5. `--detach` 把去掉它的同一条命令起成独立进程当作业，跑完回写记录、属于某段对话的去叫醒。
+  5. `--detach` 把去掉它的同一条命令起成独立进程当作业，跑完回写记录、属于某段对话的去叫醒；
+     返回之前等它过门、开了产出（都是本地几次读写），作业号旁边就有产出 id——起了又当场
+     没开起来的（门没过、包不合约）直接报回来，不让协调层拿着作业号说「实验开了」。
 
 跑完即退，用退出码表态；能力之间怎么串是协调层的事，这里没有顺序。
 """
@@ -21,6 +23,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 from framework.capabilities import discover
@@ -49,6 +52,11 @@ FROM_HELP = "读哪几个产出（<阶段目录>/<序号>，比如 design/1）�
 FLOW_HELP = ("照当前工作区里哪条流程跑（show flows 里的名字）：记进产出，断点按它查；"
              "只有一条流程时可省")
 CONTINUE_HELP = "接着上一次的产出干（<阶段目录>/<序号>），不另开目录"
+# --detach 等子进程过门、开产出的上限（正常几百毫秒），与开了产出之后再看一眼的时长：
+# 能力开工第一步就拒的（设计那包不合约）在这一眼里结束，当场报回来；再慢的交给叫醒
+DETACH_SETTLE_S = 20.0
+DETACH_GRACE_S = 3.0
+_DETACH_POLL_S = 0.1
 
 
 def cmd_cap(args: argparse.Namespace) -> int:
@@ -201,9 +209,36 @@ def _detach(args: argparse.Namespace, ws: Workspace, descriptor: Capability) -> 
                      chat_id=os.environ.get(jobs.CHAT_ID_ENV),
                      flow=getattr(args, "flow", "") or None,
                      output=getattr(args, "continuing", None))
-    print(f"job {job.job_id}\tcap={descriptor.name}\tpid={job.pid}"
+    job = _settle(ws, job)
+    if job.status != "running":
+        # 起了就结束：短的能力干完了、或门没过 / 包不合约。记录与产出都已经记好，这里只把话带回来
+        ok = job.status == "done"
+        print(f"job {job.job_id}\tcap={descriptor.name}\t{job.status}\n{job.result}",
+              file=sys.stdout if ok else sys.stderr)
+        return EXIT_OK if ok else EXIT_INVALID
+    print(f"job {job.job_id}\tcap={descriptor.name}\tpid={job.pid}\toutput={job.output or '-'}"
           f"\tnext=ai4sci show job {job.job_id}")
     return EXIT_OK
+
+
+def _settle(ws: Workspace, job: jobs.Job) -> jobs.Job:
+    """等子进程开了产出或结束（上限 DETACH_SETTLE_S）；开了产出再看 DETACH_GRACE_S 有没有当场
+    结束。"""
+    deadline = time.monotonic() + DETACH_SETTLE_S
+    while time.monotonic() < deadline:
+        job = jobs.load(ws.jobs, job.job_id)
+        if job.status != "running" or job.output:
+            break
+        time.sleep(_DETACH_POLL_S)
+    if job.status != "running":
+        return job
+    deadline = time.monotonic() + DETACH_GRACE_S
+    while time.monotonic() < deadline:
+        job = jobs.load(ws.jobs, job.job_id)
+        if job.status != "running":
+            break
+        time.sleep(_DETACH_POLL_S)
+    return job
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
@@ -232,5 +267,6 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
                 sub.add_argument(flag, dest=param.name, type=PARAM_TYPES[param.type],
                                  default=param.default, help=help_text)
         sub.add_argument("--detach", action="store_true",
-                         help="起成后台作业，立刻打印作业号；进度看 ai4sci show job <作业号>")
+                         help="起成后台作业：它开了产出就打印作业号与产出 id，当场没开起来的"
+                              "直接报；进度看 ai4sci show job <作业号>")
         sub.set_defaults(func=cmd_cap, module=module)

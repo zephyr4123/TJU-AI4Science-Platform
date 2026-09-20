@@ -261,8 +261,8 @@ def test_flow_take_then_stops_are_enforced_when_following_the_flow(tmp_path, mon
 
 
 def test_cap_detach_returns_a_job_id_and_the_job_finishes_on_its_own(tmp_path):
-    """外层 #63：`--detach` 立刻打印作业号退出；子进程自己跑完回写产出与结论；
-    show job / show jobs 能查。"""
+    """外层 #63：`--detach` 打印作业号退出；子进程自己跑完回写产出与结论；
+    show job / show jobs 能查。#118：返回之前等它开了产出，作业号旁边就有产出 id。"""
     import time
 
     from framework.workspace import jobs
@@ -273,9 +273,12 @@ def test_cap_detach_returns_a_job_id_and_the_job_finishes_on_its_own(tmp_path):
     proc = run_cli("cap", "verify", "--from", "analysis/1", "--from", "experiment/1", "--detach",
                    **in_pack(pack))
     assert proc.returncode == EXIT_OK, proc.stderr
-    head, *fields = proc.stdout.strip().split("\t")
+    first, *_ = proc.stdout.split("\n")
+    head, *fields = first.split("\t")
     job_id = head.split(" ", 1)[1]
-    assert head.startswith("job job-") and "cap=verify" in fields and fields[-1].endswith(job_id)
+    assert head.startswith("job job-") and "cap=verify" in fields
+    # verify 很短：--detach 等它开产出的那几秒里可能已经干完，两种样子都得说清产出在哪
+    assert "output=verification/1" in proc.stdout and ("done" in fields or "pid=" in fields[-3])
     for _ in range(300):
         if jobs.load(ws.jobs, job_id).status != "running":
             break
@@ -299,6 +302,25 @@ def test_cap_detach_returns_a_job_id_and_the_job_finishes_on_its_own(tmp_path):
             break
         time.sleep(0.2)
     assert job.chat_id == "chat-nope" and job.wake.startswith("failed: 对话不存在")
+
+
+def test_cap_detach_reports_a_job_that_dies_at_the_door(tmp_path):
+    """#118：演练里助理拿着作业号说「实验开了」，作业其实同一秒就被前置检查拒了。起了当场没开
+    起来的（这里是输入被改过、冻结核对不过）要在 --detach 的返回里报出来，退出码非零。"""
+    from framework.workspace import jobs
+
+    run_dir, pack = rf.make_run(tmp_path)
+    rf.write_analysis(pack, rf.good_analysis(run_dir))
+    # experiment/1 被 analysis/1 引用后冻住；改它一笔，verify 的输入核对就拒
+    with (run_dir / "ledger.tsv").open("a", encoding="utf-8") as ledger:
+        ledger.write("改坏了\n")
+    proc = run_cli("cap", "verify", "--from", "analysis/1", "--from", "experiment/1", "--detach",
+                   **in_pack(pack))
+    assert proc.returncode == EXIT_INVALID and proc.stdout == ""
+    assert proc.stderr.startswith("job job-") and "\tfailed\n" in proc.stderr
+    assert "改过了" in proc.stderr
+    job_id = proc.stderr.split("\t")[0].split(" ", 1)[1]
+    assert jobs.load(pack.workspace.jobs, job_id).status == "failed"
 
 
 def test_finished_job_drops_its_job_id_before_waking_the_chat(tmp_path, monkeypatch):
