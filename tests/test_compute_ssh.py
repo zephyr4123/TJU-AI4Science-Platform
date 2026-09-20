@@ -156,8 +156,14 @@ def test_cli_list_remove_default_and_add_rejects_missing_key(registry_file, caps
 live = pytest.mark.skipif(not LIVE, reason="AI4SCI_LIVE_SSH=<清单里的名字> 才连真机器")
 
 
+@pytest.fixture
+def real_registry(monkeypatch):
+    """连真机器的测试要读真清单（conftest 把它隔离掉了）。"""
+    monkeypatch.delenv(computes.PATH_ENV, raising=False)
+
+
 @live
-def test_live_check_sync_submit_wait_get_round_trip(tmp_path):
+def test_live_check_sync_submit_wait_get_round_trip(tmp_path, real_registry):
     ssh = computes.instance(LIVE)
     probe = ssh.check()
     assert probe.ok, probe.items
@@ -189,7 +195,7 @@ def test_live_check_sync_submit_wait_get_round_trip(tmp_path):
 
 
 @live
-def test_live_baseline_and_one_iteration_run_on_the_box(tmp_path):
+def test_live_baseline_and_one_iteration_run_on_the_box(tmp_path, real_registry):
     from framework.capabilities.auto_research import run_loop
     from framework.capabilities.design.baseline import run_baseline
     from framework.experiment.checkpoint import read_checkpoint
@@ -220,3 +226,14 @@ def test_live_baseline_and_one_iteration_run_on_the_box(tmp_path):
     assert stop.iter == 1
     results = json.loads((run_dir / "iters" / "iter_1" / "results.json").read_text("utf-8"))
     assert abs(results["metrics"]["val_mse"] - 0.001) < 1e-9
+
+
+def test_remote_prelude_reuses_the_boxes_pip_mirror_for_uv():
+    """AutoDL 直连 pypi.org 只有 19 KB/s：那台机器 pip 配了镜像就让 uv 也用，但只当额外索引
+    （镜像落后 PyPI 几天，缺的版本回 pypi.org），http 的镜像还要放行不安全主机。"""
+    from compute.ssh import PATH_PRELUDE
+
+    assert "pip config list" in PATH_PRELUDE and "global.index-url" in PATH_PRELUDE
+    assert "UV_INDEX=" in PATH_PRELUDE and "UV_INDEX_STRATEGY=unsafe-best-match" in PATH_PRELUDE
+    assert "UV_INSECURE_HOST" in PATH_PRELUDE and "UV_DEFAULT_INDEX" not in PATH_PRELUDE
+    assert "ServerAliveInterval=30" in _ssh()._ssh_argv()

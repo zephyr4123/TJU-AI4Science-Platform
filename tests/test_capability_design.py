@@ -293,3 +293,21 @@ def test_continue_refuses_when_materials_env_changed(ws, monkeypatch):
         design_cap.run(pack, inputs, Ports(runner=runner, compute=LocalCompute()),
                        feedback="改一版")
     assert runner.calls == 0
+
+
+def test_continue_without_feedback_reruns_only_the_baseline(ws, monkeypatch):
+    """外层 #118：环境没装成 / 机器换了 / 被叫停之后，接着干、不给修改意见 = 草稿不动、只重跑基线；
+    不起执行层（第一轮真任务里执行层为此空跑了一轮、被判「没产出」）。"""
+    workspace, domains = ws
+    monkeypatch.setattr(design_cap.paths, "domains_root", lambda: domains)
+    pack = new_pack(workspace)
+    inputs = Inputs(workspace.root, (), ())
+    first = ScriptedRunner([{**GOOD_DRAFT, "harness/launcher.sh": pf.LAUNCHER_SH}])
+    line = design_cap.run(pack, inputs, Ports(runner=first, compute=LocalCompute()))
+    assert line.startswith("design ok\t") and (pack / "baseline" / "sigma.json").is_file()
+    import shutil
+    shutil.rmtree(pack / "baseline")  # 像基线没跑成那样
+    idle = ScriptedRunner([])
+    line = design_cap.run(pack, inputs, Ports(runner=idle, compute=LocalCompute()))
+    assert idle.calls == 0 and line.startswith("design ok\tsession=-\tchanged=0")
+    assert (pack / "baseline" / "sigma.json").is_file() and "auto-research --from design/1" in line

@@ -34,8 +34,17 @@ UV_INSTALL = ("python3 -m pip install --user --quiet --force-reinstall uv"
               " </dev/null >/dev/null 2>&1"
               " || { [ -f /etc/network_turbo ] && . /etc/network_turbo; "
               "curl -LsSf https://astral.sh/uv/install.sh | sh </dev/null >/dev/null 2>&1; }")
-# 登录 shell 之外再保一手：uv 装在 ~/.local/bin，有的镜像的 profile 不加它
-PATH_PRELUDE = 'export PATH="$HOME/.local/bin:$PATH"'
+# 每条远端命令前面都跑的一段：登录 shell 之外再保一手 PATH（uv 装在 ~/.local/bin，有的镜像的 profile
+# 不加它）；那台机器的 pip 配了镜像源（AutoDL 配的是 aliyun）就让 uv 也用——实测 AutoDL 直连 pypi.org
+# 只有 19 KB/s，torch 的 CUDA 轮子几个 GB 一小时下不完；镜像会落后 PyPI 几天，所以只当额外的索引
+# （UV_INDEX + unsafe-best-match：镜像有就从镜像拿，没有的版本回 pypi.org），不当唯一的源
+PATH_PRELUDE = """export PATH="$HOME/.local/bin:$PATH"
+__idx="$(python3 -m pip config list 2>/dev/null \\
+  | sed -n "s/^global.index-url='\\(.*\\)'$/\\1/p" | head -1)"
+if [ -n "$__idx" ]; then
+  export UV_INDEX="$__idx" UV_INDEX_STRATEGY=unsafe-best-match
+  case "$__idx" in http://*) __h="${__idx#http://}"; export UV_INSECURE_HOST="${__h%%/*}";; esac
+fi"""
 
 
 class SshError(RuntimeError):
@@ -66,9 +75,12 @@ class SshCompute:
 
     # ── ssh 底座 ────────────────────────────────────────────────────────
     def _ssh_argv(self) -> list[str]:
+        # ServerAlive：长命令期间没输出时 NAT / 平台的 SSH 通道会掐连接，心跳保着
         return ["ssh", "-p", str(self.port), "-i", self.key, "-o", "BatchMode=yes",
                 "-o", "StrictHostKeyChecking=accept-new",
-                "-o", f"ConnectTimeout={_CONNECT_TIMEOUT_S}", f"{self.user}@{self.host}"]
+                "-o", f"ConnectTimeout={_CONNECT_TIMEOUT_S}",
+                "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=6",
+                f"{self.user}@{self.host}"]
 
     def _sh(self, script: str, *, timeout_s: float = 120.0,
             check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -115,15 +127,29 @@ class SshCompute:
 
     def run(self, remote_dir: str, cmd: list[str], env: dict[str, str],
             timeout_s: float) -> Outcome:
-        """同步跑一条短命令（远端建 venv、算清单）；退出码与两路输出原样带回。"""
-        exports = "\n".join(f"export {k}={shlex.quote(v)}" for k, v in env.items())
-        command = " ".join(shlex.quote(c) for c in cmd)
-        script = f"cd {shlex.quote(remote_dir)} || exit 127\n{exports}\n{command}"
+        """同步跑完一条命令（远端建 venv、算清单、跑基线），退出码与两路输出原样带回。
+
+        不在一条 ssh 连接里干等：建 venv 装 torch 要几十分钟，一条没输出的长连接会被掐（实测
+        AutoDL 上装到一半断了）。走 submit / wait 那条路——远端 nohup 起、轮询退出码——再把两份
+        日志 cat 回来。
+        """
         try:
-            proc = self._sh(script, timeout_s=timeout_s, check=False)
+            job = self.submit(remote_dir, cmd, env, timeout_s)
         except SshError as exc:
             return Outcome(exit_code=255, stdout="", stderr=str(exc))
-        return Outcome(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+        status = self.wait(job)
+        logs = f"{remote_dir}/{JOB_DIRNAME}"
+        try:
+            script = (f"cat {shlex.quote(logs + '/stdout.log')} 2>/dev/null; echo __AI4SCI_SEP__; "
+                      f"cat {shlex.quote(logs + '/stderr.log')} 2>/dev/null")
+            out = self._sh(script, check=False).stdout
+        except SshError as exc:
+            return Outcome(exit_code=255, stdout="", stderr=str(exc))
+        stdout, _, stderr = out.partition("__AI4SCI_SEP__\n")
+        if status.timed_out:
+            stderr += f"\n超过 {timeout_s:g} 秒，已杀"
+        code = status.exit_code if status.exit_code is not None else 255
+        return Outcome(exit_code=code, stdout=stdout, stderr=stderr)
 
     def submit(self, remote_dir: str, cmd: list[str], env: dict[str, str],
                timeout_s: float) -> Job:

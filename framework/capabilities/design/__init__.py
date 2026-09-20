@@ -63,12 +63,14 @@ DESCRIPTOR = Capability(
         "执行层改了别的目录、ruff 或契约校验没过：草稿留在盘上、问题一行一条，"
         "等修改意见改第二版。make_run0.sh 退非零或预检没过（门为零、离尽头不够一个门）："
         "停下来说清，这道题不值得跑。都过了就一次成活，结论行里是基线、σ、门与离尽头几个门。"
+        "基线没跑成（环境装不上、机器换了、被叫停）：接着干、不给修改意见，只重跑基线。"
     ),
     params=(
         Param("domain", "str", packs.DEFAULT_DOMAIN,
               "领域包名（domains/ 下的目录）：执行层提示按它追加领域约定", "领域包"),
         Param("feedback", "str", "",
-              "喂回执行层的修改意见（改第二版）；写 @<文件> 就读那个文件；空串是第一版", "修改意见",
+              "喂回执行层的修改意见（改第二版）；写 @<文件> 就读那个文件；接着干时不给就是"
+              "草稿不动、只重跑基线", "修改意见",
               in_flow=False),
     ),
     needs_executor=True,
@@ -87,6 +89,17 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, domain: str = packs.D
             raise CapabilityFailed(f"--feedback 指的文件不存在：{path}")
         feedback = path.read_text(encoding="utf-8")
     _prepare(output_dir, inputs.workspace)
+    oid = f"design/{output_dir.name}"
+    if _drafted(output_dir) and not feedback.strip():
+        # 接着干、没有修改意见 = 草稿留着不动，只重跑基线（环境没装成、机器换了、上次被叫停）。
+        # 第一轮真任务里执行层为这种情况空跑了一轮：核对完发现没什么可改，框架判「没产出」（#118）
+        problems = packs.validate_pack(output_dir, paths.domains_root(), require_baseline=False)
+        if problems:
+            raise CapabilityFailed("草稿不合约，先喂修改意见改一版：\n" + "\n".join(problems))
+        baseline = run_baseline(output_dir, ports.compute)
+        return (f"design ok\tsession=-\tchanged=0\tsealed=-\tlint=0\tvalidate=0\tcost_usd=0.0000"
+                f"\t{baseline}\tnext=对照需求「怎么算好」核对 harness/evaluate.py，报给人；"
+                f"人签了就 ai4sci cap auto-research --from {oid}")
     hypotheses = inputs.of_stage("hypothesis")
     hypothesis = "\n\n".join(_read_text_files(h) for h in hypotheses)
     try:
@@ -98,7 +111,6 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, domain: str = packs.D
             f"\tsealed={','.join(outcome.sealed) or '-'}\tlint={len(outcome.lint_problems)}"
             f"\tvalidate={len(outcome.validate_problems)}\tcost_usd={outcome.cost_usd:.4f}"
             f"\tlog={outcome.log_dir}")
-    oid = f"design/{output_dir.name}"
     if outcome.problems:
         # 草稿已经封在盘上，问题一行一条：协调层决定喂回执行层改第二版还是找人
         raise CapabilityFailed(
@@ -108,6 +120,11 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, domain: str = packs.D
     return (f"design ok\t{head}\t{baseline}"
             f"\tnext=对照需求「怎么算好」核对 harness/evaluate.py，报给人；"
             f"人签了就 ai4sci cap auto-research --from {oid}")
+
+
+def _drafted(pack: Path) -> bool:
+    """草稿在盘上：scoring.yaml 与封过的 harness/ 都在。"""
+    return (pack / packs.SCORING_NAME).is_file() and (pack / "harness" / "SHA256SUMS").is_file()
 
 
 def _prepare(pack: Path, workspace: Path) -> None:
