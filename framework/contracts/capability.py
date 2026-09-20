@@ -189,10 +189,12 @@ class Inputs:
 
 @dataclass
 class Ports:
-    """能力要用的端口，由 CLI（或 UI 后端、测试）按名字取好后注入；能力自己不按名字找后端。"""
+    """能力要用的端口，由 CLI（或 UI 后端、测试）按名字取好后注入；能力自己不按名字找后端。
+    `compute_label` 是那台算力的出处（名字、种类、主机名、GPU，P-23），记进产出的 meta。"""
 
     runner: Runner | None = None
     compute: Compute | None = None
+    compute_label: dict | None = None
 
 
 class CapabilityFailed(RuntimeError):

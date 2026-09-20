@@ -58,17 +58,19 @@ def judge_run(
 
     run_n = layout.iter_run(ctx.run_dir, iter_n)
     before = failures.readonly_hashes(ctx.work)
-    compute.put(ctx.work, run_n)
-    # harness 只经 $AI4SCI_PYTHON 起解释器（任务跑在这次实验自己的 venv 里），预算与内部重复次数也由
-    # 这里保证给出：launcher 不该再把它们写成常数
-    job = compute.submit(run_n, LAUNCH_CMD,
+    remote_n = compute.remote_dir_for(run_n)
+    compute.put(ctx.work, remote_n)
+    run_n.mkdir(parents=True, exist_ok=True)  # 本地那份：job.json 与回来的产物放这儿
+    # harness 只经 $AI4SCI_PYTHON 起解释器（任务跑在这次实验自己的 venv 里，在跑实验的那台机器上），
+    # 预算与内部重复次数也由这里保证给出：launcher 不该再把它们写成常数
+    job = compute.submit(remote_n, LAUNCH_CMD,
                          {env.SEED_ENV: str(ctx.seed),
-                          **env.harness_env(ctx.python, ctx.wall_clock_s, ctx.inner_k)},
+                          **env.harness_env(Path(ctx.python), ctx.wall_clock_s, ctx.inner_k)},
                          timeout_s=ctx.wall_clock_s * BUDGET_OVERRUN_RATIO)
     # 句柄立刻落盘：submit 与 wait 之间被杀时，续跑靠它接回或收尸（A-5）
     (run_n / "job.json").write_text(job.to_json(), encoding="utf-8")
     status = compute.wait(job)
-    compute.get(run_n, run_n)  # local 是 no-op；端口的调用点必须真实存在（P-8）
+    compute.get(remote_n, run_n)  # local 是 no-op；ssh 把产物 rsync 回来
 
     metric, problems = read_results(run_n / "results.json", ctx.metric_name)
     verdict = failures.classify_run(

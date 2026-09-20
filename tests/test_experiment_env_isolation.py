@@ -40,7 +40,7 @@ def test_open_builds_the_experiment_venv_and_leaves_the_design_venv_behind(tmp_p
     run_dir = open_run(pack)
     assert layout.venv_python(run_dir).is_file()
     assert not (layout.work(run_dir) / env.VENV_DIRNAME).exists()
-    assert load_context(run_dir).python == layout.venv_python(run_dir)
+    assert Path(load_context(run_dir).python) == layout.venv_python(run_dir)
 
 
 # 执行层这一轮写的 train.py：除了预测值，把自己跑在哪个解释器里也写进产物（A-12 的证据）

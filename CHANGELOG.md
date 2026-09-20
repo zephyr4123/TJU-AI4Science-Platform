@@ -9,6 +9,13 @@
 ## [Unreleased]
 
 ### 新增
+- 算力归人（纲领 P-23，外层 [#119](https://github.com/zephyr4123/TJU-AI4Science/issues/119) 决策、[#118](https://github.com/zephyr4123/TJU-AI4Science/issues/118) 实现）：按人的 `~/.config/ai4sci/computes.yaml`（`AI4SCI_COMPUTES` 可指向别处，读写点 `framework/computes.py`；只有 SSH、只认密钥——记录里没有 password 字段，读取点断言；`last_check` 记上次探测；`default:` 缺省）；`compute/ssh.py` 第二个算力适配器（rsync 过去回来、`bash -lc` 登录 shell、`nohup setsid` 起任务退出码写文件、远端杀进程组、`check` 探连接 / Python / uv 缺就 `pip install --user` 装 / GPU / 磁盘 / rsync）；端口加 `kind` `uv` `remote_dir_for` `sync` `run` `check`，`get_compute(kind, **params)`；`ai4sci compute add <名字> --ssh user@host:port --key <路径> [--root] [--default] | check | list | remove | default` 与 `show computes`（助理能跑，人只给 ssh 那一行与密钥路径）；`--compute <名字>` 查清单、不给用缺省，机器出处（名字、主机名、GPU）记进产出 meta 的 `compute`；`env resolve --compute <名字>` 到那台机器上算清单；远端只跑 harness——设计的基线与 AutoResearch 的每一轮在所选算力上跑（`build_venv_on` 在那台机器上按 env/ 建 venv，解释器路径与机器记进 checkpoint，续跑接同一台），执行层 agent 仍在本机。研究助理指南加「算力」一节。`tests/test_compute_ssh.py`：形状与清单不联网；`AI4SCI_LIVE_SSH=<名字>` 连真机器（2026-09-20 在 AutoDL RTX 5090 D 上跑过：探测、起任务一整圈、远端建 venv 跑基线、内环一轮）。
+- `design` 能力加 `--compute`（`needs_compute=True`）：基线在所选机器上跑。
+
+### 变更
+- `run_baseline(pack, compute)`、`open_experiment(..., compute, compute_label)` 都要算力端口；harness 的两路输出走 stderr，stdout 只留结论行。`Ports` 加 `compute_label`。`compute/local.py` 的 `IGNORED` 加 `.job`。
+
+### 新增
 - `ai4sci job stop <作业号>`（外层 [#115](https://github.com/zephyr4123/TJU-AI4Science/issues/115)，第一轮 PINNs 闭环里研究者说「先停一下」、助理如实答「平台没有停作业的命令」）：`workspace.jobs.stop` 杀整棵进程树（`compute.procs.kill_tree`，原 `_procs` 改成公开模块），作业记 `stopped` 与谁停的，它开的那次产出记失败「人停的」；不在跑的（结束的、lost 的）拒停。页面：流程题头「运行中」旁一枚「停止」，两下才停（`POST /workspaces/<id>/jobs/<jid>/stop`）。研究助理指南「什么时候找人」加一句。
 - `ai4sci env resolve [--python X.Y] <包名>…`（外层 [#117](https://github.com/zephyr4123/TJU-AI4Science/issues/117)，小白研究者「环境这些我不太懂」，助理手写的三行清单让基线一 import 就 `ModuleNotFoundError`）：`experiment.env.resolve_lock` 用 `uv pip compile` 按几个包名算出钉死传递依赖的完整清单写进 `materials/env/`（头部注明来源与「换机器要重算」）；指南改成教助理用它、不手写。`env.build_venv` 建完 `uv pip check`，清单不完整在开跑前报、指到 `env resolve`。
 

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from compute.local import LocalCompute
 from framework.contracts import output, requirement
 from framework.workspace import outputs
 from tests.fixtures import packs_factory as pf
@@ -519,7 +520,7 @@ def test_baseline_runs_make_run0_with_the_guaranteed_env_and_reports_headroom(tm
     scoring["metrics"][0]["attainable"] = 0.3
     pack = pf.make_pack(tmp_path, scoring=scoring)
     (pack.pack / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
-    line = run_baseline(pack.pack)  # 环境不在，基线自己建
+    line = run_baseline(pack.pack, LocalCompute())  # 环境不在，基线自己建
     assert line.startswith("inner_k=7\tbaseline=0.5\tsigma=0.02\tgate=0.04\t")
     assert "attainable=0.3\troom=0.2（5.0 个门）" in line
     seen = json.loads((pack.pack / "baseline-env.json").read_text(encoding="utf-8"))
@@ -538,11 +539,11 @@ def test_baseline_stops_when_the_headroom_check_fails_or_the_script_is_missing(t
     pack = pf.make_pack(tmp_path, scoring=scoring)
     (pack.pack / "harness" / "make_run0.sh").write_text(MAKE_RUN0_RECORDING, encoding="utf-8")
     with pytest.raises(CapabilityFailed, match="无解") as caught:
-        run_baseline(pack.pack)
+        run_baseline(pack.pack, LocalCompute())
     assert "baseline=0.5" in str(caught.value)
     (pack.pack / "harness" / "make_run0.sh").unlink()
     with pytest.raises(CapabilityFailed, match="make_run0.sh"):
-        run_baseline(pack.pack)
+        run_baseline(pack.pack, LocalCompute())
 
 
 # ── chat：终端里和两位助理聊 ────────────────────────────────────────────────

@@ -14,7 +14,8 @@ import logging
 import sys
 
 from backends import BackendNotFound, get_backend
-from compute import ComputeNotFound, get_compute
+from compute import ComputeNotFound
+from framework import computes
 from framework.contracts.capability import Ports
 from framework.workspace import root
 from framework.workspace.root import Workspace
@@ -39,12 +40,17 @@ def current_workspace() -> Workspace | int:
 
 
 def resolve_ports(backend: str | None, compute: str | None) -> Ports | int:
-    """按名字取端口，None 表示这个能力不要它。名字对不上退 2，绝不静默回退到默认后端（纲领 §5）。"""
+    """按名字取端口，None 表示这个能力不要它。算力名字查按人的清单（P-23），空串是清单里的缺省；
+    名字对不上退 2，绝不静默回退到默认后端（纲领 §5）。"""
     try:
-        return Ports(
-            runner=None if backend is None else get_backend(backend),
-            compute=None if compute is None else get_compute(compute),
-        )
-    except (BackendNotFound, ComputeNotFound) as exc:
+        ports = Ports(runner=None if backend is None else get_backend(backend))
+        if compute is not None:
+            registry = computes.load()
+            name = compute or registry.default
+            entry = registry.get(name)
+            ports.compute = computes.instance(name, registry)
+            ports.compute_label = entry.label()
+        return ports
+    except (BackendNotFound, ComputeNotFound, computes.ComputesInvalid) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE

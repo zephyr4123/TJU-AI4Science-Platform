@@ -139,12 +139,13 @@ def _write_score_baseline(pack_dir: Path) -> None:
     }), encoding="utf-8")
 
 
-def open_run(pack: pf.Pack) -> Path:
-    """在工作区里开一次实验产出（experiment/<n>/）并照设计那包铺好。"""
+def open_run(pack: pf.Pack, compute=None, compute_label=None) -> Path:
+    """在工作区里开一次实验产出（experiment/<n>/）并照设计那包铺好；缺省本机算力。"""
     run_dir, meta = outputs.open_output(
         pack.workspace, "experiment", title="auto-research", by="auto-research",
         inputs=[pack.output_id], params={}, flow=None, step=None, requirement=1, chat_id=None)
     open_experiment(run_dir, pack.pack, pack.workspace.requirement, output_id=meta.id,
+                    compute=compute or LocalCompute(), compute_label=compute_label,
                     domains_root=pack.domains_root)
     return run_dir
 

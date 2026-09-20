@@ -1,36 +1,49 @@
 """本地算力后端：put=cp，submit=Popen 新进程组，cancel=killpg，get=no-op。
 
-本地"远端"就是本机另一个目录，所以 `get` 在两边同一目录时什么都不用做。
-即便如此也照走同一个 Protocol：调用点现在就存在（P-8），ssh / slurm 是第二个
-实现时才校验接口有没有漏，接口不能等到那时候再长出来。
+本地"远端"就是本机另一个目录（`remote_dir_for` 是恒等映射），所以 `get` 在两边同一目录时
+什么都不用做。即便如此也照走同一个 Protocol：调用点现在就存在（P-8），ssh 是第二个实现，
+接口是它校验出来的。
 """
 
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
-from compute import ExitStatus, Job
+from compute import ExitStatus, Job, Outcome, Probe
 from compute.procs import group_alive, kill_tree
 
 # 快照不带过去的目录：`.git` 是 work/ 的状态载体（run_N 是只读快照，不该有仓）；
 # `.ai4sci` 是执行层事件流日志、`__pycache__` 是字节码，带过去只会让每轮快照越滚越大；
-# `.venv` 是环境不是产物，venv 也不可搬迁，harness 经 $AI4SCI_PYTHON 用 run 自己那份。
-IGNORED = (".git", ".ai4sci", "__pycache__", ".venv")
+# `.venv` 是环境不是产物，venv 也不可搬迁，harness 经 $AI4SCI_PYTHON 用 run 自己那份；
+# `.job` 是上一次 submit 的日志与退出码。
+IGNORED = (".git", ".ai4sci", "__pycache__", ".venv", ".job")
 JOB_DIRNAME = ".job"
 _POLL_S = 0.05
 
 
 class LocalCompute:
+    kind = "local"
+
     def __init__(self) -> None:
         # 本进程 submit 出去的任务留着 Popen：只有亲爹拿得到退出码。
         # 读回的 job（续跑）不在这里，wait 会走"已死、退出码未知"那条路。
         self._live: dict[int, subprocess.Popen] = {}
 
-    def put(self, local_dir: Path, remote_dir: Path) -> None:
+    @property
+    def uv(self) -> list[str]:
+        """本机的 uv 是平台 venv 里的那份（与 experiment/env.py 同一份），不找系统 PATH 上的。"""
+        return [sys.executable, "-m", "uv"]
+
+    def remote_dir_for(self, local_dir: Path) -> str:
+        return str(Path(local_dir).resolve())
+
+    def put(self, local_dir: Path, remote_dir: str) -> None:
         remote_dir = Path(remote_dir)
         if Path(local_dir).resolve() == remote_dir.resolve():
             return
@@ -42,8 +55,30 @@ class LocalCompute:
             )
         shutil.copytree(local_dir, remote_dir, ignore=shutil.ignore_patterns(*IGNORED))
 
+    def sync(self, local_dir: Path, remote_dir: str) -> None:
+        """同步过去，允许已在（设计那包建环境、跑基线）；本地跑本地就是同一个目录，什么都不做。"""
+        remote_dir = Path(remote_dir)
+        if Path(local_dir).resolve() == remote_dir.resolve():
+            return
+        shutil.copytree(local_dir, remote_dir, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns(*IGNORED))
+
+    def run(self, remote_dir: str, cmd: list[str], env: dict[str, str],
+            timeout_s: float) -> Outcome:
+        """同步跑一条短命令（建 venv、算清单）；超时按非零退出报，不吞。"""
+        try:
+            proc = subprocess.run(cmd, cwd=remote_dir, env={**os.environ, **env},
+                                  stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                  timeout=timeout_s, check=False)
+        except subprocess.TimeoutExpired as exc:
+            return Outcome(exit_code=124, stdout=str(exc.stdout or ""),
+                           stderr=f"{str(exc.stderr or '')}\n超过 {timeout_s:g} 秒")
+        except OSError as exc:
+            return Outcome(exit_code=127, stdout="", stderr=str(exc))
+        return Outcome(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+
     def submit(
-        self, remote_dir: Path, cmd: list[str], env: dict[str, str], timeout_s: float
+        self, remote_dir: str, cmd: list[str], env: dict[str, str], timeout_s: float
     ) -> Job:
         remote_dir = Path(remote_dir).resolve()
         assert remote_dir.is_dir(), f"提交前 remote_dir 必须已经就位：{remote_dir}"
@@ -90,12 +125,29 @@ class LocalCompute:
     def cancel(self, job: Job) -> None:
         kill_tree(job.pid, job.pgid)
 
-    def get(self, remote_dir: Path, local_dir: Path) -> None:
+    def get(self, remote_dir: str, local_dir: Path) -> None:
         remote_dir, local_dir = Path(remote_dir), Path(local_dir)
         if remote_dir.resolve() == local_dir.resolve():
             return  # 本地跑本地：产物本来就在那儿，拷回自己是白费一次 IO
         shutil.copytree(remote_dir, local_dir, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns(*IGNORED))
+
+    def check(self) -> Probe:
+        """本机：解释器、uv、有没有 GPU（nvidia-smi 在不在）、磁盘。"""
+        probe = Probe(hostname=platform.node(), python=platform.python_version())
+        probe.items.append(("Python", True, f"{probe.python}（平台 venv）"))
+        uv = subprocess.run([*self.uv, "--version"], capture_output=True, text=True, check=False)
+        probe.uv = uv.stdout.strip().split()[-1] if uv.returncode == 0 else ""
+        probe.items.append(("uv", uv.returncode == 0, probe.uv or "平台 venv 里没有 uv：make venv"))
+        smi = shutil.which("nvidia-smi")
+        if smi:
+            out = subprocess.run([smi, "--query-gpu=name,memory.total", "--format=csv,noheader"],
+                                 capture_output=True, text=True, check=False)
+            probe.gpu = out.stdout.strip().splitlines()[0] if out.returncode == 0 else ""
+        probe.items.append(("GPU", True, probe.gpu or "无"))
+        usage = shutil.disk_usage(Path.home())
+        probe.items.append(("磁盘", True, f"{usage.free // 2**30} GB 可用"))
+        return probe
 
 
 def make_compute() -> LocalCompute:

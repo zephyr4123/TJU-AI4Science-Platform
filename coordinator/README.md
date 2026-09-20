@@ -120,6 +120,15 @@ stages:
 
 **联网**：这几种情况去查——研究者给的是链接不是文件；要知道论文有没有公开的代码与数据；库的 API、报错的含义拿不准；要近期的事实。用你**自带的联网搜索与网页读取工具**，不要在 Bash 里用 curl / wget 之类命令去凑（也没放行），不要拿记忆里的版本号、API 当事实。查到的东西写进文件时带上来源链接，研究者要能回头核。下载论文不用自己动手：`pdf` 的 `--input` 直接收链接，原件会存成 `source.pdf`。
 
+## 算力：在哪台机器上跑
+
+训练与评分（harness）在哪台机器上跑，由算力清单定（纲领 P-23）：`ai4sci show computes` 看有哪几台（名字、种类、GPU、可不可用），出厂只有 `local`（本机）。清单是按人的（`~/.config/ai4sci/computes.yaml`，不在工作区里），只有 SSH、只认密钥。
+
+- **接一台机器是你的事**：研究者说「我租了台机器」，给你 ssh 那一行（`user@host:port`）和密钥路径，你就 `ai4sci compute add <名字> --ssh user@host:port --key <密钥路径> --root <远端目录>`——它写进清单并就地探测（连接、Python、uv 缺就装、GPU、磁盘、rsync），一行一项打给你，照实转告研究者。AutoDL 这类平台远端目录用它的数据盘（`/root/autodl-tmp/ai4sci`）。主机、端口、密钥路径都不是秘密；密码不收——研究者只有密码就让他把本机公钥贴到那台机器上（AutoDL 控制台有「SSH 公钥」设置）。机器关机重开端口会变：`ai4sci compute check <名字>` 报连不上就问研究者新的端口，再 `compute add` 同名覆盖。
+- **用哪台**：需求里写的是要求（要 GPU、单次多少分钟），不是机器名；清单里有合适的就在 `design` / `auto-research` 上加 `--compute <名字>`（不给就用清单里的缺省，`ai4sci compute default <名字>` 改缺省）。需求要 GPU 而清单里没有，告诉研究者「去接一台」，不要在本机硬跑。
+- **环境按那台机器算**：`ai4sci env resolve --compute <名字> --python <X.Y> <包名>…`，CUDA 版 torch 只在 GPU 机器上解析得对；换机器就重算一次（`--continue design/<n>` 会拒，重开一次设计）。
+- 远端只跑 harness：写代码的执行层在本机，产物回来在工作区里，你看的目录不变。每次产出的 `meta.yaml` 记着在哪台机器上跑的。
+
 ## 什么时候找人
 
 - 需求要写或要改（问题、材料、怎么算好、预算）：这是人 + 你一起拍板的，不要自己编；写完由人确认。
@@ -141,4 +150,4 @@ stages:
 
 ## 命令行上有什么
 
-六类东西：`cap` 能力（你调用的 tool，`--from` 说读谁）、`requirement confirm` / `sign` 人的确认（确认需求、给产出签字，页面上做）、`show` 查询（只读：`workspace` / `outputs` / `output <id>` / `jobs` / `job <id>` / `flows` / `caps` / `workflows` / `templates` / `template <name>`）、`flow take` 取流程与 `output new` 建产出、`job stop <作业号>` 停作业、`env resolve` 按包名算环境清单、`skill list` / `show <name>` / `run <name> …` 工具包、`workspace` / `chat` / `serve` 入口。每次产出的记录在它目录里的 `meta.yaml`（谁产的、读了谁、在哪条流程第几项下、按哪版需求），签字在 `signed.json`；`.ai4sci/jobs/` 记每个后台作业。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、做确认，看板显示的就是这些文件。
+六类东西：`cap` 能力（你调用的 tool，`--from` 说读谁）、`requirement confirm` / `sign` 人的确认（确认需求、给产出签字，页面上做）、`show` 查询（只读：`workspace` / `outputs` / `output <id>` / `jobs` / `job <id>` / `flows` / `caps` / `workflows` / `templates` / `template <name>`）、`flow take` 取流程与 `output new` 建产出、`job stop <作业号>` 停作业、`env resolve` 按包名算环境清单、`compute add / check / list / remove / default` 接机器、`skill list` / `show <name>` / `run <name> …` 工具包、`workspace` / `chat` / `serve` 入口。每次产出的记录在它目录里的 `meta.yaml`（谁产的、读了谁、在哪条流程第几项下、按哪版需求），签字在 `signed.json`；`.ai4sci/jobs/` 记每个后台作业。人多半在页面上（`ai4sci serve` 端出的 `ui/web`）和你说话、做确认，看板显示的就是这些文件。

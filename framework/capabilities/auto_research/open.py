@@ -16,6 +16,7 @@ from typing import Any
 
 import yaml
 
+from compute import Compute
 from framework import paths
 from framework.experiment import env, gitwork, headroom, layout
 from framework.experiment import pack as packs
@@ -35,12 +36,14 @@ IGNORED = (".git", layout.EXECUTOR_SCRATCH, "__pycache__", env.VENV_DIRNAME, "me
 
 
 def open_experiment(
-    run_dir: Path, pack: Path, requirement: Path, *, output_id: str,
-    domains_root: Path | None = None, chat_id: str | None = None,
+    run_dir: Path, pack: Path, requirement: Path, *, output_id: str, compute: Compute,
+    compute_label: dict[str, Any] | None = None, domains_root: Path | None = None,
+    chat_id: str | None = None,
 ) -> None:
     """把已经建好的产出目录 `experiment/<n>/` 铺成一次实验：校验 → 预检 → 拷 work/ → 快照 scoring
-    与需求
-    → 快照领域包 → 建环境 → git init → 基线进 checkpoint。
+    与需求 → 快照领域包 → 在 `compute` 上建环境 → git init → 基线进 checkpoint。
+    环境建在哪台机器上、解释器在那台机器上的路径、机器的出处（`compute_label`）都记进 checkpoint：
+    每一轮 harness 都在那台机器上跑，续跑也接同一台（P-23）。
 
     开跑是花钱的第一步，所以两道前置检查都在这：包不合约不开、预检说这道题无解不开（都是
     `PackInvalid`）。
@@ -67,7 +70,10 @@ def open_experiment(
     scoring = load_scoring(run_dir)
     _snapshot_domain(domains_root / scoring.get("domain", packs.DEFAULT_DOMAIN), run_dir)
     try:
-        env.build_venv(work, layout.venv(run_dir))
+        remote_work = compute.remote_dir_for(work)
+        compute.sync(work, remote_work)
+        remote_venv = compute.remote_dir_for(layout.venv(run_dir))
+        python = env.build_venv_on(compute, remote_work, remote_venv)
     except env.EnvBuildError:
         for child in run_dir.iterdir():
             if child.name != "meta.yaml":
@@ -79,6 +85,7 @@ def open_experiment(
     write_checkpoint(run_dir, {
         "output": output_id, "last_iter": 0, "best_iter": 0, "best_metric": best_metric,
         "best_commit": best_commit, "stop_reason": None, "chat_id": chat_id,
+        "python": python, "compute": compute_label or {"name": compute.kind, "kind": compute.kind},
     })
     LOGGER.info("experiment_open run_dir=%s best_metric=%s", run_dir, best_metric)
 

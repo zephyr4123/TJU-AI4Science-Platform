@@ -91,6 +91,8 @@ class Meta:
     finished_at: str | None = None
     result: str = ""
     error: str = ""
+    # 在哪台机器上跑的（名字、种类、主机名、GPU；P-23 的出处）；不用算力的能力是 None
+    compute: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         doc = asdict(self)

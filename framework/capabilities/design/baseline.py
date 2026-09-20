@@ -10,28 +10,26 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
+import sys
 from pathlib import Path
 
+from compute import Compute
 from framework.contracts.capability import CapabilityFailed
 from framework.experiment import env, headroom
 from framework.experiment import pack as packs
 
+# 基线的墙钟上限：make_run0 跑 1 + repeat_k 次，每次 wall_clock_s；给足再加一截
+BASELINE_TIMEOUT_RATIO = 1.5
 
-def run_baseline(pack: Path) -> str:
-    """跑完返回结论行的尾巴（inner_k 与预检摘要）；跑不了、预检没过就抛 CapabilityFailed。"""
-    pack = Path(pack)
+
+def run_baseline(pack: Path, compute: Compute) -> str:
+    """在 `compute` 上跑基线：那包同步过去 → 那边按 env/ 建 venv → 起 make_run0.sh → 回来 → 预检；
+    跑完返回结论行的尾巴（inner_k 与预检摘要）；跑不了、预检没过就抛 CapabilityFailed。
+    本机算力时「过去」「回来」都是同一个目录，什么都不搬（P-23：远端只跑 harness）。"""
+    pack = Path(pack).resolve()
     script = pack / "harness" / "make_run0.sh"
     if not script.is_file():
         raise CapabilityFailed("缺 harness/make_run0.sh：评分脚本还没写出来")
-    python = env.venv_python(pack / env.VENV_DIRNAME)
-    if not python.is_file():
-        # 环境是基线的一部分，不是人要记得先跑的另一条命令；建不出来就是基线跑不了
-        try:
-            python = env.build_venv(pack, pack / env.VENV_DIRNAME)
-        except env.EnvBuildError as exc:
-            raise CapabilityFailed(str(exc)) from exc
     scoring = packs.read_scoring(pack)
     budget = scoring.get("budget") if isinstance(scoring, dict) else None
     if not isinstance(budget, dict) or not isinstance(budget.get("wall_clock_s"), (int, float)):
@@ -40,12 +38,24 @@ def run_baseline(pack: Path) -> str:
     if not isinstance(inner_k, int) or inner_k < 1:
         raise CapabilityFailed(
             f"{packs.SCORING_NAME} 的 budget.inner_k 要是正整数，实际 {inner_k!r}")
-    harness_env = env.harness_env(python, float(budget["wall_clock_s"]), inner_k)
-    # stdout / stderr 直通：σ 那一行要让协调层当场看到
-    proc = subprocess.run(["bash", str(script)], cwd=pack,
-                          env={**os.environ, **harness_env}, check=False)
-    if proc.returncode != 0:
-        raise CapabilityFailed(f"make_run0.sh 退出码 {proc.returncode}，基线不可信")
+    repeat_k = budget.get("repeat_k", 3)
+    remote = compute.remote_dir_for(pack)
+    compute.sync(pack, remote)
+    # 环境是基线的一部分，不是人要记得先跑的另一条命令；建不出来就是基线跑不了
+    try:
+        python = env.build_venv_on(compute, remote, f"{remote}/{env.VENV_DIRNAME}")
+    except env.EnvBuildError as exc:
+        raise CapabilityFailed(str(exc)) from exc
+    harness_env = env.harness_env(Path(python), float(budget["wall_clock_s"]), inner_k)
+    timeout_s = float(budget["wall_clock_s"]) * (1 + int(repeat_k)) * BASELINE_TIMEOUT_RATIO
+    outcome = compute.run(remote, ["bash", "harness/make_run0.sh"], harness_env, timeout_s)
+    # harness 的两路输出都走 stderr（诊断）：stdout 只留给协调层读的那一行结论（P-14）
+    for text in (outcome.stdout, outcome.stderr):
+        if text.strip():
+            print(text.rstrip(), file=sys.stderr)
+    compute.get(remote, pack)
+    if not outcome.ok:
+        raise CapabilityFailed(f"make_run0.sh 退出码 {outcome.exit_code}，基线不可信")
     try:
         room = headroom.assess(pack)
     except FileNotFoundError as exc:

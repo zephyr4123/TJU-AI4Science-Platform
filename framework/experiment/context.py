@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from framework.experiment import layout
+from framework.experiment.checkpoint import read_checkpoint
 from framework.experiment.pack import DEFAULT_DOMAIN, primary_metric, read_scoring
 
 DEFAULT_PATIENCE = 5  # scoring 不写 budget.patience 时的缺省（读取点在 load_context）
@@ -47,9 +48,10 @@ class RunContext:
     patience: int
     max_cost_usd: float | None
     seed: int
-    python: Path
+    python: str  # harness 的解释器：在跑实验的那台机器上的路径（checkpoint 记的）
     domain: str  # 设计时选的领域包：执行层的 skill 清单按它拼（纲领 P-22）
     domain_extra: str
+    compute_name: str  # 在哪台机器上跑（checkpoint 记的名字），续跑要接同一台
 
 
 # --------------------------------------------------------------------------
@@ -111,11 +113,15 @@ def load_context(run_dir: Path) -> RunContext:
             f"（accept_sigma={budget['accept_sigma']}）：请在 scoring.yaml 的 budget.min_delta 里"
             "显式给出最小改进量，或者把基线重跑出真实的 σ"
         )
-    python = layout.venv_python(run_dir)
-    assert python.is_file(), (
-        f"实验的任务环境不存在：{python}"
-        "（开实验时应已建好；目录被搬动或 .venv 被删就重开一次实验）"
-    )
+    state = read_checkpoint(run_dir)
+    python = state.get("python")
+    assert isinstance(python, str) and python, (
+        "checkpoint 里没有 harness 的解释器路径（开实验时在算力上建环境后记的）：重开一次实验")
+    if state.get("compute", {}).get("kind", "local") == "local":
+        assert Path(python).is_file(), (
+            f"实验的任务环境不存在：{python}"
+            "（开实验时应已建好；目录被搬动或 .venv 被删就重开一次实验）"
+        )
     return RunContext(
         run_dir=run_dir, work=work,
         ledger_path=layout.ledger(run_dir), question=read_question(run_dir),
@@ -124,5 +130,6 @@ def load_context(run_dir: Path) -> RunContext:
         wall_clock_s=float(budget["wall_clock_s"]), inner_k=inner_k,
         max_iterations=int(budget["max_iterations"]), patience=patience, max_cost_usd=max_cost,
         seed=int(seed), python=python, domain=read_domain(run_dir),
+        compute_name=str(state.get("compute", {}).get("name", "local")),
         domain_extra=read_domain_extra(run_dir),
     )

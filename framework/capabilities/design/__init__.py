@@ -72,6 +72,7 @@ DESCRIPTOR = Capability(
               in_flow=False),
     ),
     needs_executor=True,
+    needs_compute=True,
     continuable=True,
 )
 
@@ -79,7 +80,7 @@ DESCRIPTOR = Capability(
 def run(output_dir: Path, inputs: Inputs, ports: Ports, *, domain: str = packs.DEFAULT_DOMAIN,
         feedback: str = "") -> str:
     output_dir = Path(output_dir).resolve()
-    assert ports.runner is not None, "design 需要执行层端口"
+    assert ports.runner is not None and ports.compute is not None, "design 需要执行层与算力两个端口"
     if feedback.startswith("@"):
         path = Path(feedback[1:])
         if not path.is_file():
@@ -103,7 +104,7 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, domain: str = packs.D
         raise CapabilityFailed(
             f"design draft\t{head}\n" + "\n".join(outcome.problems)
             + f"\nnext=把上面的问题喂回：ai4sci cap design --continue {oid} --feedback @<文件>")
-    baseline = run_baseline(output_dir)
+    baseline = run_baseline(output_dir, ports.compute)
     return (f"design ok\t{head}\t{baseline}"
             f"\tnext=对照需求「怎么算好」核对 harness/evaluate.py，报给人；"
             f"人签了就 ai4sci cap auto-research --from {oid}")

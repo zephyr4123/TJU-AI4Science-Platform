@@ -1,5 +1,5 @@
 """`ai4sci show workspaces | workspace | outputs [<stage>] | output <stage>/<n> | jobs | job <id>
-| flows | caps | workflows | templates | template <name>`
+| flows | caps | workflows | templates | template <name> | computes`
 
 在 cli 层。这一组只看不做：不产出文件、不起会话、不改任何东西。与 `ai4sci serve` 的 GET
 端点读的是同一批函数（`chat.boards`）——页面和终端是同一份数据的两张脸。workspace / outputs /
@@ -13,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 
-from framework import paths
+from framework import computes, paths
 from framework.capabilities import discover
 from framework.chat import boards
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, current_workspace
@@ -109,6 +109,18 @@ def cmd_output(args: argparse.Namespace) -> int:
     for entry in detail["files"]:
         print(f"file\t{entry['path']}\t{entry['size']}")
     return EXIT_OK if detail["status"] != "failed" else EXIT_INVALID
+
+
+def cmd_computes(args: argparse.Namespace) -> int:
+    """按人的算力清单（P-23）：名字、种类、去向、GPU、上次探测过没过；缺省那台标出来。"""
+    try:
+        registry = computes.load()
+    except computes.ComputesInvalid as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_INVALID
+    for entry in registry.entries.values():
+        print(entry.summary() + ("\t(缺省)" if entry.name == registry.default else ""))
+    return EXIT_OK
 
 
 def _signed_word(signed) -> str:
@@ -269,3 +281,5 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     tpl = what.add_parser("template", help="一份需求模板的原文")
     tpl.add_argument("name")
     tpl.set_defaults(func=cmd_template)
+    comps = what.add_parser("computes", help="按人的算力清单：名字、种类、去向、GPU、状态（P-23）")
+    comps.set_defaults(func=cmd_computes)

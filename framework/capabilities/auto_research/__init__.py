@@ -117,7 +117,8 @@ def run(
         pack = inputs.one_of("design", "开实验")
         try:
             open_experiment(output_dir, pack, requirement.path(inputs.workspace),
-                            output_id=f"experiment/{output_dir.name}",
+                            output_id=f"experiment/{output_dir.name}", compute=ports.compute,
+                            compute_label=ports.compute_label,
                             chat_id=os.environ.get(CHAT_ID_ENV))
         except (PackInvalid, EnvBuildError) as exc:
             raise CapabilityFailed(str(exc)) from exc

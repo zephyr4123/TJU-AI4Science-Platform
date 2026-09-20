@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from compute.local import LocalCompute
 from framework import paths
 from framework.capabilities import design as design_cap
 from framework.capabilities.design import drafting as design
@@ -268,11 +269,12 @@ def test_capability_entry_runs_draft_then_baseline_and_reads_hypothesis(ws, monk
     inputs = Inputs(workspace.root, (hyp,), ("hypothesis/1",))
     runner = ScriptedRunner([{**GOOD_DRAFT, "harness/launcher.sh": pf.BARE_PYTHON_LAUNCHER_SH}])
     with pytest.raises(CapabilityFailed, match="--continue design/1 --feedback"):
-        design_cap.run(pack, inputs, Ports(runner=runner))
+        design_cap.run(pack, inputs, Ports(runner=runner, compute=LocalCompute()))
     assert "先加一层。" in runner.prompts[0]
     # 喂回第二版：修好 launcher，跑基线出 baseline/
     runner = ScriptedRunner([{"harness/launcher.sh": pf.LAUNCHER_SH}])
-    line = design_cap.run(pack, inputs, Ports(runner=runner), feedback="别裸调 python")
+    ports = Ports(runner=runner, compute=LocalCompute())
+    line = design_cap.run(pack, inputs, ports, feedback="别裸调 python")
     assert line.startswith("design ok\t") and "auto-research --from design/1" in line
     assert (pack / "baseline" / "sigma.json").is_file()
 
@@ -288,5 +290,6 @@ def test_continue_refuses_when_materials_env_changed(ws, monkeypatch):
     runner = ScriptedRunner([{"harness/evaluate.py": pf.EVALUATE_PY}])
     inputs = Inputs(workspace.root, (), ())
     with pytest.raises(CapabilityFailed, match="requirements.lock.*重开一次设计"):
-        design_cap.run(pack, inputs, Ports(runner=runner), feedback="改一版")
+        design_cap.run(pack, inputs, Ports(runner=runner, compute=LocalCompute()),
+                       feedback="改一版")
     assert runner.calls == 0

@@ -32,15 +32,15 @@ def next_id(workspace: Workspace, slug: str) -> OutputId:
 
 def open_output(workspace: Workspace, slug: str, *, title: str, by: str, inputs: list[str],
                 params: dict, flow: str | None, step: int | None, requirement: int | None,
-                chat_id: str | None) -> tuple[Path, Meta]:
-    """新开一次产出：建目录、记输入此刻的 hash、写 running 的 meta。"""
+                chat_id: str | None, compute: dict | None = None) -> tuple[Path, Meta]:
+    """新开一次产出：建目录、记输入此刻的 hash、写 running 的 meta（在哪台机器上跑也记上）。"""
     oid = next_id(workspace, slug)
     directory = oid.path(workspace.root)
     directory.mkdir(parents=True)
     recorded = [output.Input(i, output.tree_hash(parse_id(i).path(workspace.root))) for i in inputs]
     meta = Meta(id=str(oid), stage=slug, title=title, by=by, created_at=output.now(),
                 inputs=recorded, params=dict(params), flow=flow, step=step,
-                requirement=requirement, chat_id=chat_id)
+                requirement=requirement, chat_id=chat_id, compute=compute)
     output.write_meta(directory, meta)
     LOGGER.info("output_open id=%s by=%s from=%s flow=%s step=%s", oid, by, inputs, flow, step)
     return directory, meta

@@ -28,7 +28,7 @@ def _wait_group_gone(pgid: int, limit_s: float = 5.0) -> bool:
 
 
 def test_get_compute_local_and_unknown_name_lists_available():
-    assert available_computes() == ["local"]
+    assert available_computes() == ["local", "ssh"]
     assert hasattr(get_compute("local"), "submit")
     with pytest.raises(ComputeNotFound) as exc:
         get_compute("slurm")

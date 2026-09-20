@@ -25,11 +25,12 @@ import importlib.util
 import logging
 import re
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
+from compute import Compute, Outcome
 
 LOGGER = logging.getLogger("ai4sci.env")
 
@@ -130,70 +131,98 @@ def read_env(task_dir: Path) -> tuple[EnvSpec | None, list[str]]:
 
 
 def build_venv(task_dir: Path, venv_dir: Path) -> Path:
-    """按 `<task_dir>/env/` 建（或重建）venv 到 venv_dir，返回它的解释器路径。
+    """本机建 venv：`build_venv_on(LocalCompute)` 的便捷写法，返回解释器路径。"""
+    from compute.local import LocalCompute  # 本地适配器只在这条便捷路径上用，避免包顶层就拉它
 
-    task_dir 是"包形状"的目录：设计产出 `design/<n>/` 或实验里的 `work/`，两处都有 env/。
-    三步：`uv venv --python X.Y`（找不到就拉一个到 uv 的用户级目录）→ 有依赖就 `uv pip sync`
-    （精确对齐 lock，多的卸、少的装）→ 起一次解释器核对版本。每一步失败都带 stderr 抛
-    `EnvBuildError`，半截的 venv 留在原地给人看，不做"看起来建好了"。
+    local = LocalCompute()
+    task_dir, venv_dir = Path(task_dir).resolve(), Path(venv_dir).resolve()
+    return Path(build_venv_on(local, str(task_dir), str(venv_dir)))
+
+
+def build_venv_on(compute: Compute, task_dir: str, venv_dir: str) -> str:
+    """在一台算力上按 `<task_dir>/env/` 建（或重建）venv 到 venv_dir，返回那台机器上的解释器路径。
+
+    task_dir / venv_dir 都是**那台机器上**的路径（本机就是本机路径；ssh 由 `remote_dir_for` 映射）。
+    `env/` 的规格在本机读（调用方先 `sync` 过去）：设计产出 `design/<n>/` 或实验里的 `work/`。
+    四步：`uv venv --python X.Y`（找不到就拉一个）→ 有依赖就 `uv pip sync`（精确对齐 lock）→
+    `uv pip check`（清单完整）→ 起一次解释器核对版本。每一步失败都带 stderr 抛 `EnvBuildError`，
+    半截的 venv 留在原地给人看，不做"看起来建好了"。uv 是那台机器上的（`compute.uv`）。
     """
-    spec, problems = read_env(task_dir)
+    local_task = _local_mirror(compute, task_dir)
+    spec, problems = read_env(local_task)
     if spec is None:
         raise EnvBuildError("env/ 不合约，建不了环境：\n" + "\n".join(problems))
-    if importlib.util.find_spec("uv") is None:
+    if compute.kind == "local" and importlib.util.find_spec("uv") is None:
         raise EnvBuildError(
             "uv 不在平台 venv 里，建不了任务环境：跑 `make venv` 重装（pyproject 已声明 uv），"
             "不会退回到平台 venv 跑任务"
         )
-    venv_dir = Path(venv_dir)
-    uv = [sys.executable, "-m", "uv"]
-    _run(uv + ["venv", "--quiet", "--clear", "--python", spec.python_version, str(venv_dir)],
-         what=f"uv venv --python {spec.python_version}")
-    python = venv_python(venv_dir)
+    uv = list(compute.uv)
+    python = f"{venv_dir}/bin/python"
+    lock = f"{task_dir}/{ENV_DIRNAME}/{REQUIREMENTS_NAME}"
+    _run_on(compute, task_dir,
+            [*uv, "venv", "--quiet", "--clear", "--python", spec.python_version, venv_dir],
+            what=f"uv venv --python {spec.python_version}", timeout_s=900)
     if spec.requirements:
-        lock = env_dir(task_dir) / REQUIREMENTS_NAME
-        _run(uv + ["pip", "sync", "--quiet", "--python", str(python), str(lock)],
-             what=f"uv pip sync {lock}")
+        _run_on(compute, task_dir, [*uv, "pip", "sync", "--quiet", "--python", python, lock],
+                what=f"uv pip sync {lock}", timeout_s=3600)
+        check = compute.run(task_dir, [*uv, "pip", "check", "--python", python], {}, 300)
+        if not check.ok:
+            detail = (check.stdout + check.stderr).strip()[-_STDERR_TAIL:]
+            raise EnvBuildError(
+                f"{lock} 不完整：装完缺依赖（uv pip check）：\n{detail}\n"
+                "清单要是 pip freeze 那样把传递依赖都钉上的；没有现成环境就用 "
+                "ai4sci env resolve <包名>… 重新算一份"
+            )
     else:
         LOGGER.info("env_build venv=%s requirements=0 skip_sync", venv_dir)
-
-    if spec.requirements:
-        _check_complete(uv, python, env_dir(task_dir) / REQUIREMENTS_NAME)
-    probe = _run([str(python), "-c",
-                  "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"],
-                 what="核对解释器版本")
-    actual = probe.stdout.strip()
+    version_probe = "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
+    probe = _run_on(compute, task_dir, [python, "-c", version_probe], what="核对解释器版本",
+                    timeout_s=60)
+    actual = probe.stdout.strip().splitlines()[-1] if probe.stdout.strip() else ""
     if actual != spec.python_version:
         raise EnvBuildError(
-            f"venv 的解释器版本对不上：期望 {spec.python_version}，实际 {actual}（{python}）"
+            f"venv 的解释器版本对不上：期望 {spec.python_version}，实际 {actual!r}（{python}）"
         )
-    LOGGER.info("env_build venv=%s python=%s requirements=%d",
-                venv_dir, spec.python_version, len(spec.requirements))
+    LOGGER.info("env_build compute=%s venv=%s python=%s requirements=%d",
+                compute.kind, venv_dir, spec.python_version, len(spec.requirements))
     return python
 
 
-def _check_complete(uv: list[str], python: Path, lock: Path) -> None:
-    """`uv pip check`：装进去的包要么依赖齐全，要么这份清单就是不完整的，现在报、不等 import 炸。"""
-    proc = subprocess.run([*uv, "pip", "check", "--python", str(python)],
-                          capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        detail = (proc.stdout + proc.stderr).strip()[-_STDERR_TAIL:]
+def _local_mirror(compute: Compute, remote_dir: str) -> Path:
+    """`env/` 规格在本机这份读：本机就是同一个目录；ssh 按映射反推回本机路径。"""
+    if compute.kind == "local":
+        return Path(remote_dir)
+    local_dir_for = getattr(compute, "local_dir_for", None)
+    assert local_dir_for is not None, f"{compute.kind} 适配器要能把远端路径映射回本机"
+    return local_dir_for(remote_dir)
+
+
+def _run_on(compute: Compute, cwd: str, cmd: list[str], *, what: str,
+            timeout_s: float) -> Outcome:
+    outcome = compute.run(cwd, cmd, {}, timeout_s)
+    if not outcome.ok:
         raise EnvBuildError(
-            f"{lock} 不完整：装完缺依赖（uv pip check）：\n{detail}\n"
-            "清单要是 pip freeze 那样把传递依赖都钉上的；没有现成环境就用 "
-            "ai4sci env resolve <包名>… 重新算一份"
+            f"{what} 失败（退出码 {outcome.exit_code}）：{outcome.stderr.strip()[-_STDERR_TAIL:]}"
         )
+    return outcome
 
 
-def resolve_lock(target_env: Path, python_version: str, packages: list[str]) -> Path:
+def resolve_lock(target_env: Path, python_version: str, packages: list[str],
+                 compute: Compute | None = None) -> Path:
     """按几个包名算出完整的清单写进 `<target_env>/requirements.lock`（`uv pip compile`，会联网）；
     `python-version` 一并写。返回锁文件路径。解析失败带 uv 的 stderr 抛 EnvBuildError。
 
-    按本机平台解析（不 `--universal`）：换机器（GPU 服务器）要在那台机器上重新算，清单头部写明。
+    按解析那台机器的平台解析（不 `--universal`）：缺省本机；给了 `compute` 就到那台机器上算
+    （CUDA 版 torch 只在 GPU 机器上解析得对），清单头部写明是哪台。
     """
     assert VERSION_RE.match(python_version), f"python-version 要是 X.Y：{python_version!r}"
     assert packages and all(p.strip() for p in packages), "至少给一个包名"
-    if importlib.util.find_spec("uv") is None:
+    if compute is None:
+        from compute.local import LocalCompute  # 便捷路径：本机
+
+        compute = LocalCompute()
+    if compute.kind == "local" and importlib.util.find_spec("uv") is None:
         raise EnvBuildError("uv 不在平台 venv 里，算不了清单：跑 make venv 重装"
                             "（pyproject 已声明 uv）")
     target_env = Path(target_env)
@@ -201,17 +230,20 @@ def resolve_lock(target_env: Path, python_version: str, packages: list[str]) -> 
     with tempfile.TemporaryDirectory() as tmp:
         wanted = Path(tmp) / "requirements.in"
         wanted.write_text("\n".join(p.strip() for p in packages) + "\n", encoding="utf-8")
-        proc = _run([sys.executable, "-m", "uv", "pip", "compile", "--quiet", "--no-header",
-                     "--no-annotate", "--python-version", python_version, str(wanted)],
-                    what=f"uv pip compile（{', '.join(packages)}）")
+        remote_tmp = compute.remote_dir_for(Path(tmp))
+        compute.sync(Path(tmp), remote_tmp)
+        proc = _run_on(compute, remote_tmp,
+                       [*compute.uv, "pip", "compile", "--quiet", "--no-header", "--no-annotate",
+                        "--python-version", python_version, "requirements.in"],
+                       what=f"uv pip compile（{', '.join(packages)}）", timeout_s=900)
     pins = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
     bad = [line for line in pins if not _PIN_RE.match(line)]
     assert not bad, f"uv pip compile 出了不是 name==version 的行：{bad}"
     stamp = datetime.now(UTC).strftime("%Y-%m-%d")
+    where = "本机" if compute.kind == "local" else f"算力 {compute.kind}"
     header = (f"# 由 ai4sci env resolve 于 {stamp} 按 PyPI 算出的完整清单（uv pip compile，"
-              f"Python {python_version}，本机平台）。\n"
-              f"# 要的包：{' '.join(packages)}；其余是它们的传递依赖。换机器（如 GPU 服务器）要在"
-              "那台机器上重新算。\n")
+              f"Python {python_version}，在{where}上按它的平台解析）。\n"
+              f"# 要的包：{' '.join(packages)}；其余是它们的传递依赖。换机器要在那台机器上重算。\n")
     (target_env / PYTHON_VERSION_NAME).write_text(python_version + "\n", encoding="utf-8")
     lock = target_env / REQUIREMENTS_NAME
     lock.write_text(header + "\n".join(pins) + "\n", encoding="utf-8")

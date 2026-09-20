@@ -106,7 +106,7 @@ def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports:
                 inputs=list(inputs.ids),
                 params={k: v for k, v in params.items() if v not in (None, "", False)},
                 flow=flow, step=step, requirement=version,
-                chat_id=os.environ.get(jobs.CHAT_ID_ENV))
+                chat_id=os.environ.get(jobs.CHAT_ID_ENV), compute=ports.compute_label)
     except (ValueError, output.OutputNotFound) as exc:
         return EXIT_INVALID, str(exc)
     if job_id:
@@ -200,7 +200,8 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
         if descriptor.needs_executor:
             sub.add_argument("--backend", default="claude_code", help="执行层后端名")
         if descriptor.needs_compute:
-            sub.add_argument("--compute", default="local", help="算力后端名")
+            sub.add_argument("--compute", default="",
+                             help="在哪台机器上跑（ai4sci show computes 里的名字）；缺省照清单")
         for param in descriptor.params:
             # argparse 把 help 当 % 格式串：描述符里写"1%"是给人看的，这里得转义
             flag, help_text = f"--{param.name.replace('_', '-')}", param.help.replace("%", "%%")
