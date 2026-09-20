@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import os
 import re
 import subprocess
 import tempfile
@@ -147,6 +148,19 @@ def read_env(task_dir: Path) -> tuple[EnvSpec | None, list[str]]:
                    interpreter=interpreter), []
 
 
+# 装依赖的墙钟上限。第一次在一台国内机器上装 PyTorch 的 CUDA 版是几个 GB：走镜像也要几十分钟，
+# 真跑时 1 小时被杀过一次（外层 #118）。缺省 3 小时，起服务的人按机器改
+ENV_BUILD_TIMEOUT_ENV = "AI4SCI_ENV_BUILD_TIMEOUT_S"
+DEFAULT_ENV_BUILD_TIMEOUT_S = 3 * 3600.0
+
+
+def env_build_timeout_s() -> float:
+    raw = os.environ.get(ENV_BUILD_TIMEOUT_ENV)
+    value = DEFAULT_ENV_BUILD_TIMEOUT_S if raw is None else float(raw)
+    assert value > 0, f"{ENV_BUILD_TIMEOUT_ENV} 必须是正数，得到 {value!r}"
+    return value
+
+
 def build_venv(task_dir: Path, venv_dir: Path) -> Path:
     """本机建 venv：`build_venv_on(LocalCompute)` 的便捷写法，返回解释器路径。"""
     from compute.local import LocalCompute  # 本地适配器只在这条便捷路径上用，避免包顶层就拉它
@@ -184,7 +198,7 @@ def build_venv_on(compute: Compute, task_dir: str, venv_dir: str) -> str:
             what=f"uv venv --python {spec.python_version}", timeout_s=900)
     if spec.requirements:
         _run_on(compute, task_dir, [*uv, "pip", "sync", "--quiet", "--python", python, lock],
-                what=f"uv pip sync {lock}", timeout_s=3600)
+                what=f"uv pip sync {lock}", timeout_s=env_build_timeout_s())
         check = compute.run(task_dir, [*uv, "pip", "check", "--python", python], {}, 300)
         if not check.ok:
             detail = (check.stdout + check.stderr).strip()[-_STDERR_TAIL:]

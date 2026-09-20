@@ -89,7 +89,10 @@ class SshCompute:
     def _sh(self, script: str, *, timeout_s: float = 120.0,
             check: bool = True) -> subprocess.CompletedProcess[str]:
         """在远端登录 shell 里跑一段脚本，返回 CompletedProcess；失败带 stderr 抛。"""
-        remote = f"bash -lc {shlex.quote(PATH_PRELUDE + chr(10) + script)}"
+        # uv 的缓存放在远端根下：与 venv 同一个文件系统，装包是硬链接不是再拷一遍几个 GB；
+        # 也是每台机器自己的，与它的 ~/.cache 无关
+        prelude = f"{PATH_PRELUDE}\nexport UV_CACHE_DIR={shlex.quote(self.root + '/.uv-cache')}"
+        remote = f"bash -lc {shlex.quote(prelude + chr(10) + script)}"
         try:
             proc = subprocess.run([*self._ssh_argv(), remote], stdin=subprocess.DEVNULL,
                                   capture_output=True, text=True, timeout=timeout_s, check=False)
