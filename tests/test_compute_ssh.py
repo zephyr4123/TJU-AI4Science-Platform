@@ -83,6 +83,7 @@ def test_submit_script_starts_a_session_and_records_the_exit_code(monkeypatch, t
     job = ssh.submit(remote, ["bash", "harness/launcher.sh"], {"AI4SCI_SEED": "42"}, 30.0)
     assert job.pid == 4242 and job.pgid == 4242 and job.remote_dir == remote
     assert "nohup setsid bash -c" in seen["script"] and "exit.code" in seen["script"]
+    assert f"rm -f {JOB_DIRNAME}/exit.code" in seen["script"]  # 同目录连着两次 submit 不读旧的
     assert "export AI4SCI_SEED=42" in seen["script"]
     assert Path(job.stderr_path) == (tmp_path / "run").resolve() / JOB_DIRNAME / "stderr.log"
 

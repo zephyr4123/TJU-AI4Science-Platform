@@ -159,7 +159,12 @@ class SshCompute:
         command = " ".join(shlex.quote(c) for c in cmd)
         # setsid：自成进程组，超时才有一整组可杀；退出码写文件：wait 不是亲爹，只能这么拿
         inner = shlex.quote(f"{command}; echo $? > {JOB_DIRNAME}/{EXIT_FILE}")
-        script = (f"cd {q} || exit 127\nmkdir -p {JOB_DIRNAME} || exit 126\n{exports}\n"
+        # 上一次的退出码文件必须先删：同一个目录连着 submit 两次（建 venv 的几步都在包目录里），
+        # 不删的话 wait 立刻读到上一次的 0——真跑时 uv pip sync 还在装，框架却以为装完了（#118）
+        script = (f"cd {q} || exit 127\nmkdir -p {JOB_DIRNAME} || exit 126\n"
+                  f"rm -f {JOB_DIRNAME}/{EXIT_FILE} {JOB_DIRNAME}/stdout.log"
+                  f" {JOB_DIRNAME}/stderr.log\n"
+                  f"{exports}\n"
                   f"nohup setsid bash -c {inner}"
                   f" > {JOB_DIRNAME}/stdout.log 2> {JOB_DIRNAME}/stderr.log < /dev/null &\n"
                   "echo $!")
