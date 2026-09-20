@@ -149,7 +149,9 @@ def _stamp_domain(pack: Path, domain: str) -> None:
 
 
 def _current_files(pack: Path) -> str:
-    """磁盘上已有的 scoring.yaml、harness/ 与 code/ 文件，原样贴回去；SHA256SUMS 是框架的，不给。"""
+    """磁盘上已有的 scoring.yaml、harness/ 与 code/ 文件，原样贴回去；SHA256SUMS 是框架的，不给。
+    二进制（评分脚本算出来放在 harness/ 里的 .npz 之类）只报名字与大小：贴进提示的 NUL 字节会让起
+    执行层的 Popen 直接炸（真跑 design/5 第二版就是这么丢的，外层 #118）。"""
     blocks = []
     paths = [pack / name for name in WRITABLE_FILES]
     for name in WRITABLE_DIRS:
@@ -157,10 +159,13 @@ def _current_files(pack: Path) -> str:
     for path in paths:
         if not path.is_file() or path.name == "SHA256SUMS" or "__pycache__" in path.parts:
             continue
+        rel = path.relative_to(pack).as_posix()
+        if b"\x00" in path.read_bytes()[:8192]:
+            blocks.append(f"### {rel}\n\n（二进制文件，{path.stat().st_size} 字节，不贴；别动它）")
+            continue
         text = path.read_text(encoding="utf-8", errors="replace")
         if len(text) > FILE_MAX_CHARS:
             text = text[:FILE_MAX_CHARS] + f"\n…（截断，原文 {len(text)} 字符）\n"
-        rel = path.relative_to(pack).as_posix()
         lang = {"py": "python", "sh": "bash", "yaml": "yaml"}.get(path.suffix.lstrip("."), "")
         blocks.append(f"### {rel}\n\n```{lang}\n{text.rstrip()}\n```")
     if not blocks:

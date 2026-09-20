@@ -311,3 +311,16 @@ def test_continue_without_feedback_reruns_only_the_baseline(ws, monkeypatch):
     line = design_cap.run(pack, inputs, Ports(runner=idle, compute=LocalCompute()))
     assert idle.calls == 0 and line.startswith("design ok\tsession=-\tchanged=0")
     assert (pack / "baseline" / "sigma.json").is_file() and "auto-research --from design/1" in line
+
+
+def test_binary_files_in_the_pack_are_named_not_pasted(ws):
+    """外层 #118：评分脚本算出的 .npz 放在 harness/ 里，第二版时贴现状不能把 NUL 字节贴进提示——
+    起执行层的 Popen 会炸，作业就丢了。只报名字与大小。"""
+    pack = new_pack(ws[0])
+    run_design(ws, pack, GOOD_DRAFT)
+    (pack / "harness" / "exact_solution.npz").write_bytes(b"PK\x03\x04\x00\x00binary")
+    changed = {"harness/evaluate.py": pf.EVALUATE_PY.replace("SystemExit(2)", "SystemExit(3)")}
+    runner, _ = run_design(ws, pack, changed, feedback="改")
+    prompt = runner.prompts[0]
+    assert "\x00" not in prompt
+    assert "### harness/exact_solution.npz" in prompt and "二进制文件" in prompt

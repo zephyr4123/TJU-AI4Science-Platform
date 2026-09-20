@@ -15,6 +15,9 @@
 ### 新增
 - 接机器先盘点、再问研究者两个问题（主人 2026-09-20：非工程师要能选、要清楚怎么回事）：ssh 适配器 `check` 盘点那台机器上已有的 Python 环境（conda 各环境 + 系统 python：解释器路径、版本、torch 版本与 cuda）；`ai4sci env use --compute <名字> <解释器绝对路径>` 选「用现成的」——探版本、`pip freeze` 当清单（出处留档）、写 `materials/env/interpreter`（`<算力名字>:<解释器>`），设计与实验在那台机器上直接用它、不建 venv，换机器拒；`env resolve` 仍是「隔离新建」并清掉 `interpreter`。研究助理指南「算力」一节写死两问（隔离新建还是用现成的、用哪个）与两边的取舍。端口加 `scratch`（探测类短命令的目录），`Probe` 加 `envs`，适配器实例带清单里的 `name`。
 
+### 修复
+- 设计第二版的提示把 harness/ 里评分脚本算出来的二进制（`exact_solution.npz`）当文本贴了进去，NUL 字节让起执行层的 Popen 直接炸、作业停在 running 变 lost（演练 design/5 第二版）：二进制只报名字与大小。平台自己的异常（不是能力说的失败）也把作业记 failed、产出记 failed 再抛，不再变 lost（外层 [#118](https://github.com/zephyr4123/TJU-AI4Science/issues/118)）。
+
 ### 变更
 - 远端 uv 的缓存放在算力根目录下（`<root>/.uv-cache`，与 venv 同一文件系统，装包是硬链接不是再拷几个 GB）；装依赖的墙钟上限从 1 小时改成缺省 3 小时（`AI4SCI_ENV_BUILD_TIMEOUT_S`）——演练里第一次在国内机器上装 PyTorch CUDA 版走镜像也要近一小时，1 小时被杀过一次（外层 [#118](https://github.com/zephyr4123/TJU-AI4Science/issues/118)）。
 - 演练里撞到的三处（外层 [#118](https://github.com/zephyr4123/TJU-AI4Science/issues/118)）：ssh 适配器每条远端命令前把那台机器 pip 配的镜像给 uv 当额外索引（`UV_INDEX` + `unsafe-best-match`，http 的放行 `UV_INSECURE_HOST`；实测 AutoDL 直连 pypi.org 19 KB/s，torch 的 CUDA 轮子一小时下不完，镜像又落后 PyPI 几天所以不当唯一的源）；`run()` 改走 submit / wait（远端 nohup 起、轮询退出码、日志 cat 回来），一条没输出的长 ssh 连接不再被掐，外加 `ServerAliveInterval`；`cap design --continue design/<n>` 不带 `--feedback` = 草稿不动、只重跑基线（环境没装成、机器换了、被叫停之后不用再让执行层空跑一轮）。`tests/conftest.py` 把按人的算力清单隔离掉——开发机的缺省算力是远端时整套测试会 ssh 过去跑。

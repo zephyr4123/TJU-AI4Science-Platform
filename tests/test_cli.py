@@ -719,3 +719,30 @@ def test_env_use_records_the_existing_interpreter(tmp_path, monkeypatch, capsys)
     assert out.startswith("ok materials/env/\tcompute=local\tpython=") and "不隔离" in out
     assert (ws.materials / "env" / "interpreter").read_text(encoding="utf-8") == \
         f"local:{sys.executable}\n"
+
+
+def test_platform_crash_inside_a_job_is_recorded_not_lost(tmp_path, monkeypatch, capsys):
+    """外层 #118：能力之外的异常（平台自己的 bug）也要把作业记 failed、产出记 failed，再抛；
+    不能让作业停在 running 变 lost、人对着「丢了」猜。"""
+    from framework.cli import cap as cap_cli
+    from framework.cli import main
+    from framework.workspace import jobs
+
+    pack = pf.make_pack(tmp_path, confirmed=True)
+    ws = pack.workspace
+    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    monkeypatch.setenv("AI4SCI_DOMAINS_ROOT", str(pack.domains_root))
+    job = jobs.Job(job_id="job-c", cap="design", stage="design", argv=[], pid=1, started_at="t")
+    ws.jobs.mkdir(parents=True, exist_ok=True)
+    (ws.jobs / "job-c.json").write_text(json.dumps(job.__dict__), encoding="utf-8")
+    monkeypatch.setenv(jobs.JOB_ID_ENV, "job-c")
+
+    def boom(*args, **kwargs):
+        raise ValueError("embedded null byte")
+
+    monkeypatch.setattr(cap_cli, "_run", boom)
+    with pytest.raises(ValueError, match="null byte"):
+        main(["cap", "verify", "--from", "analysis/1"])
+    record = jobs.load(ws.jobs, "job-c")
+    assert record.status == "failed" and "平台内部错误" in record.result
+    assert "null byte" in record.result

@@ -66,7 +66,19 @@ def cmd_cap(args: argparse.Namespace) -> int:
             return EXIT_USAGE
         return _detach(args, ws, descriptor)
     setup_logging()
-    code, line = _run(args, ws, descriptor, ports, job_id)
+    try:
+        code, line = _run(args, ws, descriptor, ports, job_id)
+    except Exception as exc:
+        # 平台自己炸了（不是能力说的失败）：作业与产出都记上再抛，不让作业停在 running 变 lost、
+        # 让人对着「丢了」猜（真跑时 Popen 吃到 NUL 字节就是这样丢的）；栈照样打到日志
+        if job_id:
+            job = jobs.finish(ws.jobs, job_id, exit_code=EXIT_INVALID,
+                              result=f"平台内部错误：{exc!r}（栈在作业日志里，这是平台的 bug）")
+            _fail_open_output(ws, job.output, job.result)
+            os.environ.pop(jobs.JOB_ID_ENV, None)
+            if job.chat_id:
+                jobs.mark_wake(ws.jobs, job_id, notify.wake(ws, job))
+        raise
     print(line, file=sys.stdout if code == EXIT_OK else sys.stderr)
     if job_id:
         job = jobs.finish(ws.jobs, job_id, exit_code=code, result=line)
@@ -76,6 +88,15 @@ def cmd_cap(args: argparse.Namespace) -> int:
             # 作业是某段对话里起的：跑完以框架的身份叫醒那段对话，结果记回作业
             jobs.mark_wake(ws.jobs, job_id, notify.wake(ws, job))
     return code
+
+
+def _fail_open_output(ws: Workspace, oid: str | None, line: str) -> None:
+    """作业开了产出又炸在半路：产出还是 running 就替它记 failed。"""
+    if not oid:
+        return
+    directory, meta = outputs.find_output(ws, oid)
+    if meta.status == "running":
+        outputs.close_output(directory, meta, ok=False, line=line)
 
 
 def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports: Ports,
