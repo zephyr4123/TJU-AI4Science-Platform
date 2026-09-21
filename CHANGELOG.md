@@ -9,6 +9,7 @@
 ## [Unreleased]
 
 ### 修复
+- 指南：喂回执行层的意见文件放 `materials/` 或 `.ai4sci/`，不写进产出目录（演练里助理把意见写进了 `analysis/3/executor/`，那是被引用后冻住的产出）（[#123](https://github.com/zephyr4123/TJU-AI4Science/issues/123)）。
 - 复现性分析第二版把训练超参（`lr=1e-3`、`betas=(0.9, 0.999)`）写在正文里，数字核对当它是编的数拦下；第三版不知道第二版错在哪（[#123](https://github.com/zephyr4123/TJU-AI4Science/issues/123)）：提示里「写反引号」的规则扩到凡不是从结果清单抄的数（版本、commit、超参、轮数），并加一句「文字事实照材料来源抄，不凭记忆补论文里没有的名字」（第一版编了个 Allen-Cahn）；`reproducibility` 加 `--feedback`（重写仍是新开一份，上一版的问题进提示）。指南同步。
 - 人打断把对话的一轮杀在半路，`inflight.json` 留着，之后谁也没法跟这段对话说话（演练里手删的）：锁记 pid，发下一轮时进程不在了就自己收，半途那一轮的目录留着当证据；pid 还活着照旧拒，老格式的锁（没 pid）当活着（[#122](https://github.com/zephyr4123/TJU-AI4Science/issues/122)）。
 - 平台中途加了命令（指南变了），助理照上一轮的记忆答「我做不了」，研究者追问它才重翻 `--help`：指南的指纹记进对话 meta（`guide_sha`），下一轮指纹变了就在话前面加一句「平台提示：指南更新了」；没变不加（[#122](https://github.com/zephyr4123/TJU-AI4Science/issues/122)）。
