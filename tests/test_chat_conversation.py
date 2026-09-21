@@ -144,6 +144,43 @@ def test_busy_lock_refuses_a_second_turn_and_is_released(tmp_path):
     assert (conv.dir / "turn-2" / "message.md").read_text(encoding="utf-8") == "再发\n"
 
 
+def test_stale_lock_from_a_dead_process_is_reclaimed_but_a_live_one_is_honoured(tmp_path):
+    """外层 #122：人打断把一轮杀在半路，inflight.json 留着，之后谁也没法跟这段对话说话。锁记 pid，
+    发下一轮时进程不在了就自己收（半途的目录留着当证据）；pid 还活着照旧拒；老格式没 pid 当活着。"""
+    import os
+
+    conv, chat = start(tmp_path, reply("一"), reply("二"))
+    lock = conv.dir / "inflight.json"
+    lock.write_text(json.dumps({"turn": 1, "pid": 999_999_999, "started_at": "t"}),
+                    encoding="utf-8")
+    assert drain(conv, chat, "第一句")[-1].kind == "done" and conv.turns == 1
+    lock.write_text(json.dumps({"turn": 2, "pid": os.getpid(), "started_at": "t"}),
+                    encoding="utf-8")
+    with pytest.raises(conv_mod.ConversationBusy):
+        drain(conv, chat, "插队")
+    lock.write_text(json.dumps({"turn": 2, "started_at": "t"}), encoding="utf-8")  # 老格式
+    with pytest.raises(conv_mod.ConversationBusy):
+        drain(conv, chat, "插队")
+    lock.unlink()
+
+
+def test_guide_change_between_turns_is_announced_to_the_agent(tmp_path):
+    """外层 #122：平台中途加了命令（指南变了），助理照上一轮的记忆答「做不了」。指南的指纹记在
+    meta，下一轮指纹变了就在话前面加一句提示；没变不加；第一轮不加。"""
+    conv, chat = start(tmp_path, reply("一"), reply("二"), reply("三"))
+    drain(conv, chat, "第一句")
+    assert conv.guide_sha and not chat.calls[0]["message"].startswith("（平台提示")
+    drain(conv, chat, "第二句")
+    assert not chat.calls[1]["message"].startswith("（平台提示")
+    list(conv_mod.send(conv, chat, "第三句", system_prompt=GUIDE + "\n新加了一条命令",
+                       allowed_paths=[], bash_rules=()))
+    sent = chat.calls[2]["message"]
+    assert sent.startswith(conv_mod.GUIDE_CHANGED_NOTICE) and sent.endswith("第三句")
+    assert (conv.dir / "turn-3" / "message.md").read_text(encoding="utf-8").startswith("（平台提示")
+    reloaded = conv_mod.load_conversation(tmp_path / "chats", conv.chat_id)
+    assert reloaded.guide_sha == conv.guide_sha
+
+
 def test_empty_message_and_timeout_env(tmp_path, monkeypatch):
     conv, chat = start(tmp_path, reply("x"))
     with pytest.raises(ValueError, match="空"):

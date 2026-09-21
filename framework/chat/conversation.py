@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -78,6 +79,9 @@ class Conversation:
     # 这段对话上次选的模型与思考深度（外层 #86）：每轮可改、改了记住；None 是后端缺省
     model: str | None = None
     effort: str | None = None
+    # 上一轮塞给它的指南（system prompt）的指纹：指南中途更新了（平台加了命令）要提醒它——真跑时
+    # 平台刚加了 env add，助理照上一轮的记忆答「我做不了」，研究者追问它才重翻 --help（外层 #122）
+    guide_sha: str | None = None
 
     @property
     def dir(self) -> Path:
@@ -193,7 +197,14 @@ def send(
         raise ValueError(f"origin 只认 {ORIGINS}，得到 {origin!r}")
     inflight = conv.dir / INFLIGHT_NAME
     if inflight.exists():
-        raise ConversationBusy(f"这段对话正有一轮在跑（{inflight}），等它结束再发")
+        if _lock_holder_alive(inflight):
+            raise ConversationBusy(f"这段对话正有一轮在跑（{inflight}），等它结束再发")
+        # 上一轮的进程死了（人打断、机器重启）没摘锁：锁记着 pid，自己收；半途的那一轮目录留着当证据
+        LOGGER.warning("chat_stale_lock chat_id=%s lock=%s", conv.chat_id, inflight.read_text())
+        inflight.unlink()
+    digest = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
+    if system_prompt and conv.guide_sha not in (None, digest):
+        message = GUIDE_CHANGED_NOTICE + message
     if tuning is not None:
         conv.tune(tuning)
     # 轮次编号取盘上下一个空号，不取 meta.turns + 1：半途放弃的一轮目录留着当证据，
@@ -202,7 +213,7 @@ def send(
     turn_dir = conv.dir / f"turn-{turn_n}"
     turn_dir.mkdir()
     (turn_dir / "message.md").write_text(message + "\n", encoding="utf-8")
-    inflight.write_text(json.dumps({"turn": turn_n,
+    inflight.write_text(json.dumps({"turn": turn_n, "pid": os.getpid(),
                                     "started_at": datetime.now(UTC).isoformat(timespec="seconds")}),
                         encoding="utf-8")
     events_path = turn_dir / EVENTS_NAME
@@ -229,10 +240,34 @@ def send(
                     trace_fh.write(json.dumps(event_payload(event), ensure_ascii=False) + "\n")
                     trace_fh.flush()
                 if event.kind in ("done", "error"):
+                    conv.guide_sha = digest
                     _close_turn(conv, turn_n, message, event, origin)
                 yield event
     finally:
         inflight.unlink(missing_ok=True)
+
+
+# 指南变了就在这一轮的话前面加一句：模型每轮都拿到整份指南，但看不出哪儿变了
+GUIDE_CHANGED_NOTICE = ("（平台提示：你的指南自上一轮起更新了——能运行的命令可能多了或变了，"
+                        "拿不准就 ai4sci --help 重看一遍。）\n\n")
+
+
+def _lock_holder_alive(inflight: Path) -> bool:
+    """锁里记的进程还在不在。老格式的锁（没 pid）当它还在——宁可让人等，不误杀真在跑的一轮。"""
+    try:
+        doc = json.loads(inflight.read_text(encoding="utf-8"))
+        pid = int(doc.get("pid", 0))
+    except (ValueError, OSError):
+        return True
+    if pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def _next_turn(directory: Path) -> int:

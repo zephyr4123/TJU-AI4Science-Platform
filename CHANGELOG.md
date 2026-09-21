@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### 修复
+- 人打断把对话的一轮杀在半路，`inflight.json` 留着，之后谁也没法跟这段对话说话（演练里手删的）：锁记 pid，发下一轮时进程不在了就自己收，半途那一轮的目录留着当证据；pid 还活着照旧拒，老格式的锁（没 pid）当活着（[#122](https://github.com/zephyr4123/TJU-AI4Science/issues/122)）。
+- 平台中途加了命令（指南变了），助理照上一轮的记忆答「我做不了」，研究者追问它才重翻 `--help`：指南的指纹记进对话 meta（`guide_sha`），下一轮指纹变了就在话前面加一句「平台提示：指南更新了」；没变不加（[#122](https://github.com/zephyr4123/TJU-AI4Science/issues/122)）。
+
 ### 新增
 - `ai4sci env add --compute <名字> [--from <requirements.txt>] <包名>…`（P-24，[#122](https://github.com/zephyr4123/TJU-AI4Science/issues/122)）：往机器上现成的环境里补几个包——pip 装进 `env use` 登记的那个解释器，重新 freeze，清单头部记下补了什么；只对「用现成的」环境，不是那台机器的拒。第二轮演练（GUA）：镜像环境缺 scipy / torchjd，助理只能让研究者登录机器 pip install——非工程师做不到，这是平台的缺口。`reproduction --continue` 时现成环境补了包（解释器没变、清单多了几行）就刷新快照接着跑，壳不用重写；隔离新建的清单变了照旧拒。指南与 download 的说明同步。
 - 执行层会话的轮数与花费上限按能力给（`Runner.run(max_turns, max_budget_usd)`，不给用适配器缺省 30 轮 / 2 美元）：原码复现基线要先读懂别人的整个仓库再写壳，真跑时缺省 30 轮在读完仓库、写完四个文件、还没来得及自述时就被掐了（`error_max_turns`）——它给 80 轮 / 6 美元。执行层提示加通用一段「工具怎么用」：读文件用 Read / Glob / Grep，Bash 只放行 `ai4sci skill …`，cd / mkdir / awk / 管道会被拒并白耗一轮（真跑时被拒了三条）。
