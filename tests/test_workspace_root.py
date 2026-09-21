@@ -90,4 +90,4 @@ def test_paths_read_each_env_once_and_refuse_non_directories(tmp_path, monkeypat
     assert paths.domains_root() == paths.REPO_ROOT / "domains"
     assert paths.templates_root() == paths.REPO_ROOT / "templates"
     assert sorted(p.stem for p in paths.templates_root().glob("*.md")) == ["ai", "cs", "generic",
-                                                                          "materials"]
+                                                                          "materials", "reproduce"]

@@ -16,8 +16,8 @@ import yaml
 from compute.local import LocalCompute
 from framework import paths
 from framework.capabilities import design as design_cap
-from framework.capabilities.design import drafting as design
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
+from framework.experiment import drafting as design
 from framework.experiment import pack as packs
 from framework.workspace import outputs
 from tests.fixtures import packs_factory as pf
@@ -91,8 +91,11 @@ def run_design(ws, pack: Path, *moves, feedback: str = "", hypothesis: str = "",
     workspace, domains = ws
     runner = ScriptedRunner(list(moves), **runner_kwargs)
     runner.reports = list(reports or [])
-    outcome = design.draft(pack, workspace.requirement.read_text(encoding="utf-8"), hypothesis,
-                           "generic", domains, runner, feedback=feedback)
+    values = {"requirement": workspace.requirement.read_text(encoding="utf-8").strip(),
+              "hypothesis": (f"## 假设（假设阶段的产出，设计要能检验它）\n\n{hypothesis.strip()}"
+                             if hypothesis.strip() else "")}
+    outcome = design.draft(pack, design_cap.PROMPT_TEMPLATE, values, "generic", domains, runner,
+                           current=design.current_files(pack), feedback=feedback)
     return runner, outcome
 
 
@@ -155,8 +158,9 @@ def test_unknown_domain_fails_before_the_session(ws):
     workspace, domains = ws
     pack = new_pack(workspace)
     runner = ScriptedRunner([GOOD_DRAFT])
-    with pytest.raises(design.DesignFailed, match="'nope'"):
-        design.draft(pack, "需求", "", "nope", domains, runner)
+    with pytest.raises(design.DraftFailed, match="'nope'"):
+        design.draft(pack, design_cap.PROMPT_TEMPLATE, {"requirement": "需求", "hypothesis": ""},
+                     "nope", domains, runner, current="")
     assert runner.calls == 0
 
 
@@ -169,19 +173,19 @@ def test_writing_outside_the_allowed_files_fails_and_keeps_the_files(ws):
             (cwd / rel).write_text(text, encoding="utf-8")
         (cwd / "data" / "val.json").write_text("{}", encoding="utf-8")
 
-    with pytest.raises(design.DesignFailed, match="data/val.json"):
+    with pytest.raises(design.DraftFailed, match="data/val.json"):
         run_design(ws, pack, move)
     assert (pack / "data" / "val.json").read_text(encoding="utf-8") == "{}"
     assert not (pack / "harness" / "SHA256SUMS").exists()  # 越界就不封
 
 
 def test_dead_session_fails(ws):
-    with pytest.raises(design.DesignFailed, match="退出码 -9"):
+    with pytest.raises(design.DraftFailed, match="退出码 -9"):
         run_design(ws, new_pack(ws[0]), GOOD_DRAFT, die_at=(1,))
 
 
 def test_session_that_writes_nothing_fails(ws):
-    with pytest.raises(design.DesignFailed, match="什么都没写"):
+    with pytest.raises(design.DraftFailed, match="什么都没写"):
         run_design(ws, new_pack(ws[0]), {}, reports=["我觉得不需要改"])
 
 
@@ -249,7 +253,7 @@ def test_ruff_missing_is_an_error_not_a_pass(ws, monkeypatch):
         return subprocess.CompletedProcess(args, 1, stdout="", stderr="No module named ruff")
 
     monkeypatch.setattr(design.subprocess, "run", fake_run)
-    with pytest.raises(design.DesignFailed, match="ruff"):
+    with pytest.raises(design.DraftFailed, match="ruff"):
         run_design(ws, new_pack(ws[0]), GOOD_DRAFT)
 
 

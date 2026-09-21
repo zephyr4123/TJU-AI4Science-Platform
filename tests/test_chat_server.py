@@ -115,10 +115,10 @@ def test_health_and_catalog(served):
     assert stages[3] == {"name": "实验", "slug": "experiment",
                          "main_files": [{"name": "ledger.tsv", "label": "账本"},
                                         {"name": "results.json", "label": "结果"}]}
-    assert stages[0]["main_files"] == []  # 文献阶段还没定主文件，老实给空
+    assert stages[0]["main_files"] == [{"name": "sources.md", "label": "材料来源"}]  # P-24 定的
     status, _, body = call(base, "/templates")
     assert status == 200 and [t["name"] for t in json.loads(body)] == ["ai", "cs", "generic",
-                                                                       "materials"]
+                                                                       "materials", "reproduce"]
     status, ctype, body = call(base, "/cap")
     assert status == 200 and "application/json" in ctype and json.loads(body) == CATALOG
     status, _, body = call(base, "/workflows")

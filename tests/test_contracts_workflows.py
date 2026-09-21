@@ -37,8 +37,11 @@ def write(tmp_path, text: str) -> None:
 
 def test_shipped_workflow_is_one_line_from_design_to_verification():
     found = workflows.load_workflows(paths.workflows_root())
-    assert [wf.name for wf in found] == ["research"]
-    [wf] = found
+    assert [wf.name for wf in found] == ["reproduce", "research"]
+    repro, wf = found
+    assert workflows.workflow_problems(repro, catalog()) == [] and workflows.remarks(repro) == []
+    assert repro.covered == ["文献", "设计", "分析", "验证"]
+    assert repro.caps == ["reproduction", "reproducibility"]
     assert workflows.workflow_problems(wf, catalog()) == [] and workflows.remarks(wf) == []
     assert wf.covered == ["设计", "实验", "分析", "验证"]
     assert wf.caps == ["auto-research"]  # 只点名了实验阶段；别的间由助理看着办
@@ -84,7 +87,9 @@ def test_describe_dir_keeps_a_broken_file_as_a_problem_row(tmp_path):
 
 def test_used_by_is_looked_up_from_the_files():
     found = workflows.load_workflows(paths.workflows_root())
-    assert workflows.used_by(found) == {"auto-research": ["research"]}
+    assert workflows.used_by(found) == {"auto-research": ["research"],
+                                        "reproduction": ["reproduce"],
+                                        "reproducibility": ["reproduce"]}
 
 
 def test_pick_params_are_checked_against_the_descriptor(tmp_path):
@@ -106,7 +111,7 @@ def test_a_capability_must_sit_in_its_own_room(tmp_path):
     assert problems == [
         "第 3 项「设计」里的 verify 属于「验证」阶段，不能放在「设计」阶段里",
         "第 3 项「设计」里的 nope：没有这个能力（有的：['analysis', 'auto-research', 'design', "
-        "'verify']）"]
+        "'reproducibility', 'reproduction', 'verify']）"]
 
 
 def test_any_order_of_stages_is_fine_including_going_back(tmp_path):

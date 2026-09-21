@@ -70,7 +70,7 @@ def test_workspace_new_and_show_workspaces(tmp_path):
     templates = run_cli("show", "templates")
     assert templates.returncode == EXIT_OK
     assert [line.split("\t")[0] for line in templates.stdout.splitlines()] == [
-        "ai", "cs", "generic", "materials"]
+        "ai", "cs", "generic", "materials", "reproduce"]
     one = run_cli("show", "template", "generic")
     assert one.returncode == EXIT_OK and one.stdout.startswith("# 课题标题")
     assert run_cli("show", "template", "nope").returncode == EXIT_USAGE
@@ -402,7 +402,8 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
     proc = run_cli("show", "caps", "--json")
     assert proc.returncode == EXIT_OK, proc.stderr
     doc = {c["name"]: c for c in json.loads(proc.stdout)}
-    assert set(doc) == {"design", "auto-research", "analysis", "verify"}
+    assert set(doc) == {"design", "reproduction", "auto-research", "analysis", "reproducibility",
+                        "verify"}
     assert doc["auto-research"]["used_by"] == ["research"] and doc["verify"]["used_by"] == []
     assert doc["design"]["stage"] == "设计" and doc["design"]["stage_slug"] == "design"
     assert doc["auto-research"]["continuable"] is True
@@ -412,7 +413,8 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
 def test_show_workflows_lists_stages_and_stops():
     proc = run_cli("show", "workflows")
     assert proc.returncode == EXIT_OK, proc.stderr
-    assert proc.stdout.startswith("research\t从设计到验证\t设计 → ◆评分指标核对")
+    assert proc.stdout.startswith("reproduce\t论文复现\t文献 → 设计(reproduction) → ◆复现结果核对")
+    assert "\nresearch\t从设计到验证\t设计 → ◆评分指标核对" in proc.stdout
     assert proc.stdout.rstrip().endswith("→ 验证 → ◆验收")
 
 
@@ -545,7 +547,7 @@ MAKE_RUN0_RECORDING = (
 
 
 def test_baseline_runs_make_run0_with_the_guaranteed_env_and_reports_headroom(tmp_path):
-    from framework.capabilities.design.baseline import run_baseline
+    from framework.experiment.baseline import run_baseline
 
     scoring = pf.default_scoring()
     scoring["budget"]["inner_k"] = 7
@@ -563,8 +565,8 @@ def test_baseline_runs_make_run0_with_the_guaranteed_env_and_reports_headroom(tm
 
 
 def test_baseline_stops_when_the_headroom_check_fails_or_the_script_is_missing(tmp_path):
-    from framework.capabilities.design.baseline import run_baseline
     from framework.contracts.capability import CapabilityFailed
+    from framework.experiment.baseline import run_baseline
 
     scoring = pf.default_scoring()
     scoring["metrics"][0]["attainable"] = 0.49  # 基线 0.5 离尽头 0.01，门 0.04：无解
@@ -593,8 +595,8 @@ def test_baseline_replaces_the_old_baseline_instead_of_merging_into_it(tmp_path)
     """第一轮真任务：远端脚本 rm -rf 了 baseline/ 再写新的，拿回来却只加不删——上一版基线的
     results-<seed>.json 留在本地 repeats/ 里，人签了字、实验阶段一数文件数就拒开。基线跑之前本地
     那份要删干净，跑完按开跑那套合约查全：design ok 就等于 auto-research 会接。"""
-    from framework.capabilities.design.baseline import run_baseline
     from framework.contracts.capability import CapabilityFailed
+    from framework.experiment.baseline import run_baseline
 
     scoring = pf.default_scoring()
     scoring["metrics"][0]["attainable"] = 0.3
@@ -748,8 +750,9 @@ def test_serve_helpers_check_a_draft_and_list_the_catalog():
     assert "属于「验证」阶段" in bad["problems"][0]
     catalog = {c["name"]: c for c in serve._catalog()}
     assert catalog["auto-research"]["used_by"] == ["research"] and catalog["verify"]["does"]
-    assert [w["name"] for w in serve._workflows()] == ["research"]
-    assert set(serve._descriptor_map()) == {"design", "auto-research", "analysis", "verify"}
+    assert [w["name"] for w in serve._workflows()] == ["reproduce", "research"]
+    assert set(serve._descriptor_map()) == {"design", "reproduction", "auto-research", "analysis",
+                                            "reproducibility", "verify"}
 
 
 def test_env_resolve_writes_a_complete_lock_into_materials(tmp_path, monkeypatch, capsys):
@@ -770,6 +773,15 @@ def test_env_resolve_writes_a_complete_lock_into_materials(tmp_path, monkeypatch
     assert "requests==" in lock and "urllib3==" in lock
     assert (ws.materials / "env" / "python-version").read_text(encoding="utf-8") == "3.12\n"
     assert main(["env", "resolve", "idna"]) == 0  # 第二次不用再给 --python
+    # P-24：从上游仓库的 requirements.txt 读包名；注释、空行、-r 这类 pip 选项跳过
+    req = tmp_path / "requirements.txt"
+    req.write_text("# 上游的\nrequests\n\n-r other.txt\nidna  # 备注\n", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["env", "resolve"]) == 2 and "--from" in capsys.readouterr().err
+    assert main(["env", "resolve", "--from", str(tmp_path / "nope.txt")]) == 2
+    capsys.readouterr()
+    assert main(["env", "resolve", "--from", str(req)]) == 0
+    assert "requests==" in (ws.materials / "env" / "requirements.lock").read_text(encoding="utf-8")
 
 
 def test_env_use_records_the_existing_interpreter(tmp_path, monkeypatch, capsys):

@@ -1,9 +1,9 @@
 """写评分脚本、跑基线：设计阶段里的那个能力——读需求（与假设），起执行层写评分契约、harness
 与基线代码，框架封、lint、校验，接着起 `make_run0.sh` 跑基线、算预检。
 
-前半段的干活代码在同包的 `drafting.py`（组提示、起会话、判越界、封 harness、ruff、validate），
-后半段在 `baseline.py`。评分脚本写完不跑基线没意义，基线又只能跑封好的评分脚本，所以是一个
-（外层 #96）。
+前半段（组提示、起会话、判越界、封 harness、ruff、validate）与后半段（跑基线、预检）都在实验族的
+共享层 `experiment/drafting.py`、`experiment/baseline.py`——设计阶段第二颗能力 `reproduction` 也用
+它们。评分脚本写完不跑基线没意义，基线又只能跑封好的评分脚本，所以是一个（外层 #96）。
 
 产出 `design/<n>/` 就是实验族的那包东西：scoring.yaml、harness/、code/、data/（原件的拷贝）、env/
 （原件里的 env/）、baseline/。草稿有问题就停在前半段（草稿留在盘上，问题一行一条），协调层
@@ -17,15 +17,15 @@ import shutil
 from pathlib import Path
 
 from framework import paths
-from framework.capabilities.design.baseline import run_baseline
-from framework.capabilities.design.drafting import DesignFailed, draft
 from framework.contracts import requirement
 from framework.contracts.capability import Capability, CapabilityFailed, Inputs, Param, Ports
-from framework.experiment import env
+from framework.experiment import drafting, env
 from framework.experiment import pack as packs
+from framework.experiment.baseline import run_baseline
 
 LOGGER = logging.getLogger("ai4sci.design")
 NAME = "design"
+PROMPT_TEMPLATE = Path(__file__).resolve().parent / "prompt.md"
 MATERIALS_DIRNAME = "materials"
 # 原件里不搬进 data/ 的：env/ 另有去处，其余是别人的状态
 IGNORED = (".git", "__pycache__", ".venv", ".DS_Store", env.ENV_DIRNAME)
@@ -102,10 +102,16 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, domain: str = packs.D
                 f"人签了就 ai4sci cap auto-research --from {oid}")
     hypotheses = inputs.of_stage("hypothesis")
     hypothesis = "\n\n".join(_read_text_files(h) for h in hypotheses)
+    values = {
+        "requirement": requirement.read(inputs.workspace).strip(),
+        "hypothesis": (f"## 假设（假设阶段的产出，设计要能检验它）\n\n{hypothesis.strip()}"
+                       if hypothesis.strip() else ""),
+    }
     try:
-        outcome = draft(output_dir, requirement.read(inputs.workspace), hypothesis, domain,
-                        paths.domains_root(), ports.runner, feedback=feedback)
-    except DesignFailed as exc:
+        outcome = drafting.draft(output_dir, PROMPT_TEMPLATE, values, domain, paths.domains_root(),
+                                 ports.runner, current=drafting.current_files(output_dir),
+                                 feedback=feedback)
+    except drafting.DraftFailed as exc:
         raise CapabilityFailed(str(exc)) from exc
     head = (f"session={outcome.session}\tchanged={len(outcome.changed_files)}"
             f"\tsealed={','.join(outcome.sealed) or '-'}\tlint={len(outcome.lint_problems)}"

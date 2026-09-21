@@ -1,4 +1,4 @@
-"""跑基线：「写评分脚本、跑基线」的后半段——起 `harness/make_run0.sh` 出 baseline/，跑完机器预检。
+"""跑基线：设计阶段两颗能力共用的后半段——起 `harness/make_run0.sh` 出 baseline/，跑完机器预检。
 
 为什么不让人直接 `bash harness/make_run0.sh`：launcher 从 AI4SCI_BUDGET_S / AI4SCI_INNER_K 读数，
 人手工起就得自己想着导出，忘了就是一次"看着像跑了"的基线。这里把两处的环境收成一处
@@ -29,10 +29,13 @@ from framework.experiment import pack as packs
 BASELINE_TIMEOUT_RATIO = 1.5
 
 
-def run_baseline(pack: Path, compute: Compute) -> str:
+def run_baseline(pack: Path, compute: Compute, *, check_headroom: bool = True) -> str:
     """在 `compute` 上跑基线：那包同步过去 → 那边按 env/ 建 venv → 起 make_run0.sh → 回来 → 预检；
     跑完返回结论行的尾巴（inner_k 与预检摘要）；跑不了、预检没过就抛 CapabilityFailed。
-    本机算力时「过去」「回来」都是同一个目录，什么都不搬（P-23：远端只跑 harness）。"""
+    本机算力时「过去」「回来」都是同一个目录，什么都不搬（P-23：远端只跑 harness）。
+
+    `check_headroom=False` 是复现那颗能力的读取点：基线就是复现结果，「离尽头不够一个门就无解」
+    对它不成立（数对上才是目的），预检只算数字不判死。"""
     pack = Path(pack).resolve()
     script = pack / "harness" / "make_run0.sh"
     if not script.is_file():
@@ -73,7 +76,7 @@ def run_baseline(pack: Path, compute: Compute) -> str:
         room = headroom.assess(pack)
     except FileNotFoundError as exc:
         raise CapabilityFailed(str(exc)) from exc
-    problems = room.problems()
+    problems = room.problems() if check_headroom else []
     if problems:
         raise CapabilityFailed("基线跑完了，预检没过：\n" + "\n".join(problems)
                                + f"\n{room.summary()}")

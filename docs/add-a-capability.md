@@ -39,11 +39,11 @@
 
 | 阶段 | 主文件 | 状态 |
 |---|---|---|
-| 文献 | — | 待第一个能力定 |
+| 文献 | `sources.md` | 已定（助理手写，`output new literature`；复现流程读它，P-24） |
 | 假设 | — | 待第一个能力定 |
-| 设计 | `scoring.yaml` | 已定（`design`） |
+| 设计 | `scoring.yaml` | 已定（`design`、`reproduction`） |
 | 实验 | `ledger.tsv` + `iters/iter_N/results.json` | 已定（`auto-research`） |
-| 分析 | `analysis.md` | 已定（`analysis`） |
+| 分析 | `analysis.md` | 已定（`analysis`、`reproducibility`） |
 | 写作 | — | 待第一个能力定 |
 | 验证 | `report.json` | 已定（`verify`） |
 

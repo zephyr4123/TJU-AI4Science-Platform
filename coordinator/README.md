@@ -31,24 +31,26 @@ literature/ hypothesis/ design/ experiment/ analysis/ writing/ verification/
 - **已确认**：取流程、跑阶段。
 - **有改动未确认**：研究者要求改需求，你改了 `requirement.md` 之后就是这个状态——所有阶段又关上了，研究者看过 diff 再确认一次成下一版。
 
-## 七个研究阶段、四个能力、产出与断点
+## 七个研究阶段、六个能力、产出与断点
 
 科研分七个阶段：文献、假设、设计、实验、分析、写作、验证（纲领 P-18）。阶段不定先后，经过哪几个阶段、按什么顺序是流程说了算。每个阶段里有几个能力——一个能力就是一条 `ai4sci cap <name>` 命令，也就是给你调用的一个 tool——`ai4sci show caps` 按阶段列全，每个五栏：职责、边界、输入、产出、终止条件——调用之前先读那五栏。现在有的：
 
 | 阶段 | 能力（命令） | 读什么 | 一句话 |
 |---|---|---|---|
 | 设计 | `design` 评分脚本与基线 | 需求 + 原件（+ `--from hypothesis/<n>`） | 执行层写 scoring.yaml、harness/ 与 code/，框架封 harness、跑基线出 baseline/、算预检 |
+| 设计 | `reproduction` 原码复现基线 | 需求 + 原件里论文的代码（`--code <目录名>`）+ `--from literature/<n>` | 论文的代码搬进 code/，执行层只写起它的 launcher、算论文那几个数的 evaluate、目标 = 论文值的 scoring；框架跑一次，论文值与我们的值并排（复现那条流程，见下） |
 | 实验 | `auto-research` AutoResearch | `--from design/<n>` | 开一次实验，一轮一轮改代码：过统计门才 keep，否则回退到 best |
 | 分析 | `analysis` 分析初稿 | `--from experiment/<n>`（可几个） | 读账本与每轮结果，写三节固定的 analysis.md |
-| 验证 | `verify` 数字核对 | `--from analysis/<n>` + 它读的实验 | 零模型：分析里的数回溯到 results.json，账本与 git 对账，PASS / FAIL |
+| 分析 | `reproducibility` 复现性分析 | `--from design/<n>`（原码复现基线跑过的）+ `--from literature/<m>` | 论文值 vs 我们的值、复现到第几级、环境差异、偏离与改动、容易与困难，写 analysis.md |
+| 验证 | `verify` 数字核对 | `--from analysis/<n>` + 它读的实验（或设计） | 零模型：分析里的数回溯到 results.json（复现性分析回溯到 baseline/ 与论文值），账本与 git 对账，PASS / FAIL |
 
-文献、假设、写作三个阶段还没有能力。流程里排了这些阶段，你自己写：`ai4sci output new <stage> --title <一句>`（要读谁就加 `--from`）开一个产出目录，然后往里写文件（文献笔记、假设、稿子）。
+文献、假设、写作三个阶段还没有能力。流程里排了这些阶段，你自己写：`ai4sci output new <stage> --title <一句>`（要读谁就加 `--from`）开一个产出目录，然后往里写文件（文献笔记、假设、稿子）。文献阶段的主文件叫 `sources.md`（材料来源）：复现那条流程里下游按这个名字找，写法不限。
 
 **能力是纯函数**：读 `--from` 点名的产出，在自己的阶段下开一次新产出。它不看「最新」——选读哪几次是你的事，`ai4sci show workspace` 看每个阶段有哪几次、成没成、签没签。同一个阶段可以有很多次产出（实验跑三次就是 experiment/1、2、3），分析可以读几次实验（`--from experiment/1 --from experiment/2`）。产出被下游读过或被签过就冻住，改了框架按 hash 查得出并拒读；要改就新开一次。`auto-research` 与 `design` 可以接着上一次干：`--continue <id>`（接着跑一批、喂回修改意见），那还是同一次产出。
 
 **断点**：流程里放在两个阶段之间的一格，含义只有一个——前一个阶段的产出要研究者签了，下游才能读它。几个、放哪由流程定：端到端的流程一个没有，步步确认的流程每步一个。走到断点就停下来，把该看的念给人听，研究者在页面上签（终端里是 `ai4sci sign <id>`），**你不替人签**；签了才调用下一条命令，没签框架也会拒。
 
-## 出厂的流程：research（从设计到验证）
+## 出厂的流程：research（从设计到验证）与 reproduce（论文复现）
 
 ```bash
 ai4sci show templates                              # 需求模板：通用一份、按学科几份
@@ -89,6 +91,30 @@ ai4sci cap verify --from analysis/1 --from experiment/1   # 核对数字 → ver
 | `cap verify` 退 0 | 这份分析的数字全部可回溯 | 到**断点：验收**——研究者在页面上签 `verification/<n>`，或终端 `ai4sci sign verification/<n>`。**人确认，你不替人签** |
 
 `experiment/<n>/journal.md` 是你的本子：每个决定一行——为什么进这个阶段、看到什么、下一步、指回哪条 issue。框架只建空文件、加预算时追一行，其余是你写。
+
+## 复现一篇论文：另一条流程
+
+研究者说「这篇论文帮我复现一下」——复现不是改进。改进走 `research`（自己写代码、AutoResearch 逐轮改）；复现走 `reproduce`：找齐材料，拿论文自己的代码原样跑一遍，论文值与我们的值并排给人看，人签了写复现性分析、核对数字。复现的价值只有两种：校准（同一套评分脚本跑出论文的数，之后说「比论文好」才可信）与学习。别把复现塞进 research 去让机器凑论文的数。
+
+**需求（模板 `reproduce`）要问清四样**：哪篇（链接）；哪几个数（哪张表哪几行，不复现的也写明——要人的实验、几百 GPU 小时的表）；复现到第几级——一级用官方代码 + 官方数据原样重跑（证明结果可重跑）、二级换实现 / 换机器 / 换种子（证明结果不依赖某台机器某个种子）、三级只照论文描述重写（证明论文写清楚了；最难、最没必要先做）；对上的标准——差多少以内算对上，论文给了误差棒按它的，没给让研究者定。研究者不懂这些就用人话解释、给建议、让他选，不替他定。
+
+**文献阶段没有能力，你自己做**：用自带的搜索与网页读取找材料，然后 `ai4sci output new literature --title 材料来源`，在那个目录里写 `sources.md`（文献阶段的主文件，框架只认文件名，写法不限）：找到了什么、选了哪个、为什么、还缺什么，每样东西的链接、commit 或版本、许可证、拿没拿到。该找的：
+
+- 论文本身（`ai4sci skill run pdf` 解析，表里的数从 `structured.json` 抄，不凭记忆）
+- 官方代码（论文里的链接、作者的 GitHub；注意论文给的可能只是「分析仓」，真正能跑的在别处或别的分支——README 第一段就会说）
+- 数据、预训练权重（HF、Zenodo、README 里的网盘链接；注意版本与划分文件）
+- 别人的复现（Papers with Code、ML Reproducibility Challenge 报告、活跃的 fork）与已知的坑（仓库 issue 里「跑不出论文的数」那几条）
+- 要什么才能跑：Docker、GPU、API key、账号（密钥的**名字**写进需求，值永远不进对话、不进文件，放起服务的环境里）
+
+跑一次要多久、要多少钱、要哪些 key，是你搜完要告诉研究者的头一件事；太贵就提议一个最小子集先跑通。找与挑在对话里做；材料散、候选多的论文让研究者一起挑（官方是 TF1 的、第三方有 PyTorch 版，用哪个）。
+
+**拉材料用 `download`**：`ai4sci skill run download git <url> --commit <sha> --out materials/<名字>`（文件用 `file`、HF 上的用 `hf`），收据里的 commit / sha256 抄进 `sources.md`。环境：仓库里有 `requirements.txt` 就 `ai4sci env resolve --from materials/<名字>/requirements.txt`（实验室机器）；租来的机器用现成的 `ai4sci env use`。
+
+**设计阶段用 `reproduction`（原码复现基线）**：`ai4sci cap reproduction --from literature/<n> --code <materials 里代码的目录名> --compute <名字> --detach`。框架把代码搬进 `code/`，执行层只写起它的 launcher、算论文那几个数的 evaluate、目标 = 论文值的 scoring；跑一次就是复现结果，结论行里 `attainable=` 是论文值、`baseline=` 是我们的值、`upstream_changed=` 是改了几个上游文件（改动在 `upstream.diff`）。**对没对上你不判**：把两列数、σ、改了什么念给研究者，按需求里的标准由他说，签在页面上。草稿有问题（执行层说缺数据、缺 key、跑不起来）照 research 的做法喂回 `--continue design/<n> --feedback @<文件>`；缺的东西该补就补（拉数据、让研究者给 key 的名字）。
+
+**分析阶段用 `reproducibility`（复现性分析）**：`ai4sci cap reproducibility --from design/<n> --from literature/<m> --detach`，写 `analysis.md`：结论、数据表、方法与环境、偏离与改动、容易与困难、证伪与未决。然后 `ai4sci cap verify --from analysis/<k> --from design/<n>` 核对数字，人验收。
+
+没对上想缩小差距：一次只换一个设置（种子数、数据版本、预算、硬件），那是实验阶段的事，先跟研究者商量值不值得。
 
 ## 取一条流程，按需求改
 

@@ -31,3 +31,23 @@ def run_results(run_dir: Path) -> dict[str, Path]:
                 found[int(match.group(1))] = child / RESULTS_NAME
     return {(layout.BASELINE_KEY if n == 0 else layout.iter_key(n)): found[n]
             for n in sorted(found)}
+
+
+_REPEAT_RE = re.compile(r"^results-(\d+)\.json$")
+
+
+def design_results(pack: Path) -> dict[str, Path]:
+    """设计那包 baseline/ 里的结果：`baseline` 是基线那一次，`repeat_<seed>` 是每次重复。
+    复现性分析列给执行层抄、验证拿来回溯，来源写成 `design/<n>/<名字>`。"""
+    pack = Path(pack)
+    run0 = pack / "baseline"
+    found: dict[str, Path] = {}
+    if (run0 / RESULTS_NAME).is_file():
+        found[layout.BASELINE_KEY] = run0 / RESULTS_NAME
+    repeats = run0 / "repeats"
+    if repeats.is_dir():
+        seeds = sorted((int(m.group(1)), p) for p in repeats.iterdir()
+                       if (m := _REPEAT_RE.match(p.name)) and p.is_file())
+        for seed, path in seeds:
+            found[f"repeat_{seed}"] = path
+    return found

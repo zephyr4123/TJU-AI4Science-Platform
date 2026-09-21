@@ -37,7 +37,7 @@ platform/
 
 工作区的根是需求（纲领 P-19）：`requirement.md` 由人和助理对话后由助理按模板写，人确认（`requirement.lock`）之后阶段才开工，这是框架唯一内置的门。七个阶段各一个目录，每次执行一个编号子目录 `<stage>/<n>/`，`meta.yaml` 记它读了哪几次产出（`from`，带 sha256）；被下游引用或人签过字的产出就冻结。断点由拼流程的人定：一个断点 = 上一项的产出要人签字下游才能读，零个断点就是全自动。
 
-命令行上：`cap` 能力（agent 调用的 tool，纯函数：`--from STAGE/N` 点名读什么，`--flow` 挂到哪条流程，`--detach` 起成后台作业）、`requirement confirm` 确认需求、`sign STAGE/N` 给产出签字、`output new` 不经能力开一次产出、`show` 查询、`flow take` 取流程、`job stop` 停作业、`env resolve` 按包名算环境清单 / `env use` 用机器上现成的环境、`compute add / check / list / remove / default` 接机器、`skill list / show / run` 工具包、`workspace` / `chat` / `serve` 入口。命令不带工作区路径：cd 进 `workspaces/<id>/`，CLI 往上找 `requirement.md`（纲领 P-15）。两位助理分权（P-16）：主页面的研究助理只用流程，编辑台的流程助理只造流程。依赖只许自上而下：`cli → capabilities → chat → experiment → executor → workspace → skills → contracts`；`backends/` 与 `compute/` 是端口，framework 用它们、它们不认识 framework。这条规矩由 `tests/test_layering.py` 用 ast 逐条查。
+命令行上：`cap` 能力（agent 调用的 tool，纯函数：`--from STAGE/N` 点名读什么，`--flow` 挂到哪条流程，`--detach` 起成后台作业）、`requirement confirm` 确认需求、`sign STAGE/N` 给产出签字、`output new` 不经能力开一次产出、`show` 查询、`flow take` 取流程、`job stop` 停作业、`env resolve` 按包名（或上游的 requirements.txt）算环境清单 / `env use` 用机器上现成的环境、`compute add / check / list / remove / default` 接机器、`skill list / show / run` 工具包、`workspace` / `chat` / `serve` 入口。命令不带工作区路径：cd 进 `workspaces/<id>/`，CLI 往上找 `requirement.md`（纲领 P-15）。两位助理分权（P-16）：主页面的研究助理只用流程，编辑台的流程助理只造流程。依赖只许自上而下：`cli → capabilities → chat → experiment → executor → workspace → skills → contracts`；`backends/` 与 `compute/` 是端口，framework 用它们、它们不认识 framework。这条规矩由 `tests/test_layering.py` 用 ast 逐条查。
 
 ## 怎么跑
 

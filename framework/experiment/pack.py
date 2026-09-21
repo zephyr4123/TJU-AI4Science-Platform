@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import ast
+import difflib
 import hashlib
 import json
 import math
@@ -26,6 +27,12 @@ from framework.experiment.env import GUARANTEED_ENV, read_env
 
 SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
 SCORING_NAME = "scoring.yaml"
+# 复现（reproduction）留的两个族文件：code/ 从哪来、相对它改了什么（纲领 P-24：改了别人的代码留痕）
+UPSTREAM_NAME = "upstream.json"
+UPSTREAM_DIFF_NAME = "upstream.diff"
+# 比对时不看的：别人的状态、平台自己的东西、download 留在上游目录里的收据
+DIFF_IGNORED = (".git", "__pycache__", ".venv", ".DS_Store", ".pytest_cache",
+                ".ai4sci-download.json")
 BASELINE_DIRNAME = "baseline"
 PROFILE_NAME = "profile.yaml"
 
@@ -497,3 +504,52 @@ def seal_harness(pack: Path) -> list[str]:
     lines = [f"{_sha256(hdir / name)}  {name}" for name in names]
     (hdir / "SHA256SUMS").write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
     return names
+
+
+def read_upstream(pack: Path) -> dict[str, Any]:
+    """复现那包 code/ 的出处：名字、来源、commit。不是复现的包（没这个文件）就是空的。"""
+    path = Path(pack) / UPSTREAM_NAME
+    if not path.is_file():
+        return {}
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(doc, dict), f"{path} 要是键值对"
+    return doc
+
+
+def write_upstream_diff(pack: Path, upstream_dir: Path) -> list[str]:
+    """code/ 相对原件里上游目录的改动写成 `upstream.diff`（统一 diff，二进制只记名字），返回改过的
+    文件（相对 code/）。上游目录不在就抛：改了别人的代码留痕是复现的底线，没有对照就没法留。"""
+    pack, upstream_dir = Path(pack), Path(upstream_dir)
+    if not upstream_dir.is_dir():
+        raise FileNotFoundError(f"上游目录不在，没法比对 code/ 改了什么：{upstream_dir}")
+    before, after = _tree(upstream_dir), _tree(pack / "code")
+    changed: list[str] = []
+    chunks: list[str] = []
+    for rel in sorted(set(before) | set(after)):
+        a, b = before.get(rel), after.get(rel)
+        if a is not None and b is not None and a.read_bytes() == b.read_bytes():
+            continue
+        changed.append(rel)
+        chunks.append(_unified(rel, a, b))
+    body = "".join(chunks) or "（code/ 与上游一字未改）\n"
+    (pack / UPSTREAM_DIFF_NAME).write_text(
+        f"# code/ 相对上游 {upstream_dir.name} 的改动：{len(changed)} 个文件\n" + body,
+        encoding="utf-8")
+    return changed
+
+
+def _tree(root: Path) -> dict[str, Path]:
+    return {p.relative_to(root).as_posix(): p for p in root.rglob("*")
+            if p.is_file() and not set(p.relative_to(root).parts) & set(DIFF_IGNORED)}
+
+
+def _unified(rel: str, a: Path | None, b: Path | None) -> str:
+    ta = a.read_bytes() if a else b""
+    tb = b.read_bytes() if b else b""
+    if b"\x00" in ta[:8192] or b"\x00" in tb[:8192]:
+        state = "新增" if a is None else ("删除" if b is None else "改了")
+        return f"二进制文件{state}：{rel}\n"
+    lines_a = ta.decode("utf-8", errors="replace").splitlines(keepends=True)
+    lines_b = tb.decode("utf-8", errors="replace").splitlines(keepends=True)
+    return "".join(difflib.unified_diff(lines_a, lines_b, fromfile=f"upstream/{rel}",
+                                        tofile=f"code/{rel}"))

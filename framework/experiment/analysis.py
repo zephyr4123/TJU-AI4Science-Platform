@@ -2,7 +2,9 @@
 
 分析是执行层写的长文本，机器没法判"结论对不对"，但能判"数字有没有来源"：
 执行层必须把它引用的每个指标值列进 `## 数据` 表（来源、指标、值三列，来源写成
-`experiment/<n>/baseline` 或 `experiment/<n>/iter_N`，值从 results.json 原样抄），
+`experiment/<n>/baseline` 或 `experiment/<n>/iter_N`；复现性分析读的是设计那包，来源写成
+`design/<n>/baseline`、`design/<n>/repeat_<seed>`、`design/<n>/scoring`（论文值）或
+`design/<n>/sigma`（重复的标准差），值原样抄），
 正文里带小数点或指数的数只许出现表里有的值。分析能力在交产物前校验形状，
 验证能力拿同一个解析器去 results.json 里逐条回溯——两个能力互不 import，共用的只有这份契约。
 
@@ -14,11 +16,17 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
+
+from backends import RunResult
+from framework.contracts.capability import CapabilityFailed
 
 REQUIRED_HEADINGS = ("## 结论", "## 数据", "## 证伪与未决")
 DATA_HEADING = "## 数据"
 TABLE_COLUMNS = ("来源", "指标", "值")
-SOURCE_RE = re.compile(r"^experiment/\d+/(baseline|iter_\d+)$")
+# 来源：实验的一轮，或（复现性分析）设计那包的基线 / 某次重复 / scoring 里的论文值
+SOURCE_RE = re.compile(
+    r"^(experiment/\d+/(baseline|iter_\d+)|design/\d+/(baseline|repeat_\d+|scoring|sigma))$")
 # 带小数点或指数的数；前后不能贴着字母、数字、点（避免切开 iter_0.5、v1.2.3 这类标识），
 # 后面紧跟 % 的是百分比，不算
 NUMBER_RE = re.compile(
@@ -126,3 +134,26 @@ def _section_lines(text: str, heading: str) -> list[tuple[int, str]]:
         if inside:
             lines.append((line_no, line))
     return lines
+
+
+def check_session_outcome(output_dir: Path, result: RunResult, *, doc_name: str,
+                          log_dirname: str) -> list[Claim]:
+    """写分析的两颗能力共用的事后判定，顺序固定：先判越界，再判会话死没死，最后判产物形状。
+    文件一律留着当证据；不合就 CapabilityFailed。"""
+    outside = [f for f in result.changed_files
+               if f != doc_name and not f.startswith(f"{log_dirname}/")]
+    if outside:
+        raise CapabilityFailed(f"执行层改了 {doc_name} 之外的文件：{', '.join(sorted(outside))}")
+    if result.timed_out or result.exit_code != 0:
+        tail = result.stdout_tail.strip().splitlines()
+        why = "超时" if result.timed_out else f"退出码 {result.exit_code}"
+        raise CapabilityFailed(f"执行层会话没走完（{why}）：{tail[-1] if tail else '无输出'}")
+    doc = Path(output_dir) / doc_name
+    if not doc.is_file():
+        raise CapabilityFailed(f"执行层没有写出 {doc_name}")
+    text = doc.read_text(encoding="utf-8")
+    problems = validate_analysis(text)
+    if problems:
+        raise CapabilityFailed(f"{doc_name} 不合约：" + "；".join(problems))
+    claims, _ = parse_claims(text)
+    return claims

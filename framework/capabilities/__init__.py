@@ -43,6 +43,8 @@ LEADING_PARAMS = ("output_dir", "inputs", "ports")
 # 文献、假设、写作三个阶段还没有能力，等第一个进来再填；设计那一行是实验族定的名，第二个族进设计
 # 阶段那天要么沿用、要么改成族无关的，是一次决策。
 MAIN_FILES: dict[str, tuple[str, ...]] = {
+    # 文献格的主文件由助理手写（output new literature），不是能力产的：纲领 P-24 定名
+    "文献": ("sources.md",),
     "设计": ("scoring.yaml",),
     "实验": ("ledger.tsv", "results.json"),
     "分析": ("analysis.md",),
@@ -50,6 +52,7 @@ MAIN_FILES: dict[str, tuple[str, ...]] = {
 }
 # 主文件在页面上的名字（P-21：文件名是机器的名字，上屏要翻译）；每个主文件一行，少一行导入时就炸
 MAIN_FILE_LABELS: dict[str, str] = {
+    "sources.md": "材料来源",
     "scoring.yaml": "评分契约",
     "ledger.tsv": "账本",
     "results.json": "结果",

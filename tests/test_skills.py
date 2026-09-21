@@ -284,3 +284,41 @@ def test_make_skills_entry_warms_every_script_and_probes_system_tools(libraries,
                           text=True, env={**run.uv_env(), "PYTHONPATH": str(REPO_ROOT)},
                           check=False, cwd=REPO_ROOT)
     assert proc.returncode == 1 and "definitely-not-a-command" in proc.stderr
+
+
+def test_download_skill_clones_at_a_commit_and_checks_sha256(tmp_path):
+    """出厂的 download skill（P-24）：git 子命令 clone 到指定 commit、留收据；file 子命令校验
+    sha256，不对就删掉退 4；目录已存在退 2。不联网：上游是本地 git 仓，文件走 file://。"""
+    import hashlib
+
+    fetch = REPO_ROOT / "skills" / "download" / "scripts" / "fetch.py"
+    up = tmp_path / "up"
+    up.mkdir()
+    subprocess.run(["git", "init", "-q", str(up)], check=True)
+    (up / "README.md").write_text("hi\n", encoding="utf-8")
+    (up / "LICENSE").write_text("MIT\n", encoding="utf-8")
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@t"}
+    subprocess.run(["git", "-C", str(up), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(up), "commit", "-qm", "init"], check=True,
+                   env={**dict(__import__("os").environ), **env})
+    sha = subprocess.run(["git", "-C", str(up), "rev-parse", "HEAD"], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    code = run.run_script(fetch, ["git", str(up), "--commit", sha], cwd=ws)
+    assert code == 0
+    receipt = json.loads((ws / "materials" / "up" / ".ai4sci-download.json").read_text("utf-8"))
+    assert receipt["kind"] == "git" and receipt["commit"] == sha and receipt["license"] == "LICENSE"
+    assert receipt["out"] == "materials/up" and receipt["files"] == 2
+    assert run.run_script(fetch, ["git", str(up)], cwd=ws) == 2  # 已存在不覆盖
+    assert run.run_script(fetch, ["git", str(up), "--commit", "deadbeef", "--out", "m/x"],
+                          cwd=ws) == 4
+    assert not (ws / "m" / "x").exists()
+    digest = hashlib.sha256((up / "README.md").read_bytes()).hexdigest()
+    url = (up / "README.md").as_uri()
+    assert run.run_script(fetch, ["file", url, "--sha256", digest, "--out", "m/readme"],
+                          cwd=ws) == 0
+    assert (ws / "m" / "readme" / "README.md").read_text(encoding="utf-8") == "hi\n"
+    assert run.run_script(fetch, ["file", url, "--sha256", "00", "--out", "m/bad"], cwd=ws) == 4
+    assert not (ws / "m" / "bad").exists()

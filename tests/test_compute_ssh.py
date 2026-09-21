@@ -224,7 +224,7 @@ def test_live_check_sync_submit_wait_get_round_trip(tmp_path, real_registry):
 @live
 def test_live_baseline_and_one_iteration_run_on_the_box(tmp_path, real_registry):
     from framework.capabilities.auto_research import run_loop
-    from framework.capabilities.design.baseline import run_baseline
+    from framework.experiment.baseline import run_baseline
     from framework.experiment.checkpoint import read_checkpoint
     from tests.fixtures import packs_factory as pf
     from tests.fixtures.scripted_backend import ScriptedRunner

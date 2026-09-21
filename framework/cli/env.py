@@ -1,4 +1,5 @@
-"""`ai4sci env resolve [--python X.Y] [--compute <名字>] <包名>…` 隔离新建 |
+"""`ai4sci env resolve [--python X.Y] [--compute <名字>] [--from <requirements.txt>] <包名>…`
+隔离新建 |
 `ai4sci env use --compute <名字> <解释器路径>` 用机器上现成的环境（外层 #117、纲领 P-23）。
 
 两条路是 P-23 的两问：隔离新建（版本锁死、换机器可复现；第一次要在那台机器上下几 GB）还是用机器上
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from compute import ComputeNotFound
 from framework import computes
@@ -39,9 +41,19 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     if not env.VERSION_RE.match(version):
         print(f"--python 要是 <major>.<minor> 如 3.12，得到 {version!r}", file=sys.stderr)
         return EXIT_USAGE
+    packages = list(args.packages)
+    if args.from_file:
+        source = Path(args.from_file)
+        if not source.is_file():
+            print(f"--from 指的文件不存在：{source}", file=sys.stderr)
+            return EXIT_USAGE
+        packages += _requirements_of(source)
+    if not packages:
+        print("要么给几个包名，要么 --from <requirements.txt>（上游仓库里的）", file=sys.stderr)
+        return EXIT_USAGE
     try:
         compute = computes.instance(args.compute) if args.compute else None
-        lock = env.resolve_lock(target, version, list(args.packages), compute=compute)
+        lock = env.resolve_lock(target, version, packages, compute=compute)
     except (env.EnvBuildError, ComputeNotFound, computes.ComputesInvalid) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
@@ -50,6 +62,18 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     print(f"ok {lock.relative_to(ws.root)}\tpython={version}\tpins={len(pins)}"
           f"\tnext=需求「材料」里写明环境是这条命令算的；设计阶段按它建环境")
     return EXIT_OK
+
+
+def _requirements_of(path: Path) -> list[str]:
+    """上游仓库的 requirements.txt → 包名清单：注释、空行、`-r` / `-e` / `--` 这类 pip 选项跳过
+    （它们指向别的文件或本地路径，uv pip compile 在临时目录里解析不了）。"""
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line or line.startswith("-"):
+            continue
+        out.append(line)
+    return out
 
 
 def cmd_use(args: argparse.Namespace) -> int:
@@ -84,7 +108,9 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     using.set_defaults(func=cmd_use)
     resolving = actions.add_parser(
         "resolve", help="按几个包名算出钉死传递依赖的完整清单，写进 materials/env/（会联网）")
-    resolving.add_argument("packages", nargs="+", help="要的包，如 torch numpy scipy")
+    resolving.add_argument("packages", nargs="*", help="要的包，如 torch numpy scipy")
+    resolving.add_argument("--from", dest="from_file", default="",
+                           help="从一份 requirements.txt 读包名（复现：上游仓库里的那份）")
     resolving.add_argument("--python", default="",
                            help="Python 版本 X.Y；materials/env/python-version 已有时可省")
     resolving.add_argument("--compute", default="",

@@ -174,7 +174,7 @@ def test_file_view_refuses_paths_outside_the_workspace(tmp_path):
 
 def test_templates_are_listed_with_title_and_summary():
     found = boards.list_templates(paths.templates_root())
-    assert [t["name"] for t in found] == ["ai", "cs", "generic", "materials"]
+    assert [t["name"] for t in found] == ["ai", "cs", "generic", "materials", "reproduce"]
     generic = next(t for t in found if t["name"] == "generic")
     assert generic["title"] == "课题标题" and generic["summary"].startswith("通用模板")
     assert requirement.PLACEHOLDER in generic["text"]

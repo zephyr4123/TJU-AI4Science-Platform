@@ -29,8 +29,8 @@ FIVE = {"does": "干", "does_not": "不干", "brings": "带", "leaves": "留", "
 
 def C(name: str, **kw) -> Capability:
     """测试用的最小描述符：阶段、标题与五栏给定值，只让每个用例关心自己那一处。
-    缺省阶段是还没定主文件的「文献」，主文件那条断言另有用例。"""
-    return Capability(name, **{"stage": "文献", "title": "t", "brief": "b", **FIVE, **kw})
+    缺省阶段是还没定主文件的「假设」，主文件那条断言另有用例。"""
+    return Capability(name, **{"stage": "假设", "title": "t", "brief": "b", **FIVE, **kw})
 
 
 def _module(name: str, descriptor: object, entry: object) -> ModuleType:
@@ -42,9 +42,10 @@ def _module(name: str, descriptor: object, entry: object) -> ModuleType:
     return module
 
 
-def test_discover_finds_the_four_capabilities_and_all_pass_the_checks():
+def test_discover_finds_the_six_capabilities_and_all_pass_the_checks():
     found = discover()
-    assert set(found) == {"design", "auto-research", "analysis", "verify"}
+    assert set(found) == {"design", "reproduction", "auto-research", "analysis", "reproducibility",
+                          "verify"}
     for name, module in found.items():
         assert module.DESCRIPTOR.name == name
         json.dumps(module.DESCRIPTOR.to_dict(), ensure_ascii=False)  # UI 后端要能直接吃
@@ -60,7 +61,8 @@ def test_who_runs_what_and_who_can_continue():
     assert found["auto-research"].DESCRIPTOR.needs_compute is True
     assert found["analysis"].DESCRIPTOR.needs_compute is False
     assert found["verify"].DESCRIPTOR.needs_executor is False
-    assert {n for n, m in found.items() if m.DESCRIPTOR.continuable} == {"design", "auto-research"}
+    assert {n for n, m in found.items() if m.DESCRIPTOR.continuable} == {
+        "design", "reproduction", "auto-research"}
 
 
 def test_param_names_match_entrypoint_keyword_arguments():
@@ -169,8 +171,8 @@ def test_param_label_is_required_short_and_clean():
 
 def test_every_shipped_capability_sits_in_a_stage_with_all_columns_filled():
     stages = {name: module.DESCRIPTOR.stage for name, module in discover().items()}
-    assert stages == {"design": "设计", "auto-research": "实验", "analysis": "分析",
-                      "verify": "验证"}
+    assert stages == {"design": "设计", "reproduction": "设计", "auto-research": "实验",
+                      "analysis": "分析", "reproducibility": "分析", "verify": "验证"}
     for module in discover().values():
         d = module.DESCRIPTOR
         assert d.title and d.brief

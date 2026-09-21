@@ -14,12 +14,11 @@ import logging
 import math
 from pathlib import Path
 
-from backends import RunResult
 from framework import skills
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
 from framework.executor import prompting, session
 from framework.experiment import artifacts, gitwork, layout, ledger, notebook
-from framework.experiment.analysis import parse_claims, validate_analysis
+from framework.experiment.analysis import check_session_outcome
 from framework.experiment.checkpoint import read_checkpoint
 from framework.experiment.context import (
     DIRECTION_ZH,
@@ -55,32 +54,12 @@ def analyze(output_dir: Path, inputs: Inputs, ports: Ports) -> str:
         ports.runner, prompt, cwd=output_dir, allowed_paths=[output_dir],
         log_dir=output_dir / LOG_DIRNAME,
     )
-    claims = _check_outcome(output_dir, result)
+    claims = check_session_outcome(output_dir, result, doc_name=DOC_NAME,
+                                   log_dirname=LOG_DIRNAME)
     LOGGER.info("analysis_done out=%s claims=%d cost_usd=%s duration_s=%.1f",
                 output_dir, len(claims), result.cost_usd, result.duration_s)
     cost = "nan" if math.isnan(result.cost_usd) else f"{result.cost_usd:.4f}"
     return f"analysis ok\tclaims={len(claims)}\tcost_usd={cost}\tpath={DOC_NAME}"
-
-
-def _check_outcome(output_dir: Path, result: RunResult) -> list:
-    """事后判定，顺序固定：先判越界，再判会话死没死，最后判产物形状。文件一律留着当证据。"""
-    outside = [f for f in result.changed_files
-               if f != DOC_NAME and not f.startswith(f"{LOG_DIRNAME}/")]
-    if outside:
-        raise CapabilityFailed(f"执行层改了 {DOC_NAME} 之外的文件：{', '.join(sorted(outside))}")
-    if result.timed_out or result.exit_code != 0:
-        tail = result.stdout_tail.strip().splitlines()
-        why = "超时" if result.timed_out else f"退出码 {result.exit_code}"
-        raise CapabilityFailed(f"执行层会话没走完（{why}）：{tail[-1] if tail else '无输出'}")
-    doc = output_dir / DOC_NAME
-    if not doc.is_file():
-        raise CapabilityFailed(f"执行层没有写出 {DOC_NAME}")
-    text = doc.read_text(encoding="utf-8")
-    problems = validate_analysis(text)
-    if problems:
-        raise CapabilityFailed("analysis.md 不合约：" + "；".join(problems))
-    claims, _ = parse_claims(text)
-    return claims
 
 
 def _prompt_values(runs: list[tuple[Path, str]]) -> dict[str, object]:

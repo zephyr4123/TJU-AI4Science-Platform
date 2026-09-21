@@ -45,7 +45,8 @@ DESCRIPTOR = Capability(
     ),
     brings=(
         "一次分析产出与它分析的那几次实验产出（分析读了谁就带谁）："
-        "analysis.md、iters/iter_N/results.json、ledger.tsv、work/（git 仓）。"
+        "analysis.md、iters/iter_N/results.json、ledger.tsv、work/（git 仓）；"
+        "复现性分析带的是设计产出：baseline/ 与 scoring.yaml 里的论文值。"
     ),
     leaves="report.json（PASS 与 FAIL 都写）。",
     stops=(
@@ -66,9 +67,12 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *,
     analysis_dir = inputs.one_of("analysis", "验证")
     experiments = dict(zip([i for i in inputs.ids if i.startswith("experiment/")],
                            inputs.of_stage("experiment"), strict=True))
-    if not experiments:
-        raise CapabilityFailed("验证要带上分析读过的那几次实验：--from experiment/<n>")
-    results = _run_checks(analysis_dir, experiments, tolerance)
+    designs = dict(zip([i for i in inputs.ids if i.startswith("design/")],
+                       inputs.of_stage("design"), strict=True))
+    if not experiments and not designs:
+        raise CapabilityFailed("验证要带上分析读过的产出：--from experiment/<n>（分析初稿）"
+                               "或 --from design/<n>（复现性分析）")
+    results = _run_checks(analysis_dir, experiments, designs, tolerance)
     status = "PASS" if all(c.passed for c in results) else "FAIL"
     _write_report(output_dir, status, results, inputs)
     failed = [c for c in results if not c.passed]
@@ -82,7 +86,7 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *,
     return f"verify PASS\tchecks={len(results)}\tpath={REPORT_NAME}"
 
 
-def _run_checks(analysis_dir: Path, experiments: dict[str, Path],
+def _run_checks(analysis_dir: Path, experiments: dict[str, Path], designs: dict[str, Path],
                 tolerance: float) -> list[checks.Check]:
     doc = analysis_dir / ANALYSIS_DOC
     present = checks.analysis_present(doc)
@@ -90,7 +94,7 @@ def _run_checks(analysis_dir: Path, experiments: dict[str, Path],
         # 没有分析就没有可回溯的东西，别再对着空文件报一串"表不存在"
         return [present]
     text = doc.read_text(encoding="utf-8")
-    out = [present, checks.numbers_traceable(experiments, text, tolerance),
+    out = [present, checks.numbers_traceable(experiments, text, tolerance, designs),
            checks.prose_numbers_in_table(text, tolerance)]
     out += [checks.ledger_reconciled(oid, run_dir) for oid, run_dir in experiments.items()]
     return out

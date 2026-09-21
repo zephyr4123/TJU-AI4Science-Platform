@@ -9,10 +9,12 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from framework.experiment import artifacts, layout, ledger
+from framework.experiment import pack as packs
 from framework.experiment.analysis import Claim, parse_claims, prose_numbers
 from framework.experiment.results import read_metrics
 
@@ -33,11 +35,13 @@ def analysis_present(doc: Path) -> Check:
     return Check("analysis_present", False, [f"{doc.name} 不存在或为空"])
 
 
-def numbers_traceable(experiments: dict[str, Path], text: str, tolerance: float) -> Check:
-    """数据表每一行 (来源, 指标, 值) 都能在那次实验那一轮的 results.json 里找到。"""
+def numbers_traceable(experiments: dict[str, Path], text: str, tolerance: float,
+                      designs: dict[str, Path] | None = None) -> Check:
+    """数据表每一行 (来源, 指标, 值) 都能在那次实验那一轮的 results.json 里找到；复现性分析的来源
+    是设计那包：基线、每次重复、scoring 里的论文值。"""
     claims, problems = parse_claims(text)
     details = list(problems)
-    sources = _load_sources(experiments)
+    sources = _load_sources(experiments, designs or {})
     for claim in claims:
         actual = sources.get(claim.source, {}).get(claim.metric)
         if actual is None:
@@ -76,15 +80,31 @@ def ledger_reconciled(oid: str, run_dir: Path) -> Check:
     return Check(f"ledger_reconciled:{oid}", True, [f"{oid} 账本每行 commit 与 git 对得上"])
 
 
-def _load_sources(experiments: dict[str, Path]) -> dict[str, dict[str, float]]:
-    """来源（<实验 id>/<轮>）→ 指标 → 实际值；不合约的 results.json 不进来，
-    回溯到它就是"没有结果"。"""
+def _load_sources(experiments: dict[str, Path],
+                  designs: dict[str, Path]) -> dict[str, dict[str, float]]:
+    """来源（<实验 id>/<轮>，或 <设计 id>/baseline | repeat_<seed> | scoring）→ 指标 → 实际值；
+    不合约的 results.json 不进来，回溯到它就是"没有结果"。"""
     sources: dict[str, dict[str, float]] = {}
     for oid, run_dir in experiments.items():
         for name, path in artifacts.run_results(run_dir).items():
             metrics, _ = read_metrics(path)
             if metrics is not None:
                 sources[f"{oid}/{name}"] = metrics
+    for oid, pack in designs.items():
+        for name, path in artifacts.design_results(pack).items():
+            metrics, _ = read_metrics(path)
+            if metrics is not None:
+                sources[f"{oid}/{name}"] = metrics
+        scoring = packs.read_scoring(pack)
+        paper = {m["name"]: float(m["attainable"]) for m in scoring.get("metrics", ())
+                 if isinstance(m.get("attainable"), (int, float))}
+        if paper:
+            sources[f"{oid}/scoring"] = paper
+        sigma_path = Path(pack) / packs.BASELINE_DIRNAME / "sigma.json"
+        if sigma_path.is_file():
+            doc = json.loads(sigma_path.read_text(encoding="utf-8"))
+            sources[f"{oid}/sigma"] = {name: float(entry["sigma"]) for name, entry in doc.items()
+                                       if isinstance(entry, dict) and "sigma" in entry}
     return sources
 
 
