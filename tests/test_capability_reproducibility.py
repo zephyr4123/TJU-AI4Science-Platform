@@ -86,8 +86,20 @@ def test_writes_the_doc_and_prompt_carries_paper_value_results_upstream_diff_env
     for token in ("论文值 **0.3**", "design/1/scoring：val_mse = 0.3（论文值）",
                   "design/1/baseline：val_mse = 0.5", "design/1/repeat_43：val_mse = 0.52",
                   "design/1/sigma：val_mse = 0.02", "commit `abc123`", "修了路径",
-                  "- Python：`", "没有材料清单", "复现到了哪一级"):
+                  "- Python：`", "没有材料清单", "复现到了哪一级", "训练超参"):
         assert token in prompt, token
+    assert "上一版的问题" not in prompt
+
+
+def test_rewrite_carries_the_previous_versions_problems(made):
+    """真跑时第二版把训练超参写在正文里被数字核对拦下，第三版不知道第二版错在哪：重写是新开一份，
+    但 --feedback 把上一版的问题放进提示。"""
+    out, inputs = _out(made)
+    runner = ScriptedRunner([{"analysis.md": _analysis()}])
+    cap.run(out, inputs, Ports(runner=runner), feedback="第 28 行的超参要写反引号")
+    assert "## 上一版的问题（这次要避免）\n\n第 28 行的超参要写反引号" in runner.prompts[0]
+    with pytest.raises(CapabilityFailed, match="--feedback 指的文件不存在"):
+        cap.run(out, inputs, Ports(runner=ScriptedRunner([])), feedback="@/nope.md")
 
 
 def test_missing_baseline_or_broken_shape_fails(made):

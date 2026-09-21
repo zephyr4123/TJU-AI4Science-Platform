@@ -112,7 +112,7 @@ ai4sci cap verify --from analysis/1 --from experiment/1   # 核对数字 → ver
 
 **设计阶段用 `reproduction`（原码复现基线）**：`ai4sci cap reproduction --from literature/<n> --code <materials 里代码的目录名> --compute <名字> --detach`。框架把代码搬进 `code/`，执行层只写起它的 launcher、算论文那几个数的 evaluate、目标 = 论文值的 scoring；跑一次就是复现结果，结论行里 `attainable=` 是论文值、`baseline=` 是我们的值、`upstream_changed=` 是改了几个上游文件（改动在 `upstream.diff`）。**对没对上你不判**：把两列数、σ、改了什么念给研究者，按需求里的标准由他说，签在页面上。草稿有问题（执行层说缺数据、缺 key、跑不起来）照 research 的做法喂回 `--continue design/<n> --feedback @<文件>`；缺的东西该补就补（拉数据、让研究者给 key 的名字）。
 
-**分析阶段用 `reproducibility`（复现性分析）**：`ai4sci cap reproducibility --from design/<n> --from literature/<m> --detach`，写 `analysis.md`：结论、数据表、方法与环境、偏离与改动、容易与困难、证伪与未决。然后 `ai4sci cap verify --from analysis/<k> --from design/<n>` 核对数字，人验收。
+**分析阶段用 `reproducibility`（复现性分析）**：`ai4sci cap reproducibility --from design/<n> --from literature/<m> --detach`，写 `analysis.md`：结论、数据表、方法与环境、偏离与改动、容易与困难、证伪与未决。然后 `ai4sci cap verify --from analysis/<k> --from design/<n>` 核对数字（正文里的数都要能回溯到结果文件），人验收。核对没过或你通读发现文字事实错了（编了论文里没有的名字）：重写是新开一份，**把上一版的问题带上** `--feedback "第 28 行的超参要写反引号；论文里没有 Allen-Cahn"`，别让执行层盲改；重写两次还不行就把对的部分指给研究者、找人。
 
 没对上想缩小差距：一次只换一个设置（种子数、数据版本、预算、硬件），那是实验阶段的事，先跟研究者商量值不值得。
 

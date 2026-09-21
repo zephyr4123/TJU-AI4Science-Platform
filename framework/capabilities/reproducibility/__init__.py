@@ -15,7 +15,7 @@ from pathlib import Path
 
 from framework import skills
 from framework.contracts import requirement
-from framework.contracts.capability import Capability, CapabilityFailed, Inputs, Ports
+from framework.contracts.capability import Capability, CapabilityFailed, Inputs, Param, Ports
 from framework.contracts.output import read_meta
 from framework.executor import prompting, session
 from framework.experiment import artifacts, env
@@ -56,22 +56,37 @@ DESCRIPTOR = Capability(
     leaves="analysis.md；执行层会话的日志在 executor/。",
     stops=(
         "一次成稿就退出。会话写了别的文件、三节缺一、数据表一行都解析不出：判失败、报告原因，"
-        "协调层看了决定重跑（新开一次产出）还是找人。"
+        "协调层看了决定重写（新开一次产出，带上上一版的问题）还是找人。"
+    ),
+    params=(
+        Param("feedback", "str", "",
+              "重写时上一版的问题（数字核对没过的行、写错的事实）；写 @<文件> 就读那个文件",
+              "修改意见", in_flow=False),
     ),
     needs_executor=True,
 )
 
 
-def run(output_dir: Path, inputs: Inputs, ports: Ports) -> str:
+def run(output_dir: Path, inputs: Inputs, ports: Ports, *, feedback: str = "") -> str:
     output_dir = Path(output_dir).resolve()
     assert ports.runner is not None, "复现性分析要执行层端口"
+    if feedback.startswith("@"):
+        path = Path(feedback[1:])
+        if not path.is_file():
+            raise CapabilityFailed(f"--feedback 指的文件不存在：{path}")
+        feedback = path.read_text(encoding="utf-8")
     design_dir = inputs.one_of("design", "复现性分析")
     oid = next(i for i in inputs.ids if i.startswith("design/"))
     if not (design_dir / packs.BASELINE_DIRNAME / "results.json").is_file():
         raise CapabilityFailed(f"{oid} 还没有跑出 baseline/，没有可分析的复现结果")
     scoring = packs.read_scoring(design_dir)
     domain = str(scoring.get("domain", packs.DEFAULT_DOMAIN))
-    prompt = prompting.build_prompt(PROMPT_TEMPLATE, _prompt_values(design_dir, oid, inputs),
+    values = _prompt_values(design_dir, oid, inputs)
+    # 重写不是接着改（分析每次都是新的一份，P-19），但上一版的问题要让执行层看见，别让它盲改：
+    # 真跑时第二版把训练超参写在正文里被数字核对拦下，第三版不知道第二版错在哪
+    values["feedback"] = (f"## 上一版的问题（这次要避免）\n\n{feedback.strip()}"
+                          if feedback.strip() else "")
+    prompt = prompting.build_prompt(PROMPT_TEMPLATE, values,
                                     skills=skills.for_executor(domain))
     result = session.run_session(
         ports.runner, prompt, cwd=output_dir, allowed_paths=[output_dir],
