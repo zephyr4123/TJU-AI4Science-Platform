@@ -350,6 +350,38 @@ def use_interpreter(target_env: Path, compute: Compute, python: str) -> Path:
     return target_env
 
 
+ADD_TIMEOUT_S = 1800.0  # 往现成环境里补几个包：小包几十秒，走镜像的 torch 扩展也够
+
+
+def add_packages(target_env: Path, compute: Compute, packages: list[str]) -> Path:
+    """往机器上现成的环境里补几个包（纲领 P-24 复现：镜像自带的环境缺论文仓库要的几个小包），
+    `pip install` 进那个解释器，装完重新 freeze，清单头部记下这次补了什么。
+
+    只对「用现成的」环境（`interpreter` 在、名字是这台机器）：隔离新建的环境改 requirements.lock
+    重建，不走这条。租来的机器就该这么补——不用整套隔离新建，也不用让研究者登录机器。
+    """
+    assert packages and all(p.strip() for p in packages), "至少给一个包名"
+    target_env = Path(target_env)
+    marker = target_env / INTERPRETER_NAME
+    if not marker.is_file():
+        raise EnvBuildError(
+            f"{target_env} 没有 {INTERPRETER_NAME}：补包只对「用现成的」环境，先 ai4sci env use；"
+            "隔离新建的环境改 requirements.lock 重建")
+    owner, _, python = marker.read_text(encoding="utf-8").strip().partition(":")
+    name = compute_name(compute)
+    if owner != name:
+        raise EnvBuildError(f"这份环境是算力 {owner!r} 上的，不能往 {name!r} 上补")
+    _run_on(compute, compute.scratch, [python, "-m", "pip", "install", *packages],
+            what=f"pip install（{' '.join(packages)}）", timeout_s=ADD_TIMEOUT_S)
+    use_interpreter(target_env, compute, python)
+    stamp = datetime.now(UTC).strftime("%Y-%m-%d")
+    lock = target_env / REQUIREMENTS_NAME
+    lock.write_text(f"# ai4sci env add 于 {stamp} 往这个环境里补装：{' '.join(packages)}\n"
+                    + lock.read_text(encoding="utf-8"), encoding="utf-8")
+    LOGGER.info("env_add compute=%s python=%s packages=%d", name, python, len(packages))
+    return target_env
+
+
 def _run(argv: list[str], *, what: str) -> subprocess.CompletedProcess[str]:
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, check=False)

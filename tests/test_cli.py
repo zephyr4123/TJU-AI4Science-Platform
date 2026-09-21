@@ -799,6 +799,11 @@ def test_env_use_records_the_existing_interpreter(tmp_path, monkeypatch, capsys)
     assert out.startswith("ok materials/env/\tcompute=local\tpython=") and "不隔离" in out
     assert (ws.materials / "env" / "interpreter").read_text(encoding="utf-8") == \
         f"local:{sys.executable}\n"
+    # P-24：往现成的环境里补包——没给包名退 2，机器名不对退 1；真装的路在 test_experiment_env
+    assert main(["env", "add", "--compute", "local"]) == 2
+    assert "--from" in capsys.readouterr().err
+    assert main(["env", "add", "--compute", "nope", "six"]) == 1
+    assert "没有叫 'nope'" in capsys.readouterr().err
 
 
 def test_platform_crash_inside_a_job_is_recorded_not_lost(tmp_path, monkeypatch, capsys):

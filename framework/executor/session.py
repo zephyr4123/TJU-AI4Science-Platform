@@ -32,7 +32,8 @@ def executor_timeout_s() -> float:
 
 def run_session(
     runner: Runner, prompt: str, cwd: Path, allowed_paths: list[Path], log_dir: Path,
-    timeout_s: float | None = None,
+    timeout_s: float | None = None, max_turns: int | None = None,
+    max_budget_usd: float | None = None,
 ) -> RunResult:
     """起一次执行层会话，然后把它写在 `cwd/.ai4sci/` 下的事件流搬到 `log_dir`。
 
@@ -44,6 +45,7 @@ def run_session(
         prompt=prompt, cwd=cwd,
         timeout_s=executor_timeout_s() if timeout_s is None else timeout_s,
         allowed_paths=allowed_paths, bash_rules=EXECUTOR_BASH_RULES,
+        max_turns=max_turns, max_budget_usd=max_budget_usd,
     )
     stash_executor_logs(cwd, log_dir)
     return result

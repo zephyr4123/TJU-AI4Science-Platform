@@ -52,11 +52,13 @@ class ScriptedRunner:
 
     def run(
         self, prompt: str, cwd: Path, timeout_s: float, allowed_paths: list[Path],
-        bash_rules: tuple[str, ...] = (),
+        bash_rules: tuple[str, ...] = (), max_turns: int | None = None,
+        max_budget_usd: float | None = None,
     ) -> RunResult:
         self.calls += 1
         self.prompts.append(prompt)
         self.bash_rules = bash_rules  # 框架给执行层放行了哪些命令，测试对账（只该有 ai4sci skill）
+        self.limits = (max_turns, max_budget_usd)  # 能力给这次会话的轮数 / 花费上限
         assert timeout_s > 0 and allowed_paths, "runner 的调用形状变了，剧本要跟着改"
         if self.raise_at is not None and self.calls == self.raise_at:
             raise self.exception

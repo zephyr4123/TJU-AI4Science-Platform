@@ -37,7 +37,7 @@ stdout 一行 JSON 收据：`{"kind": "git", "source": "…", "commit": "…", "
 ## 拉下来之后
 
 - 代码进了 `materials/<名字>/`，设计阶段的「原码复现基线」用 `--code <名字>` 点名它，框架把它搬进 `code/`。
-- 环境：仓库里有 `requirements.txt` 就 `ai4sci env resolve --from materials/<名字>/requirements.txt`（隔离新建）；机器上有现成的就 `ai4sci env use`。
+- 环境：机器上有现成的就 `ai4sci env use`，缺包 `ai4sci env add --compute <名字> --from materials/<名字>/requirements.txt` 补；要隔离新建就 `ai4sci env resolve --from …`。
 - 把收据里的 commit / sha256 抄进 `sources.md`：复现性分析要写「用的是哪个版本」。
 
 ## 常见失败

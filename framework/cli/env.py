@@ -1,6 +1,7 @@
 """`ai4sci env resolve [--python X.Y] [--compute <名字>] [--from <requirements.txt>] <包名>…`
-隔离新建 |
-`ai4sci env use --compute <名字> <解释器路径>` 用机器上现成的环境（外层 #117、纲领 P-23）。
+隔离新建 | `ai4sci env use --compute <名字> <解释器路径>` 用机器上现成的环境（外层 #117、
+纲领 P-23）| `ai4sci env add --compute <名字> [--from <requirements.txt>] <包名>…` 往现成的
+环境里补几个包（P-24）。
 
 两条路是 P-23 的两问：隔离新建（版本锁死、换机器可复现；第一次要在那台机器上下几 GB）还是用机器上
 现成的（几秒起跑；版本以那台机器为准，换机器要重选）。`resolve` 按几个包名算完整清单；`use` 探那个
@@ -98,9 +99,47 @@ def cmd_use(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_add(args: argparse.Namespace) -> int:
+    ws = current_workspace()
+    if isinstance(ws, int):
+        return ws
+    packages = list(args.packages)
+    if args.from_file:
+        source = Path(args.from_file)
+        if not source.is_file():
+            print(f"--from 指的文件不存在：{source}", file=sys.stderr)
+            return EXIT_USAGE
+        packages += _requirements_of(source)
+    if not packages:
+        print("要么给几个包名，要么 --from <requirements.txt>（上游仓库里的）", file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        compute = computes.instance(args.compute)
+        target = env.add_packages(ws.materials / env.ENV_DIRNAME, compute, packages)
+    except (env.EnvBuildError, ComputeNotFound, computes.ComputesInvalid) as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_INVALID
+    lock = (target / env.REQUIREMENTS_NAME).read_text(encoding="utf-8").splitlines()
+    pins = [line for line in lock if line.strip() and not line.startswith("#")]
+    print(f"ok materials/env/\tcompute={args.compute}\tadded={len(packages)}"
+          f"\tpins={len(pins)}\tnext=接着干：ai4sci cap reproduction --continue design/<n>"
+          "（或重开一次）")
+    return EXIT_OK
+
+
 def add_parser(groups: argparse._SubParsersAction) -> None:
-    group = groups.add_parser("env", help="研究者的环境：隔离新建（resolve）或用现成的（use）")
+    group = groups.add_parser(
+        "env", help="研究者的环境：隔离新建（resolve）、用现成的（use）、往现成的里补包（add）")
     actions = group.add_subparsers(dest="action", required=True)
+    adding = actions.add_parser(
+        "add", help="往机器上现成的环境里补几个包（pip install 进 env use 登记的那个解释器，"
+                    "重新登记清单）")
+    adding.add_argument("packages", nargs="*", help="要补的包，如 scipy torchjd==0.13.0")
+    adding.add_argument("--from", dest="from_file", default="",
+                        help="从一份 requirements.txt 读包名（复现：上游仓库里的那份）")
+    adding.add_argument("--compute", required=True,
+                        help="哪台机器（ai4sci show computes 里的名字）")
+    adding.set_defaults(func=cmd_add)
     using = actions.add_parser(
         "use", help="用某台机器上现成的解释器：探版本、pip freeze 当清单、写 env/interpreter")
     using.add_argument("python", help="那台机器上解释器的绝对路径（compute check「已有环境」列的）")

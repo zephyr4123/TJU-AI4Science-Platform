@@ -168,5 +168,31 @@ def test_use_interpreter_freezes_the_existing_env_and_resolve_switches_back(tmp_
     assert problems == [] and spec.interpreter == ("local", sys.executable)
     with pytest.raises(env.EnvBuildError, match="起不来"):
         env.use_interpreter(target, LocalCompute(), "/nope/python")
+
+
+def test_add_packages_installs_into_the_existing_interpreter_and_refreezes(tmp_path):
+    """P-24：镜像自带的环境缺论文仓库要的几个小包——pip 装进 env use 登记的那个解释器，重新 freeze，
+    清单头部记下补了什么。只对「用现成的」环境；不是那台机器的、没登记过的都拒。
+    装进一个一次性 venv，不碰平台 venv（会联网）。"""
+    from compute.local import LocalCompute
+
+    venv = tmp_path / "throwaway"
+    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+    python = str(venv / "bin" / "python")
+    target = tmp_path / "materials" / "env"
+    with pytest.raises(env.EnvBuildError, match="先 ai4sci env use"):
+        env.add_packages(target, LocalCompute(), ["six"])
+    env.use_interpreter(target, LocalCompute(), python)
+    assert "six==" not in (target / "requirements.lock").read_text(encoding="utf-8")
+    (target / "interpreter").write_text(f"other:{python}\n", encoding="utf-8")
+    with pytest.raises(env.EnvBuildError, match="'other'"):
+        env.add_packages(target, LocalCompute(), ["six"])
+    (target / "interpreter").write_text(f"local:{python}\n", encoding="utf-8")
+    env.add_packages(target, LocalCompute(), ["six"])
+    lock = (target / "requirements.lock").read_text(encoding="utf-8")
+    assert lock.startswith("# ai4sci env add 于 ") and "补装：six" in lock and "six==" in lock
+    assert (target / "interpreter").read_text(encoding="utf-8") == f"local:{python}\n"
+    with pytest.raises(env.EnvBuildError, match="pip install"):
+        env.add_packages(target, LocalCompute(), ["definitely-not-a-package-zz9"])
     env.resolve_lock(target, THIS_PYTHON, ["packaging"])  # 回到隔离新建：interpreter 文件删掉
     assert not (target / "interpreter").exists()

@@ -108,7 +108,7 @@ ai4sci cap verify --from analysis/1 --from experiment/1   # 核对数字 → ver
 
 跑一次要多久、要多少钱、要哪些 key，是你搜完要告诉研究者的头一件事；太贵就提议一个最小子集先跑通。找与挑在对话里做；材料散、候选多的论文让研究者一起挑（官方是 TF1 的、第三方有 PyTorch 版，用哪个）。
 
-**拉材料用 `download`**：`ai4sci skill run download git <url> --commit <sha> --out materials/<名字>`（文件用 `file`、HF 上的用 `hf`），收据里的 commit / sha256 抄进 `sources.md`。环境：仓库里有 `requirements.txt` 就 `ai4sci env resolve --from materials/<名字>/requirements.txt`（实验室机器）；租来的机器用现成的 `ai4sci env use`。
+**拉材料用 `download`**：`ai4sci skill run download git <url> --commit <sha> --out materials/<名字>`（文件用 `file`、HF 上的用 `hf`），收据里的 commit / sha256 抄进 `sources.md`。环境：租来的机器用现成的 `ai4sci env use`，缺包就 `ai4sci env add --compute <名字> --from materials/<名字>/requirements.txt` 补进去（原码复现基线跑不起来报 `ModuleNotFoundError` 多半是这个，补完 `--continue design/<n>` 接着跑，壳不用重写）；实验室机器可以 `ai4sci env resolve --from …` 隔离新建。
 
 **设计阶段用 `reproduction`（原码复现基线）**：`ai4sci cap reproduction --from literature/<n> --code <materials 里代码的目录名> --compute <名字> --detach`。框架把代码搬进 `code/`，执行层只写起它的 launcher、算论文那几个数的 evaluate、目标 = 论文值的 scoring；跑一次就是复现结果，结论行里 `attainable=` 是论文值、`baseline=` 是我们的值、`upstream_changed=` 是改了几个上游文件（改动在 `upstream.diff`）。**对没对上你不判**：把两列数、σ、改了什么念给研究者，按需求里的标准由他说，签在页面上。草稿有问题（执行层说缺数据、缺 key、跑不起来）照 research 的做法喂回 `--continue design/<n> --feedback @<文件>`；缺的东西该补就补（拉数据、让研究者给 key 的名字）。
 
@@ -155,7 +155,7 @@ stages:
 - **用哪台**：需求里写的是要求（要 GPU、单次多少分钟），不是机器名；清单里有合适的就在 `design` / `auto-research` 上加 `--compute <名字>`（不给就用清单里的缺省，`ai4sci compute default <名字>` 改缺省）。需求要 GPU 而清单里没有，告诉研究者「去接一台」，不要在本机硬跑。
 - **接上之后先盘点、再问研究者两个问题——不要替他定**。`compute add` / `compute check` 的「已有环境」一行列出那台机器上现成的 Python 环境（名字、解释器路径、Python 版本、torch 版本）。把它念给研究者，问：
   1. **隔离新建，还是用机器上现成的？** 先看机器是谁的。**租来的第三方平台（AutoDL 这类，主机名一看就知道、研究者也会说「我租了台」）一律用镜像自带的现成环境**——租的时候镜像就该选好带 PyTorch + CUDA 的；这种机器上别自己装隔离环境：出网慢（实测 AutoDL 装 CUDA 版 torch 两个多小时都没完，钱和时间都白花），机器关了环境也不在了、隔离带来的可复现也落不到实处。**实验室自己的机器**才谈隔离新建：按清单建一个独立环境，版本锁死、换机器可复现，代价是第一次要下几 GB、十几分钟到一小时。研究者说「你看着办」：租的用现成的，实验室的隔离新建，都告诉他为什么、要等多久。
-  2. **用现成的话，用哪一个？** 列出盘点到的几个，让他选（多半是带 torch 且 cuda 可用的那个）；只有一个合适的就直接说用它。定了就做：隔离新建 → `ai4sci env resolve --compute <名字> --python <X.Y> <包名>…`（CUDA 版 torch 只在 GPU 机器上解析得对）；用现成的 → `ai4sci env use --compute <名字> <解释器绝对路径>`（记下解释器、把它装了什么冻成清单当出处）。两种都写进需求的「材料」。换机器就重来一遍这两问（`--continue design/<n>` 会拒，重开一次设计）。
+  2. **用现成的话，用哪一个？** 列出盘点到的几个，让他选（多半是带 torch 且 cuda 可用的那个）；只有一个合适的就直接说用它。定了就做：隔离新建 → `ai4sci env resolve --compute <名字> --python <X.Y> <包名>…`（CUDA 版 torch 只在 GPU 机器上解析得对）；用现成的 → `ai4sci env use --compute <名字> <解释器绝对路径>`（记下解释器、把它装了什么冻成清单当出处）；现成的缺几个包（复现时论文仓库要的 scipy、torchjd 这类）→ `ai4sci env add --compute <名字> --from materials/<代码目录>/requirements.txt`（或直接列包名），装进那台机器的现成环境并重新登记清单——**不用隔离新建，也不用让研究者登录机器**。两种都写进需求的「材料」。换机器就重来一遍这两问（`--continue design/<n>` 会拒，重开一次设计）。
 - 远端只跑 harness：写代码的执行层在本机，产物回来在工作区里，你看的目录不变。每次产出的 `meta.yaml` 记着在哪台机器上跑的。
 
 ## 什么时候找人

@@ -104,6 +104,8 @@ def test_upstream_is_moved_into_code_shell_is_drafted_baseline_runs_and_edits_ar
     line = cap.run(pack, _inputs(workspace, lit), Ports(runner=runner, compute=LocalCompute()),
                    code=UPSTREAM)
     assert line.startswith("reproduction ok\tsession=1\tchanged=5\t")
+    assert runner.limits == (cap.SESSION_MAX_TURNS, cap.SESSION_MAX_BUDGET_USD)
+    assert "Bash 只放行" in runner.prompts[0]  # 执行层通用段：别拿 Bash 去 cd / mkdir / awk
     assert "baseline=0.025\t" in line and "attainable=0.3\t" in line
     assert "upstream_changed=1\t" in line and "reproducibility --from design/1" in line
     assert (pack / "code" / "README.md").read_text(encoding="utf-8") == README
@@ -160,6 +162,32 @@ def test_continue_without_feedback_reruns_only_the_baseline(ws, monkeypatch):
     assert "### code/train.py" not in prompt  # 没改过的上游文件只列名字
     assert "README 补一句" in prompt
     assert not (pack / "code" / cap.RECEIPT_NAME).exists()
+
+
+def test_continue_refreshes_the_env_snapshot_after_env_add_but_refuses_a_real_change(
+        ws, monkeypatch):
+    """真跑时镜像环境缺 scipy：`ai4sci env add` 补了包、清单多了几行，解释器没变——接着干要刷新
+    快照、不能让执行层把壳从头再写；隔离新建那种清单变了照旧拒。"""
+    import sys
+
+    workspace, domains, lit = ws
+    monkeypatch.setattr(cap.paths, "domains_root", lambda: domains)
+    marker = f"local:{sys.executable}\n"
+    (workspace.materials / "env" / "interpreter").write_text(marker, encoding="utf-8")
+    pack = _open(workspace)
+    cap.run(pack, _inputs(workspace, lit), Ports(runner=ScriptedRunner([_shell()]),
+                                                  compute=LocalCompute()), code=UPSTREAM)
+    lock = workspace.materials / "env" / "requirements.lock"
+    lock.write_text("# ai4sci env add 补装：scipy\nscipy==1.15.3\n" + lock.read_text("utf-8"),
+                    encoding="utf-8")
+    line = cap.run(pack, _inputs(workspace, lit), Ports(runner=ScriptedRunner([]),
+                                                         compute=LocalCompute()))
+    assert line.startswith("reproduction ok\tsession=-")
+    assert "scipy==1.15.3" in (pack / "env" / "requirements.lock").read_text(encoding="utf-8")
+    (workspace.materials / "env" / "interpreter").unlink()  # 换成隔离新建：清单变了就拒
+    with pytest.raises(CapabilityFailed, match="环境变了不能接着改"):
+        cap.run(pack, _inputs(workspace, lit), Ports(runner=ScriptedRunner([]),
+                                                      compute=LocalCompute()))
 
 
 def test_upstream_without_receipt_falls_back_to_git_or_blank(tmp_path):

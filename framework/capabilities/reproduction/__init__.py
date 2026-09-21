@@ -34,6 +34,10 @@ RECEIPT_NAME = ".ai4sci-download.json"  # download skill 留在目录里的收�
 # 原件里不搬的：别人的状态、平台自己的环境目录
 IGNORED = (".git", "__pycache__", ".venv", ".DS_Store", env.ENV_DIRNAME)
 CODE_LISTING_MAX = 300  # 提示里 code/ 的目录清单最多列多少个文件：上游仓库可能几千个
+# 执行层这次会话的额度：要先读懂别人的整个仓库再写壳，比从零写一版多得多——真跑时缺省的 30 轮
+# 在读完仓库、写完四个文件、还没来得及自述时就被掐了（外层 #122）
+SESSION_MAX_TURNS = 80
+SESSION_MAX_BUDGET_USD = 6.0
 DESCRIPTOR = Capability(
     name=NAME,
     stage="设计",
@@ -123,7 +127,8 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, code: str = "",
     try:
         outcome = drafting.draft(
             output_dir, PROMPT_TEMPLATE, values, domain, paths.domains_root(), ports.runner,
-            current=_current_files(output_dir, upstream_dir), feedback=feedback)
+            current=_current_files(output_dir, upstream_dir), feedback=feedback,
+            max_turns=SESSION_MAX_TURNS, max_budget_usd=SESSION_MAX_BUDGET_USD)
     except drafting.DraftFailed as exc:
         raise CapabilityFailed(str(exc)) from exc
     changed = packs.write_upstream_diff(output_dir, upstream_dir)
@@ -150,6 +155,13 @@ def _prepare(pack: Path, materials: Path, code: str) -> None:
     得上。"""
     if (pack / "code").exists():
         changed = _env_changed(materials / env.ENV_DIRNAME, pack / env.ENV_DIRNAME)
+        if changed and _same_interpreter(materials / env.ENV_DIRNAME, pack / env.ENV_DIRNAME):
+            # 现成环境补了几个包（ai4sci env add）：解释器没变、清单多了几行，刷新快照接着干——
+            # 真跑时镜像环境缺 scipy，补上之后不该让执行层把壳从头再写一遍
+            shutil.rmtree(pack / env.ENV_DIRNAME)
+            shutil.copytree(materials / env.ENV_DIRNAME, pack / env.ENV_DIRNAME)
+            LOGGER.info("reproduction_env_refreshed pack=%s changed=%s", pack, changed)
+            return
         if changed:
             raise CapabilityFailed(
                 f"{MATERIALS_DIRNAME}/{env.ENV_DIRNAME}/ 与这次设计的 env/ 对不上"
@@ -248,6 +260,12 @@ def _changed_files(upstream_dir: Path, code: Path) -> list[str]:
              if p.is_file() and not set(p.relative_to(code).parts) & set(IGNORED)}
     return [rel for rel in sorted(after)
             if rel not in before or before[rel].read_bytes() != after[rel].read_bytes()]
+
+
+def _same_interpreter(source: Path, snapshot: Path) -> bool:
+    """两边都是「用现成的」且指向同一台机器的同一个解释器。"""
+    a, b = source / env.INTERPRETER_NAME, snapshot / env.INTERPRETER_NAME
+    return a.is_file() and b.is_file() and a.read_bytes() == b.read_bytes()
 
 
 def _env_changed(source: Path, snapshot: Path) -> list[str]:

@@ -73,6 +73,16 @@ def test_argv_turns_allowed_paths_into_absolute_tool_rules(tmp_path: Path):
     assert "Bash(ai4sci skill *)" in with_skill[with_skill.index("--allowedTools"):]
 
 
+def test_runner_argv_takes_per_session_turn_and_budget_limits(tmp_path: Path):
+    """外层 #122：读别人整个仓库再写壳的会话要比缺省的 30 轮多；能力给的上限进 argv，不给用缺省。"""
+    argv = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path], max_turns=80,
+                                         max_budget_usd=6.0)
+    assert argv[argv.index("--max-turns") + 1] == "80"
+    assert argv[argv.index("--max-budget-usd") + 1] == "6.0"
+    default = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path])
+    assert default[default.index("--max-turns") + 1] == "30"
+
+
 def test_argv_grants_the_clis_own_web_tools_on_both_layers(tmp_path: Path):
     """主人 2026-09-20：联网只用 CLI 自带的工具。实测 dontAsk 下 WebSearch 不在白名单就被拒，
     拒绝信息还教 agent「用别的工具试」，它于是拿 curl 硬凑；两层的白名单都要带上。"""

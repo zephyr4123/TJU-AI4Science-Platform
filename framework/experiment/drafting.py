@@ -62,6 +62,7 @@ class DraftOutcome:
 def draft(
     pack: Path, template: Path, values: dict[str, str], domain: str, domains_root: Path,
     runner: Runner, *, current: str, feedback: str = "", timeout_s: float | None = None,
+    max_turns: int | None = None, max_budget_usd: float | None = None,
 ) -> DraftOutcome:
     """组提示 → 起会话（只放行 scoring.yaml、harness/、code/）→ 判越界 → 补 domain → 封 harness →
     ruff → validate。
@@ -91,7 +92,7 @@ def draft(
     result = session.run_session(
         runner, prompt, cwd=pack,
         allowed_paths=[pack / name for name in (*WRITABLE_DIRS, *WRITABLE_FILES)],
-        log_dir=log_dir, timeout_s=timeout_s,
+        log_dir=log_dir, timeout_s=timeout_s, max_turns=max_turns, max_budget_usd=max_budget_usd,
     )
 
     allowed = tuple(f"{name}/" for name in WRITABLE_DIRS)

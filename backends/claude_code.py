@@ -146,7 +146,8 @@ class ClaudeCodeRunner:
         self.cli = cli
 
     def build_argv(self, prompt: str, cwd: Path, allowed_paths: list[Path],
-                   bash_rules: tuple[str, ...] = ()) -> list[str]:
+                   bash_rules: tuple[str, ...] = (), max_turns: int | None = None,
+                   max_budget_usd: float | None = None) -> list[str]:
         # bash_rules 由调用方显式给而不是默认放行：dontAsk 下只读 Bash（grep/ls/wc）本就自动放行，
         # 写操作（sed -i）实测被拒——不给 Bash 规则，才守得住"只能改 allowed_paths"
         rules: list[str] = []
@@ -157,17 +158,20 @@ class ClaudeCodeRunner:
         argv = [self.cli, "-p", prompt, "--output-format", "stream-json", "--verbose",
                 "--permission-mode", "dontAsk", *EXECUTOR_ISOLATION_ARGS,
                 "--allowedTools", *rules,
-                "--max-turns", str(int(_env_num("AI4SCI_EXECUTOR_MAX_TURNS", 30, int))),
-                "--max-budget-usd", str(_env_num("AI4SCI_EXECUTOR_MAX_BUDGET_USD", 2.0, float))]
+                "--max-turns", str(int(_env_num("AI4SCI_EXECUTOR_MAX_TURNS", 30, int))
+                                   if max_turns is None else int(max_turns)),
+                "--max-budget-usd", str(_env_num("AI4SCI_EXECUTOR_MAX_BUDGET_USD", 2.0, float)
+                                        if max_budget_usd is None else float(max_budget_usd))]
         model = os.environ.get("AI4SCI_EXECUTOR_MODEL")
         if model:  # 缺省不传，让 CLI 用它自己的默认模型
             argv += ["--model", model]
         return argv
 
     def run(self, prompt: str, cwd: Path, timeout_s: float,
-            allowed_paths: list[Path], bash_rules: tuple[str, ...] = ()) -> RunResult:
+            allowed_paths: list[Path], bash_rules: tuple[str, ...] = (),
+            max_turns: int | None = None, max_budget_usd: float | None = None) -> RunResult:
         before = snapshot(cwd)
-        argv = self.build_argv(prompt, cwd, allowed_paths, bash_rules)
+        argv = self.build_argv(prompt, cwd, allowed_paths, bash_rules, max_turns, max_budget_usd)
         raw: list[str] = []
         err: list[str] = []
         started = time.monotonic()

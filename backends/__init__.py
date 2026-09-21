@@ -50,6 +50,9 @@ class Runner(Protocol):
     适配器只负责尽量收紧，真正的门是 runner 事后拿 `changed_files` 判（纲领 §5）。
     `bash_rules` 是放行的命令前缀（执行层只有 `ai4sci skill *`，纲领 P-22）；不给就一条 Bash
     都不放。
+    `max_turns` / `max_budget_usd` 是这一次会话的轮数与花费上限，不给用适配器的缺省（环境变量）：
+    读别人整个仓库再写壳的会话（复现）要比从零写一版的多得多——真跑时 30 轮在读完仓库、写完
+    文件、还没来得及自述时就被掐了（外层 #122）。
     联网：适配器必须放行这家 CLI **自带**的联网搜索与网页读取工具（Claude Code 是 WebSearch /
     WebFetch），不能让 agent 拿 Bash 里的 curl 去凑——实测 dontAsk 下不放行就被拒，拒绝信息还教它
     「用别的工具试试」（主人 2026-09-20）。
@@ -62,6 +65,8 @@ class Runner(Protocol):
         timeout_s: float,
         allowed_paths: list[Path],
         bash_rules: tuple[str, ...] = (),
+        max_turns: int | None = None,
+        max_budget_usd: float | None = None,
     ) -> RunResult: ...
 
 
