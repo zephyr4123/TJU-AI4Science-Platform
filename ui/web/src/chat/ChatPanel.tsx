@@ -17,9 +17,10 @@ export function ChatPanel({ chat, children }: { chat: (close: () => void) => Rea
   const [open, setOpen] = useState(true)
   const close = () => setOpen(false)
   return (
-    <div className="relative flex min-h-0 flex-1">
-      {/* 正文是一列纵向的 flex：看板 / 文件用 h-full 撑满，编辑台的画布用 flex-1 撑满 */}
-      <main className="relative flex min-w-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+      {/* 正文是一列纵向的 flex：看板 / 文件用 h-full 撑满，编辑台的画布用 flex-1 撑满；正文再宽也不许把板挤出屏幕
+          （看板那张表自己横向滚），所以这一列 overflow-hidden */}
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {children}
         {!open && <ChatEntry onOpen={() => setOpen(true)} />}
       </main>
