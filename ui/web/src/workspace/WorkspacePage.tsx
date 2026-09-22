@@ -58,6 +58,8 @@ export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, on
   const row = project?.workspaces.find((w) => w.id === ws.id) ?? null
   const title = row?.title ?? doc.data?.title ?? ws.id
   const siblings = project?.workspaces ?? []
+  // 页眉那句状态照最新的那份写：这个工作区自己那份在看板上确认需求、作业跑完都会重读，项目那份不会
+  const latest = doc.data ?? row
   return (
     <>
       <Top menu={menu} back={{ label: project?.title ?? ws.project, onClick: onBack }} picture={coverOf(ws.project)}
@@ -67,7 +69,7 @@ export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, on
                             onChange={(id) => { if (id !== ws.id) onSwitch(id) }}
                             className="min-w-0 font-serif text-[1.0625rem] font-semibold tracking-[0.02em]" />
              : title}
-           note={row ? stageSentence(row) : null}
+           note={latest ? stageSentence(latest) : null}
            lens={{ value: view, options: [{ value: 'board', label: '看板' }, { value: 'files', label: '文件' }],
                    onChange: (v) => { setView(v as View); setOpened(null) } }}
            tail={<WorkspaceMenu ws={ws} onRemoved={onRemoved} />} />
