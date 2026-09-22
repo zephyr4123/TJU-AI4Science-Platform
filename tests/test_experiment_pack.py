@@ -217,6 +217,32 @@ def test_sigma_seeds_do_not_match_repeats(tmp_path):
     assert "sigma.json" in report and "seeds" in report and "[42, 43, 44]" in report
 
 
+def test_write_sigma_from_repeats_replaces_the_scripts_bookkeeping(tmp_path):
+    """σ 框架自己算：脚本把基线那次也算进 seeds（两轮演练都这么写）→ 覆盖成 repeats 的样子。"""
+    pack = pf.make_pack(tmp_path)
+    sigma_path = pack.pack / "baseline" / "sigma.json"
+    sigma_path.write_text(json.dumps({"val_mse": {"sigma": 9.0, "seeds": [41, 42, 43, 44],
+                                                  "values": [1, 1, 1, 1]}}), encoding="utf-8")
+    assert "seeds" in problems_of(pack)
+    assert packs.write_sigma(pack.pack, packs.read_scoring(pack.pack)) is True
+    doc = json.loads(sigma_path.read_text(encoding="utf-8"))
+    assert doc["val_mse"]["seeds"] == [42, 43, 44]
+    assert doc["val_mse"]["values"] == [0.50, 0.52, 0.48]
+    assert doc["val_mse"]["sigma"] == pytest.approx(0.02)
+    assert problems_of(pack) == ""
+
+
+def test_write_sigma_refuses_broken_repeats_and_leaves_the_report_to_validation(tmp_path):
+    pack = pf.make_pack(tmp_path)
+    broken = pack.pack / "baseline" / "repeats" / "results-43.json"
+    broken.write_text("{not json", encoding="utf-8")
+    before = (pack.pack / "baseline" / "sigma.json").read_text(encoding="utf-8")
+    assert packs.write_sigma(pack.pack, packs.read_scoring(pack.pack)) is False
+    assert (pack.pack / "baseline" / "sigma.json").read_text(encoding="utf-8") == before
+    assert "results-43.json" in problems_of(pack)
+    assert packs.write_sigma(tmp_path / "nowhere", {}) is False
+
+
 def test_negative_sigma(tmp_path):
     pack = pf.make_pack(tmp_path)
     sigma_path = pack.pack / "baseline" / "sigma.json"

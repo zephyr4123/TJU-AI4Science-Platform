@@ -17,6 +17,7 @@ import hashlib
 import json
 import math
 import re
+import statistics
 from pathlib import Path
 from typing import Any
 
@@ -446,6 +447,47 @@ def _check_sigma(run0: Path, metric_names: list[str], repeat_seeds: list[int]) -
         ):
             problems.append(f"{label}: 字段 {name}/values: 期望全是有限数，实际 {values!r}")
     return problems
+
+
+def write_sigma(pack: Path, scoring: dict[str, Any] | None) -> bool:
+    """σ 是统计门的分母，框架自己算、自己写 `baseline/sigma.json`：每个指标一条，值从
+    `baseline/repeats/results-<seed>.json` 里取，样本标准差（只有一次重复就是 0），seeds / values
+    照种子排。脚本不用算——两轮演练里执行层各算各的（把基线那次也算进 seeds、列表和目录对不上），
+    两个半小时的基线为一个 JSON 细节被拒、再跑一遍。repeats 读不出或缺指标就不写、返回 False，
+    问题由 `_check_baseline` 报。"""
+    run0 = Path(pack) / BASELINE_DIRNAME
+    repeats_dir = run0 / "repeats"
+    if not repeats_dir.is_dir():
+        return False
+    metric_names = _metric_names(scoring)
+    rows: list[tuple[int, dict[str, float]]] = []
+    for path in sorted(repeats_dir.glob("results-*.json")):
+        doc, problems = _read_json(path, path.name)
+        if problems or not isinstance(doc, dict):
+            return False
+        seed, metrics = doc.get("seed"), doc.get("metrics")
+        if not isinstance(seed, int) or isinstance(seed, bool) or not isinstance(metrics, dict):
+            return False
+        values: dict[str, float] = {}
+        for name in metric_names:
+            value = metrics.get(name)
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                return False
+            if not math.isfinite(value):
+                return False
+            values[name] = float(value)
+        rows.append((seed, values))
+    if not rows:
+        return False
+    rows.sort(key=lambda row: row[0])
+    seeds = [seed for seed, _ in rows]
+    doc = {}
+    for name in metric_names:
+        values = [row[name] for _, row in rows]
+        doc[name] = {"sigma": statistics.stdev(values) if len(values) > 1 else 0.0,
+                     "seeds": seeds, "values": values}
+    (run0 / "sigma.json").write_text(json.dumps(doc), encoding="utf-8")
+    return True
 
 
 def validate_pack(pack: Path, domains_root: Path, *, require_baseline: bool = True) -> list[str]:

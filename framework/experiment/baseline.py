@@ -11,6 +11,9 @@ baseline/ 整个是这一次 make_run0.sh 的产物：跑之前把本地那份�
 拿回来先按开跑的那套合约（`pack.validate_pack` 查全）核一遍——「design ok」就等于
 auto-research 会接。第一轮真任务里远端脚本自己 rm -rf 了 baseline/，但拿回来（`get`）只加不删，
 上一版基线的 5 个 results-<seed>.json 留在本地 repeats/ 里，人签了字、实验阶段一数文件就拒开。
+
+σ（baseline/sigma.json）由框架从 repeats/ 算（`pack.write_sigma`），不由 make_run0.sh 算：执行层
+各算各的，两轮演练都错在 seeds 列表这种细节上，基线跑两个半小时再为它被拒一次不值。
 """
 
 from __future__ import annotations
@@ -69,6 +72,8 @@ def run_baseline(pack: Path, compute: Compute, *, check_headroom: bool = True) -
     compute.get(remote, pack)
     if not outcome.ok:
         raise CapabilityFailed(f"make_run0.sh 退出码 {outcome.exit_code}，基线不可信")
+    # σ 框架自己从 repeats 算（脚本算的一律覆盖）；算不了就是 repeats 有问题，下面的校验会说清
+    packs.write_sigma(pack, scoring)
     problems = packs.validate_pack(pack, paths.domains_root())
     if problems:
         raise CapabilityFailed("基线跑完了，那包不合约（实验阶段会拒开）：\n" + "\n".join(problems))

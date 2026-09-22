@@ -5,7 +5,7 @@
 - `scoring.yaml`：评分契约——指标、方向、预算、统计门（形状见下）
 - `harness/launcher.sh`：唯一执行入口，清产物 → 跑 code/ → 跑 evaluate.py
 - `harness/evaluate.py`：评分脚本，读产物、用 `data/` 重算指标、写 results.json
-- `harness/make_run0.sh`：跑出基线 + 重复 + σ → `baseline/`
+- `harness/make_run0.sh`：跑出基线 + 重复 → `baseline/`（σ 框架算）
 - `code/<入口>.py`：基线；以后由另一个 agent 逐轮改它
 
 ## 硬规矩
@@ -50,7 +50,7 @@
   - `AI4SCI_INNER_K`：评分内部重复次数，等于 scoring.yaml 的 `budget.inner_k`（不写就是 1）。launcher 照它循环，并原样传给 evaluate.py；**不要在脚本里写死这个数**。
   - `AI4SCI_START_EPOCH`：launcher 起跑时自己设，evaluate.py 用它算 `elapsed_s`。
 - `AI4SCI_SEED` 是唯一允许缺省的：缺省 42，同一 seed 必须复现同一结果。
-- `make_run0.sh`：基线一次（seed 42）+ scoring `budget.repeat_k` 次重复（seed 42、43、44 …）+ `baseline/sigma.json`，σ 是样本标准差，**每个指标一条**：`{"<指标名>": {"sigma": <float>, "seeds": [...], "values": [...]}}`。
+- `make_run0.sh`：基线一次（seed 42）+ scoring `budget.repeat_k` 次重复（seed 42、43、44 …），每次的 `results.json` 拷到 `baseline/results.json` 与 `baseline/repeats/results-<seed>.json`。**σ 不用你算**：框架从 repeats/ 算样本标准差写 `baseline/sigma.json`（脚本算了也会被覆盖）。
 - evaluate.py 退出码：0 正常；2 产物缺失或读不出；3 形状 / 长度对不上；4 NaN / Inf / 越界；5 计时缺失。
 
 ## 研究需求（研究者与助理对齐并确认过的，照它做：要优化什么、数据在哪、怎么算好、花多少）
@@ -89,7 +89,7 @@ export AI4SCI_START_EPOCH
 
 ```bash
 #!/usr/bin/env bash
-# 复现 baseline/：基线一次 + repeat_k 次重复 + σ。baseline 是改进率的分母，也是统计门的基线。
+# 复现 baseline/：基线一次 + repeat_k 次重复（σ 框架算）。baseline 是改进率的分母，也是统计门的基线。
 set -euo pipefail
 TASK_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$$TASK_DIR"
@@ -111,24 +111,6 @@ for seed in "$${SEEDS[@]}"; do
   AI4SCI_SEED="$$seed" harness/launcher.sh
   cp results.json "baseline/repeats/results-$${seed}.json"
 done
-# σ 用样本标准差（n-1），纯标准库算，每个指标一条
-"$$AI4SCI_PYTHON" - <<'PY'
-import json
-import statistics
-from pathlib import Path
-
-run0 = Path("baseline")
-docs = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(run0.glob("repeats/results-*.json"))]
-docs.sort(key=lambda d: d["seed"])
-seeds = [d["seed"] for d in docs]
-sigma = {}
-for name in docs[0]["metrics"]:
-    values = [d["metrics"][name] for d in docs]
-    sigma[name] = {"sigma": statistics.stdev(values) if len(values) > 1 else 0.0,
-                   "seeds": seeds, "values": values}
-(run0 / "sigma.json").write_text(json.dumps(sigma), encoding="utf-8")
-print("sigma.json:", {k: round(v["sigma"], 6) for k, v in sigma.items()})
-PY
 rm -f <产物文件> results.json
 echo "baseline 就绪"
 ```
