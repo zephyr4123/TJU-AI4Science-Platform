@@ -59,6 +59,18 @@ def close_output(directory: Path, meta: Meta, *, ok: bool, line: str) -> Meta:
     return meta
 
 
+def reopen_output(directory: Path, meta: Meta, *, compute: dict | None) -> Meta:
+    """`--continue` 接着干：上一次的结论、错误、结束时间都作废，机器按这次的记，
+    看板与 show output 才不会在跑着的时候还挂着上一次的错和上一次的机器。"""
+    meta.status = "running"
+    meta.finished_at = None
+    meta.result = ""
+    meta.error = ""
+    meta.compute = compute
+    output.write_meta(directory, meta)
+    return meta
+
+
 def touch_output(directory: Path, meta: Meta, *, line: str) -> Meta:
     """接着上一次干（continuable 的能力）：产出还是那一个，只更新结论行与时间。"""
     meta.status = "ok"

@@ -84,3 +84,18 @@ def test_touch_output_keeps_the_same_directory(tmp_path):
     outputs.touch_output(d1, m1, line="stop again")
     assert output.read_meta(d1).result == "stop again" and output.read_meta(d1).status == "ok"
     assert [m.id for _, m in outputs.list_outputs(ws)] == ["experiment/1"]
+
+
+def test_reopen_clears_last_attempt_and_records_this_machine(tmp_path):
+    """--continue 接着干：上一次的错、结论、结束时间作废，机器按这次的记（演练里第五次续跑
+    还挂着「autodl」与上一次的 make_run0.sh 报错）。"""
+    ws = _ws(tmp_path)
+    d, m = _open(ws, "design", compute={"name": "autodl", "kind": "ssh"})
+    outputs.close_output(d, m, ok=False, line="make_run0.sh 退出码 1")
+    outputs.reopen_output(d, m, compute={"name": "local", "kind": "local"})
+    again = output.read_meta(d)
+    assert again.status == "running" and again.finished_at is None
+    assert again.error == "" and again.result == ""
+    assert again.compute == {"name": "local", "kind": "local"}
+    outputs.close_output(d, m, ok=True, line="基线 3 次")
+    assert output.read_meta(d).result == "基线 3 次" and output.read_meta(d).error == ""

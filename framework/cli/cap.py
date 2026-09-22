@@ -147,7 +147,8 @@ def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports:
     continuing = getattr(args, "continuing", None)
     try:
         if continuing:
-            directory, meta = _reopen(ws, descriptor, continuing, inputs)
+            directory, meta = _reopen(ws, descriptor, continuing, inputs,
+                                      compute=ports.compute_label)
         else:
             directory, meta = outputs.open_output(
                 ws, descriptor.stage_slug, title=descriptor.title, by=descriptor.name,
@@ -168,7 +169,8 @@ def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports:
     return EXIT_OK, f"{line}\toutput={meta.id}"
 
 
-def _reopen(ws: Workspace, descriptor: Capability, oid: str, inputs: Inputs) -> tuple[Path, Meta]:
+def _reopen(ws: Workspace, descriptor: Capability, oid: str, inputs: Inputs, *,
+            compute: dict | None) -> tuple[Path, Meta]:
     """`--continue`：产出得是这个能力自己产的、这个阶段的；成了没成都能接着干（草稿改第二版）。"""
     directory, meta = outputs.find_output(ws, oid)
     if meta.stage != descriptor.stage_slug or meta.by != descriptor.name:
@@ -177,8 +179,7 @@ def _reopen(ws: Workspace, descriptor: Capability, oid: str, inputs: Inputs) -> 
         raise ValueError(f"{oid} 已经被引用或签过，冻住了：要改就新开一次产出（去掉 --continue）")
     if inputs.ids and list(inputs.ids) != meta.input_ids:
         raise ValueError(f"{oid} 当初读的是 {meta.input_ids}，接着干不能换输入 {list(inputs.ids)}")
-    meta.status = "running"
-    output.write_meta(directory, meta)
+    outputs.reopen_output(directory, meta, compute=compute)
     return directory, meta
 
 
