@@ -26,8 +26,7 @@ export function StudioPlace({ healthy, backends, menu }: { healthy: boolean | nu
       <div className="relative flex min-h-0 flex-1">
         <ChatPanel chat={(close) => (
           <ChatView
-            key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current} onClose={close}
-            autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning, backend) => void c.start(text, tuning, backend)} startError={c.failed}
+            scope={STUDIO} chatId={c.chatId} current={c.current} onClose={close} create={c.newChat}
             onTurnDone={c.turnDone}
             backends={backends}
             intro={{ lede: '流程', body: '阶段、能力、断点。' }}

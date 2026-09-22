@@ -52,9 +52,9 @@ web/src/
   api/        契约：types.ts（响应体的类型）、client.ts（每个端点一个函数，Scope 定域前缀；WorkspaceClient 是绑死在（项目，工作区）上的一组端点，看板 / 文件 / 两处确认拿着它取数）、sse.ts（事件流）
   places/     Rail（宽屏的地方栏：首页 / 编辑台 / 设置）、PlacesSheet（窄屏的清单）、place.ts（页面此刻在哪：首页 / 门口 / 项目 / 工作区 / 编辑台；上次在哪记在浏览器里，纯函数有单测）
   home/       Home（首页 = 项目墙，一格一个项目，空态一枚「新建项目」）、NewProject（门口那一屏：一句话 + 目标一行起项目）
-  project/    ProjectPlace（项目的世界：拿着项目的对话与清单，项目页 / 整屏对话 / 工作区页三个样子来回不断线）、Hub（项目页：正中间输入框 + 工作区清单 + 对话抽屉 + 删除项目）、NewWorkspace（清单顶上展开的表单：一句话 + 学科）、derive.ts（一行工作区的状态一个词与细节，纯函数、有单测）
+  project/    ProjectPlace（项目的世界：拿着项目的对话清单与项目清单，项目页与工作区页来回不断线）、ProjectPage（项目页的两个样子：正中间输入框 + 工作区清单 + 对话抽屉 + 删除项目；发第一句输入框竖直下沉、正文接上，layoutId）、NewWorkspace（清单顶上展开的表单：一句话 + 学科）、derive.ts（一行工作区的状态一个词与细节，纯函数、有单测）
   workspace/  WorkspacePage（工作区页：页眉「‹ 项目名  工作区 ▾  看板 / 文件  …」，看板 / 文件两个镜头常驻只切显示，对话板在右）
-  chat/       对话：trace.ts（事件流折成条目、落盘的事件重放、工具行原样，纯函数、有单测）、ChatView（两个域共用，文案由父组件给；板里带自己那行头，整页时头由外面给）/ TurnView（人的气泡、工具行、回答、花费）/ Composer（玻璃输入框：项目页正中间、对话底下都是它）/ useTuning（输入框上「助理 / 模型 / 思考」三枚片的状态）/ ChatDrawer（「对话 · N」的抽屉）/ ChatPanel（右边那块板）
+  chat/       对话：useConversation（一段对话的运行态：落盘的轮次 + 进行中的这一轮 + 发送；还没有对话时第一句先开一段再发，这一轮从按下回车起就在屏上）、turns.ts（屏上的轮次怎么拼、按轮次去重，纯函数、有单测）、trace.ts（事件流折成条目、落盘的事件重放、工具行原样，纯函数、有单测）、Transcript（正文一轮一轮）、ChatView（板里的对话视图：一行头 + 正文 + 输入框，工作区页与编辑台共用）/ TurnView（人的气泡、工具行、回答、花费）/ Composer（玻璃输入框：项目页正中间、对话底下都是它）/ useTuning（输入框上「助理 / 模型 / 思考」三枚片的状态）/ ChatDrawer（「对话 · N」的抽屉）/ ChatPanel（右边那块板）
   files/      工作区页的文件镜头：Files（目录树 + 内容区；树按 `GET …/workspaces/<id>` 的阶段与产出标语义）、derive.ts（一行是什么、文件怎么渲染、csv 切表、根一层的顺序，纯函数、有单测）、highlight.ts（highlight.js 五种语言，配色在 index.css 的 `.hl`）
   board/      工作区页的看板：Board（按需求确认与否分两个状态；工作区那一整份由 WorkspacePage 拉、与文件镜头共用、有作业在跑时轮询）、Requirement（未确认的整页 / 确认后的一条 + 侧滑 diff）、Flows（一条流程一张表：阶段列、产出卡、断点线、在等谁）、OutputSheet（一次产出的侧滑：记录、文件、确认）、derive.ts（在等谁的一句话、下一步、产出的状态词、断点的短标签，纯函数、有单测）
   studio/     编辑台：StudioPlace（页眉 + 两个镜头 + 流程助理的对话板）、Studio（流程 / 能力常驻只切显示；Editor 是 React Flow 画布、边拼边查、保存——文件名由标题生成不上屏）、model.ts（链的数据：排版、插入、重排、页面形状 ↔ 文件形状，纯函数、有单测）、nodes（阶段 / 断点两种节点，能力小片 hover 一行、点了跳详情）、Palette（阶段梯与流程库的弹层）、Inspector（选中节点：勾能力、填参数——名字是描述符的 label、断点的确认事项）、Catalog（能力镜头：按阶段陈列 SpotlightCard 小卡，详情页是常驻返回键 + 一行 / 参数 / 五栏）
