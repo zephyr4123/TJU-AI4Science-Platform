@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from framework.workspace import project
@@ -18,10 +20,17 @@ def test_create_load_list_and_the_layout(tmp_path):
         made.root / ".ai4sci", made.root / ".ai4sci" / "chats")
     assert made.materials.is_dir() and made.workspaces_dir.is_dir() and made.platform.is_dir()
     assert made.text() == "# 一篇论文\n\n把综述和实验合成一篇\n" and made.title() == "一篇论文"
-    assert made.to_dict() == {"id": "paper", "title": "一篇论文", "root": str(made.root)}
+    doc = made.to_dict()
+    assert {k: v for k, v in doc.items() if k != "created_at"} == {
+        "id": "paper", "title": "一篇论文", "goal": "把综述和实验合成一篇", "root": str(made.root)}
+    # 起的时间来自目录本身（不塞进 project.md）：是刚才、带时区
+    created = datetime.fromisoformat(doc["created_at"])
+    assert created.tzinfo is not None and abs((datetime.now(UTC) - created).total_seconds()) < 60
     assert project.load(made.root) == made
     bare = project.create(root, "b")
-    assert bare.title() == "b" and bare.text() == "# b\n"
+    assert bare.title() == "b" and bare.text() == "# b\n" and bare.goal() == ""
+    bare.marker.write_text("# b\n\n\n第一段第一行\n第一段第二行\n\n第二段\n", encoding="utf-8")
+    assert bare.goal() == "第一段第一行"
     assert [p.id for p in project.list_projects(root)] == ["b", "paper"]
     (root / "not-a-project").mkdir()
     assert [p.id for p in project.list_projects(root)] == ["b", "paper"]

@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -79,6 +80,25 @@ class Project:
                 return line[2:].strip()
         return self.id
 
+    def goal(self) -> str:
+        """project.md 一级标题下面第一段的第一行：页面上项目名底下那一句；没写就是空串。"""
+        lines = iter(self.text().splitlines())
+        for line in lines:
+            if line.startswith("# "):
+                break
+        for line in lines:
+            if line.strip():
+                return line.strip()
+        return ""
+
+    def created_at(self) -> str:
+        """什么时候起的：目录的 birthtime（macOS、Windows 与新内核的 Linux 都有）；文件系统不记
+        就退到目录的 mtime——起项目之后目录只在加减工作区时变，够用。project.md 里不塞日期
+        （P-13：文件就是接口）。"""
+        stat = self.root.stat()
+        stamp = getattr(stat, "st_birthtime", None) or stat.st_mtime
+        return datetime.fromtimestamp(stamp, UTC).isoformat(timespec="seconds")
+
     def workspaces(self) -> list[Workspace]:
         return root.list_workspaces(self.workspaces_dir)
 
@@ -94,7 +114,8 @@ class Project:
                 f"项目 {self.id} 里没有工作区 {ws_id!r}（有：{have}）") from None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "title": self.title(), "root": str(self.root)}
+        return {"id": self.id, "title": self.title(), "goal": self.goal(), "root": str(self.root),
+                "created_at": self.created_at()}
 
 
 def projects_root(home: Path) -> Path:
