@@ -119,8 +119,11 @@ def test_upstream_is_moved_into_code_shell_is_drafted_baseline_runs_and_edits_ar
     assert (pack / "baseline" / "sigma.json").is_file()
     prompt = runner.prompts[0]
     for token in ("commit abc123", "https://github.com/x/corebench", "官方代码：", "README.md",
-                  "train.py", "复现到第几级", "### code/（上游仓库，2 个文件"):
+                  "train.py", "复现到第几级", "### code/（上游仓库，2 个文件",
+                  "种子照论文", "论文的第一个种子", "不许把论文的种子换成平台的"):
         assert token in prompt, token
+    # 复现不用平台的 42–46：两轮演练执行层都照它换掉了论文的种子
+    assert "基线一次（seed 42）" not in prompt
     assert "不适用" not in line  # 预检的「无解」不出现在结论里
 
 

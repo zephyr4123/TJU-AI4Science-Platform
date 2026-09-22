@@ -37,7 +37,7 @@
   budget:
     wall_clock_s: <上游代码跑一次要多久，秒；按 README / 论文写的时间给足，宁多勿少>
     max_iterations: 1
-    repeat_k: <重复几次：上游跑一次几分钟就 2 或 3，要几小时就 1>
+    repeat_k: <论文种子数 − 1（论文报 5 个种子就 4）；论文没写种子才按时间定：跑一次几分钟就 2 或 3，要几小时就 1>
     accept_sigma: 2.0
     inner_k: 1
   requirements:
@@ -57,8 +57,8 @@
   - `AI4SCI_BUDGET_S`：一次跑的墙钟预算，等于 scoring.yaml 的 `wall_clock_s`。上游代码不认预算就只用它当超时（`timeout` 命令）。
   - `AI4SCI_INNER_K`：评分内部重复次数，等于 `budget.inner_k`；复现写 1，launcher 照它循环即可。
   - `AI4SCI_START_EPOCH`：launcher 起跑时自己设，evaluate.py 用它算 `elapsed_s`。
-- `AI4SCI_SEED` 是唯一允许缺省的：缺省 42。上游代码认种子就把它传进去（命令行参数或环境变量，按它的写法）；不认就照原样跑，重复之间的差异就是它自己的随机性。
-- `make_run0.sh`：基线一次（seed 42）+ `budget.repeat_k` 次重复（seed 43、44 …）+ `baseline/sigma.json`，σ 是样本标准差，**每个指标一条**：`{"<指标名>": {"sigma": <float>, "seeds": [...], "values": [...]}}`。
+- **种子照论文。** 论文（或它的 README / 需求）报了哪几个种子就跑哪几个：`AI4SCI_SEED` 是唯一允许缺省的，缺省是**论文的第一个种子**（论文没写种子才用 42）；上游代码认种子就把它传进去（命令行参数或环境变量，按它的写法）；不认就照原样跑，重复之间的差异就是它自己的随机性。
+- `make_run0.sh`：基线一次（论文的第一个种子）+ `budget.repeat_k` 次重复（论文其余的种子，`repeat_k` = 论文种子数 − 1；论文没写种子才 42、43 … 往上数）+ `baseline/sigma.json`，σ 是样本标准差，**每个指标一条**：`{"<指标名>": {"sigma": <float>, "seeds": [...], "values": [...]}}`。**不许把论文的种子换成平台的**——换了就不是原样重跑，对不上时也说不清是种子还是别的。
 - evaluate.py 退出码：0 正常；2 产物缺失或读不出；3 形状 / 长度对不上；4 NaN / Inf / 越界；5 计时缺失。
 
 ## 研究需求（研究者与助理对齐并确认过的：哪篇论文、哪几个数、复现到第几级、对上的标准）
