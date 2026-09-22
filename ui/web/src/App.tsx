@@ -34,9 +34,10 @@ export default function App() {
   const [picked, setPlace] = useState<Place>(() => recallPlace() ?? HOME)
   const wide = useMediaQuery(WIDE)
   const healthy = health.loading && !health.data ? null : health.data?.ok === true
-  // 记着的项目已经不在了（删了、换了数据根）：当作在首页
+  // 记着的项目已经不在了（删了、换了数据根）：当作在首页。清单还没回来时哪儿也不在——不能先按记着的项目去取，取回 404 再跳
   const inside = projectOf(picked)
-  const stale = projects.data !== null && inside !== null && !projects.data.some((p) => p.id === inside)
+  const known = projects.data !== null && inside !== null && projects.data.some((p) => p.id === inside)
+  const stale = projects.data !== null && inside !== null && !known
   const place: Place = stale ? HOME : picked
 
   const go = (next: Place) => {
@@ -85,7 +86,7 @@ export default function App() {
                               onCancel={() => go(HOME)} />
                 : place.kind === 'studio'
                   ? <StudioPlace healthy={healthy} backends={backends.data} menu={menu} />
-                  : inside && !stale && (
+                  : inside && known && (
                     // 换项目就重建整个世界（对话、清单都按项目隔离）；项目页与它的工作区页之间来回不重建
                     <ProjectPlace key={inside} projectId={inside} wsId={place.kind === 'workspace' ? place.id : null}
                                   healthy={healthy} backends={backends.data} menu={menu}

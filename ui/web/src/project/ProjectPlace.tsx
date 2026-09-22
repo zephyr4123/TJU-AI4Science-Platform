@@ -64,7 +64,7 @@ export function ProjectPlace({ projectId, wsId, healthy, backends, menu, onOpenW
     <ChatView
       key={c.chatId ?? 'none'} scope={scope} chatId={c.chatId} current={c.current}
       onClose={opts.onClose} header={opts.header}
-      autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning, backend) => void c.start(text, tuning, backend)}
+      autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning, backend) => void c.start(text, tuning, backend)} startError={c.failed}
       onTurnDone={c.turnDone}
       backends={backends}
       intro={{ lede: '课题', body: '问题、材料、评价标准。' }}
@@ -92,7 +92,9 @@ export function ProjectPlace({ projectId, wsId, healthy, backends, menu, onOpenW
                {drawer}
              </span>} />
         <div className="relative flex min-h-0 flex-1">
-          {c.chatId ? chat({ header: false }) : <div className="p-6"><Skeleton lines={3} /></div>}
+          {c.chatId ? chat({ header: false })
+            : c.failed ? <div className="p-6"><ErrorNote text={c.failed} /></div>
+              : <div className="p-6"><Skeleton lines={3} /></div>}
         </div>
       </>
     )

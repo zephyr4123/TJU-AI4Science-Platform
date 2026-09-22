@@ -35,6 +35,8 @@ interface Props {
   onAutoSent: () => void
   /** 没有对话时按下回车：开一段（带上门里选的哪家、模型与思考深度），第一句话由 autoSend 带回来 */
   onStart: (text: string, tuning: Tuning, backend: string | null) => void
+  /** 开不出来（这家没登录、服务不在）的那一句，写在欢迎屏底下 */
+  startError?: string | null
   /** 每家 agent 的旋钮清单与新对话用的值；这段对话用哪家的就摆哪家的，还没开对话时摆门里选的那家 */
   backends: Backend[] | null
   /** 一轮结束：助理可能运行了命令、改了需求或 run，看板要重读 */
@@ -53,8 +55,8 @@ interface LiveTurn {
   outcome: TurnOutcome | null
 }
 
-export function ChatView({ scope, chatId, current, onClose, header = true, autoSend, onAutoSent, onStart, onTurnDone,
-                           backends, drawer, intro, welcome }: Props) {
+export function ChatView({ scope, chatId, current, onClose, header = true, autoSend, onAutoSent, onStart, startError = null,
+                           onTurnDone, backends, drawer, intro, welcome }: Props) {
   const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId])
   const [live, setLive] = useState<LiveTurn | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -126,7 +128,7 @@ export function ChatView({ scope, chatId, current, onClose, header = true, autoS
       )}
 
       <div className="relative min-h-0 flex-1 overflow-y-auto">
-        {!chatId && <Welcome copy={welcome} />}
+        {!chatId && <Welcome copy={welcome} error={startError} />}
         {chatId && (
           <div className="mx-auto max-w-[44rem] px-6 pt-8">
             {doc.loading && !doc.data && <Skeleton lines={4} />}
@@ -155,7 +157,7 @@ export function ChatView({ scope, chatId, current, onClose, header = true, autoS
 }
 
 /** 还没有对话：一句话说清这一边的助理管什么；门就是下面的输入框，不另设按钮。 */
-function Welcome({ copy }: { copy: Copy }) {
+function Welcome({ copy, error }: { copy: Copy; error: string | null }) {
   const still = useReducedMotion()  // 系统要求减少动效：标题直接出现
   return (
     <div className="relative mx-auto flex h-full min-h-[24rem] max-w-[36rem] flex-col justify-center px-6">
@@ -164,6 +166,7 @@ function Welcome({ copy }: { copy: Copy }) {
         : <BlurText text={copy.headline} delay={50} animateBy="words" direction="top"
                     className="font-serif text-[1.75rem] leading-[1.25] font-semibold tracking-tight text-balance" />}
       <p className="t-body mt-5 text-muted-foreground">{copy.body}</p>
+      {error && <ErrorNote text={error} className="mt-6" />}
     </div>
   )
 }
