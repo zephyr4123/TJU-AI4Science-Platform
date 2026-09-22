@@ -30,6 +30,7 @@
 - `ai4sci compute add` 的「写清单 + 就地探测 + 记回」抽成 `cli/compute.add_and_check`，页面「设置 → 算力 → 添加」走同一段。
 
 ### 修复
+- 第三轮演练（两层 Codex 在项目层上复现 GUA，外层 [#137](https://github.com/zephyr4123/TJU-AI4Science/issues/137)）撞的坑：`compute add` / `check` 的「已有环境」一行带上解释器绝对路径（`env use` 要的就是它，以前只打名字与版本，助理猜 `/opt/conda` 猜错转头让研究者上机器 `which python`）；**复现的种子照论文**（reproduction 提示词不再写「缺省 42、重复 43、44…」，`AI4SCI_SEED` 缺省论文第一个种子、`repeat_k` = 论文种子数 − 1，两轮演练执行层都把 0–4 换成了 42–46）；**σ 由框架算**（跑完 make_run0.sh 后 `pack.write_sigma` 从 repeats/ 算样本标准差写 sigma.json、脚本算的一律覆盖，design / reproduction 提示词删掉那段 Python——执行层把基线那次也算进 seeds，2 h 38 min 的基线为这个 JSON 细节被拒、continue 又从头再跑）。页面：对话里 Codex 的工具行照它本来的样子（shell 显示命令、剥掉 `/bin/zsh -lc` 那层壳；web_search 后端配成 tool_use + tool_result 一对，不再一直转「运行中」；apply_patch 列改动；走完了的一轮里没等到结果的行重放时记成跑完）；工作区页眉那句状态照工作区自己那份写（看板上确认了需求不再写「需求未确认」）；markdown 自动链接结尾的中文标点挪到链接外面（`remarkTrimAutolink`）。
 - 设计那包拷进实验的 `work/` 时把执行层的草稿日志（`executor/session-N`）也带上了，每一轮快照再抄一遍（Codex 演练里 252 KB 抄了四份）：拷贝时按 `drafting.LOG_DIRNAME` 排除（[#135](https://github.com/zephyr4123/TJU-AI4Science/issues/135)）。
 - `cap <能力> --continue <产出>` 续跑时 meta 里还挂着上一次的错、结论、结束时间与机器（演练里第五次续跑在本机跑着，看板却写「autodl」和上一次 `make_run0.sh` 的报错）：`outputs.reopen_output` 一次清干净，机器按这次的记（[#135](https://github.com/zephyr4123/TJU-AI4Science/issues/135)）。
 - `cap` 里要的机器连不上（关机、端口变了）不再报「平台内部错误…这是平台的 bug」：算力不可用是研究者要处理的事，作业与产出记失败、原因用人话写、说清换 `--compute <名字>` 或先 `compute check`（Codex 演练：清单缺省是关了机的 AutoDL）（[#135](https://github.com/zephyr4123/TJU-AI4Science/issues/135)）。
