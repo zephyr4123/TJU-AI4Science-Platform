@@ -59,7 +59,7 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onC
   const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId])
   const [live, setLive] = useState<LiveTurn | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
-  // 还没开对话时选的哪家：缺省照设置里「对话用」的（P-25）；开了对话就是对话记着的那家，旋钮清单跟它走
+  // 还没开对话时选的哪家：缺省照设置里「助理」那家（P-25）；开了对话就是对话记着的那家，旋钮清单跟它走
   const [who, setWho] = useState<string | null>(null)
   const backendName = current?.backend ?? who ?? backends?.find((b) => b.default)?.name ?? null
   const knobs = backends?.find((b) => b.name === backendName) ?? null

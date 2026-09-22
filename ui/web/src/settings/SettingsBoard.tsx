@@ -1,5 +1,5 @@
 // 设置：压在当前地方上的一块悬浮板（纲领 P-25，外层 #134）。入口在地方栏的脚；底图照旧铺满，板四周留边、圆角、投影。
-// 左边一列索引，右边一页滚下来，四段：AI（对话用 / 执行用两个下拉；每家一块——名字与版本、状态、模型与深度、检查）、
+// 左边一列索引，右边一页滚下来，四段：AI（助理 / 执行层两个下拉；每家一块——名字与版本、状态、模型与深度、检查）、
 // 算力（一行一台；贴一行 ssh、密钥路径、添加）、存放（只看）、外观（浅 / 深 / 跟随系统）。
 // 字按主人 2026-09-22 的要求：能用词就用词，短句也少，解释只留一行；状态是一枚脉冲点 + 一个词 + 几项数
 // （过了的点外有一圈心跳，没过是静止的红点，没检查是空心圈），没过时机器的原话小字单独一行。
@@ -25,7 +25,8 @@ const SECTIONS = [
   { id: 'look', label: '外观' },
 ] as const
 type SectionId = (typeof SECTIONS)[number]['id']
-const ROLE_LABEL = { chat: '对话用', executor: '执行用' } as const
+// 两个下拉的前缀是名词（主人 2026-09-22：「对话用」是谓宾）：门里那枚旋钮也叫「助理」，词表里另一层叫「执行层」
+const ROLE_LABEL = { chat: '助理', executor: '执行层' } as const
 const WORD_CLASS: Record<Tone, string> = { ok: 'text-ok', bad: 'text-bad', neutral: 'text-muted-foreground' }
 const THEMES: { value: ThemeChoice; label: string }[] = [
   { value: 'light', label: '浅' }, { value: 'dark', label: '深' }, { value: 'system', label: '跟随系统' },
