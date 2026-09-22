@@ -67,6 +67,12 @@
   /* StarBorder（两颗键）的星光：从两侧扫过 */
   --animate-star-movement-bottom: star-movement-bottom linear infinite alternate;
   --animate-star-movement-top: star-movement-top linear infinite alternate;
+  /* 设置板上的脉冲点：底座 / 算力检查过了，点外一圈慢慢扩开淡出，像在线的心跳；减少动效时不画那一圈 */
+  --animate-pulse-ring: pulse-ring 2.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 0.55; }
+    70%, 100% { transform: scale(2.8); opacity: 0; }
+  }
   /* reactbits GlideSelect：换了选项，片上的字轻轻一晃 */
   @keyframes gs-swap {
     from { opacity: 0.6; filter: blur(2px); }

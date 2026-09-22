@@ -1,27 +1,34 @@
 import { describe, expect, it } from 'vitest'
 
-import { agentSentence, computeSentence, parseSsh, suggestComputeName } from './status'
+import { agentStatus, computeStatus, parseSsh, shortVersion, suggestComputeName } from './status'
 
-describe('设置：一句话状态', () => {
-  it('没检查过、四句都过、有一句没过', () => {
-    expect(agentSentence(null)).toEqual({ text: '还没检查', tone: 'neutral' })
-    expect(agentSentence({ ok: true, items: [{ name: '装了没', ok: true, note: '/x' }], spoke_s: 0.62, cost_usd: 0.05, at: 't' }))
-      .toEqual({ text: '装了，登录了，刚说过话（0.6 秒，$0.050）', tone: 'ok' })
-    expect(agentSentence({ ok: true, items: [], spoke_s: 11.2, cost_usd: null, at: 't' }).text)
-      .toBe('装了，登录了，刚说过话（11.2 秒）')
-    expect(agentSentence({ ok: false, items: [{ name: '装了没', ok: true, note: '/x' },
-                                             { name: '登录', ok: false, note: '没登录：在终端跑 codex login' }], at: 't' }))
-      .toEqual({ text: '没登录：在终端跑 codex login', tone: 'bad' })
+describe('设置：一个词的状态', () => {
+  it('底座：没检查过、四句都过、有一句没过', () => {
+    expect(agentStatus(null)).toEqual({ word: '未检查', tone: 'neutral', facts: [] })
+    expect(agentStatus({ ok: true, items: [{ name: '装了没', ok: true, note: '/x' }], spoke_s: 0.62, cost_usd: 0.05, at: 't' }))
+      .toEqual({ word: '就绪', tone: 'ok', facts: ['0.6 s', '$0.05'] })
+    // 订阅账号没有美元：不写
+    expect(agentStatus({ ok: true, items: [], spoke_s: 11.2, cost_usd: null, at: 't' }).facts).toEqual(['11.2 s'])
+    expect(agentStatus({ ok: false, items: [{ name: '装了没', ok: true, note: '/x' },
+                                           { name: '登录', ok: false, note: '没登录：在终端跑 codex login' }], at: 't' }))
+      .toEqual({ word: '未登录', tone: 'bad', facts: [], hint: '没登录：在终端跑 codex login' })
+    expect(agentStatus({ ok: false, items: [{ name: '装了没', ok: false, note: '找不到 codex' }], at: 't' }).word).toBe('未安装')
   })
   it('算力：本机没探过、探过带 GPU、没过带原话', () => {
-    expect(computeSentence(null).text).toBe('还没检查')
-    expect(computeSentence({ ok: true, gpu: 'RTX 4090', items: [], at: 't' })).toEqual({ text: '能用，RTX 4090', tone: 'ok' })
-    expect(computeSentence({ ok: false, items: [{ name: '连接', ok: false, note: '连不上（机器关了？）' }], at: 't' }).text)
-      .toBe('连不上（机器关了？）')
+    expect(computeStatus(null).word).toBe('未检查')
+    expect(computeStatus({ ok: true, gpu: 'RTX 4090', items: [], at: 't' })).toEqual({ word: '就绪', tone: 'ok', facts: ['RTX 4090'] })
+    expect(computeStatus({ ok: false, items: [{ name: '连接', ok: false, note: '连不上（机器关了？）' }], at: 't' }))
+      .toEqual({ word: '连接失败', tone: 'bad', facts: [], hint: '连不上（机器关了？）' })
     // 算力那边记的是三元组（compute.Probe.to_dict），过了的三元组不能被当成没过
-    expect(computeSentence({ ok: true, gpu: 'RTX 4090', items: [['连接', true, '1.7 s'], ['GPU', true, 'RTX 4090']], at: 't' }).tone)
+    expect(computeStatus({ ok: true, gpu: 'RTX 4090', items: [['连接', true, '1.7 s'], ['GPU', true, 'RTX 4090']], at: 't' }).tone)
       .toBe('ok')
-    expect(computeSentence({ ok: false, items: [['连接', false, '连不上']], at: 't' })).toEqual({ text: '连不上', tone: 'bad' })
+    expect(computeStatus({ ok: false, items: [['GPU', false, '没有 GPU']], at: 't' }).word).toBe('GPU未通过')
+  })
+  it('版本串只留版本号', () => {
+    expect(shortVersion('2.1.278 (Claude Code)')).toBe('2.1.278')
+    expect(shortVersion('codex-cli 0.147.0')).toBe('0.147.0')
+    expect(shortVersion('nightly')).toBe('nightly')
+    expect(shortVersion(undefined)).toBe('')
   })
 })
 

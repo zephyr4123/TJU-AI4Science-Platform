@@ -1,22 +1,32 @@
-// 设置那块板上的纯函数（外层 #134）：机器说的一句话状态（不是徽章）、贴进来的 ssh 一行怎么拆、机器名怎么起。
+// 设置那块板上的纯函数（外层 #134）：一家底座 / 一台算力上次检查的状态——一个词、几项事实、一种色调，
+// 不是一句话（主人 2026-09-22：能用词就用词，短句也少）；贴进来的 ssh 一行怎么拆、机器名怎么起。
 // 都不碰 DOM，vitest 直接测。
 import type { AgentCheck, CheckItem, ComputeCheck } from '@/api/types'
 
 export type Tone = 'ok' | 'bad' | 'neutral'
 
-export interface Sentence { text: string; tone: Tone }
+/** 板上一处状态：`word` 是那个词（就绪 / 未登录 / 连接失败 / 未检查），`facts` 是跟在后面的几项短事实
+ *  （版本、几秒、多少钱、GPU），`hint` 是没过时机器给的那一句（下一步怎么办），单独一行、小字 */
+export interface Status { word: string; tone: Tone; facts: string[]; hint?: string }
 
-/** 一家 coding agent 上次检查的一句话：没检查过 / 四句都过了（几秒、多少钱）/ 第一句没过的原话（它自带下一步） */
-export function agentSentence(check: AgentCheck | null): Sentence {
-  if (!check) return { text: '还没检查', tone: 'neutral' }
+const UNCHECKED: Status = { word: '未检查', tone: 'neutral', facts: [] }
+
+/** 四句自检哪一句没过，板上用哪个词 */
+const AGENT_FAIL_WORD: Record<string, string> = {
+  装了没: '未安装', 版本: '版本过低', 登录: '未登录', 说话: '无响应',
+}
+
+/** 一家 coding agent：四句都过了是「就绪」+ 几秒 + 多少钱（订阅没有美元就不写）；第一句没过的那个词 + 机器的原话 */
+export function agentStatus(check: AgentCheck | null): Status {
+  if (!check) return UNCHECKED
   const failed = check.items.find((item) => !item.ok)
-  if (!check.ok || failed) return { text: failed?.note ?? '检查没过', tone: 'bad' }
-  const parts = ['装了', '登录了']
-  if (check.spoke_s != null) {
-    const cost = check.cost_usd != null ? `，$${check.cost_usd.toFixed(3)}` : ''
-    parts.push(`刚说过话（${check.spoke_s.toFixed(1)} 秒${cost}）`)
+  if (!check.ok || failed) {
+    return { word: AGENT_FAIL_WORD[failed?.name ?? ''] ?? '未通过', tone: 'bad', facts: [], hint: failed?.note }
   }
-  return { text: parts.join('，'), tone: 'ok' }
+  const facts: string[] = []
+  if (check.spoke_s != null) facts.push(`${check.spoke_s.toFixed(1)} s`)
+  if (check.cost_usd != null) facts.push(`$${check.cost_usd.toFixed(2)}`)
+  return { word: '就绪', tone: 'ok', facts }
 }
 
 /** 两种记法摆平：算力的 `[名字, 过没过, 一句话]` 与底座的对象 */
@@ -24,12 +34,23 @@ export function checkItem(item: CheckItem): { name: string; ok: boolean; note: s
   return Array.isArray(item) ? { name: item[0], ok: item[1], note: item[2] } : item
 }
 
-/** 一台算力上次探测的一句话：本机不落盘，没探过就写「还没检查」；探过写 GPU；没过写第一项没过的原话 */
-export function computeSentence(check: ComputeCheck | null): Sentence {
-  if (!check) return { text: '还没检查', tone: 'neutral' }
+const COMPUTE_FAIL_WORD: Record<string, string> = { 连接: '连接失败' }
+
+/** 一台算力：本机不落盘，没探过是「未检查」；探过是「就绪」+ GPU；没过是那一项的词 + 机器的原话 */
+export function computeStatus(check: ComputeCheck | null): Status {
+  if (!check) return UNCHECKED
   const failed = (check.items ?? []).map(checkItem).find((item) => !item.ok)
-  if (!check.ok || failed) return { text: failed?.note ?? '检查没过', tone: 'bad' }
-  return { text: check.gpu ? `能用，${check.gpu}` : '能用', tone: 'ok' }
+  if (!check.ok || failed) {
+    const word = failed ? (COMPUTE_FAIL_WORD[failed.name] ?? `${failed.name}未通过`) : '未通过'
+    return { word, tone: 'bad', facts: [], hint: failed?.note }
+  }
+  return { word: '就绪', tone: 'ok', facts: check.gpu ? [check.gpu] : [] }
+}
+
+/** CLI 报的版本串里只留版本号：`2.1.278 (Claude Code)` → `2.1.278`，`codex-cli 0.147.0` → `0.147.0`；认不出原样给 */
+export function shortVersion(text: string | undefined): string {
+  if (!text) return ''
+  return /\d+\.\d+(?:\.\d+)*/.exec(text)?.[0] ?? text
 }
 
 const USER_HOST = /^(?<user>[A-Za-z0-9._-]+)@(?<host>[A-Za-z0-9.-]+)(?::(?<port>\d{1,5}))?$/

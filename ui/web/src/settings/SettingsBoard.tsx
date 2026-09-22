@@ -1,7 +1,9 @@
 // 设置：压在当前地方上的一块悬浮板（纲领 P-25，外层 #134）。入口在地方栏的脚；底图照旧铺满，板四周留边、圆角、投影。
-// 左边一列索引，右边一页滚下来，四段：AI（对话用 / 执行用两个下拉；每家一块——名字与版本、机器说的一句话、模型与深度、检查）、
-// 算力（一张表；贴一行 ssh、密钥路径、添加）、存放（只看）、外观（浅 / 深 / 跟随系统）。状态是一句话不是徽章；没有序号、
-// 没有全大写小标题、段与段之间不画框，靠索引与标题字重分段。一切改动即刻写回按人的两份清单（`~/.config/ai4sci/`）。
+// 左边一列索引，右边一页滚下来，四段：AI（对话用 / 执行用两个下拉；每家一块——名字与版本、状态、模型与深度、检查）、
+// 算力（一行一台；贴一行 ssh、密钥路径、添加）、存放（只看）、外观（浅 / 深 / 跟随系统）。
+// 字按主人 2026-09-22 的要求：能用词就用词，短句也少，解释只留一行；状态是一枚脉冲点 + 一个词 + 几项数
+// （过了的点外有一圈心跳，没过是静止的红点，没检查是空心圈），没过时机器的原话小字单独一行。
+// 没有序号、没有全大写小标题、段与段之间不画框，靠索引与标题字重分段。一切改动即刻写回按人的两份清单（`~/.config/ai4sci/`）。
 import { ArrowsClockwise, Plus, X } from '@phosphor-icons/react'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
@@ -14,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { type ThemeChoice, useThemeChoice } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
-import { agentSentence, computeSentence, parseSsh, suggestComputeName, type Tone } from './status'
+import { agentStatus, computeStatus, parseSsh, shortVersion, type Status, suggestComputeName, type Tone } from './status'
 
 const SECTIONS = [
   { id: 'ai', label: 'AI' },
@@ -24,10 +26,11 @@ const SECTIONS = [
 ] as const
 type SectionId = (typeof SECTIONS)[number]['id']
 const ROLE_LABEL = { chat: '对话用', executor: '执行用' } as const
-const TONE_CLASS: Record<Tone, string> = { ok: 'text-ok', bad: 'text-bad', neutral: 'text-muted-foreground' }
+const WORD_CLASS: Record<Tone, string> = { ok: 'text-ok', bad: 'text-bad', neutral: 'text-muted-foreground' }
 const THEMES: { value: ThemeChoice; label: string }[] = [
   { value: 'light', label: '浅' }, { value: 'dark', label: '深' }, { value: 'system', label: '跟随系统' },
 ]
+const FIELD = 'rounded-md bg-background px-2 py-1 text-[0.875rem] text-foreground ring-1 ring-foreground/10 placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:outline-none'
 
 interface Props {
   onClose: () => void
@@ -129,7 +132,7 @@ type Act = (key: string, run: () => Promise<SettingsDoc>) => Promise<void>
 
 function checkedAt(doc: SettingsDoc | null): string {
   const stamps = (doc?.agents.entries ?? []).map((e) => e.last_check?.at).filter((s): s is string => !!s)
-  if (!stamps.length) return '还没检查过'
+  if (!stamps.length) return '未检查'
   const latest = stamps.sort().at(-1)!
   return `上次检查 ${new Date(latest).toLocaleString('zh-CN', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
 }
@@ -143,18 +146,44 @@ function Section({ id, title, children }: { id: SectionId; title: string; childr
   )
 }
 
+/** 脉冲点：过了是铜绿点外一圈慢慢扩开的心跳；没过是静止的红点；没检查是空心圈。字在旁边，点本身不读出来 */
+function Pulse({ tone }: { tone: Tone }) {
+  return (
+    <span aria-hidden="true" className="relative inline-flex size-2.5 shrink-0 items-center justify-center">
+      {tone === 'ok' && <span className="absolute inset-0 rounded-full bg-ok/45 animate-pulse-ring motion-reduce:hidden" />}
+      <span className={cn('relative size-2 rounded-full',
+                          tone === 'ok' && 'bg-ok', tone === 'bad' && 'bg-bad',
+                          tone === 'neutral' && 'ring-1 ring-inset ring-muted-foreground/70')} />
+    </span>
+  )
+}
+
+/** 一处状态：点 + 词 + 几项数一行；没过时机器的原话单独一行小字，长了截断、悬停看全 */
+function StatusLine({ status, className, hintClassName }: { status: Status; className?: string; hintClassName?: string }) {
+  return (
+    <>
+      <span className={cn('inline-flex items-center gap-2 text-[0.875rem]', className)}>
+        <Pulse tone={status.tone} />
+        <span className={cn('font-medium', WORD_CLASS[status.tone])}>{status.word}</span>
+        {status.facts.map((fact) => <span key={fact} className="text-muted-foreground tabular-nums">{fact}</span>)}
+      </span>
+      {status.hint && <span className={cn('t-label block truncate', hintClassName)} title={status.hint}>{status.hint}</span>}
+    </>
+  )
+}
+
 function Agents({ doc, busy, act }: { doc: SettingsDoc; busy: string | null; act: Act }) {
   const table = doc.agents
   const options = table.entries.map((e) => ({ value: e.name, label: e.title }))
   return (
     <Section id="ai" title="AI">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         {(['chat', 'executor'] as const).map((role) => (
           <GlideSelect key={role} prefix={ROLE_LABEL[role]} ariaLabel={ROLE_LABEL[role]} options={options}
                        value={table[role]} disabled={busy !== null} size="md"
                        onChange={(name) => void act(role, () => api.updateAgents({ [role]: name }))} />
         ))}
-        <span className="t-label basis-full">换了家只对之后开的对话生效，已经开的各用各的。</span>
+        <span className="t-label">仅对新对话生效</span>
       </div>
       <div className="space-y-8">
         {table.entries.map((entry) => <AgentBlock key={entry.name} entry={entry} busy={busy} act={act} />)}
@@ -164,8 +193,8 @@ function Agents({ doc, busy, act }: { doc: SettingsDoc; busy: string | null; act
 }
 
 function AgentBlock({ entry, busy, act }: { entry: AgentEntry; busy: string | null; act: Act }) {
-  const sentence = agentSentence(entry.last_check)
-  const version = entry.last_check?.version
+  const status = agentStatus(entry.last_check)
+  const version = shortVersion(entry.last_check?.version)
   const tune = (key: 'model' | 'effort', value: string) =>
     void act(`${entry.name}:${key}`, () => api.updateAgents({ agents: { [entry.name]: { [key]: value } } }))
   return (
@@ -173,20 +202,22 @@ function AgentBlock({ entry, busy, act }: { entry: AgentEntry; busy: string | nu
       <div className="flex items-center gap-3">
         <BrandIcon name={entry.name} className="size-5 shrink-0" />
         <span className="text-[1rem] font-medium">{entry.title}</span>
-        {version && <span className="t-label">{version}</span>}
+        {version && <span className="t-label tabular-nums">{version}</span>}
+        <Button variant="ghost" size="sm" className="ml-auto" disabled={busy !== null}
+                onClick={() => void act(`check:${entry.name}`, () => api.runCheck('agents', entry.name))}>
+          <ArrowsClockwise className={cn(busy === `check:${entry.name}` && 'animate-spin')} />检查
+        </Button>
       </div>
-      <p className={cn('t-body', TONE_CLASS[sentence.tone])}>{sentence.text}</p>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="space-y-1 pl-8">
+        <StatusLine status={status} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2 pl-8">
         <GlideSelect prefix="模型" ariaLabel={`${entry.title} 的模型`} value={entry.model} disabled={busy !== null}
                      options={entry.models.map((c) => ({ value: c.id, label: c.label, tag: c.note || undefined }))}
                      onChange={(value) => tune('model', value)} />
         <GlideSelect prefix="深度" ariaLabel={`${entry.title} 的思考深度`} value={entry.effort} disabled={busy !== null}
                      options={entry.efforts.map((c) => ({ value: c.id, label: c.label, tag: c.note || undefined }))}
                      onChange={(value) => tune('effort', value)} />
-        <Button variant="ghost" size="sm" className="ml-auto" disabled={busy !== null}
-                onClick={() => void act(`check:${entry.name}`, () => api.runCheck('agents', entry.name))}>
-          <ArrowsClockwise className={cn(busy === `check:${entry.name}` && 'animate-spin')} />检查
-        </Button>
       </div>
     </div>
   )
@@ -210,14 +241,14 @@ function Computes({ doc, busy, act }: { doc: SettingsDoc; busy: string | null; a
   }
   return (
     <Section id="compute" title="算力">
-      <div className="space-y-4">
+      <div className="space-y-3">
         {doc.computes.map((row) => <ComputeLine key={row.name} row={row} busy={busy} act={act} />)}
       </div>
       <div className="space-y-2 pt-2">
         <div className="flex flex-wrap items-center gap-2">
-          <input value={line} onChange={(e) => setLine(e.target.value)} aria-label="ssh 那一行" spellCheck={false}
-                 placeholder="贴一行 ssh 命令，比如 ssh -p 22 root@主机"
-                 className="min-w-[18rem] flex-1 rounded-lg bg-background px-3 py-2 text-[0.9375rem] ring-1 ring-foreground/10 placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:outline-none" />
+          <input value={line} onChange={(e) => setLine(e.target.value)} aria-label="ssh 一行" spellCheck={false}
+                 placeholder="ssh -p 22 root@host"
+                 className={cn(FIELD, 'min-w-[18rem] flex-1 rounded-lg px-3 py-2 text-[0.9375rem]')} />
           <Button size="sm" disabled={!ready} onClick={add}>
             {busy === 'compute:add' ? <ArrowsClockwise className="animate-spin" /> : <Plus weight="bold" />}添加
           </Button>
@@ -226,61 +257,66 @@ function Computes({ doc, busy, act }: { doc: SettingsDoc; busy: string | null; a
           <label className="flex items-center gap-2 text-[0.875rem] text-muted-foreground">
             密钥
             <input value={key} onChange={(e) => setKey(e.target.value)} spellCheck={false} aria-label="密钥路径"
-                   className="w-[14rem] rounded-md bg-background px-2 py-1 text-[0.875rem] text-foreground ring-1 ring-foreground/10 focus:ring-2 focus:ring-ring focus:outline-none" />
+                   className={cn(FIELD, 'w-[14rem]')} />
           </label>
           <label className="flex items-center gap-2 text-[0.875rem] text-muted-foreground">
             名字
             <input value={name} onChange={(e) => setName(e.target.value)} spellCheck={false} aria-label="机器的名字"
-                   placeholder={ssh ? suggestComputeName(ssh) : ''}
-                   className="w-[9rem] rounded-md bg-background px-2 py-1 text-[0.875rem] text-foreground ring-1 ring-foreground/10 placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:outline-none" />
+                   placeholder={ssh ? suggestComputeName(ssh) : ''} className={cn(FIELD, 'w-[9rem]')} />
           </label>
-          {line.trim() !== '' && ssh === null && <span className="t-label text-bad">这一行认不出：要有 user@主机，端口用 -p 或冒号</span>}
+          {line.trim() !== '' && ssh === null && <span className="t-label text-bad">格式：user@host:port，或 ssh -p port user@host</span>}
         </div>
-        <p className="t-label">只认密钥，不收密码；公钥先贴到那台机器上。接上会就地探测，探不过也留着，用的时候再说。</p>
+        <p className="t-label">仅密钥登录，公钥需已在远端</p>
       </div>
     </Section>
   )
 }
 
 function ComputeLine({ row, busy, act }: { row: ComputeRow; busy: string | null; act: Act }) {
-  const sentence = computeSentence(row.last_check)
+  const status = computeStatus(row.last_check)
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <span className="text-[1rem] font-medium">{row.name}</span>
-      <span className="t-label">{row.where}{row.default ? '，缺省' : ''}</span>
-      <span className={cn('t-body basis-full sm:basis-auto', TONE_CLASS[sentence.tone])}>{sentence.text}</span>
-      <span className="ml-auto flex items-center gap-1">
-        <Button variant="ghost" size="sm" disabled={busy !== null}
-                onClick={() => void act(`compute:${row.name}`, () => api.runCheck('computes', row.name))}>
-          <ArrowsClockwise className={cn(busy === `compute:${row.name}` && 'animate-spin')} />检查
-        </Button>
-        {row.kind !== 'local' && (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-x-3">
+        <span className="w-16 shrink-0 truncate text-[1rem] font-medium" title={row.name}>{row.name}</span>
+        <span className="t-label min-w-0 truncate" title={row.where}>{row.where}</span>
+        {row.default && <span className="t-label shrink-0 rounded-md bg-muted px-1.5 py-0.5 leading-none">缺省</span>}
+        <StatusLine status={{ ...status, hint: undefined }} className="ml-auto shrink-0" />
+        <span className="flex shrink-0 items-center gap-1">
           <Button variant="ghost" size="sm" disabled={busy !== null}
-                  onClick={() => void act(`remove:${row.name}`, () => api.removeCompute(row.name))}>
-            移除
+                  onClick={() => void act(`compute:${row.name}`, () => api.runCheck('computes', row.name))}>
+            <ArrowsClockwise className={cn(busy === `compute:${row.name}` && 'animate-spin')} />检查
           </Button>
-        )}
-      </span>
+          {row.kind !== 'local' && (
+            <Button variant="ghost" size="sm" disabled={busy !== null}
+                    onClick={() => void act(`remove:${row.name}`, () => api.removeCompute(row.name))}>
+              移除
+            </Button>
+          )}
+        </span>
+      </div>
+      {status.hint && <p className="t-label truncate pl-[4.75rem]" title={status.hint}>{status.hint}</p>}
     </div>
   )
 }
 
 function Storage({ doc }: { doc: SettingsDoc }) {
   const s = doc.storage
-  const rows: [string, string, string][] = [
-    ['工作区', s.home, `${s.workspaces} 个，${s.writable ? '可写' : '不可写'}，剩 ${s.free_gb} GB`],
-    ['设置', s.config, '算力与 AI 两份清单'],
-    ['缓存', s.uv_cache, 'skill 脚本的环境'],
+  const rows: [string, string, string[]][] = [
+    ['工作区', s.home, [`${s.workspaces} 个`, s.writable ? '可写' : '不可写', `余 ${Math.round(s.free_gb)} GB`]],
+    ['设置', s.config, ['AI 与算力清单']],
+    ['缓存', s.uv_cache, ['skill 环境']],
   ]
   return (
     <Section id="storage" title="存放">
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3">
-        {rows.map(([label, path, note]) => (
+        {rows.map(([label, path, facts]) => (
           <div key={label} className="contents">
             <dt className="t-label pt-0.5">{label}</dt>
             <dd className="min-w-0">
               <span className="block truncate text-[0.9375rem]" title={path}>{path}</span>
-              <span className={cn('t-label', label === '工作区' && !s.writable && 'text-bad')}>{note}</span>
+              <span className={cn('t-label flex gap-3 tabular-nums', label === '工作区' && !s.writable && 'text-bad')}>
+                {facts.map((f) => <span key={f}>{f}</span>)}
+              </span>
             </dd>
           </div>
         ))}
