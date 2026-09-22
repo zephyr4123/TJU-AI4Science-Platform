@@ -165,6 +165,25 @@ def argv_index(argv: list[str], flag: str) -> int:
     return argv.index(flag)
 
 
+def test_codex_home_ignores_an_inherited_codex_home_that_is_itself(home: Path, tmp_path,
+                                                                    monkeypatch):
+    """助理 --detach 起的作业跑在上一层会话的 shell 里，
+    环境里的 CODEX_HOME 是我们给那一层的私有 home：
+    照它算「真的」就把 auth.json 软链指向自己（实测 401）。指到自己的不算数，退回 ~/.codex；已经指向
+    自己的死链也要重连。"""
+    monkeypatch.setenv(cx.REAL_HOME_ENV, str(home))  # 上一层留下的
+    fake_home = tmp_path / "fake-user-home"
+    (fake_home / ".codex").mkdir(parents=True)
+    (fake_home / ".codex" / cx.AUTH_NAME).write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
+    link = home / cx.AUTH_NAME
+    link.unlink()
+    link.symlink_to(link)  # 演练里留下的死链：auth.json -> auth.json
+    assert cx.codex_home() == home
+    assert link.readlink() == fake_home / ".codex" / cx.AUTH_NAME
+    assert link.is_file()
+
+
 def test_tool_guide_names_the_allowed_commands():
     text = cx.CodexRunner().tool_guide(("ai4sci skill",))
     assert "## 工具怎么用" in text and "`ai4sci skill …`" in text and "apply_patch" in text

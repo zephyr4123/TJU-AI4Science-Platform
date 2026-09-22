@@ -55,6 +55,15 @@ usage 进
   raw（端口：绝不填 0）；`cost_reporting = "turn"`。退出码只有 0 / 1；没有轮数 / 花费的闸，
   超时是唯一的闸。
 - 长命令 agent 自己等着跑完（sleep 70 实测通过），没有 Claude Code 那种 2 分钟挪后台的机制。
+- **嵌套会话**：助理 `--detach` 起的作业跑在上一层会话的沙箱 shell 里，
+作业里再起执行层 codex（或叫醒助理的
+  resume）是嵌套的——嵌套的 `sandbox-exec` 实测能起（内层 pong 通过），
+  Codex 塞给子进程的 `CODEX_CI` /
+  `CODEX_SANDBOX` / `CODEX_THREAD_ID` 实测不碍事；碍事的是环境里的 `CODEX_HOME`：
+  那是我们给上一层的私有 home，
+  `codex_home()` 照它算「真的 home」就把 auth.json 软链指向了自己 → 401「Missing bearer」
+  （演练第一次
+  `cap design` 就栽在这）。见 `codex_home` 的注释。
 """
 
 from __future__ import annotations
@@ -155,13 +164,25 @@ def toml_str(text: str) -> str:
 
 def codex_home() -> Path:
     """私有 CODEX_HOME：建目录、把真的 auth.json 软链进来（不复制凭据）。真的没登录就是悬空软链，
-    `codex login status` 会说 Not logged in，自检把这句原样给人。"""
+    `codex login status` 会说 Not logged in，自检把这句原样给人。
+
+    「真的」home 是用户自己的 `CODEX_HOME`（没设就是 `~/.codex`）。
+    但助理 `--detach` 起的作业跑在上一层
+    Codex 会话的 shell 里，环境里的 `CODEX_HOME` 是**我们自己**给那一层的私有 home——照它算「真的」
+    就把软链
+    指向自己（实测 2026-09-22：`auth.json -> auth.json`，嵌套的执行层 codex 401「Missing bearer」）
+    。
+    所以环境里的值指到私有 home 自己时不算数，退回 `~/.codex`。"""
     home = Path(os.environ.get(HOME_ENV) or DEFAULT_HOME).expanduser()
     home.mkdir(parents=True, exist_ok=True)
-    real = Path(os.environ.get(REAL_HOME_ENV) or (Path.home() / ".codex")).expanduser() / AUTH_NAME
+    raw = os.environ.get(REAL_HOME_ENV)
+    candidate = Path(raw).expanduser() if raw else Path.home() / ".codex"
+    if candidate.resolve() == home.resolve():
+        candidate = Path.home() / ".codex"
+    real = candidate / AUTH_NAME
     link = home / AUTH_NAME
     if link.is_symlink() and link.readlink() != real:
-        link.unlink()
+        link.unlink()  # 指错了（含指向自己的死循环）：重连
     if not link.is_symlink():
         assert not link.exists(), f"{link} 是普通文件不是软链：私有 home 里不该有凭据副本"
         link.symlink_to(real)
