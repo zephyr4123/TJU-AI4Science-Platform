@@ -18,7 +18,8 @@ export function ChatPanel({ chat, children }: { chat: (close: () => void) => Rea
   const close = () => setOpen(false)
   return (
     <div className="relative flex min-h-0 flex-1">
-      <main className="relative min-w-0 flex-1">
+      {/* 正文是一列纵向的 flex：看板 / 文件用 h-full 撑满，编辑台的画布用 flex-1 撑满 */}
+      <main className="relative flex min-w-0 flex-1 flex-col">
         {children}
         {!open && <ChatEntry onOpen={() => setOpen(true)} />}
       </main>
