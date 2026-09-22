@@ -79,10 +79,9 @@ export function Rail({ workspaces, place, onPick, onNew, onWorld, settingsOpen, 
             <Caption active={world === 'studio'}>编辑台</Caption>
           </div>
           <div className="flex flex-col items-center gap-1.5 pt-1">
-            {/* 开着时描边不填实：设置是压在当前地方上的板，不是第三个地方，两块填实的会让人分不清在哪 */}
+            {/* 设置是全局的一块，开着时整个右边都是它：填实，与主页面 / 编辑台开着时一个样 */}
             <DockItem label={settingsDot ? '设置：有一项没过检查' : '设置'} active={settingsOpen} onClick={onSettings}
-                      className={cn(SWITCH, 'relative overflow-visible',
-                                    settingsOpen ? 'border-primary bg-card text-primary' : OFF)}>
+                      className={cn(SWITCH, 'relative overflow-visible', settingsOpen ? ON : OFF)}>
               <GearSix weight={settingsOpen ? 'fill' : 'regular'} className="size-[50%]" />
               {settingsDot && <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-wait ring-2 ring-sidebar" />}
             </DockItem>

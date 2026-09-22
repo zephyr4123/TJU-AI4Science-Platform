@@ -103,7 +103,12 @@ export default function App() {
       <div className="flex h-dvh overflow-hidden">
         {wide && <Rail {...places} />}
         <div className="flex min-w-0 flex-1 flex-col">
-          {place && (
+          {/* 设置是全局的，不挂在哪个地方底下（主人 2026-09-22）：开着时地方的页眉（工作区标题、看板 / 文件）整个让开，
+              宽屏没有页眉，窄屏只留一条放地方清单的入口——与门口那一屏同一条规矩 */}
+          {settingsOpen && !wide && (
+            <Top place={{ kind: 'door' }} menu={<PlacesSheet {...places} />} title="设置" note={null} lens={null} />
+          )}
+          {place && !settingsOpen && (
             <Top place={place} menu={wide ? null : <PlacesSheet {...places} />}
                  title={place.kind === 'studio' ? '编辑台' : place.kind === 'door' ? '新建工作区' : current?.title ?? place.id}
                  note={current && place.kind === 'workspace' ? stageSentence(current) : null}
@@ -115,9 +120,16 @@ export default function App() {
                          onChange: (v) => { setStudioView(v as StudioView); setCapFocus(null) } }
                      : null} />
           )}
-          {/* 设置板压在这一层上：底图照旧铺满，板四周留边 */}
           <div className="relative flex min-h-0 flex-1 flex-col">
-            {place?.kind === 'studio'
+            {settingsOpen
+              ? (
+                // 设置占满地方栏右边整块：底下铺一层雾景，板四周留边、悬在上面
+                <div className="relative flex min-h-0 flex-1">
+                  <Scene picture={ASSETS.board} veil="mist" />
+                  <SettingsBoard onClose={() => setSettingsOpen(false)} onChanged={settingsChanged} />
+                </div>
+              )
+              : place?.kind === 'studio'
               ? <StudioPlace healthy={healthy} backends={backends.data} view={studioView} focus={capFocus}
                              onFocus={(name) => { setCapFocus(name); if (name) setStudioView('caps') }} />
               : place?.kind === 'door'
@@ -135,7 +147,6 @@ export default function App() {
                     </div>
                   )
                   : <div className="flex-1" />}
-            {settingsOpen && <SettingsBoard onClose={() => setSettingsOpen(false)} onChanged={settingsChanged} />}
           </div>
         </div>
       </div>

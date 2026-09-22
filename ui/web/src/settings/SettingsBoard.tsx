@@ -3,6 +3,8 @@
 // 算力（一行一台；贴一行 ssh、密钥路径、添加）、存放（只看）、外观（浅 / 深 / 跟随系统）。
 // 字按主人 2026-09-22 的要求：能用词就用词，短句也少，解释只留一行；状态是一枚脉冲点 + 一个词 + 几项数
 // （过了的点外有一圈心跳，没过是静止的红点，没检查是空心圈），没过时机器的原话小字单独一行。
+// 键与开关是 reactbits 的改装件（主人 2026-09-22：手搓的键一股 AI 味）：「检查」是 CallChip（按下去底色慢慢填、毫秒跳、过了洗铜绿、
+// 没过洗红抖一下）、「移除」是 HoldButton（按住涨满才算数）、外观三档是 RubberSegment（橡皮滑块）；输入框用 shadcn 的 Input。
 // 没有序号、没有全大写小标题、段与段之间不画框，靠索引与标题字重分段。一切改动即刻写回按人的两份清单（`~/.config/ai4sci/`）。
 import { ArrowsClockwise, Plus, X } from '@phosphor-icons/react'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
@@ -11,8 +13,12 @@ import { api } from '@/api/client'
 import type { AgentEntry, ComputeRow, SettingsDoc } from '@/api/types'
 import { BrandIcon } from '@/components/BrandIcon'
 import { ErrorNote, Skeleton } from '@/components/bits'
+import CallChip, { type CallChipStatus } from '@/components/reactbits/CallChip'
 import GlideSelect from '@/components/reactbits/GlideSelect'
+import HoldButton from '@/components/reactbits/HoldButton'
+import RubberSegment from '@/components/reactbits/RubberSegment'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { type ThemeChoice, useThemeChoice } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
@@ -31,7 +37,9 @@ const WORD_CLASS: Record<Tone, string> = { ok: 'text-ok', bad: 'text-bad', neutr
 const THEMES: { value: ThemeChoice; label: string }[] = [
   { value: 'light', label: '浅' }, { value: 'dark', label: '深' }, { value: 'system', label: '跟随系统' },
 ]
-const FIELD = 'rounded-md bg-background px-2 py-1 text-[0.875rem] text-foreground ring-1 ring-foreground/10 placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:outline-none'
+/** 检查大概要跑多久（片上的底色填到九成用这么久）：一家底座 pong 一次几秒，全部一起十几秒 */
+const CHECK_MS = 9000
+const CHECK_ALL_MS = 16000
 
 interface Props {
   onClose: () => void
@@ -43,6 +51,8 @@ export function SettingsBoard({ onClose, onChanged }: Props) {
   const [doc, setDoc] = useState<SettingsDoc | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // 每个「检查」键上次跑完的结果：过了片洗铜绿、没过洗红；再按一次就重来
+  const [results, setResults] = useState<Record<string, 'done' | 'error'>>({})
   const [active, setActive] = useState<SectionId>('ai')
   const scroller = useRef<HTMLDivElement>(null)
 
@@ -55,19 +65,23 @@ export function SettingsBoard({ onClose, onChanged }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  /** 一个动作：忙着时那段变灰，回来的整份替换掉，错了一句话摆在顶上 */
-  const act = useCallback(async (key: string, run: () => Promise<SettingsDoc>) => {
+  /** 一个动作：忙着时那段变灰，回来的整份替换掉，错了一句话摆在顶上；`judge` 看回来的那份这次算不算过（检查跑完了但没过也是「没过」） */
+  const act = useCallback(async (key: string, run: () => Promise<SettingsDoc>, judge?: (doc: SettingsDoc) => boolean) => {
     setBusy(key)
     setError(null)
     try {
-      setDoc(await run())
+      const next = await run()
+      setDoc(next)
+      setResults((r) => ({ ...r, [key]: judge && !judge(next) ? 'error' : 'done' }))
       onChanged()
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc))
+      setResults((r) => ({ ...r, [key]: 'error' }))
     } finally {
       setBusy(null)
     }
   }, [onChanged])
+  const chip = (key: string): CallChipStatus => (busy === key ? 'running' : results[key] ?? 'idle')
 
   const jump = (id: SectionId) => {
     setActive(id)
@@ -106,10 +120,8 @@ export function SettingsBoard({ onClose, onChanged }: Props) {
         <header className="flex h-14 shrink-0 items-center gap-3 px-6">
           <span className="font-serif text-[1.0625rem] font-semibold tracking-[0.02em]">设置</span>
           <span className="t-label hidden sm:inline">{checkedAt(doc)}</span>
-          <Button variant="outline" size="sm" className="ml-auto" disabled={!doc || busy !== null}
-                  onClick={() => void act('all', () => api.runCheck('all'))}>
-            <ArrowsClockwise className={cn(busy === 'all' && 'animate-spin')} />检查全部
-          </Button>
+          <CallChip label="检查全部" status={chip('all')} expectedMs={CHECK_ALL_MS} className="ml-auto" disabled={!doc || busy !== null}
+                    onPress={() => void act('all', () => api.runCheck('all'), allOk)} />
           <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="关闭设置"><X /></Button>
         </header>
         <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-6 pb-16">
@@ -117,8 +129,8 @@ export function SettingsBoard({ onClose, onChanged }: Props) {
           {!doc && !error && <Skeleton lines={6} />}
           {doc && (
             <div className="max-w-[44rem] space-y-12">
-              <Agents doc={doc} busy={busy} act={act} />
-              <Computes doc={doc} busy={busy} act={act} />
+              <Agents doc={doc} busy={busy} chip={chip} act={act} />
+              <Computes doc={doc} busy={busy} chip={chip} act={act} />
               <Storage doc={doc} />
               <Look />
             </div>
@@ -129,7 +141,12 @@ export function SettingsBoard({ onClose, onChanged }: Props) {
   )
 }
 
-type Act = (key: string, run: () => Promise<SettingsDoc>) => Promise<void>
+type Act = (key: string, run: () => Promise<SettingsDoc>, judge?: (doc: SettingsDoc) => boolean) => Promise<void>
+type Chip = (key: string) => CallChipStatus
+
+/** 全部检查算不算过：每家底座与每台算力上次检查都过了（本机不落盘、没记就算过） */
+const allOk = (doc: SettingsDoc) =>
+  doc.agents.entries.every((e) => e.last_check?.ok !== false) && doc.computes.every((c) => c.last_check?.ok !== false)
 
 function checkedAt(doc: SettingsDoc | null): string {
   const stamps = (doc?.agents.entries ?? []).map((e) => e.last_check?.at).filter((s): s is string => !!s)
@@ -173,7 +190,7 @@ function StatusLine({ status, className, hintClassName }: { status: Status; clas
   )
 }
 
-function Agents({ doc, busy, act }: { doc: SettingsDoc; busy: string | null; act: Act }) {
+function Agents({ doc, busy, chip, act }: { doc: SettingsDoc; busy: string | null; chip: Chip; act: Act }) {
   const table = doc.agents
   const options = table.entries.map((e) => ({ value: e.name, label: e.title }))
   return (
@@ -187,13 +204,13 @@ function Agents({ doc, busy, act }: { doc: SettingsDoc; busy: string | null; act
         <span className="t-label">仅对新对话生效</span>
       </div>
       <div className="space-y-8">
-        {table.entries.map((entry) => <AgentBlock key={entry.name} entry={entry} busy={busy} act={act} />)}
+        {table.entries.map((entry) => <AgentBlock key={entry.name} entry={entry} busy={busy} chip={chip} act={act} />)}
       </div>
     </Section>
   )
 }
 
-function AgentBlock({ entry, busy, act }: { entry: AgentEntry; busy: string | null; act: Act }) {
+function AgentBlock({ entry, busy, chip, act }: { entry: AgentEntry; busy: string | null; chip: Chip; act: Act }) {
   const status = agentStatus(entry.last_check)
   const version = shortVersion(entry.last_check?.version)
   const tune = (key: 'model' | 'effort', value: string) =>
@@ -204,10 +221,9 @@ function AgentBlock({ entry, busy, act }: { entry: AgentEntry; busy: string | nu
         <BrandIcon name={entry.name} className="size-5 shrink-0" />
         <span className="text-[1rem] font-medium">{entry.title}</span>
         {version && <span className="t-label tabular-nums">{version}</span>}
-        <Button variant="ghost" size="sm" className="ml-auto" disabled={busy !== null}
-                onClick={() => void act(`check:${entry.name}`, () => api.runCheck('agents', entry.name))}>
-          <ArrowsClockwise className={cn(busy === `check:${entry.name}` && 'animate-spin')} />检查
-        </Button>
+        <CallChip label="检查" status={chip(`check:${entry.name}`)} expectedMs={CHECK_MS} className="ml-auto" disabled={busy !== null}
+                  onPress={() => void act(`check:${entry.name}`, () => api.runCheck('agents', entry.name),
+                                          (next) => next.agents.entries.find((e) => e.name === entry.name)?.last_check?.ok === true)} />
       </div>
       <div className="space-y-1 pl-8">
         <StatusLine status={status} />
@@ -224,7 +240,7 @@ function AgentBlock({ entry, busy, act }: { entry: AgentEntry; busy: string | nu
   )
 }
 
-function Computes({ doc, busy, act }: { doc: SettingsDoc; busy: string | null; act: Act }) {
+function Computes({ doc, busy, chip, act }: { doc: SettingsDoc; busy: string | null; chip: Chip; act: Act }) {
   const [line, setLine] = useState('')
   const [key, setKey] = useState('~/.ssh/id_ed25519')
   const [name, setName] = useState('')
@@ -243,13 +259,12 @@ function Computes({ doc, busy, act }: { doc: SettingsDoc; busy: string | null; a
   return (
     <Section id="compute" title="算力">
       <div className="space-y-3">
-        {doc.computes.map((row) => <ComputeLine key={row.name} row={row} busy={busy} act={act} />)}
+        {doc.computes.map((row) => <ComputeLine key={row.name} row={row} busy={busy} chip={chip} act={act} />)}
       </div>
       <div className="space-y-2 pt-2">
         <div className="flex flex-wrap items-center gap-2">
-          <input value={line} onChange={(e) => setLine(e.target.value)} aria-label="ssh 一行" spellCheck={false}
-                 placeholder="ssh -p 22 root@host"
-                 className={cn(FIELD, 'min-w-[18rem] flex-1 rounded-lg px-3 py-2 text-[0.9375rem]')} />
+          <Input value={line} onChange={(e) => setLine(e.target.value)} aria-label="ssh 一行" spellCheck={false}
+                 placeholder="ssh -p 22 root@host" className="min-w-[18rem] flex-1 bg-background" />
           <Button size="sm" disabled={!ready} onClick={add}>
             {busy === 'compute:add' ? <ArrowsClockwise className="animate-spin" /> : <Plus weight="bold" />}添加
           </Button>
@@ -257,13 +272,13 @@ function Computes({ doc, busy, act }: { doc: SettingsDoc; busy: string | null; a
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <label className="flex items-center gap-2 text-[0.875rem] text-muted-foreground">
             密钥
-            <input value={key} onChange={(e) => setKey(e.target.value)} spellCheck={false} aria-label="密钥路径"
-                   className={cn(FIELD, 'w-[14rem]')} />
+            <Input value={key} onChange={(e) => setKey(e.target.value)} spellCheck={false} aria-label="密钥路径"
+                   className="h-7 w-[14rem] bg-background text-[0.875rem]" />
           </label>
           <label className="flex items-center gap-2 text-[0.875rem] text-muted-foreground">
             名字
-            <input value={name} onChange={(e) => setName(e.target.value)} spellCheck={false} aria-label="机器的名字"
-                   placeholder={ssh ? suggestComputeName(ssh) : ''} className={cn(FIELD, 'w-[9rem]')} />
+            <Input value={name} onChange={(e) => setName(e.target.value)} spellCheck={false} aria-label="机器的名字"
+                   placeholder={ssh ? suggestComputeName(ssh) : ''} className="h-7 w-[9rem] bg-background text-[0.875rem]" />
           </label>
           {line.trim() !== '' && ssh === null && <span className="t-label text-bad">格式：user@host:port，或 ssh -p port user@host</span>}
         </div>
@@ -273,7 +288,7 @@ function Computes({ doc, busy, act }: { doc: SettingsDoc; busy: string | null; a
   )
 }
 
-function ComputeLine({ row, busy, act }: { row: ComputeRow; busy: string | null; act: Act }) {
+function ComputeLine({ row, busy, chip, act }: { row: ComputeRow; busy: string | null; chip: Chip; act: Act }) {
   const status = computeStatus(row.last_check)
   return (
     <div className="space-y-0.5">
@@ -282,16 +297,14 @@ function ComputeLine({ row, busy, act }: { row: ComputeRow; busy: string | null;
         <span className="t-label min-w-0 truncate" title={row.where}>{row.where}</span>
         {row.default && <span className="t-label shrink-0 rounded-md bg-muted px-1.5 py-0.5 leading-none">缺省</span>}
         <StatusLine status={{ ...status, hint: undefined }} className="ml-auto shrink-0" />
-        <span className="flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="sm" disabled={busy !== null}
-                  onClick={() => void act(`compute:${row.name}`, () => api.runCheck('computes', row.name))}>
-            <ArrowsClockwise className={cn(busy === `compute:${row.name}` && 'animate-spin')} />检查
-          </Button>
+        <span className="flex shrink-0 items-center gap-1.5">
+          <CallChip label="检查" status={chip(`compute:${row.name}`)} expectedMs={CHECK_MS} disabled={busy !== null}
+                    onPress={() => void act(`compute:${row.name}`, () => api.runCheck('computes', row.name),
+                                            (next) => next.computes.find((c) => c.name === row.name)?.last_check?.ok !== false)} />
           {row.kind !== 'local' && (
-            <Button variant="ghost" size="sm" disabled={busy !== null}
-                    onClick={() => void act(`remove:${row.name}`, () => api.removeCompute(row.name))}>
+            <HoldButton disabled={busy !== null} onHold={() => void act(`remove:${row.name}`, () => api.removeCompute(row.name))}>
               移除
-            </Button>
+            </HoldButton>
           )}
         </span>
       </div>
@@ -330,15 +343,8 @@ function Look() {
   const { choice, setChoice } = useThemeChoice()
   return (
     <Section id="look" title="外观">
-      <div role="radiogroup" aria-label="主题" className="inline-flex rounded-full bg-muted p-1">
-        {THEMES.map((t) => (
-          <button key={t.value} type="button" role="radio" aria-checked={choice === t.value} onClick={() => setChoice(t.value)}
-                  className={cn('rounded-full px-4 py-1.5 text-[0.875rem] transition-colors',
-                                choice === t.value ? 'bg-card font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <RubberSegment aria-label="主题" items={THEMES} value={choice} size="sm" radius={14} equalSlots={false}
+                     onChange={(value) => setChoice(value as ThemeChoice)} />
     </Section>
   )
 }

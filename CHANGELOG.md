@@ -18,6 +18,7 @@
 - 开新对话那一屏多一枚旋钮「助理」选哪家（P-25：一段对话的记忆存在那家手里，进了对话不能换）；输入框的模型 / 深度清单改拿这段对话那家的（之前拿的是缺省那家）；旋钮里「默认」那一项删了，片上只有具体值。
 
 ### 变更
+- 页面「设置」是全局的，不再压在某个地方上（主人：页眉还写着工作区标题和看板 / 文件，层级不对）：开着时地方的页眉整个让开、右边整块都是它（窄屏留一条放地方清单的入口），地方栏里「设置」填实；键与开关换成 reactbits 改装件——「检查」「检查全部」是 CallChip（按下去底色慢慢填、毫秒跳，过了洗铜绿、没过洗红抖一下，跑完了但没过也算没过）、「移除」是 HoldButton（按住一秒涨满才算数）、外观三档是 RubberSegment（橡皮滑块），输入框用 shadcn 的 Input（[#134](https://github.com/zephyr4123/TJU-AI4Science/issues/134)）。
 - 页面「设置」的字收紧（主人：能用词就用词、短句也少）：底座与算力的状态从一句话改成脉冲点 + 一个词 + 几项数（就绪 / 未登录 / 连接失败 / 未检查；过了的点外有一圈心跳，减少动效不画），机器的原话小字单独一行截断；版本串只留版本号；解释各留一行（「仅对新对话生效」「仅密钥登录，公钥需已在远端」）；存放那几项拆成词（[#134](https://github.com/zephyr4123/TJU-AI4Science/issues/134)）。
 - 端口（P-25）加 `Chat.tool_guide()` 与 `Chat.guide_channel`：指南前言之后接这家 CLI 自己的「工具怎么用」（Claude Code 有 Read / Glob / Grep；Codex 只有 shell，看文件就是 ls / cat，沙箱管着写）——Codex 演练里助理照「只能运行 ai4sci」办，连 `materials/` 都不敢看，需求写成了「后续再读」；指南只在开线程时送到的 CLI（Codex 的 `developer_instructions`）指南中途变了，框架把新指南全文塞进那一轮的话里（`conversation.GUIDE_REINJECT`），`guide.system_prompt(kind, tool_guide=…)`、`Scope.system_prompt(chat)`、服务 `system_prompt_for(kind, chat)`（[#131](https://github.com/zephyr4123/TJU-AI4Science/issues/131)）。
 - 端口（P-25）：`bash_rules` 改成与 CLI 无关的命令前缀（`ai4sci`、`ai4sci skill`），各家适配器自己翻；`Runner.run` 加 `tuning`（按人的设置里这家用什么，`session.run_session` 查 `runner.name`）；`Runner.tool_guide()` 接管执行层提示末尾「工具怎么用」那段（`prompting.TOOLS_RULE` 删，`session.full_prompt` 留档整份）；`RunResult.report` 是各家自己取的自述；`Knobs.model` / `.effort` 必填且在清单上（起点），`Knobs.fill()`；`get_backend` / `get_chat` 把名字贴在适配器上；杀树搬到 `backends/_procs.py` 两家共用。
