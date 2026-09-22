@@ -80,6 +80,11 @@ export function parseSsh(line: string): string | null {
   return `${match.groups.user}@${match.groups.host}:${picked}`
 }
 
+/** 家目录缩成 ~：`/Users/me/x`、`/home/me/x` → `~/x`；别的原样 */
+export function tildify(path: string): string {
+  return path.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, '~')
+}
+
 /** 给机器起名：主机名第一段，小写、只留字母数字连字符；空了就叫 box */
 export function suggestComputeName(ssh: string): string {
   const host = ssh.split('@')[1]?.split(':')[0] ?? ''

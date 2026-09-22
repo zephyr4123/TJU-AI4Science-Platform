@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { agentStatus, computeStatus, parseSsh, shortVersion, suggestComputeName } from './status'
+import { agentStatus, computeStatus, parseSsh, shortVersion, suggestComputeName, tildify } from './status'
 
 describe('设置：一个词的状态', () => {
   it('底座：没检查过、四句都过、有一句没过', () => {
@@ -23,6 +23,12 @@ describe('设置：一个词的状态', () => {
     expect(computeStatus({ ok: true, gpu: 'RTX 4090', items: [['连接', true, '1.7 s'], ['GPU', true, 'RTX 4090']], at: 't' }).tone)
       .toBe('ok')
     expect(computeStatus({ ok: false, items: [['GPU', false, '没有 GPU']], at: 't' }).word).toBe('GPU未通过')
+  })
+  it('家目录缩成 ~', () => {
+    expect(tildify('/Users/me/coding/x')).toBe('~/coding/x')
+    expect(tildify('/home/me')).toBe('~')
+    expect(tildify('/opt/data')).toBe('/opt/data')
+    expect(tildify('/Users/me2/.config/ai4sci')).toBe('~/.config/ai4sci')
   })
   it('版本串只留版本号', () => {
     expect(shortVersion('2.1.278 (Claude Code)')).toBe('2.1.278')
