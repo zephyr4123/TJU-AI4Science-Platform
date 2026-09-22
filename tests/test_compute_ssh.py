@@ -264,3 +264,18 @@ def test_remote_prelude_reuses_the_boxes_pip_mirror_for_uv():
     assert "UV_INDEX=" in PATH_PRELUDE and "UV_INDEX_STRATEGY=unsafe-best-match" in PATH_PRELUDE
     assert "UV_INSECURE_HOST" in PATH_PRELUDE and "UV_DEFAULT_INDEX" not in PATH_PRELUDE
     assert "ServerAliveInterval=30" in _ssh()._ssh_argv()
+
+
+def test_probe_env_line_carries_the_interpreter_path():
+    """「已有环境」那一行要带解释器绝对路径：`ai4sci env use` 要的就是它，不打出来助理只能猜。"""
+    from compute.ssh import _envs, env_line
+
+    text = ("PY=Python 3.12.3\nENV=/root/miniconda3/bin/python\t3.12.3\t2.8.0+cu128 cuda\n"
+            "ENV=/root/miniconda3/envs/gua/bin/python\t3.10.12\t-\n"
+            "ENV=/opt/py/bin/python\t3.11.0\t-\n")
+    lines = [env_line(e) for e in _envs(text)]
+    assert lines == [
+        "conda base /root/miniconda3/bin/python 3.12.3 torch 2.8.0+cu128 cuda",
+        "conda gua /root/miniconda3/envs/gua/bin/python 3.10.12 torch -",
+        "/opt/py/bin/python 3.11.0 torch -",
+    ]

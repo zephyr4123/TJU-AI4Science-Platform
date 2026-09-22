@@ -313,9 +313,16 @@ done
         rsync = _field(text, "RSYNC")
         probe.items.append(("rsync", bool(rsync), rsync or "远端没有 rsync：apt install rsync"))
         probe.envs = _envs(text)
-        probe.items.append(("已有环境", True, "；".join(
-            f"{e['name']} {e['version']} torch {e['torch']}" for e in probe.envs) or "没盘点到"))
+        probe.items.append(("已有环境", True,
+                            "；".join(env_line(e) for e in probe.envs) or "没盘点到"))
         return probe
+
+
+def env_line(env: dict) -> str:
+    """一个已有环境的一行：名字、解释器绝对路径、版本、torch。路径必须在——`ai4sci env use` 要的
+    就是它，不打出来助理只能猜（实测猜 /opt/conda 猜错，转头让研究者去机器上 which python）。"""
+    head = env["python"] if env["name"] == env["python"] else f"{env['name']} {env['python']}"
+    return f"{head} {env['version']} torch {env['torch']}"
 
 
 def _envs(text: str) -> list[dict]:
