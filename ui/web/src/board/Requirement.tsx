@@ -4,6 +4,7 @@
 import { ArrowsClockwise, CaretRight, CheckCircle, Circle } from '@phosphor-icons/react'
 import { useState } from 'react'
 
+import type { WorkspaceClient } from '@/api/client'
 import type { RequirementDetail, RequirementSection } from '@/api/types'
 import { Markdown } from '@/components/Markdown'
 import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
@@ -22,7 +23,7 @@ function preface(text: string): string {
 
 // ── 未确认：需求就是页面 ────────────────────────────────────────────────────
 export function RequirementPage({ workspace, requirement, reload }: {
-  workspace: string; requirement: RequirementDetail; reload: () => Promise<void>
+  workspace: WorkspaceClient; requirement: RequirementDetail; reload: () => Promise<void>
 }) {
   const intro = preface(requirement.text)
   const filled = requirement.sections.filter((s) => !s.pending).length
@@ -70,7 +71,7 @@ function SectionCard({ section }: { section: RequirementSection }) {
 
 // ── 已确认：收成一条，点开侧滑 ──────────────────────────────────────────────
 export function RequirementStrip({ workspace, requirement, reload }: {
-  workspace: string; requirement: RequirementDetail; reload: () => Promise<void>
+  workspace: WorkspaceClient; requirement: RequirementDetail; reload: () => Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const changed = requirement.dirty && requirement.confirmed_text !== null

@@ -25,7 +25,7 @@ export interface RequirementSection {
   pending: boolean
 }
 
-/** `GET /workspaces/<id>/requirement`：原文、格、确认状态、上一版确认时的原文（页面做 diff）。 */
+/** `GET …/workspaces/<id>/requirement`：原文、格、确认状态、上一版确认时的原文（页面做 diff）。 */
 export interface RequirementDetail extends RequirementState {
   title: string
   text: string
@@ -134,7 +134,7 @@ export interface FlowProgress extends Workflow {
   job?: Job | null
 }
 
-/** 一个工作区 = 一份需求（`GET /workspaces`）。 */
+/** 一个工作区 = 一份需求（项目页里的一行，`GET /projects/<p>` 的 `workspaces[]`）。 */
 export interface WorkspaceSummary {
   id: string
   title: string
@@ -154,7 +154,44 @@ export interface WorkspaceDetail extends WorkspaceSummary {
   jobs: Job[]
 }
 
-/** 文件镜头：目录的一层（`GET /workspaces/<id>/files?path=`），目录在前；`.venv` `.git` 不列。 */
+/** 一个项目（`GET /projects` 的一行）：一位助理的地盘，工作区在它下面（P-15 改，外层 #136）。
+ *  标题与目标来自 project.md，起的时间来自目录本身。 */
+export interface ProjectSummary {
+  id: string
+  title: string
+  /** project.md 标题底下那一句；没写是空串 */
+  goal: string
+  root: string
+  created_at: string
+  /** 几个工作区 */
+  workspaces: number
+  /** 几个作业在跑（全部工作区加起来） */
+  running: number
+}
+
+/** 一条流程实例在项目页上的样子：标题、第几步 / 共几步、在等谁；文件有问题时只有 problems */
+export interface FlowBrief {
+  name: string
+  title: string | null
+  step: number | null
+  total: number | null
+  waiting: Waiting | null
+  problems: string[]
+}
+
+/** 项目页里一个工作区一行：清单那一行 + 每条流程走到哪 + 跑着的作业 */
+export interface WorkspaceRow extends WorkspaceSummary {
+  flows: FlowBrief[]
+  jobs: Job[]
+}
+
+/** `GET /projects/<p>`：项目 + project.md 原文 + 每个工作区一行 */
+export interface ProjectDetail extends Omit<ProjectSummary, 'workspaces'> {
+  text: string
+  workspaces: WorkspaceRow[]
+}
+
+/** 文件镜头：目录的一层（`GET …/workspaces/<id>/files?path=`），目录在前；`.venv` `.git` 不列。 */
 export interface DirEntry {
   name: string
   kind: 'dir' | 'file'
@@ -165,7 +202,7 @@ export interface DirListing {
   entries: DirEntry[]
 }
 
-/** 一个文件（`GET /workspaces/<id>/file?path=`）：文本带正文（大的截断），二进制 `text` 为 null、走 raw。 */
+/** 一个文件（`GET …/workspaces/<id>/file?path=`）：文本带正文（大的截断），二进制 `text` 为 null、走 raw。 */
 export interface FileContent {
   path: string
   size: number
@@ -269,7 +306,7 @@ export interface ComputeRow {
 export interface SettingsDoc {
   agents: { chat: string; executor: string; entries: AgentEntry[] }
   computes: ComputeRow[]
-  storage: { home: string; config: string; uv_cache: string; writable: boolean; free_gb: number; workspaces: number }
+  storage: { home: string; config: string; uv_cache: string; writable: boolean; free_gb: number; projects: number; workspaces: number }
 }
 
 /** `POST /settings/check` 回来的：整份 + 过没过 + 没过的项 */

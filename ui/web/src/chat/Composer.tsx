@@ -13,6 +13,7 @@ import GlideSelect from '@/components/reactbits/GlideSelect'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { shownValue } from '@/lib/tuning'
+import { cn } from '@/lib/utils'
 
 interface Props {
   busy: boolean
@@ -26,13 +27,16 @@ interface Props {
   onSend: (text: string) => void
   /** 还没开对话：选哪家助理（清单、当前、改） */
   who?: { options: Backend[]; value: string; onChange: (name: string) => void }
+  /** 空着时的提示；项目页正中间那只写「要做什么？」 */
+  placeholder?: string
+  className?: string
 }
 
 const LINE = 24
 const MIN_LINES = 3
 const MAX_LINES = 10
 
-export function Composer({ busy, thinking, knobs, tuning, onTune, onSend, who }: Props) {
+export function Composer({ busy, thinking, knobs, tuning, onTune, onSend, who, placeholder = 'Enter 发送，Shift + Enter 换行', className }: Props) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -60,7 +64,7 @@ export function Composer({ busy, thinking, knobs, tuning, onTune, onSend, who }:
   }
 
   return (
-    <div className="relative z-10 px-6 pt-3 pb-6">
+    <div className={cn('relative z-10 px-6 pt-3 pb-6', className)}>
       <GlassSurface borderRadius={24} className="mx-auto max-w-[44rem] focus-within:ring-3 focus-within:ring-ring/35">
         <div className="relative flex flex-col px-4 pt-4 pb-3">
           <Textarea
@@ -70,7 +74,7 @@ export function Composer({ busy, thinking, knobs, tuning, onTune, onSend, who }:
             onChange={(event) => setText(event.target.value)}
             onKeyDown={onKeyDown}
             aria-label="给助理的消息"
-            placeholder={busy ? `${thinking}…` : 'Enter 发送，Shift + Enter 换行'}
+            placeholder={busy ? `${thinking}…` : placeholder}
             className="min-h-[4.5rem] resize-none border-0 bg-transparent px-1 py-0 text-[1rem] leading-6 shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
           />
           <div className="mt-3 flex items-center gap-2">

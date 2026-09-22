@@ -5,7 +5,7 @@
 import { FolderOpen, Trash } from '@phosphor-icons/react'
 import { type ReactNode, useState } from 'react'
 
-import { api } from '@/api/client'
+import type { WorkspaceClient } from '@/api/client'
 import type { Capability, OutputFile, WorkspaceDetail } from '@/api/types'
 import { ErrorNote, Skeleton } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 import { type NameOf, outputName } from './derive'
 
 export function OutputSheet({ workspace, doc, catalog, oid, signHint, onClose, onOpen, onChanged, onOpenFiles }: {
-  workspace: string; doc: WorkspaceDetail; catalog: Capability[]; oid: string | null; signHint: string | null
+  workspace: WorkspaceClient; doc: WorkspaceDetail; catalog: Capability[]; oid: string | null; signHint: string | null
   onClose: () => void; onOpen: (oid: string) => void; onChanged: () => Promise<void>; onOpenFiles: (path: string) => void
 }) {
   return (
@@ -40,14 +40,14 @@ export function OutputSheet({ workspace, doc, catalog, oid, signHint, onClose, o
 /** 一次产出的记录、结论、确认；`showFiles` 再带目录里的文件清单。标题由外面给（侧滑里要 SheetTitle）。
  *  `doc` 与 `catalog` 只为翻译：阶段名、别的产出的标题、流程的标题、能力的名与参数的 label 都是后端给的，这里查表不猜。 */
 export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, onRemoved, showFiles, title, onOpen, onOpenFiles }: {
-  workspace: string; doc: WorkspaceDetail; catalog: Capability[]; oid: string; signHint: string | null
+  workspace: WorkspaceClient; doc: WorkspaceDetail; catalog: Capability[]; oid: string; signHint: string | null
   onChanged: () => Promise<void>; showFiles: boolean
   /** 删了这次产出之后（侧滑要关）；不给就没有「删除」 */
   onRemoved?: () => void
   title: (o: { title: string }) => ReactNode; onOpen?: (oid: string) => void; onOpenFiles?: (path: string) => void
 }) {
   const [epoch, setEpoch] = useState(0)
-  const record = useResource(() => api.output(workspace, oid), [workspace, oid, epoch])
+  const record = useResource(() => workspace.output(oid), [workspace.key, oid, epoch])
   const reload = async () => { setEpoch((n) => n + 1); await onChanged() }
   if (record.error) return <div className="p-6"><ErrorNote text={record.error} /></div>
   if (!record.data) return <div className="p-6"><Skeleton lines={5} /></div>
@@ -148,7 +148,7 @@ function FileRow({ file }: { file: OutputFile }) {
 
 /** 删这次产出（主人 2026-09-22）：只有叶子（没被下游读过的）且没在跑才出现这枚键，按住一秒才删；服务那边还会再拒一遍 */
 function RemoveKey({ workspace, doc, oid, status, onRemoved }: {
-  workspace: string; doc: WorkspaceDetail; oid: string; status: string; onRemoved: () => void
+  workspace: WorkspaceClient; doc: WorkspaceDetail; oid: string; status: string; onRemoved: () => void
 }) {
   const [failed, setFailed] = useState<string | null>(null)
   const users = doc.stages.flatMap((s) => s.outputs).filter((x) => x.from.includes(oid)).map((x) => x.id)
@@ -158,7 +158,7 @@ function RemoveKey({ workspace, doc, oid, status, onRemoved }: {
   }
   const remove = () => {
     setFailed(null)
-    api.removeOutput(workspace, oid).then(onRemoved).catch((exc: unknown) => setFailed(exc instanceof Error ? exc.message : String(exc)))
+    workspace.removeOutput(oid).then(onRemoved).catch((exc: unknown) => setFailed(exc instanceof Error ? exc.message : String(exc)))
   }
   return (
     <div className="flex items-center gap-3">

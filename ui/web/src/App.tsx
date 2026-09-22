@@ -1,51 +1,29 @@
-// 壳：左边地方栏（先选世界：工作区 / 编辑台，再选工作区），右边页眉 + 当前地方的内容（外层 #58 #64 #70 #79 #104 #111）。
-// 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的两个镜头——看板（需求没确认就是需求文档，确认了是一条流程
-// 一张表）与文件（盘上的目录树与文件内容，只读），页眉上切换，对话在右边两个镜头都在。编辑台是全局一个流程库，也是两个镜头——
-// 流程（画布）与能力（陈列与详情，外层 #112）——加流程助理的悬浮对话窗（外层 #100）；和工作区是两个平行的世界：地方栏上是一个
-// 开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。设置（P-25，外层 #134）是全局的一块，开着时地方的页眉让开，
-// 入口在地方栏的脚，主题开关也在里面。对话那块板两边同一个（chat/ChatPanel.tsx）。页面只是 `ai4sci serve` 的客户端。
-import { DotsThree, Trash } from '@phosphor-icons/react'
-import { type ReactNode, useEffect, useState } from 'react'
+// 壳：左边地方栏（首页 / 编辑台 / 设置三个键），右边是此刻的地方（外层 #58 #64 #70 #79 #104 #111 #136）。
+// 页面先认项目（一个项目一位助理，P-15）：首页是项目墙，点一个进项目页——正中间一只对话输入框、底下这个项目的工作区；
+// 点一行进工作区页——看板 / 文件两个镜头，对话在右边那块板上（还是项目的那一段）。编辑台是全局一个流程库、有自己的对话，
+// 和项目的世界平行（P-16）。设置（P-25）是全局的一块，开着时地方的页眉让开。上次在哪记在浏览器里，下次打开直接回去。
+// 页面只是 `ai4sci serve` 的客户端。
+import { useState } from 'react'
 
-import { api, inWorkspace, STUDIO } from '@/api/client'
-import type { Backend } from '@/api/types'
-import { ASSETS, coverOf } from '@/assets'
-import { Board } from '@/board/Board'
-import { ChatPanel } from '@/chat/ChatPanel'
-import { ChatView } from '@/chat/ChatView'
-import { Band } from '@/components/Band'
+import { api } from '@/api/client'
+import { ASSETS } from '@/assets'
 import { ErrorNote } from '@/components/bits'
 import { Scene } from '@/components/Scene'
-import HoldButton from '@/components/reactbits/HoldButton'
-import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Top } from '@/components/Top'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { Files } from '@/files/Files'
-import { stageSentence } from '@/lib/humanize'
-import { useChats } from '@/lib/useChats'
+import { Home } from '@/home/Home'
+import { NewProject } from '@/home/NewProject'
 import { useMediaQuery, WIDE } from '@/lib/useMediaQuery'
 import { useResource } from '@/lib/useResource'
-import { cn } from '@/lib/utils'
-import type { Place, World } from '@/places/place'
+import { HOME, type Place, type PlacesProps, projectOf, recallPlace, rememberPlace } from '@/places/place'
 import { PlacesSheet } from '@/places/PlacesSheet'
 import { Rail } from '@/places/Rail'
+import { ProjectPlace } from '@/project/ProjectPlace'
 import { SettingsBoard } from '@/settings/SettingsBoard'
-import { ChatDrawer } from '@/sidebar/ChatDrawer'
-import { Studio, type StudioView } from '@/studio/Studio'
-import { NewWorkspace } from '@/workspace/NewWorkspace'
-
-const PICKED_KEY = 'ai4sci.workspace'
-
-/** 工作区页面的两个镜头：看板（做到哪了、在等谁）与文件（盘上有什么） */
-type View = 'board' | 'files'
-/** 页眉上那对镜头开关：哪个地方、现在哪个、有哪几个 */
-interface Lens { value: string; options: { value: string; label: string }[]; onChange: (value: string) => void }
-/** 有作业在跑时多久重拉一次：别的对话起的作业跑完，这边才看得见 */
-const POLL_MS = 10_000
+import { StudioPlace } from '@/studio/StudioPlace'
 
 export default function App() {
-  const workspaces = useResource(api.workspaces, [])
+  const projects = useResource(api.projects, [])
   const health = useResource(api.health, [])
   // 每家 agent 的旋钮清单与新对话用的值（外层 #86，P-25）：对话用哪家就摆哪家的；设置里改了缺省要重拉
   const backends = useResource(api.backends, [])
@@ -53,59 +31,28 @@ export default function App() {
   const settingsDot = health.data ? health.data.checks_ok === false : false
   // 删了东西之后目录外没清干净的几句（CLI 那边的会话、机器上的镜像），摆在正文顶上，点一下收
   const [leftovers, setLeftovers] = useState<string[]>([])
-  // 上次看的哪个工作区记在浏览器里；没记过就是清单里第一个
-  const [picked, setPickedState] = useState<string | null>(() => {
-    try { return window.localStorage.getItem(PICKED_KEY) } catch { return null }
-  })
-  const setPicked = (id: string | null) => {
-    setPickedState(id)
-    try { if (id) window.localStorage.setItem(PICKED_KEY, id) } catch { /* 隐私模式存不了就每次从头挑 */ }
-  }
-  const [creating, setCreating] = useState(false)
-  const [studio, setStudio] = useState(false)
-  const [view, setView] = useState<View>('board')
-  // 编辑台的镜头与「能力」镜头里打开的详情：从画布 / 配置板点一个能力的名字过来时两样一起设
-  const [studioView, setStudioView] = useState<StudioView>('flow')
-  const [capFocus, setCapFocus] = useState<string | null>(null)
-  // 从看板「打开目录」跳到文件镜头时定位到哪个产出；从文件镜头「在看板打开」回来时侧滑里开哪次产出；换工作区都清掉
-  const [focus, setFocus] = useState<string | null>(null)
-  const [opened, setOpened] = useState<string | null>(null)
+  const [picked, setPlace] = useState<Place>(() => recallPlace() ?? HOME)
   const wide = useMediaQuery(WIDE)
-
-  const first = workspaces.data?.length ? workspaces.data[0].id : null
-  const wsId = picked && workspaces.data?.some((w) => w.id === picked) ? picked : first
-  const current = wsId ? workspaces.data?.find((w) => w.id === wsId) ?? null : null
   const healthy = health.loading && !health.data ? null : health.data?.ok === true
+  // 记着的项目已经不在了（删了、换了数据根）：当作在首页
+  const inside = projectOf(picked)
+  const stale = projects.data !== null && inside !== null && !projects.data.some((p) => p.id === inside)
+  const place: Place = stale ? HOME : picked
 
-  // 此刻在哪：编辑台 > 门口（正在新建，或一个工作区都没有）> 某个工作区；工作区清单还没回来时哪儿也不在
-  const place: Place | null = studio ? { kind: 'studio' }
-    : creating || (workspaces.data && !wsId) ? { kind: 'door' }
-      : wsId ? { kind: 'workspace', id: wsId } : null
-
-  const created = async (id: string) => {
-    await workspaces.reload()
-    setPicked(id)
-    setCreating(false)
+  const go = (next: Place) => {
+    setPlace(next)
+    rememberPlace(next)
+    setSettingsOpen(false)
   }
-  // 删了当前工作区：清单重读、落回第一个（一个不剩就是门口）；没清干净的几句摆出来
-  const removedWorkspace = async (rest: string[]) => {
-    setLeftovers(rest)
-    setPicked(null)
-    setOpened(null)
-    setFocus(null)
-    await workspaces.reload()
-  }
-  const places = {
-    workspaces: workspaces.data,
-    place: place ?? { kind: 'door' as const },
-    // 挑了地方就是要看那个地方：设置板跟着收
-    onPick: (id: string) => { setPicked(id); setCreating(false); setStudio(false); setFocus(null); setOpened(null); setSettingsOpen(false) },
-    onNew: () => { setCreating(true); setStudio(false); setSettingsOpen(false) },
-    onWorld: (world: World) => { setStudio(world === 'studio'); setSettingsOpen(false) },
+  const places: PlacesProps = {
+    place,
+    onHome: () => go(HOME),
+    onStudio: () => go({ kind: 'studio' }),
     settingsOpen,
     settingsDot,
     onSettings: () => setSettingsOpen((open) => !open),
   }
+  const menu = wide ? undefined : <PlacesSheet {...places} />
   // 设置里检查过、改过：/health 的那一位与每家新对话用的值都可能变了
   const settingsChanged = () => { void health.reload(); void backends.reload() }
 
@@ -114,193 +61,41 @@ export default function App() {
       <div className="flex h-dvh overflow-hidden">
         {wide && <Rail {...places} />}
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* 设置是全局的，不挂在哪个地方底下（主人 2026-09-22）：开着时地方的页眉（工作区标题、看板 / 文件）整个让开，
-              宽屏没有页眉，窄屏只留一条放地方清单的入口——与门口那一屏同一条规矩 */}
-          {settingsOpen && !wide && (
-            <Top place={{ kind: 'door' }} menu={<PlacesSheet {...places} />} title="设置" note={null} lens={null} />
-          )}
-          {place && !settingsOpen && (
-            <Top place={place} menu={wide ? null : <PlacesSheet {...places} />}
-                 title={place.kind === 'studio' ? '编辑台' : place.kind === 'door' ? '新建工作区' : current?.title ?? place.id}
-                 note={current && place.kind === 'workspace' ? stageSentence(current) : null}
-                 lens={place.kind === 'workspace'
-                   ? { value: view, options: [{ value: 'board', label: '看板' }, { value: 'files', label: '文件' }],
-                       onChange: (v) => { setView(v as View); setOpened(null) } }
-                   : place.kind === 'studio'
-                     ? { value: studioView, options: [{ value: 'flow', label: '流程' }, { value: 'caps', label: '能力' }],
-                         onChange: (v) => { setStudioView(v as StudioView); setCapFocus(null) } }
-                     : null}
-                 tail={place.kind === 'workspace' ? <WorkspaceMenu id={place.id} onRemoved={removedWorkspace} /> : null} />
-          )}
           {leftovers.length > 0 && (
             <button type="button" onClick={() => setLeftovers([])} className="w-full text-left">
               <ErrorNote text={`本机已删，没清干净的：${leftovers.join('；')}`} className="rounded-none" />
             </button>
           )}
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            {settingsOpen
-              ? (
-                // 设置占满地方栏右边整块：底下铺一层雾景，板四周留边、悬在上面
+          {settingsOpen
+            ? (
+              <>
+                {/* 设置是全局的，不挂在哪个地方底下（主人 2026-09-22）：宽屏没有页眉，窄屏只留一条放地方清单的入口 */}
+                {!wide && <Top menu={menu} title="设置" />}
                 <div className="relative flex min-h-0 flex-1">
                   <Scene picture={ASSETS.board} veil="mist" />
                   <SettingsBoard onClose={() => setSettingsOpen(false)} onChanged={settingsChanged} />
                 </div>
-              )
-              : place?.kind === 'studio'
-              ? <StudioPlace healthy={healthy} backends={backends.data} view={studioView} focus={capFocus}
-                             onFocus={(name) => { setCapFocus(name); if (name) setStudioView('caps') }} />
-              : place?.kind === 'door'
-                ? <NewWorkspace existing={workspaces.data ?? []} onCreated={(id) => void created(id)}
-                                onCancel={wsId ? () => setCreating(false) : undefined} />
-                : place
-                  ? (
-                    // 雾景挂在这一层：换工作区只重建里面的 MainView，底图不重贴（主人：切换那一瞬闪屏）
-                    <div className="relative flex min-h-0 flex-1">
-                      <Scene picture={ASSETS.board} veil="mist" />
-                      <MainView key={place.id} wsId={place.id} healthy={healthy} backends={backends.data} title={current?.title ?? place.id}
-                                view={view} focus={focus} opened={opened} onOpen={setOpened}
-                                onOpenFiles={(path) => { setFocus(path); setView('files') }}
-                                onOpenBoard={(oid) => { setOpened(oid); setView('board') }} />
-                    </div>
-                  )
-                  : <div className="flex-1" />}
-          </div>
+              </>
+            )
+            : place.kind === 'home'
+              ? <Home projects={projects} menu={menu} onOpen={(id) => go({ kind: 'project', id })} onNew={() => go({ kind: 'door' })} />
+              : place.kind === 'door'
+                ? <NewProject existing={projects.data ?? []} menu={menu}
+                              onCreated={async (id) => { await projects.reload(); go({ kind: 'project', id }) }}
+                              onCancel={() => go(HOME)} />
+                : place.kind === 'studio'
+                  ? <StudioPlace healthy={healthy} backends={backends.data} menu={menu} />
+                  : inside && !stale && (
+                    // 换项目就重建整个世界（对话、清单都按项目隔离）；项目页与它的工作区页之间来回不重建
+                    <ProjectPlace key={inside} projectId={inside} wsId={place.kind === 'workspace' ? place.id : null}
+                                  healthy={healthy} backends={backends.data} menu={menu}
+                                  onOpenWorkspace={(id) => go({ kind: 'workspace', project: inside, id })}
+                                  onBack={() => go({ kind: 'project', id: inside })}
+                                  onRemoved={async (rest) => { setLeftovers(rest); await projects.reload(); go(HOME) }}
+                                  onWorkspaceRemoved={async (rest) => { setLeftovers(rest); await projects.reload(); go({ kind: 'project', id: inside }) }} />
+                  )}
         </div>
       </div>
     </TooltipProvider>
-  )
-}
-
-/** 页眉只属于当前地方：标题 + 走到哪 + 两个镜头的开关（工作区是看板 / 文件，编辑台是流程 / 能力），底下封面糊成一抹颜色
- *  （换工作区就换色）；门口宽屏不要页眉（画面铺满），窄屏留一条放入口。主题开关搬进了设置（P-25）。 */
-function Top({ place, title, note, menu, lens, tail }: {
-  place: Place; title: string; note: string | null; menu: ReactNode; lens: Lens | null
-  /** 镜头开关右边再放一个：工作区的「…」（删除工作区在里面） */
-  tail?: ReactNode
-}) {
-  if (place.kind === 'door' && !menu) return null
-  const picture = place.kind === 'studio' ? ASSETS.studio : place.kind === 'workspace' ? coverOf(place.id) : null
-  const row = (
-    <header className="flex h-14 items-center gap-3 px-4 sm:px-5">
-      {menu}
-      <span className="min-w-0 truncate font-serif text-[1.0625rem] font-semibold tracking-[0.02em]">{title}</span>
-      {note && <span className="t-label hidden whitespace-nowrap sm:inline">{note}</span>}
-      {lens && (
-        <Tabs value={lens.value} onValueChange={lens.onChange} className="ml-auto">
-          <TabsList aria-label="镜头" className="bg-background/70 backdrop-blur-sm">
-            {lens.options.map((o) => <TabsTrigger key={o.value} value={o.value} className="px-3">{o.label}</TabsTrigger>)}
-          </TabsList>
-        </Tabs>
-      )}
-      {tail}
-    </header>
-  )
-  if (!picture) return <div className="shrink-0 border-b bg-card">{row}</div>
-  return <Band picture={picture} veil="wash" blur className="shrink-0 border-b">{row}</Band>
-}
-
-/** 主页面：这个工作区的看板或文件铺满，对话在右边一列（宽屏常开、可收；窄屏是从右边拉出来的抽屉）。
- *  换工作区时父组件用 key 重建，状态天然按工作区隔离。 */
-function MainView({ wsId, title, healthy, backends, view, focus, opened, onOpen, onOpenFiles, onOpenBoard }: {
-  wsId: string; title: string; healthy: boolean | null; backends: Backend[] | null
-  view: View; focus: string | null; opened: string | null; onOpen: (oid: string | null) => void
-  onOpenFiles: (path: string) => void; onOpenBoard: (oid: string) => void
-}) {
-  const scope = inWorkspace(wsId)
-  const c = useChats(scope)
-  const chat = (close: () => void) => (
-    <ChatView
-      key={c.chatId ?? 'none'} scope={scope} chatId={c.chatId} current={c.current}
-      onClose={close}
-      autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning, backend) => void c.start(text, tuning, backend)}
-      onTurnDone={c.turnDone}
-      backends={backends}
-      intro={{ lede: '课题', body: '问题、材料、评价标准。' }}
-      welcome={{ headline: '课题', body: '问题、材料、评价标准。' }}
-      drawer={
-        <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
-                    creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
-                    onRemove={async (id) => { await c.remove(id) }}
-                    cover={coverOf(wsId)} title={title} />
-      }
-    />
-  )
-  // 这个工作区那一整份（需求、产出、流程的进度、作业）两个镜头共用，拉一次；有作业在跑时轮询；对话每一轮结束重读。
-  // 能力表也拉一次：看板每一列底下的能力、产出记录里能力的名与参数的 label 都从它查（P-21：翻译在源头，页面只查表）
-  const doc = useResource(() => api.workspace(wsId), [wsId, c.epoch])
-  const caps = useResource(api.capabilities, [])
-  const skills = useResource(api.skills, [])
-  const busy = (doc.data?.running ?? 0) > 0
-  const reload = doc.reload
-  useEffect(() => {
-    if (!busy) return
-    const timer = setInterval(() => { void reload() }, POLL_MS)
-    return () => clearInterval(timer)
-  }, [busy, reload])
-  return (
-    <ChatPanel chat={chat}>
-      {/* 两个镜头都常驻，切换只是显示 / 隐藏：不重新挂载、不重新拉数据，树的展开与滚动位置也都保住 */}
-      <div className={cn('relative h-full', view !== 'board' && 'hidden')}>
-        <Board workspace={wsId} doc={doc} caps={caps} skills={skills} opened={opened} onOpen={onOpen} onOpenFiles={onOpenFiles} />
-      </div>
-      <div className={cn('relative h-full', view !== 'files' && 'hidden')}>
-        <Files key={focus ?? ''} workspace={wsId} doc={doc} caps={caps} epoch={c.epoch} focus={focus} onOpenBoard={onOpenBoard} />
-      </div>
-    </ChatPanel>
-  )
-}
-
-/** 编辑台：两个镜头铺满，流程助理的对话是右边同一块板（与工作区同一个 ChatPanel）。 */
-function StudioPlace({ healthy, backends, view, focus, onFocus }: {
-  healthy: boolean | null; backends: Backend[] | null; view: StudioView; focus: string | null; onFocus: (name: string | null) => void
-}) {
-  const c = useChats(STUDIO)
-  return (
-    <ChatPanel chat={(close) => (
-        <ChatView
-          key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current} onClose={close}
-          autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning, backend) => void c.start(text, tuning, backend)}
-          onTurnDone={c.turnDone}
-          backends={backends}
-          intro={{ lede: '流程', body: '阶段、能力、断点。' }}
-          welcome={{ headline: '流程', body: '阶段、能力、断点。' }}
-          drawer={
-            <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
-                        creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
-                        onRemove={async (id) => { await c.remove(id) }}
-                        cover={ASSETS.studio} title="编辑台" />
-          }
-        />
-      )}>
-      <Studio epoch={c.epoch} view={view} focus={focus} onFocus={onFocus} />
-    </ChatPanel>
-  )
-}
-
-
-/** 工作区页眉右端的「…」：里面只有一件事——删除工作区（连产出、对话及其会话、机器上的镜像一起）；按住一秒才删 */
-function WorkspaceMenu({ id, onRemoved }: { id: string; onRemoved: (leftovers: string[]) => Promise<void> }) {
-  const [open, setOpen] = useState(false)
-  const [failed, setFailed] = useState<string | null>(null)
-  const remove = () => {
-    setFailed(null)
-    api.removeWorkspace(id)
-      .then(async (removed) => { setOpen(false); await onRemoved(removed.leftovers) })
-      .catch((exc: unknown) => setFailed(exc instanceof Error ? exc.message : String(exc)))
-  }
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="更多"><DotsThree weight="bold" /></Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-[18rem] space-y-3 p-4">
-        <p className="text-[0.875rem] font-medium">删除工作区</p>
-        <p className="text-[0.75rem] text-muted-foreground">需求、原件、全部产出、对话及其会话、机器上的镜像一起删，回不来。</p>
-        <div className="flex items-center gap-3">
-          <HoldButton onHold={remove} doneLabel="已删除"><Trash className="size-3.5" />删除</HoldButton>
-          {failed && <span className="text-[0.75rem] text-bad">{failed}</span>}
-        </div>
-      </PopoverContent>
-    </Popover>
   )
 }

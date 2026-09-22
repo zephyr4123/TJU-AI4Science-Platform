@@ -303,7 +303,7 @@ function AddCompute({ busy, act, onDone }: { busy: string | null; act: Act; onDo
 function Storage({ doc }: { doc: SettingsDoc }) {
   const s = doc.storage
   const rows: [string, string, string[]][] = [
-    ['工作区', s.home, [`${s.workspaces} 个`, s.writable ? '可写' : '不可写', `余 ${Math.round(s.free_gb)} GB`]],
+    ['项目', s.home, [`${s.projects} 个`, `${s.workspaces} 个工作区`, s.writable ? '可写' : '不可写', `余 ${Math.round(s.free_gb)} GB`]],
     ['设置', s.config, ['AI 与算力清单']],
     ['缓存', s.uv_cache, ['skill 环境']],
   ]

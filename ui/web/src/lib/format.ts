@@ -28,6 +28,15 @@ export function when(iso: string | null | undefined): string {
                                         hour: '2-digit', minute: '2-digit' })
 }
 
+/** 只到天：「9 月 21 日」；跨年才带年。项目墙上「创建于」用它。 */
+export function day(iso: string | null | undefined, today = new Date()): string {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  const sameYear = date.getFullYear() === today.getFullYear()
+  return date.toLocaleDateString('zh-CN', { year: sameYear ? undefined : 'numeric', month: 'long', day: 'numeric' })
+}
+
 export function shortHash(value: string | null | undefined): string {
   return value ? value.slice(0, 8) : '—'
 }

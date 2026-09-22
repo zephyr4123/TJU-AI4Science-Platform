@@ -1,4 +1,4 @@
-import { SidebarSimple, X } from '@phosphor-icons/react'
+import { X } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -11,26 +11,25 @@ import { ErrorNote, Skeleton } from '@/components/bits'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
 import { usd } from '@/lib/format'
-import { type Pick, shownValue, storedTuning, thinkingWord } from '@/lib/tuning'
 import { useResource } from '@/lib/useResource'
 
 import { Composer } from './Composer'
 import { outcome, reduceTrace, replayTrace, type TraceItem, type TurnOutcome } from './trace'
 import { type Turn, TurnView } from './TurnView'
+import { useTuning } from './useTuning'
 
 interface Copy { headline: string; body: string }
 
 interface Props {
-  /** 哪个域的对话：工作区（研究助理）或编辑台（造流助理）；端点前缀由它定 */
+  /** 哪个域的对话：项目（研究助理）或编辑台（流程助理）；端点前缀由它定 */
   scope: Scope
   /** 换对话时父组件用 key 重建本组件，所以这里的状态天然按对话隔离 */
   chatId: string | null
   current: ChatMeta | null
-  /** 有看板可收的页面才给这两个 */
-  boardOpen?: boolean
-  onToggleBoard?: () => void
-  /** 悬浮窗里的对话：右上角一枚关闭 */
+  /** 板里的对话：右上角一枚收起。整页的对话（项目页）不给——页眉在外面 */
   onClose?: () => void
+  /** 整页的对话：自己那行头（抽屉、标题、花费）不要，页眉由外面给 */
+  header?: boolean
   /** 还没有对话时在输入框里打的第一句：对话一建好就发出去 */
   autoSend: string | null
   onAutoSent: () => void
@@ -54,20 +53,12 @@ interface LiveTurn {
   outcome: TurnOutcome | null
 }
 
-export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onClose, autoSend, onAutoSent, onStart, onTurnDone,
+export function ChatView({ scope, chatId, current, onClose, header = true, autoSend, onAutoSent, onStart, onTurnDone,
                            backends, drawer, intro, welcome }: Props) {
   const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId])
   const [live, setLive] = useState<LiveTurn | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
-  // 还没开对话时选的哪家：缺省照设置里「助理」那家（P-25）；开了对话就是对话记着的那家，旋钮清单跟它走
-  const [who, setWho] = useState<string | null>(null)
-  const backendName = current?.backend ?? who ?? backends?.find((b) => b.default)?.name ?? null
-  const knobs = backends?.find((b) => b.name === backendName) ?? null
-  // 输入框上这次改过的旋钮；没碰过就沿用对话上记的，随每条消息发出去（外层 #86）
-  const [pick, setPick] = useState<Pick>({})
-  const tuning = storedTuning(pick, current)
-  // 助理想着时那个词：按实际用的深度（记着的，或这家新对话用的）在清单里的位置
-  const thinking = thinkingWord(shownValue(tuning.effort, knobs?.effort ?? ''), knobs?.efforts ?? [])
+  const { backendName, knobs, tuning, thinking, onTune, choose } = useTuning(backends, current)
   const bottom = useRef<HTMLDivElement>(null)
 
   const turns = useMemo<Turn[]>(() => {
@@ -119,23 +110,20 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onC
     <div className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
       {/* 没有对话：一张风景铺在整列底下、左边压纸色给字站；有了对话：淡彩的云压到只剩氛围 */}
       <Scene picture={chatId ? ASSETS.chat : ASSETS.welcome} veil={chatId ? 'mist' : 'side'} />
-      <header className="relative flex h-12 shrink-0 items-center gap-2 px-3">
-        {drawer}
-        <span className="min-w-0 flex-1 truncate text-[0.875rem] text-muted-foreground">
-          {current?.title ?? (chatId ? '新对话' : '')}
-        </span>
-        {current && current.cost_usd > 0 && (
-          <span className="t-label whitespace-nowrap">{usd(current.cost_usd)}</span>
-        )}
-        {onToggleBoard && (
-          <Button variant="ghost" size="icon-sm" onClick={onToggleBoard} aria-label={boardOpen ? '收起看板' : '展开看板'}>
-            <SidebarSimple weight={boardOpen ? 'fill' : 'regular'} className="-scale-x-100" />
-          </Button>
-        )}
-        {onClose && (
-          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="收起对话"><X /></Button>
-        )}
-      </header>
+      {header && (
+        <header className="relative flex h-12 shrink-0 items-center gap-2 px-3">
+          {drawer}
+          <span className="min-w-0 flex-1 truncate text-[0.875rem] text-muted-foreground">
+            {current?.title ?? (chatId ? '新对话' : '')}
+          </span>
+          {current && current.cost_usd > 0 && (
+            <span className="t-label whitespace-nowrap">{usd(current.cost_usd)}</span>
+          )}
+          {onClose && (
+            <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="收起对话"><X /></Button>
+          )}
+        </header>
+      )}
 
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {!chatId && <Welcome copy={welcome} />}
@@ -159,10 +147,8 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onC
         )}
       </div>
 
-      <Composer busy={live !== null || autoSend !== null} thinking={thinking} knobs={knobs} tuning={tuning}
-                onTune={(next) => setPick(next)}
-                who={chatId || !backends ? undefined
-                  : { options: backends, value: backendName ?? '', onChange: (name) => { setWho(name); setPick({}) } }}
+      <Composer busy={live !== null || autoSend !== null} thinking={thinking} knobs={knobs} tuning={tuning} onTune={onTune}
+                who={chatId || !backends ? undefined : { options: backends, value: backendName ?? '', onChange: choose }}
                 onSend={(text) => (chatId ? void send(text) : onStart(text, tuning, backendName))} />
     </div>
   )

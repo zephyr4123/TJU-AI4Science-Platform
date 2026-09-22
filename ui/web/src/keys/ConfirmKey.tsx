@@ -1,7 +1,7 @@
 // 确认需求：唯一内置的门，只有人能按。按了写 requirement.lock（版本 +1）；还有「待填」按不了。
 import { useState } from 'react'
 
-import { api } from '@/api/client'
+import type { WorkspaceClient } from '@/api/client'
 import type { RequirementDetail } from '@/api/types'
 import { ErrorNote } from '@/components/bits'
 import { StarBorder } from '@/components/reactbits/StarBorder'
@@ -13,7 +13,7 @@ import { SignerField } from './SignerField'
 import { Spark } from './Spark'
 
 export function ConfirmKey({ workspace, requirement, reload, compact = false }: {
-  workspace: string; requirement: RequirementDetail; reload: () => Promise<void>; compact?: boolean
+  workspace: WorkspaceClient; requirement: RequirementDetail; reload: () => Promise<void>; compact?: boolean
 }) {
   const [signer, setSigner] = useSigner()
   const [busy, setBusy] = useState(false)
@@ -24,7 +24,7 @@ export function ConfirmKey({ workspace, requirement, reload, compact = false }: 
     setBusy(true)
     setError(null)
     try {
-      await api.confirm(workspace, signer)
+      await workspace.confirm(signer)
       await reload()
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc))

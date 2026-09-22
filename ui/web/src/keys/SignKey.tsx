@@ -1,7 +1,7 @@
 // 确认一次产出：流里那一项后面有断点才需要，确认了下游才能读（signed.json）。确认之后目录又改了就 stale，要再确认。
 import { useState } from 'react'
 
-import { api } from '@/api/client'
+import type { WorkspaceClient } from '@/api/client'
 import type { OutputBrief } from '@/api/types'
 import { DoneBlock, ErrorNote } from '@/components/bits'
 import { StarBorder } from '@/components/reactbits/StarBorder'
@@ -15,7 +15,7 @@ import { SignerField } from './SignerField'
 import { Spark } from './Spark'
 
 export function SignKey({ workspace, output, hint, reload }: {
-  workspace: string; output: OutputBrief; hint: string | null; reload: () => Promise<void>
+  workspace: WorkspaceClient; output: OutputBrief; hint: string | null; reload: () => Promise<void>
 }) {
   const [signer, setSigner] = useSigner()
   const [note, setNote] = useState('')
@@ -27,7 +27,7 @@ export function SignKey({ workspace, output, hint, reload }: {
     setBusy(true)
     setError(null)
     try {
-      await api.sign(workspace, output.id, signer, note)
+      await workspace.sign(output.id, signer, note)
       await reload()
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc))

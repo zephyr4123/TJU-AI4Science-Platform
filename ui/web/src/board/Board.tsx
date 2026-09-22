@@ -1,6 +1,7 @@
 // 主页面的看板（纲领 P-19，外层 #104 #107）：按 requirement.lock 在不在分两个状态。
 // 未确认——需求文档就是页面；已确认——需求收成顶部一条，下面一条流程一张表（横向阶段、纵向每次产出）。
 // 工作区那一整份与能力表由父组件拉（两个镜头共用、有作业在跑时轮询、对话每一轮结束重读），这里只读。
+import type { WorkspaceClient } from '@/api/client'
 import type { Capability, FlowPick, SkillEntry, WorkspaceDetail } from '@/api/types'
 import { ErrorNote, Skeleton } from '@/components/bits'
 import type { Resource } from '@/lib/useResource'
@@ -12,7 +13,7 @@ import { type ColumnCaps, Flows } from './Flows'
 
 /** `opened` 是侧滑里打开的那次产出，状态在父组件（文件镜头「在看板打开」要能指定它） */
 export function Board({ workspace, doc, caps, skills, opened, onOpen, onOpenFiles }: {
-  workspace: string; doc: Resource<WorkspaceDetail>; caps: Resource<Capability[]>; skills: Resource<SkillEntry[]>
+  workspace: WorkspaceClient; doc: Resource<WorkspaceDetail>; caps: Resource<Capability[]>; skills: Resource<SkillEntry[]>
   opened: string | null; onOpen: (oid: string | null) => void; onOpenFiles: (path: string) => void
 }) {
   const error = doc.error ?? caps.error ?? skills.error
@@ -47,7 +48,7 @@ export function Board({ workspace, doc, caps, skills, opened, onOpen, onOpenFile
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-[80rem] space-y-5 px-5 pt-5 pb-12 sm:px-6">
         <RequirementStrip workspace={workspace} requirement={data.requirement} reload={doc.reload} />
-        <Flows doc={data} capsOf={capsOf} onOpen={onOpen} onChanged={doc.reload} />
+        <Flows workspace={workspace} doc={data} capsOf={capsOf} onOpen={onOpen} onChanged={doc.reload} />
       </div>
       <OutputSheet workspace={workspace} doc={data} catalog={catalog} oid={opened} onClose={() => onOpen(null)} onOpen={onOpen}
                    onChanged={doc.reload}

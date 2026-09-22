@@ -1,13 +1,13 @@
-// 一个域里的对话清单与「当前这段」：主页面（工作区）与编辑台（造流）各用一份，逻辑相同。
+// 一个域里的对话清单与「当前这段」：项目（研究助理）与编辑台（流程助理）各用一份，逻辑相同。
 import { useCallback, useState } from 'react'
 
-import { api, type Scope } from '@/api/client'
+import { api, type Scope, scopeKey } from '@/api/client'
 import type { Tuning } from '@/api/types'
 
 import { useResource } from './useResource'
 
 export function useChats(scope: Scope) {
-  const key = scope.kind === 'studio' ? 'studio' : scope.id
+  const key = scopeKey(scope)
   const chats = useResource(() => api.chats(scope), [key])
   const [picked, setPicked] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)

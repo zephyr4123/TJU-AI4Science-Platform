@@ -3,7 +3,7 @@
 import { CheckCircle, Signature, Trash } from '@phosphor-icons/react'
 import { createElement, useState } from 'react'
 
-import { api } from '@/api/client'
+import type { WorkspaceClient } from '@/api/client'
 import type { FlowOutput, FlowPick, FlowProgress, FlowProgressItem, ResearchStage, WorkspaceDetail } from '@/api/types'
 import { Dot, ErrorNote, Problems } from '@/components/bits'
 import HoldButton from '@/components/reactbits/HoldButton'
@@ -23,7 +23,8 @@ const STATE_WORD: Record<OutputState, string> = {
 export interface ColumnCaps { caps: Chip[]; named: boolean; skills: Chip[] }
 export interface Chip { title: string; brief: string }
 
-export function Flows({ doc, capsOf, onOpen, onChanged }: {
+export function Flows({ workspace, doc, capsOf, onOpen, onChanged }: {
+  workspace: WorkspaceClient
   doc: WorkspaceDetail
   capsOf: (stage: ResearchStage, picks: FlowPick[]) => ColumnCaps
   onOpen: (oid: string) => void
@@ -36,7 +37,7 @@ export function Flows({ doc, capsOf, onOpen, onChanged }: {
     <div className="space-y-6">
       {doc.flows.length === 0 && <p className="t-label">尚未选定流程。与助理说明照哪条流程进行。</p>}
       {doc.flows.map((flow) => (
-        <FlowTable key={flow.name} workspace={doc.id} flow={flow} pending={pending} nameOf={nameOf} capsOf={capsOf} onOpen={onOpen} onChanged={onChanged} />
+        <FlowTable key={flow.name} workspace={workspace} flow={flow} pending={pending} nameOf={nameOf} capsOf={capsOf} onOpen={onOpen} onChanged={onChanged} />
       ))}
       {loose.length > 0 && (
         <section aria-label="其它">
@@ -59,7 +60,7 @@ export function Flows({ doc, capsOf, onOpen, onChanged }: {
 
 /** 一条流程一张表：题头（标题 + 在等谁）、一行列（阶段列与断点线交替） */
 function FlowTable({ workspace, flow, pending, nameOf, capsOf, onOpen, onChanged }: {
-  workspace: string; flow: FlowProgress; pending: Set<string>; nameOf: NameOf
+  workspace: WorkspaceClient; flow: FlowProgress; pending: Set<string>; nameOf: NameOf
   capsOf: (stage: ResearchStage, picks: FlowPick[]) => ColumnCaps; onOpen: (oid: string) => void
   onChanged: () => Promise<void>
 }) {
@@ -179,7 +180,7 @@ function StopLine({ item, flow }: { item: Extract<FlowProgressItem, { kind: 'sto
 }
 
 /** 停一个正在跑的作业：第一下只是拉开保险（变红），第二下才停（外层 #115）。署名与确认键同一个。 */
-function StopKey({ workspace, jobId, onChanged }: { workspace: string; jobId: string; onChanged: () => Promise<void> }) {
+function StopKey({ workspace, jobId, onChanged }: { workspace: WorkspaceClient; jobId: string; onChanged: () => Promise<void> }) {
   const [signer] = useSigner()
   const [armed, setArmed] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -189,7 +190,7 @@ function StopKey({ workspace, jobId, onChanged }: { workspace: string; jobId: st
     setBusy(true)
     setError(null)
     try {
-      await api.stopJob(workspace, jobId, signer.trim() || '研究者')
+      await workspace.stopJob(jobId, signer.trim() || '研究者')
       await onChanged()
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc))
@@ -212,11 +213,11 @@ function StopKey({ workspace, jobId, onChanged }: { workspace: string; jobId: st
 
 
 /** 删这条流程实例（主人 2026-09-22）：一次产出都没挂、没在跑才出现；按住一秒才删 */
-function RemoveFlowKey({ workspace, name, onChanged }: { workspace: string; name: string; onChanged: () => Promise<void> }) {
+function RemoveFlowKey({ workspace, name, onChanged }: { workspace: WorkspaceClient; name: string; onChanged: () => Promise<void> }) {
   const [failed, setFailed] = useState<string | null>(null)
   const remove = () => {
     setFailed(null)
-    api.removeFlow(workspace, name).then(() => onChanged()).catch((exc: unknown) => setFailed(exc instanceof Error ? exc.message : String(exc)))
+    workspace.removeFlow(name).then(() => onChanged()).catch((exc: unknown) => setFailed(exc instanceof Error ? exc.message : String(exc)))
   }
   return (
     <span className="flex items-center gap-2">

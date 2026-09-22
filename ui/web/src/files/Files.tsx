@@ -10,7 +10,7 @@ import {
 } from '@phosphor-icons/react'
 import { createElement, type ReactNode, useState } from 'react'
 
-import { api } from '@/api/client'
+import type { WorkspaceClient } from '@/api/client'
 import type { Capability, DirEntry, OutputBrief, WorkspaceDetail } from '@/api/types'
 import { OutputBody } from '@/board/OutputSheet'
 import { Dot, ErrorNote, Skeleton } from '@/components/bits'
@@ -31,7 +31,7 @@ const DEFAULT_FILE = 'requirement.md'
 /** `focus` 是从看板「打开目录」带过来的产出路径：进来就展开到它、选中它（父组件按 focus 给 key，换了就重建）。
  *  工作区那一整份 `doc` 由父组件拉、与看板共用；`epoch` 是对话的轮次，换了就重读目录与文件 */
 export function Files({ workspace, doc, caps, epoch, focus, onOpenBoard }: {
-  workspace: string; doc: Resource<WorkspaceDetail>; caps: Resource<Capability[]>; epoch: number; focus: string | null
+  workspace: WorkspaceClient; doc: Resource<WorkspaceDetail>; caps: Resource<Capability[]>; epoch: number; focus: string | null
   onOpenBoard: (oid: string) => void
 }) {
   const [selected, setSelected] = useState<string>(focus ?? DEFAULT_FILE)
@@ -84,11 +84,11 @@ const guideLeft = (depth: number) => `${indent(depth - 1) + 0.5}rem`
 
 /** 一个目录的一层：懒加载；每行按它在工作区里的意思画。`order` 只有根一层给（按工作区骨架排） */
 function DirRows({ workspace, path, depth, epoch, expanded, selected, meaning, order, onToggle, onSelect }: {
-  workspace: string; path: string; depth: number; epoch: number; expanded: Set<string>; selected: string
+  workspace: WorkspaceClient; path: string; depth: number; epoch: number; expanded: Set<string>; selected: string
   meaning: (path: string) => RowMeaning; order?: (entries: DirEntry[]) => DirEntry[]
   onToggle: (path: string) => void; onSelect: (path: string) => void
 }) {
-  const listing = useResource(() => api.files(workspace, path), [workspace, path, epoch])
+  const listing = useResource(() => workspace.files(path), [workspace.key, path, epoch])
   if (listing.error) return <p className="py-1 pr-2 text-[0.75rem] text-bad" style={{ paddingLeft: `${indent(depth)}rem` }}>{listing.error}</p>
   // 子目录加载不画占位：本地请求几十毫秒就回，骨架闪一下又没了（空目录尤其明显）；折角一转就是反馈。骨架只给根那一层
   if (!listing.data) return depth === 0 ? <div className="px-3 py-1"><Skeleton lines={4} /></div> : null
@@ -212,10 +212,10 @@ function Location({ path, meaning, onReveal }: { path: string; meaning: (path: s
 
 /** 一个文件：位置、名字大字、大小与行数；正文按种类渲染 */
 function FilePane({ workspace, path, epoch, doc, meaning, onReveal, onOpenBoard }: {
-  workspace: string; path: string; epoch: number; doc: WorkspaceDetail; meaning: (path: string) => RowMeaning
+  workspace: WorkspaceClient; path: string; epoch: number; doc: WorkspaceDetail; meaning: (path: string) => RowMeaning
   onReveal: (path: string, output: boolean) => void; onOpenBoard: (oid: string) => void
 }) {
-  const file = useResource(() => api.file(workspace, path), [workspace, path, epoch])
+  const file = useResource(() => workspace.file(path), [workspace.key, path, epoch])
   const oid = outputIdOf(path, doc)
   if (file.error) return <div className="p-6"><ErrorNote text={file.error} /></div>
   if (!file.data) return <div className="p-6"><Skeleton lines={8} /></div>
@@ -239,7 +239,7 @@ function FilePane({ workspace, path, epoch, doc, meaning, onReveal, onOpenBoard 
         </div>
       </header>
       {kind === 'image'
-        ? <div className="m-6 flex justify-center rounded-xl bg-muted/40 p-6"><img src={api.rawUrl(workspace, path)} alt={name} className="max-w-full rounded-md" /></div>
+        ? <div className="m-6 flex justify-center rounded-xl bg-muted/40 p-6"><img src={workspace.rawUrl(path)} alt={name} className="max-w-full rounded-md" /></div>
         : f.text === null
           ? <p className="t-label px-6 py-5">二进制文件，页面不显示。</p>
           : kind === 'markdown'

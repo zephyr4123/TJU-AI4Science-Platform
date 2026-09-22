@@ -1,28 +1,59 @@
-// 地方栏与窄屏清单共用的形状：两个世界、页面此刻在哪、回调、排序。
-import type { WorkspaceSummary } from '@/api/types'
+// 页面此刻在哪，与地方栏的形状。两个世界（纲领 P-15 P-16）：项目的世界——首页（项目墙）、门口（起项目那一屏）、
+// 某个项目、项目里的某个工作区——与编辑台；设置是全局的一块，不算地方。上次在哪记在浏览器里，下次打开直接回去。
+export type Place =
+  | { kind: 'home' }
+  | { kind: 'door' }
+  | { kind: 'project'; id: string }
+  | { kind: 'workspace'; project: string; id: string }
+  | { kind: 'studio' }
 
-/** 两个平行的世界：主页面（很多个工作区，各有自己的对话与看板）与编辑台（全局一个库，自己的对话） */
-export type World = 'workspace' | 'studio'
+export type World = 'projects' | 'studio'
 
-/** 页面此刻在哪：某个工作区、门口（新建工作区那一屏）、编辑台 */
-export type Place = { kind: 'workspace'; id: string } | { kind: 'door' } | { kind: 'studio' }
+export const HOME: Place = { kind: 'home' }
 
-export const worldOf = (place: Place): World => (place.kind === 'studio' ? 'studio' : 'workspace')
+export const worldOf = (place: Place): World => (place.kind === 'studio' ? 'studio' : 'projects')
 
+/** 此刻在哪个项目里（项目页或它的工作区页）；不在就是 null */
+export function projectOf(place: Place): string | null {
+  if (place.kind === 'project') return place.id
+  if (place.kind === 'workspace') return place.project
+  return null
+}
+
+/** 地方栏（宽屏）与地方清单（窄屏）同一份：三个键——首页、编辑台、设置 */
 export interface PlacesProps {
-  workspaces: WorkspaceSummary[] | null
   place: Place
-  onPick: (id: string) => void
-  onNew: () => void
-  /** 切世界：回主页面是回上次那个工作区（一个都没有就是门口），去编辑台就是去编辑台 */
-  onWorld: (world: World) => void
-  /** 设置（P-25）：归人、全局一份，与两个世界的开关同一层；那个点在有一项自检没过时才亮 */
+  onHome: () => void
+  onStudio: () => void
+  /** 设置（P-25）：归人、全局一份；那个点在有一项自检没过时才亮 */
   settingsOpen: boolean
   settingsDot: boolean
   onSettings: () => void
 }
 
-/** 地方栏与窄屏清单同一顺序：后端按目录名给，照抄 */
-export function newestFirst(workspaces: WorkspaceSummary[] | null): WorkspaceSummary[] {
-  return workspaces ? [...workspaces] : []
+const KEY = 'ai4sci.place'
+const ID = /^[a-z][a-z0-9-]*$/
+
+/** 浏览器里记的那条：只认项目与工作区（首页、门口、编辑台不值得记），字段不对就当没记 */
+export function parseStored(raw: string | null): Place | null {
+  if (!raw) return null
+  let doc: unknown
+  try { doc = JSON.parse(raw) } catch { return null }
+  if (!doc || typeof doc !== 'object') return null
+  const { project, workspace } = doc as { project?: unknown; workspace?: unknown }
+  if (typeof project !== 'string' || !ID.test(project)) return null
+  if (workspace === undefined || workspace === null) return { kind: 'project', id: project }
+  if (typeof workspace !== 'string' || !ID.test(workspace)) return null
+  return { kind: 'workspace', project, id: workspace }
+}
+
+export function recallPlace(): Place | null {
+  try { return parseStored(window.localStorage.getItem(KEY)) } catch { return null }
+}
+
+export function rememberPlace(place: Place): void {
+  const project = projectOf(place)
+  if (!project) return
+  const doc = place.kind === 'workspace' ? { project, workspace: place.id } : { project }
+  try { window.localStorage.setItem(KEY, JSON.stringify(doc)) } catch { /* 隐私模式存不了就每次从首页进 */ }
 }

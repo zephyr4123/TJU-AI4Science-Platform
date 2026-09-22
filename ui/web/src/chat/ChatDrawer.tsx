@@ -1,5 +1,5 @@
-// 对话列表收在左侧抽屉里，对话本身才是主角；入口是一枚带字的大圆角按钮「对话 · N」（reactbits GlareHover 改装，外层 #79 #80：
-// 原来一个小图标谁都看不见）。抽屉顶上是这个工作区的封面（编辑台是库的横幅），清单逐条浮现（reactbits AnimatedList 改装）。
+// 对话列表收在左侧抽屉里，对话本身才是主角；入口是一枚带字的大圆角按钮「对话 · N」（reactbits GlareHover 改装，外层 #79 #80 #136：
+// 原来一个小图标谁都看不见）。项目页与工作区页都是它（对话归项目）；抽屉顶上是项目的封面（编辑台是库的横幅），清单逐条浮现（reactbits AnimatedList 改装）。
 import { ChatCenteredText, ChatsCircle, NotePencil, Trash } from '@phosphor-icons/react'
 import { useState } from 'react'
 
@@ -25,9 +25,9 @@ interface Props {
   onNew: () => void
   /** 删一段（主人 2026-09-22）：按住才算数；正在跑的那段服务会拒，错误一句摆在清单顶上 */
   onRemove: (chatId: string) => Promise<void>
-  /** 抽屉顶上那张：工作区的封面或库的横幅 */
+  /** 抽屉顶上那张：项目的封面或库的横幅 */
   cover: Picture
-  /** 这一边是谁的对话：工作区的标题或「编辑台」 */
+  /** 这一边是谁的对话：项目的标题或「编辑台」 */
   title: string
   /** 这一边的对话是干什么的，一句话 */
 }
