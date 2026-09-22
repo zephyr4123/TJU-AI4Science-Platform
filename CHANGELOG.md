@@ -16,11 +16,13 @@
 - 开新对话那一屏多一枚旋钮「助理」选哪家（P-25：一段对话的记忆存在那家手里，进了对话不能换）；输入框的模型 / 深度清单改拿这段对话那家的（之前拿的是缺省那家）；旋钮里「默认」那一项删了，片上只有具体值。
 
 ### 变更
+- 端口（P-25）加 `Chat.tool_guide()` 与 `Chat.guide_channel`：指南前言之后接这家 CLI 自己的「工具怎么用」（Claude Code 有 Read / Glob / Grep；Codex 只有 shell，看文件就是 ls / cat，沙箱管着写）——Codex 演练里助理照「只能运行 ai4sci」办，连 `materials/` 都不敢看，需求写成了「后续再读」；指南只在开线程时送到的 CLI（Codex 的 `developer_instructions`）指南中途变了，框架把新指南全文塞进那一轮的话里（`conversation.GUIDE_REINJECT`），`guide.system_prompt(kind, tool_guide=…)`、`Scope.system_prompt(chat)`、服务 `system_prompt_for(kind, chat)`（[#131](https://github.com/zephyr4123/TJU-AI4Science/issues/131)）。
 - 端口（P-25）：`bash_rules` 改成与 CLI 无关的命令前缀（`ai4sci`、`ai4sci skill`），各家适配器自己翻；`Runner.run` / `Chat.turn` 加 `runtime_paths`（平台自己要写的目录：数据根、按人的配置、uv 缓存，`paths.runtime_paths()`，有沙箱的 CLI 设成可写根）；`Runner.run` 加 `tuning`（按人的设置里这家用什么，`session.run_session` 查 `runner.name`）；`Runner.tool_guide()` 接管执行层提示末尾「工具怎么用」那段（`prompting.TOOLS_RULE` 删，`session.full_prompt` 留档整份）；`RunResult.report` 是各家自己取的自述；`Knobs.model` / `.effort` 必填且在清单上（起点），`Knobs.fill()`；`get_backend` / `get_chat` 把名字贴在适配器上；杀树搬到 `backends/_procs.py` 两家共用。
 - 旋钮上只有具体值（主人 2026-09-22）：开新对话从 `agents.yaml` 抄模型与深度进 meta（`ai4sci chat new` 与 `POST <域>/chats` 都是），发消息时给 null 与没给一样沿用；`Knobs` 里的 None 缺省、`AI4SCI_COORDINATOR_MODEL` / `_EFFORT` / `AI4SCI_EXECUTOR_MODEL` 三个环境变量退役；老对话 meta 里的 null 读到时按当时的缺省填成具体值并落盘（`settings.ensure_tuned`）；`cap --backend` 与 `chat new --backend` 缺省不再写死 `claude_code`，照设置里「执行用 / 对话用」的那家。
 - `ai4sci compute add` 的「写清单 + 就地探测 + 记回」抽成 `cli/compute.add_and_check`，页面「设置 → 算力 → 添加」走同一段。
 
 ### 修复
+- 需求确认只看格子里的「待填」：模板引言那句「把每一格的「待填」换成实话」本身带这个词，助理照抄了引言整份就被拒（Codex 演练第一次确认撞上）；没有一个二级标题的也不能签，报错列出没填的格（[#135](https://github.com/zephyr4123/TJU-AI4Science/issues/135)）。
 - 指南：喂回执行层的意见文件放 `materials/` 或 `.ai4sci/`，不写进产出目录（演练里助理把意见写进了 `analysis/3/executor/`，那是被引用后冻住的产出）（[#123](https://github.com/zephyr4123/TJU-AI4Science/issues/123)）。
 - 复现性分析第二版把训练超参（`lr=1e-3`、`betas=(0.9, 0.999)`）写在正文里，数字核对当它是编的数拦下；第三版不知道第二版错在哪（[#123](https://github.com/zephyr4123/TJU-AI4Science/issues/123)）：提示里「写反引号」的规则扩到凡不是从结果清单抄的数（版本、commit、超参、轮数），并加一句「文字事实照材料来源抄，不凭记忆补论文里没有的名字」（第一版编了个 Allen-Cahn）；`reproducibility` 加 `--feedback`（重写仍是新开一份，上一版的问题进提示）。指南同步。
 - 人打断把对话的一轮杀在半路，`inflight.json` 留着，之后谁也没法跟这段对话说话（演练里手删的）：锁记 pid，发下一轮时进程不在了就自己收，半途那一轮的目录留着当证据；pid 还活着照旧拒，老格式的锁（没 pid）当活着（[#122](https://github.com/zephyr4123/TJU-AI4Science/issues/122)）。

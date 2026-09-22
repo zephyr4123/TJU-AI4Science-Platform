@@ -40,7 +40,7 @@ def wake(workspace: Workspace, job: Job, *, retry_s: float = RETRY_S,
     try:
         conv = settings.ensure_tuned(conversation.load_conversation(where.chats, job.chat_id))
         chat = get_chat(conv.backend)
-        system_prompt = where.system_prompt()
+        system_prompt = where.system_prompt(chat)
     except (conversation.ConversationNotFound, BackendNotFound, guide.GuideMissing) as exc:
         LOGGER.error("wake_failed job_id=%s chat_id=%s why=%s", job.job_id, job.chat_id, exc)
         return f"failed: {exc}"

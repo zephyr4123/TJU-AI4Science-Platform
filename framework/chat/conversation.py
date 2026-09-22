@@ -208,6 +208,9 @@ def send(
     digest = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
     if system_prompt and conv.guide_sha not in (None, digest):
         message = GUIDE_CHANGED_NOTICE + message
+        if chat.guide_channel == "thread" and conv.session_id:
+            # 这家只在开线程时收指南（Codex 的 developer_instructions），变了只能塞进话里
+            message = GUIDE_REINJECT.format(guide=system_prompt.strip()) + message
     if tuning is not None:
         conv.tune(tuning)
     # 轮次编号取盘上下一个空号，不取 meta.turns + 1：半途放弃的一轮目录留着当证据，
@@ -254,6 +257,9 @@ def send(
 # 指南变了就在这一轮的话前面加一句：模型每轮都拿到整份指南，但看不出哪儿变了
 GUIDE_CHANGED_NOTICE = ("（平台提示：你的指南自上一轮起更新了——能运行的命令可能多了或变了，"
                         "拿不准就 ai4sci --help 重看一遍。）\n\n")
+# 只在开线程时收指南的 CLI（`Chat.guide_channel == "thread"`）：新指南全文附在话里，不然它照旧指南办
+GUIDE_REINJECT = ("（平台提示：这段对话开始后指南更新了；新指南全文在下面的 <guide> 里，"
+                  "之后照它办。）\n\n<guide>\n{guide}\n</guide>\n\n")
 
 
 def _lock_holder_alive(inflight: Path) -> bool:

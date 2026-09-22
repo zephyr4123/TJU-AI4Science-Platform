@@ -90,8 +90,9 @@ def cmd_send(args: argparse.Namespace) -> int:
             return EXIT_USAGE
         text = path.read_text(encoding="utf-8")
     try:
-        system_prompt = where.system_prompt()
-    except guide.GuideMissing as exc:
+        chat = get_chat(conv.backend)
+        system_prompt = where.system_prompt(chat)
+    except (guide.GuideMissing, BackendNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
     tuning = _tuning(args, conv.tuning, conv.backend)
@@ -102,7 +103,7 @@ def cmd_send(args: argparse.Namespace) -> int:
     streaming = False  # 正在逐字打一段话：完整的 text 来了只补个换行，不再打一遍
     try:
         for event in conversation.send(
-            conv, get_chat(conv.backend), text, system_prompt=system_prompt,
+            conv, chat, text, system_prompt=system_prompt,
             allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
             readable_paths=list(where.readable_paths),
             runtime_paths=list(where.runtime_paths), tuning=tuning,

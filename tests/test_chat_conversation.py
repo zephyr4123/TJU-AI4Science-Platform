@@ -181,6 +181,28 @@ def test_guide_change_between_turns_is_announced_to_the_agent(tmp_path):
     assert reloaded.guide_sha == conv.guide_sha
 
 
+def test_guide_change_is_reinjected_in_full_for_thread_channel_clis(tmp_path):
+    """P-25 / 外层 #131：Codex 只在开线程时收指南（developer_instructions，resume 再给不生效），
+    指南变了
+    框架把新指南全文塞进那一轮的话里；turn 渠道的（Claude Code 每轮整份送）只加一句提示。"""
+    conv, chat = start(tmp_path, reply("一"), reply("二"))
+    chat.guide_channel = "thread"
+    drain(conv, chat, "第一句")
+    list(conv_mod.send(conv, chat, "第二句", system_prompt=GUIDE + "\n新加了一条命令",
+                       allowed_paths=[], bash_rules=()))
+    sent = chat.calls[1]["message"]
+    expected = conv_mod.GUIDE_REINJECT.format(guide=(GUIDE + "\n新加了一条命令").strip())
+    assert sent.startswith(expected)
+    assert conv_mod.GUIDE_CHANGED_NOTICE in sent and sent.endswith("第二句")
+    assert "新加了一条命令" in sent  # 全文在话里
+    # 第一轮（还没线程）不塞：那一轮的指南本来就会随开线程送到
+    conv2, chat2 = start(tmp_path / "b", reply("一"))
+    chat2.guide_channel = "thread"
+    conv2.guide_sha = "stale"
+    drain(conv2, chat2, "第一句")
+    assert "<guide>" not in chat2.calls[0]["message"]
+
+
 def test_empty_message_and_timeout_env(tmp_path, monkeypatch):
     conv, chat = start(tmp_path, reply("x"))
     with pytest.raises(ValueError, match="空"):

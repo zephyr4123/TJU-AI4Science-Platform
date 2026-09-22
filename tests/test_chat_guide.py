@@ -16,6 +16,19 @@ def _commands(text: str) -> list[str]:
             for line in block.splitlines() if line.strip() and not line.startswith("#")]
 
 
+def test_tool_guide_goes_right_after_the_preamble(tmp_path):
+    """P-25：「工具怎么用」是这家 CLI 自己的一段（`Chat.tool_guide`），插在前言之后、指南原文之前；
+    空的不插。真跑时 Codex 的助理照「只能运行 ai4sci」办，连 materials/ 都不敢看，就缺这一段。"""
+    path = tmp_path / "guide.md"
+    path.write_text("# 指南\n\n正文", encoding="utf-8")
+    tool = "## 工具怎么用\n\n- 看文件用 ls / cat\n"
+    text = guide.system_prompt(guide.STUDIO, path, tool_guide=tool)
+    head, tail = text.split("## 工具怎么用", 1)
+    assert "# 你在服务里" in head and "# 指南" not in head
+    assert tail.strip().startswith("- 看文件用 ls / cat") and "# 指南" in tail
+    assert "## 工具怎么用" not in guide.system_prompt(guide.STUDIO, path, tool_guide="  ")
+
+
 def test_system_prompt_is_preamble_plus_guide(tmp_path):
     path = tmp_path / "README.md"
     path.write_text("# 指南正文\n", encoding="utf-8")

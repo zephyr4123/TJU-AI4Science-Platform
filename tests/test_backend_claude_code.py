@@ -454,6 +454,14 @@ def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
     assert picked[picked.index("--model") + 1] == "opus"
 
 
+def test_chat_tool_guide_and_guide_channel():
+    """P-25：协调层的「工具怎么用」是这家的（Read / Glob / Grep）；每轮整份送指南（turn）。"""
+    chat = ClaudeCodeChat()
+    assert chat.guide_channel == "turn"
+    text = chat.tool_guide(("ai4sci", ".venv/bin/ai4sci"))
+    assert "Read / Glob / Grep" in text and "`ai4sci …`" in text and "Bash 只放行" in text
+
+
 def test_chat_knobs_list_models_and_efforts_with_a_concrete_start():
     """外层 #86 / P-25：适配器自报有哪些模型、哪几档思考深度，以及起点（具体值，不是 None）。"""
     from backends import Knobs, Tuning

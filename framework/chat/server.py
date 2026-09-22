@@ -131,9 +131,21 @@ class ChatServer(ThreadingHTTPServer):
         self.add_compute = add_compute or _no_add_compute
         # 页面构建目录；None 就是没构建，根路径回一句怎么构建，接口照常
         self.ui_dir = None if ui_dir is None else Path(ui_dir).resolve()
-        # 两份指南在起服务时各读一次：文件不在当场炸，不等第一条消息才发现
+        # 两份指南在起服务时各读一次：文件不在当场炸，不等第一条消息才发现。这里存的是不带
+        # 「工具怎么用」的那份；发消息时按这段对话那家适配器补上它自己的那段（`system_prompt_for`）
         self.system_prompts = ({kind: guide.system_prompt(kind) for kind in guide.KINDS}
                                if system_prompts is None else system_prompts)
+        self._injected_prompts = system_prompts is not None
+
+    def system_prompt_for(self, kind: str, chat: Chat) -> str:
+        """这个域的指南 + 这家 CLI 的「工具怎么用」。真指南由 guide 拼（那段插在前言之后）；
+        测试注入的
+        指南直接接在后面。"""
+        tool = chat.tool_guide(guide.BASH_RULES)
+        if self._injected_prompts:
+            base = self.system_prompts[kind]
+            return base + ("\n\n" + tool.strip() + "\n" if tool.strip() else "")
+        return guide.system_prompt(kind, tool_guide=tool)
 
     @property
     def workspaces_root(self) -> Path:
@@ -428,7 +440,7 @@ class Handler(BaseHTTPRequestHandler):
                 text: str, tuning: Tuning) -> None:
         try:
             events = conversation.send(
-                conv, chat, text, system_prompt=self.server.system_prompts[where.kind],
+                conv, chat, text, system_prompt=self.server.system_prompt_for(where.kind, chat),
                 allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
                 readable_paths=list(where.readable_paths),
                 runtime_paths=list(where.runtime_paths), tuning=tuning)

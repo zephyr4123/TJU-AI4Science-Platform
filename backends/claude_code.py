@@ -65,6 +65,14 @@ TOOL_GUIDE = """## 工具怎么用
   拒一次白耗一轮。建目录不用 mkdir：Write 会自己建。
 - 写完不用自己查行宽、跑 lint：框架会跑 ruff 与校验，问题喂回给你。
 """
+# 协调层的同一段：助理看文件、找文件用自带的工具，跑动作只有放行的命令
+CHAT_TOOL_GUIDE = """## 工具怎么用
+
+- 看文件、列目录、搜内容用你自带的 Read / Glob / Grep 工具（原件在 `materials/`，要看就直接看）；
+  不要用 Bash 去 cat、find、awk。
+- Bash 只放行 {commands} 一类命令；cd、管道、`&&` 串起来的都会被拒。改文件用 Edit / Write，
+  只在工作区里。
+"""
 
 
 def _env_num(name: str, default: float, cast: type) -> float:
@@ -81,10 +89,17 @@ def bash_rule(prefix: str) -> str:
     return f"Bash({prefix} *)"
 
 
+def _commands(bash_rules: tuple[str, ...]) -> str:
+    return ("、".join(f"`{p} …`" for p in bash_rules) if bash_rules
+            else "（没有：这次一条都不放）")
+
+
 def tool_guide(bash_rules: tuple[str, ...]) -> str:
-    commands = ("、".join(f"`{p} …`" for p in bash_rules) if bash_rules
-                else "（没有：这次一条都不放）")
-    return TOOL_GUIDE.format(commands=commands)
+    return TOOL_GUIDE.format(commands=_commands(bash_rules))
+
+
+def chat_tool_guide(bash_rules: tuple[str, ...]) -> str:
+    return CHAT_TOOL_GUIDE.format(commands=_commands(bash_rules))
 
 
 def build_env(timeout_s: float, chat_id: str | None = None) -> dict[str, str]:
@@ -265,6 +280,7 @@ class ClaudeCodeChat:
 
     name = NAME
     cost_reporting = "session"
+    guide_channel = "turn"  # 每轮 --append-system-prompt 整份送，指南变了下一轮就生效
 
     def __init__(self, cli: str = "claude") -> None:
         self.cli = cli
@@ -273,6 +289,10 @@ class ClaudeCodeChat:
     def knobs() -> Knobs:
         """有哪些模型、哪几档思考深度，以及起点（按人的设置里没填这家时用；P-25）。"""
         return KNOBS
+
+    @staticmethod
+    def tool_guide(bash_rules: tuple[str, ...]) -> str:
+        return chat_tool_guide(bash_rules)
 
     def build_argv(
         self, message: str, cwd: Path, *, session_id: str | None, system_prompt: str,

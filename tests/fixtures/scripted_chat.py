@@ -64,6 +64,7 @@ class ScriptedChat:
     # 顶着真适配器的名字：按人的设置按名字查这家用什么（P-25），剧本不在 `_BACKENDS` 里
     name = "claude_code"
     cost_reporting = "turn"
+    guide_channel = "turn"
 
     def __init__(self, turns: list[list[ChatEvent]], knobs: Knobs = KNOBS,
                  cost_reporting: str = "turn") -> None:
@@ -74,6 +75,10 @@ class ScriptedChat:
 
     def knobs(self) -> Knobs:
         return self._knobs
+
+    @staticmethod
+    def tool_guide(bash_rules: tuple[str, ...]) -> str:
+        return ""  # 剧本没有工具：指南里不插「工具怎么用」
 
     def turn(self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
              system_prompt: str, allowed_paths: list[Path],

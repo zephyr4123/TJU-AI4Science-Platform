@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from backends import Chat
 from framework import paths
 from framework.chat import guide
 from framework.workspace.root import Workspace
@@ -34,8 +35,10 @@ class Scope:
     def runtime_paths(self) -> tuple[Path, ...]:
         return tuple(paths.runtime_paths())
 
-    def system_prompt(self) -> str:
-        return guide.system_prompt(self.kind)
+    def system_prompt(self, chat: Chat | None = None) -> str:
+        """这个域的指南；给了适配器就带上它自己的「工具怎么用」那段。"""
+        tool = chat.tool_guide(guide.BASH_RULES) if chat is not None else ""
+        return guide.system_prompt(self.kind, tool_guide=tool)
 
 
 def for_workspace(workspace: Workspace) -> Scope:

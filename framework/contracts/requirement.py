@@ -121,8 +121,14 @@ def confirm(root: Path, *, by: str) -> dict[str, Any]:
     text = read(root)
     if not text.strip():
         raise ConfirmRefused(f"{FILE_NAME} 是空的，先和助理把需求写出来")
-    if PLACEHOLDER in text:
-        raise ConfirmRefused(f"{FILE_NAME} 里还有「{PLACEHOLDER}」没填：模板不能当需求确认")
+    # 只看格子：二级标题之前的引言不算格（模板那句「把每一格的「待填」换成实话」本身带这个词——
+    # Codex 演练里助理照抄了引言，整份被拒；页面渲染也只认格子）
+    pending = [s.heading for s in sections(text) if s.pending]
+    if pending:
+        raise ConfirmRefused(f"{FILE_NAME} 里还有「{PLACEHOLDER}」没填：{', '.join(pending)}"
+                             "（模板不能当需求确认）")
+    if not sections(text):
+        raise ConfirmRefused(f"{FILE_NAME} 里没有一个二级标题：先和助理按模板把需求分格写出来")
     previous = read_lock(root)
     digest = sha256(text)
     if previous is not None and previous["sha256"] == digest:

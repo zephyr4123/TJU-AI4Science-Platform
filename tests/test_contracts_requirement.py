@@ -59,7 +59,14 @@ def test_confirm_refuses_placeholders_empty_unsigned_and_unchanged(tmp_path):
     with pytest.raises(requirement.ConfirmRefused, match="是空的"):
         requirement.confirm(tmp_path, by="me")
     _write(tmp_path)
-    with pytest.raises(requirement.ConfirmRefused, match="待填"):
+    with pytest.raises(requirement.ConfirmRefused, match="待填.*数据, 预算"):
+        requirement.confirm(tmp_path, by="me")
+    # 只看格子：模板引言那句「把每一格的「待填」换成实话」带这个词，照抄了也不算没填
+    # （Codex 演练里助理照抄了引言，整份被拒）；一个二级标题都没有的也不能签
+    _write(tmp_path, "# t\n\n> 把每一格的「待填」换成实话。\n\n## 问题\n\n有。\n")
+    requirement.confirm(tmp_path, by="me")
+    _write(tmp_path, "# t\n\n只有一段话，没分格。\n")
+    with pytest.raises(requirement.ConfirmRefused, match="没有一个二级标题"):
         requirement.confirm(tmp_path, by="me")
     _write(tmp_path, "# t\n\n## 问题\n\n有。\n")
     with pytest.raises(requirement.ConfirmRefused, match="署名"):

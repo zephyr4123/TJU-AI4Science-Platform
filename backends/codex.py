@@ -123,6 +123,17 @@ TOOL_GUIDE = """## 工具怎么用
   not permitted），拒了就换路子，不要反复试。
 - 写完不用自己查行宽、跑 lint：框架会跑 ruff 与校验，问题喂回给你。
 """
+# 协调层的同一段：这家没有单独的读文件工具，看文件就是 shell 的只读命令；「只能运行 ai4sci」
+# 说的是动作
+CHAT_TOOL_GUIDE = """## 工具怎么用
+
+- 看文件、列目录、搜内容用 shell 的只读命令：ls、cat、head、rg、find（原件在 `materials/`，
+要看就直接看）。
+  这不算「运行动作」——沙箱只让你写工作区，读是放开的。
+- 运行动作只用 {commands} 一类命令；不要 pip、curl、git、
+python 这类去凑（没有对应的命令就停下来说缺什么）。
+- 改文件（需求、流程实例）用 apply_patch 或 ai4sci 的命令，只在工作区里。
+"""
 
 
 def parse_version(text: str) -> tuple[int, ...] | None:
@@ -206,10 +217,17 @@ def build_env(timeout_s: float, home: Path, chat_id: str | None = None) -> dict[
     return env
 
 
+def _commands(bash_rules: tuple[str, ...]) -> str:
+    return ("、".join(f"`{p} …`" for p in bash_rules) if bash_rules
+            else "（没有：这次一条都不跑）")
+
+
 def tool_guide(bash_rules: tuple[str, ...]) -> str:
-    commands = ("、".join(f"`{p} …`" for p in bash_rules) if bash_rules
-                else "（没有：这次一条都不跑）")
-    return TOOL_GUIDE.format(commands=commands)
+    return TOOL_GUIDE.format(commands=_commands(bash_rules))
+
+
+def chat_tool_guide(bash_rules: tuple[str, ...]) -> str:
+    return CHAT_TOOL_GUIDE.format(commands=_commands(bash_rules))
 
 
 def parse_events(raw: list[str]) -> tuple[list[dict], list[str]]:
@@ -412,6 +430,7 @@ class CodexChat:
 
     name = NAME
     cost_reporting = "turn"
+    guide_channel = "thread"  # developer_instructions 只在开线程时生效，指南变了框架塞进话里
 
     def __init__(self, cli: str = "codex") -> None:
         self.cli = cli
@@ -419,6 +438,10 @@ class CodexChat:
     @staticmethod
     def knobs() -> Knobs:
         return KNOBS
+
+    @staticmethod
+    def tool_guide(bash_rules: tuple[str, ...]) -> str:
+        return chat_tool_guide(bash_rules)
 
     def build_argv(self, cwd: Path, *, session_id: str | None, system_prompt: str,
                    allowed_paths: list[Path], runtime_paths: list[Path] = (),

@@ -92,7 +92,8 @@ class GuideMissing(FileNotFoundError):
     """指南文件不在：服务不能带着空指南起会话。"""
 
 
-def system_prompt(kind: str, guide_path: Path | None = None) -> str:
+def system_prompt(kind: str, guide_path: Path | None = None, tool_guide: str = "") -> str:
+    """前言 + 这家 CLI 的「工具怎么用」（`Chat.tool_guide`，可空）+ skill 清单 + 指南原文。"""
     assert kind in KINDS, f"指南只有 {KINDS}，得到 {kind!r}"
     guide_path = GUIDE_PATHS[kind] if guide_path is None else guide_path  # 调用时取，测试可换指南
     if not guide_path.is_file():
@@ -103,6 +104,8 @@ def system_prompt(kind: str, guide_path: Path | None = None) -> str:
     # 库在哪是起服务的人定的（AI4SCI_WORKFLOWS_ROOT），前言里写实路径，agent 不用去找
     preamble = PREAMBLES[kind].replace("{library}", str(paths.workflows_root()))
     parts = [preamble.strip()]
+    if tool_guide.strip():
+        parts.append(tool_guide.strip())
     if kind == WORKSPACE:
         catalog = skills.catalog_text(skills.for_coordinator())  # 没有 skill 就是空串，不输出空块
         if catalog:
