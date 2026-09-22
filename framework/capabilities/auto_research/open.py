@@ -18,7 +18,7 @@ import yaml
 
 from compute import Compute
 from framework import paths
-from framework.experiment import env, gitwork, headroom, layout
+from framework.experiment import drafting, env, gitwork, headroom, layout
 from framework.experiment import pack as packs
 from framework.experiment.checkpoint import read_checkpoint, write_checkpoint
 from framework.experiment.context import PackInvalid, load_scoring
@@ -31,8 +31,10 @@ LOGGER = logging.getLogger("ai4sci.experiment")
 # 拷设计那包时不带过去的目录：.git 是别的仓的状态，执行层日志目录是上一次跑的残留，
 # 包目录下的 .venv 是给 make_run0.sh 用的——实验有自己的一份，按同一份 lock 重建；
 # meta.yaml / signed.json 是框架给那次产出记的账，不是包的一部分
-IGNORED = (".git", layout.EXECUTOR_SCRATCH, "__pycache__", env.VENV_DIRNAME, "meta.yaml",
-           "signed.json")
+# 设计那包拷进 work/ 时不带的：git 元数据、执行层的草稿日志（drafting 的 executor/session-N，
+# 是设计产出的记录不是壳的一部分；带上会随每一轮快照再抄一遍）、venv、产出自己的 meta 与签名
+IGNORED = (".git", layout.EXECUTOR_SCRATCH, drafting.LOG_DIRNAME, "__pycache__",
+           env.VENV_DIRNAME, "meta.yaml", "signed.json")
 
 
 def open_experiment(

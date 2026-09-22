@@ -85,3 +85,16 @@ def test_broken_pack_is_refused_at_the_door(tmp_path, monkeypatch):
     with pytest.raises(CapabilityFailed, match="不合约"):
         auto_research.run(out, inputs, ports())
     assert not (out / "work").exists()
+
+
+def test_design_drafting_logs_do_not_ride_into_the_work_tree(tmp_path, monkeypatch):
+    """设计那包里执行层的草稿日志（executor/session-N）不是壳的一部分：Codex 演练里它被抄进了
+    work/ 和每一轮的快照。"""
+    pack = make_loop_pack(tmp_path)
+    (pack.pack / "executor" / "session-1").mkdir(parents=True)
+    (pack.pack / "executor" / "session-1" / "prompt.md").write_text("草稿", encoding="utf-8")
+    monkeypatch.setattr(paths, "domains_root", lambda: pack.domains_root)
+    out, inputs = new_out(pack)
+    auto_research.run(out, inputs, ports(0.015), max_iters=1)
+    assert not (out / "work" / "executor").exists()
+    assert not (out / "iters" / "iter_1" / "executor").exists()

@@ -23,6 +23,7 @@
 - `ai4sci compute add` 的「写清单 + 就地探测 + 记回」抽成 `cli/compute.add_and_check`，页面「设置 → 算力 → 添加」走同一段。
 
 ### 修复
+- 设计那包拷进实验的 `work/` 时把执行层的草稿日志（`executor/session-N`）也带上了，每一轮快照再抄一遍（Codex 演练里 252 KB 抄了四份）：拷贝时按 `drafting.LOG_DIRNAME` 排除（[#135](https://github.com/zephyr4123/TJU-AI4Science/issues/135)）。
 - `cap <能力> --continue <产出>` 续跑时 meta 里还挂着上一次的错、结论、结束时间与机器（演练里第五次续跑在本机跑着，看板却写「autodl」和上一次 `make_run0.sh` 的报错）：`outputs.reopen_output` 一次清干净，机器按这次的记（[#135](https://github.com/zephyr4123/TJU-AI4Science/issues/135)）。
 - `cap` 里要的机器连不上（关机、端口变了）不再报「平台内部错误…这是平台的 bug」：算力不可用是研究者要处理的事，作业与产出记失败、原因用人话写、说清换 `--compute <名字>` 或先 `compute check`（Codex 演练：清单缺省是关了机的 AutoDL）（[#135](https://github.com/zephyr4123/TJU-AI4Science/issues/135)）。
 - 需求确认只看格子里的「待填」：模板引言那句「把每一格的「待填」换成实话」本身带这个词，助理照抄了引言整份就被拒（Codex 演练第一次确认撞上）；没有一个二级标题的也不能签，报错列出没填的格（[#135](https://github.com/zephyr4123/TJU-AI4Science/issues/135)）。
