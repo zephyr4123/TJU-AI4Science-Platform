@@ -33,7 +33,7 @@ def home(tmp_path, monkeypatch) -> Path:
     monkeypatch.setenv(cx.HOME_ENV, str(tmp_path / "private-home"))
     monkeypatch.setattr(cx, "USER_SKILLS", tmp_path / "no-user-skills")
     monkeypatch.setattr(cx, "ADMIN_SKILLS", tmp_path / "no-admin-skills")
-    return cx.codex_home()
+    return cx.codex_home("executor")
 
 
 # --- 端口 ---------------------------------------------------------------------
@@ -55,19 +55,23 @@ def test_codex_is_a_registered_backend_with_both_ports():
 
 
 def test_codex_home_symlinks_the_real_auth_and_never_copies_it(home: Path, tmp_path, monkeypatch):
+    assert home == tmp_path / "private-home" / "executor"  # 一层一个 home（规则按 home 放）
     link = home / cx.AUTH_NAME
     assert link.is_symlink() and link.readlink() == tmp_path / "real-codex" / cx.AUTH_NAME
-    assert cx.codex_home() == home  # 幂等
+    assert cx.codex_home("executor") == home  # 幂等
+    assert cx.codex_home("chat") == tmp_path / "private-home" / "chat"
+    with pytest.raises(AssertionError, match="层只有"):
+        cx.codex_home("probe")
     # 真 home 换了地方：软链跟着改
     other = tmp_path / "other-codex"
     other.mkdir()
     monkeypatch.setenv(cx.REAL_HOME_ENV, str(other))
-    assert cx.codex_home().joinpath(cx.AUTH_NAME).readlink() == other / cx.AUTH_NAME
+    assert cx.codex_home("executor").joinpath(cx.AUTH_NAME).readlink() == other / cx.AUTH_NAME
     # 私有 home 里出现一份普通文件的凭据副本：当场炸，不悄悄用
     link.unlink()
     link.write_text("{}", encoding="utf-8")
     with pytest.raises(AssertionError, match="不该有凭据副本"):
-        cx.codex_home()
+        cx.codex_home("executor")
 
 
 def test_skill_off_paths_lists_every_skill_md_under_the_scanned_roots(home: Path, tmp_path):
@@ -115,23 +119,23 @@ def test_runner_argv_is_ephemeral_sandboxed_and_lists_writable_roots(home: Path,
     (home / "skills" / ".system" / "imagegen" / "SKILL.md").write_text("", encoding="utf-8")
     cwd = tmp_path / "pack"
     (cwd / "harness").mkdir(parents=True)
-    runtime = tmp_path / "data-root"
-    runtime.mkdir()
-    argv = cx.CodexRunner().build_argv(cwd, [cwd / "harness"], [runtime],
+    argv = cx.CodexRunner().build_argv(cwd, [cwd / "harness"], ("ai4sci skill",),
                                        Tuning(model="gpt-5.6-luna", effort="low"), home=home)
     assert argv[:2] == ["codex", "exec"] and argv[-1] == "-"  # prompt 走 stdin
-    for flag in ("--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config",
-                 "--ignore-rules"):
+    for flag in ("--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config"):
         assert flag in argv
+    assert "--ignore-rules" not in argv  # 规则要读：ai4sci 在沙箱外跑靠它
+    rules = (home / "rules" / cx.RULES_NAME).read_text(encoding="utf-8")
+    assert 'prefix_rule(pattern=["ai4sci", "skill"], decision="allow"' in rules
     assert argv[argv.index("-C") + 1] == str(cwd.resolve())
     assert argv[argv.index("-m") + 1] == "gpt-5.6-luna"
     config = _config(argv)
     assert config["approval_policy"] == '"never"' and config["project_doc_max_bytes"] == "0"
     assert config["web_search"] == '"live"' and config["sandbox_mode"] == '"workspace-write"'
-    assert config["sandbox_workspace_write.network_access"] == "true"
+    assert "sandbox_workspace_write.network_access" not in config  # 联网的都走沙箱外的 ai4sci
     assert config["model_reasoning_effort"] == '"low"'
     roots = tomllib.loads(f"r = {config['sandbox_workspace_write.writable_roots']}")["r"]
-    assert roots == [str((cwd / "harness").resolve()), str(runtime.resolve())]
+    assert roots == [str((cwd / "harness").resolve())]  # 只许改的目录，不加平台的目录
     off = tomllib.loads(f"s = {config['skills.config']}")["s"]
     assert off == [{"path": str(home / "skills" / ".system" / "imagegen" / "SKILL.md"),
                     "enabled": False}]
@@ -142,7 +146,8 @@ def test_runner_argv_is_ephemeral_sandboxed_and_lists_writable_roots(home: Path,
 def test_chat_argv_opens_with_the_guide_and_resumes_by_thread_id(home: Path, tmp_path):
     chat = cx.CodexChat()
     common = dict(system_prompt="你是研究助理。\n一条命令一行。", allowed_paths=[tmp_path],
-                  runtime_paths=[], tuning=Tuning(model="gpt-5.5", effort="high"), home=home)
+                  bash_rules=("ai4sci", ".venv/bin/ai4sci"),
+                  tuning=Tuning(model="gpt-5.5", effort="high"), home=home)
     first = chat.build_argv(tmp_path, session_id=None, **common)
     second = chat.build_argv(tmp_path, session_id="01a0-thread", **common)
     assert "--ephemeral" not in first and "--ephemeral" not in second  # 续接要 rollout 落盘
@@ -153,6 +158,8 @@ def test_chat_argv_opens_with_the_guide_and_resumes_by_thread_id(home: Path, tmp
     assert second[:3] == ["codex", "exec", "resume"] and second[-2:] == ["01a0-thread", "-"]
     assert "-C" not in second and "--color" not in second
     assert "developer_instructions" not in _config(second)
+    rules = (home / "rules" / cx.RULES_NAME).read_text(encoding="utf-8")
+    assert 'pattern=["ai4sci"]' in rules and 'pattern=[".venv/bin/ai4sci"]' in rules
     for argv in (first, second):
         config = _config(argv)
         assert config["sandbox_mode"] == '"workspace-write"'
@@ -171,7 +178,8 @@ def test_codex_home_ignores_an_inherited_codex_home_that_is_itself(home: Path, t
     环境里的 CODEX_HOME 是我们给那一层的私有 home：
     照它算「真的」就把 auth.json 软链指向自己（实测 401）。指到自己的不算数，退回 ~/.codex；已经指向
     自己的死链也要重连。"""
-    monkeypatch.setenv(cx.REAL_HOME_ENV, str(home))  # 上一层留下的
+    chat_home = tmp_path / "private-home" / "chat"
+    monkeypatch.setenv(cx.REAL_HOME_ENV, str(chat_home))  # 上一层（协调层）留下的
     fake_home = tmp_path / "fake-user-home"
     (fake_home / ".codex").mkdir(parents=True)
     (fake_home / ".codex" / cx.AUTH_NAME).write_text("{}", encoding="utf-8")
@@ -179,8 +187,8 @@ def test_codex_home_ignores_an_inherited_codex_home_that_is_itself(home: Path, t
     link = home / cx.AUTH_NAME
     link.unlink()
     link.symlink_to(link)  # 演练里留下的死链：auth.json -> auth.json
-    assert cx.codex_home() == home
-    assert link.readlink() == fake_home / ".codex" / cx.AUTH_NAME
+    assert cx.codex_home("executor") == home
+    assert link.readlink() == fake_home / ".codex" / cx.AUTH_NAME  # 私有根下的一律不算
     assert link.is_file()
 
 
@@ -325,7 +333,7 @@ def test_runner_run_reports_changed_files_report_and_nan_cost(home: Path, tmp_pa
     cwd = tmp_path / "pack"
     (cwd / "out").mkdir(parents=True)
     result = cx.CodexRunner(cli=str(cli)).run("写点东西", cwd, 30, [cwd / "out"], ("ai4sci skill",),
-                                            runtime_paths=[], tuning=Tuning(model="gpt-5.6-luna"))
+                                            tuning=Tuning(model="gpt-5.6-luna"))
     assert result.exit_code == 0 and not result.timed_out
     assert result.changed_files == ["out/hello.txt"]  # 框架自己的快照 diff，不信 CLI 自报
     assert result.report == "pong" and math.isnan(result.cost_usd) and result.duration_s > 0

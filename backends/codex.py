@@ -4,25 +4,34 @@
 官方文档（learn.chatgpt.com/docs/*，developers.openai.com/codex/* 308 跳过去）与源码
 （github.com/openai/codex 的 rust-v0.147.0：exec/src/cli.rs、exec/src/exec_events.rs）；外层 #131。
 
-- **隔离的承重位是私有 `CODEX_HOME`**（`~/.config/ai4sci/codex-home`，
-`AI4SCI_CODEX_HOME` 可指向别处）：
-  本机的 config.toml、plugins、MCP、hooks、memories、用户 skills 都不进；`auth.json` 软链到真的
-  `~/.codex/auth.json`（登录共用、凭据不复制；token 刷新写穿软链），真的不在就是「没登录」。协调层的
-  会话 rollout 也落在私有 home 下，续接靠它。`--ignore-user-config --ignore-rules` 照带（文档点名给
-  自动化用的两个开关）。
+- **隔离的承重位是私有 `CODEX_HOME`**（`~/.config/ai4sci/codex-home/<层>/`，
+`AI4SCI_CODEX_HOME` 可指向
+  别的根；协调层与执行层各一个，因为 execpolicy 规则是按 home 放的、两层放行的命令不同）：本机的
+  config.toml、plugins、MCP、hooks、memories、用户 skills 都不进；`auth.json` 软链到真的
+  `~/.codex/auth.json`（登录共用、凭据不复制；token 刷新写穿软链），真的不在就是「没登录」。协调层
+  的会话 rollout 也落在私有 home 下，续接靠它。`--ignore-user-config` 照带（自动化的官方开关）。
+  「真的」home 是用户自己的 `CODEX_HOME`；但作业跑在上一层会话的 shell 里，环境里的 `CODEX_HOME` 是
+  我们给那一层的私有 home——照它算就把软链指向自己（实测 401「Missing bearer」），所以指到私有根
+  下面的一律不算，退回 `~/.codex`。
+- **`ai4sci` 在沙箱外跑，其余命令都在沙箱里**：Codex 没有 Claude Code 那种按工具名的白名单，但
+  execpolicy 的 `.rules` 能做「这个前缀的命令在沙箱外跑」（`prefix_rule(decision="allow")`，实测
+  `/bin/zsh -lc 'ai4sci …'` 也命中、写到了 HOME 下）。端口的 `bash_rules`（协调层 `ai4sci`，执行层
+  `ai4sci skill`）
+  就翻成私有 home 的 `rules/ai4sci.rules`——与 Claude Code 的 `Bash(ai4sci *)` 一个模型：
+  平台自己的 CLI 是放行的那扇门，能写平台自己的目录、能联网、起作业不嵌套沙箱；agent 敲的别的命令
+  留在沙箱里（只能写工作区、没网）。所以不用 `--ignore-rules`，也不把数据根、uv 缓存加进可写根。
+  嵌套的沙箱走不通：作业若在沙箱里起、里面的执行层 codex 连自己的可写根都写不进（实测 apply_patch
+  「Operation not permitted」），这就是要把 `ai4sci` 放到沙箱外的原因。
 - **skills 关不干净得自己关**：
 `$HOME/.agents/skills` 与随包的 `.system/` 在私有 home 下照样被扫（实测
   88 个个人 skill 全进清单、一句 pong 19k tokens）；只有 `[[skills.config]] path=<SKILL.md 的路径>
   enabled=false` 关得掉（写目录路径不认），所以每次起会话现扫现关（`-c skills.config=[...]`），关完
   12k tokens、agent 自报「No skills available」。
-- **沙箱是门**：
-`workspace-write` + `sandbox_workspace_write.writable_roots`（exec 与 resume 都认这个
-  `-c`；`--add-dir` resume 上没有）。工作区外、HOME 下的写「operation not permitted」退 1，
-  `.git` 只读，
-  `$TMPDIR` / `/tmp` 缺省可写；网络缺省关，`network_access=true` 才通——`ai4sci` 要 ssh、pip、下载。
-  **没有按命令的白名单**（execpolicy 只管沙箱外的命令，未命中即放行），端口的 `bash_rules` 只能写进
-  `tool_guide` 让它照做；真门仍是框架事后的 `changed_files`。审批 exec 硬写 never，
-  这里显式再带一遍。
+- **沙箱**：`workspace-write` + `sandbox_workspace_write.writable_roots`（exec 与 resume 都认这个
+`-c`；
+  `--add-dir` resume 上没有）。工作区外、HOME 下的写「operation not permitted」退 1，`.git` 只读，
+  `$TMPDIR` / `/tmp` 缺省可写；网络缺省关，留着关（联网的都走 `ai4sci`）。审批 exec 硬写 never，
+  这里显式再带一遍。真门仍是框架事后的 `changed_files`。
 - **事件**（`--json`，一行一个）：`thread.started{thread_id}`、`turn.started`、`item.started |
   item.updated | item.completed{item:{id,type,…}}`、`turn.completed{usage}`、
   `turn.failed{error.message}`、
@@ -32,38 +41,25 @@
   一段话说完
   才来一条 agent_message，所以一段一条 `text`（端口注释里写明了这是 CLI 的限制）。被中断时既无
   turn.completed 也无 turn.failed，流直接断——收尾同时看 EOF。
-- **prompt 一律从 stdin 喂**（位置参数 `-`）：stdin 不关它会一直等 EOF（实测挂了 15 分钟）；
-resume 只在
-  `-` 时读 stdin，给了位置参数就静默丢掉管道里的内容。
+- **prompt 一律从 stdin 喂**（位置参数 `-`）：stdin 不关它会一直等 EOF（实测挂了 15 分钟）；resume
+  只在 `-` 时读 stdin，给了位置参数就静默丢掉管道里的内容。
 - **续接**：`codex exec resume <thread_id> -` 加同一组 `-c`；`--ephemeral` 的线程续不了（no rollout
   found），协调层不带它、执行层带。resume 时 `developer_instructions` 不再生效（线程开头那份留着），
-  指南变了的提醒由框架加在话前。
-- **指南**走 `-c developer_instructions="<TOML 字符串>"`：叠加在内置指令之外，
-不替换（`model_instructions_file`
-  是整体替换，官方不建议）；换行与中文实测都行。AGENTS.md 一律不读：`project_doc_max_bytes=0`。
-- **联网**：顶层 `web_search="live"`（`tools.web_search=true` 在 0.147 会被反序列化器丢掉），
-搜索在服务端，
-  read-only 沙箱里也通；事件是 `web_search` item。
-- **模型 / 深度**：`-m <slug>` + `-c model_reasoning_effort="<档>"`。0.147 随包的目录：
-gpt-5.6-sol / terra /
-  luna、gpt-5.5（四款都给 Plus），四款共有 low / medium / high / xhigh（sol、terra 另有 max、ultra，
-  luna 有
-  max，不进清单，`Knobs.check` 才守得住）。slug 写错是服务端 400：`error` + `turn.failed`，
-  退出码 1。
-- **成本**：ChatGPT 订阅报不出美元，`turn.completed.usage` 只有 token 数——`cost_usd` 一律 NaN、
-usage 进
-  raw（端口：绝不填 0）；`cost_reporting = "turn"`。退出码只有 0 / 1；没有轮数 / 花费的闸，
-  超时是唯一的闸。
-- 长命令 agent 自己等着跑完（sleep 70 实测通过），没有 Claude Code 那种 2 分钟挪后台的机制。
-- **嵌套会话**：助理 `--detach` 起的作业跑在上一层会话的沙箱 shell 里，
-作业里再起执行层 codex（或叫醒助理的
-  resume）是嵌套的——嵌套的 `sandbox-exec` 实测能起（内层 pong 通过），
-  Codex 塞给子进程的 `CODEX_CI` /
-  `CODEX_SANDBOX` / `CODEX_THREAD_ID` 实测不碍事；碍事的是环境里的 `CODEX_HOME`：
-  那是我们给上一层的私有 home，
-  `codex_home()` 照它算「真的 home」就把 auth.json 软链指向了自己 → 401「Missing bearer」
-  （演练第一次
-  `cap design` 就栽在这）。见 `codex_home` 的注释。
+  指南变了由框架把全文塞进话里（端口 `guide_channel = "thread"`）。
+- **指南**走 `-c developer_instructions="<TOML 字符串>"`：叠加在内置指令之外，不替换
+  （`model_instructions_file` 是整体替换，官方不建议）；换行与中文实测都行。AGENTS.md 一律不读：
+  `project_doc_max_bytes=0`。
+- **联网搜索**：顶层 `web_search="live"`（`tools.web_search=true` 在 0.147 会被反序列化器丢掉），
+  搜索在服务端，沙箱没网也通；事件是 `web_search` item。
+- **模型 / 深度**：`-m <slug>` + `-c model_reasoning_effort="<档>"`。0.147 随包的目录：gpt-5.6-sol /
+  terra / luna、gpt-5.5（四款都给 Plus），四款共有 low / medium / high / xhigh（sol、
+  terra 另有 max、
+  ultra，luna 有 max，不进清单，`Knobs.check` 才守得住）。slug 写错是服务端 400：`error` +
+  `turn.failed`，退出码 1。
+- **成本**：ChatGPT 订阅报不出美元，`turn.completed.usage` 只有 token 数——`cost_usd` 一律 NaN、usage
+  进 raw（端口：绝不填 0）；`cost_reporting = "turn"`。退出码只有 0 / 1；没有轮数 / 花费的闸，超时
+  是唯一的闸。长命令 agent 自己等着跑完（sleep 70 实测通过），没有 Claude Code 那种 2 分钟挪后台的
+  机制。Codex 塞给子进程的 `CODEX_CI` / `CODEX_SANDBOX` / `CODEX_THREAD_ID` 实测不碍事。
 """
 
 from __future__ import annotations
@@ -84,20 +80,23 @@ from backends import AgentProbe, ChatEvent, Choice, Knobs, RunResult, Tuning
 from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
-__all__ = ["CodexRunner", "CodexChat", "KNOBS", "MODELS", "EFFORTS", "codex_home", "build_env",
-           "config_args", "skill_off_paths", "toml_str", "tool_guide", "parse_events", "Translator",
-           "final_report", "probe", "parse_version", "make_runner", "make_chat"]
+__all__ = ["CodexRunner", "CodexChat", "KNOBS", "MODELS", "EFFORTS", "LAYERS", "codex_home",
+           "write_rules", "build_env", "config_args", "skill_off_paths", "toml_str", "tool_guide",
+           "chat_tool_guide", "parse_events", "Translator", "final_report", "probe",
+           "parse_version",
+           "make_runner", "make_chat"]
 
 NAME = "codex"
 HOME_ENV = "AI4SCI_CODEX_HOME"
 REAL_HOME_ENV = "CODEX_HOME"
-DEFAULT_HOME = Path.home() / ".config" / "ai4sci" / "codex-home"
+DEFAULT_ROOT = Path.home() / ".config" / "ai4sci" / "codex-home"
+LAYERS = ("chat", "executor")
 AUTH_NAME = "auth.json"
+RULES_NAME = "ai4sci.rules"
 CHAT_ID_ENV = "AI4SCI_CHAT_ID"
 MIN_VERSION = (0, 147, 0)
-# 起点 terra / medium（P-25）：Plus 的五小时窗 terra 25–200 句、sol 10–100、
-# luna 250–2000（官方估计区间），
-# 研究助理一段对话几十轮，均衡的那款当起点
+# 起点 terra / medium（P-25）：Plus 的五小时窗 terra 25–200 句、sol 10–100、luna 250–2000（官方估计
+# 区间），研究助理一段对话几十轮，均衡的那款当起点
 MODELS = (Choice("gpt-5.6-terra", "GPT-5.6 Terra", "均衡"),
           Choice("gpt-5.6-sol", "GPT-5.6 Sol", "强"),
           Choice("gpt-5.6-luna", "GPT-5.6 Luna", "快"),
@@ -105,15 +104,15 @@ MODELS = (Choice("gpt-5.6-terra", "GPT-5.6 Terra", "均衡"),
 EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
            Choice("xhigh", "超高"))
 KNOBS = Knobs(models=MODELS, efforts=EFFORTS, model="gpt-5.6-terra", effort="medium")
-# 两层共用的 exec 参数：JSONL、不查 git 仓库（工作区不是仓库）、不读本机配置与 execpolicy
-BASE_ARGS = ("--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules")
-# 两层共用的配置覆盖（`-c key=value`，值按 TOML 解析）；沙箱与可写根另算
+# 两层共用的 exec 参数：JSONL、不查 git 仓库（工作区不是仓库）、不读本机配置；execpolicy 规则要读
+# （私有 home 里只有我们写的那份）
+BASE_ARGS = ("--json", "--skip-git-repo-check", "--ignore-user-config")
+# 两层共用的配置覆盖（`-c key=value`，值按 TOML 解析）；可写根另算
 BASE_CONFIG = (
-    'approval_policy="never"',       # exec 本就 never，写明
-    "project_doc_max_bytes=0",       # 不读 AGENTS.md（源码行为，文档没给开关）
-    'web_search="live"',             # 自带的联网搜索（端口要求）
+    'approval_policy="never"',         # exec 本就 never，写明
+    "project_doc_max_bytes=0",         # 不读 AGENTS.md（源码行为，文档没给开关）
+    'web_search="live"',               # 自带的联网搜索（端口要求）
     'sandbox_mode="workspace-write"',  # resume 没有 -s，两种形态都用 -c
-    "sandbox_workspace_write.network_access=true",  # ai4sci 要 ssh / pip / 下载
     "features.hooks=false",
     "features.memories=false",
     "mcp_servers={}",
@@ -127,20 +126,19 @@ USER_SKILLS = Path.home() / ".agents" / "skills"
 ADMIN_SKILLS = Path("/etc/codex/skills")
 TOOL_GUIDE = """## 工具怎么用
 
-- 读文件、找文件、搜内容用 shell（cat / rg / ls）；改文件用 apply_patch。
-- 命令只许跑 {commands}；不要 pip、curl、git，也不要碰工作目录之外的路径——沙箱会拒（operation
-  not permitted），拒了就换路子，不要反复试。
+- 读文件、找文件、搜内容用 shell 的只读命令（cat / rg / ls）；改文件用 apply_patch。
+- 运行动作只用 {commands} 一类命令：它们在沙箱外跑。别的命令都在沙箱里——只能写允许的目录、
+  没有网络，pip、curl、git 这类不要去凑，被拒（operation not permitted）就换路子，不要反复试。
 - 写完不用自己查行宽、跑 lint：框架会跑 ruff 与校验，问题喂回给你。
 """
 # 协调层的同一段：这家没有单独的读文件工具，看文件就是 shell 的只读命令；「只能运行 ai4sci」
 # 说的是动作
 CHAT_TOOL_GUIDE = """## 工具怎么用
 
-- 看文件、列目录、搜内容用 shell 的只读命令：ls、cat、head、rg、find（原件在 `materials/`，
-要看就直接看）。
-  这不算「运行动作」——沙箱只让你写工作区，读是放开的。
-- 运行动作只用 {commands} 一类命令；不要 pip、curl、git、
-python 这类去凑（没有对应的命令就停下来说缺什么）。
+- 看文件、列目录、搜内容用 shell 的只读命令：ls、cat、head、rg、find（原件在 `materials/`，要看
+  就直接看）。这不算「运行动作」——沙箱只让你写工作区，读是放开的。
+- 运行动作只用 {commands} 一类命令：它们在沙箱外跑，能起作业、能联网。别的命令都在沙箱里、没有
+  网络，不要拿 pip、curl、git、python 去凑（没有对应的命令就停下来说缺什么）。
 - 改文件（需求、流程实例）用 apply_patch 或 ai4sci 的命令，只在工作区里。
 """
 
@@ -156,28 +154,22 @@ def parse_version(text: str) -> tuple[int, ...] | None:
 
 
 def toml_str(text: str) -> str:
-    """一段任意文字写成 TOML 基本字符串：JSON 的转义规则是它的子集（`"` `\\` 控制字符），
-    非 ASCII 原样
-    留着（TOML 允许）；DEL 是 TOML 不许裸写、JSON 又不转义的唯一一个，单独处理。"""
+    """一段任意文字写成 TOML 基本字符串：JSON 的转义规则是它的子集（`"` `\\` 控制字符），非 ASCII
+    原样留着（TOML 允许）；DEL 是 TOML 不许裸写、JSON 又不转义的唯一一个，单独处理。"""
     return json.dumps(text, ensure_ascii=False).replace("\x7f", "\\u007f")
 
 
-def codex_home() -> Path:
-    """私有 CODEX_HOME：建目录、把真的 auth.json 软链进来（不复制凭据）。真的没登录就是悬空软链，
-    `codex login status` 会说 Not logged in，自检把这句原样给人。
-
-    「真的」home 是用户自己的 `CODEX_HOME`（没设就是 `~/.codex`）。
-    但助理 `--detach` 起的作业跑在上一层
-    Codex 会话的 shell 里，环境里的 `CODEX_HOME` 是**我们自己**给那一层的私有 home——照它算「真的」
-    就把软链
-    指向自己（实测 2026-09-22：`auth.json -> auth.json`，嵌套的执行层 codex 401「Missing bearer」）
-    。
-    所以环境里的值指到私有 home 自己时不算数，退回 `~/.codex`。"""
-    home = Path(os.environ.get(HOME_ENV) or DEFAULT_HOME).expanduser()
+def codex_home(layer: str) -> Path:
+    """这一层的私有 CODEX_HOME：建目录、把真的 auth.json 软链进来（不复制凭据）。真的没登录就是
+    悬空软链，`codex login status` 会说 Not logged in，自检把这句原样给人。文件头写了为什么环境里的
+    `CODEX_HOME` 指到私有根下面时不算。"""
+    assert layer in LAYERS, f"层只有 {LAYERS}，得到 {layer!r}"
+    root = Path(os.environ.get(HOME_ENV) or DEFAULT_ROOT).expanduser()
+    home = root / layer
     home.mkdir(parents=True, exist_ok=True)
     raw = os.environ.get(REAL_HOME_ENV)
     candidate = Path(raw).expanduser() if raw else Path.home() / ".codex"
-    if candidate.resolve() == home.resolve():
+    if candidate.resolve().is_relative_to(root.resolve()):
         candidate = Path.home() / ".codex"
     real = candidate / AUTH_NAME
     link = home / AUTH_NAME
@@ -187,6 +179,21 @@ def codex_home() -> Path:
         assert not link.exists(), f"{link} 是普通文件不是软链：私有 home 里不该有凭据副本"
         link.symlink_to(real)
     return home
+
+
+def write_rules(home: Path, bash_rules: tuple[str, ...]) -> Path:
+    """端口的命令前缀 → 这一层私有 home 的 execpolicy 规则：命中的命令在沙箱外跑。每次起会话重写，
+    同一层并发起的会话给的前缀相同，写的是同一份。"""
+    rules_dir = home / "rules"
+    rules_dir.mkdir(exist_ok=True)
+    lines = ["# ai4sci 写的（纲领 P-14 / P-25）：平台自己的 CLI 在沙箱外跑，其余命令留在沙箱里。"]
+    for prefix in bash_rules:
+        pattern = ", ".join(json.dumps(word) for word in prefix.split())
+        lines.append(f'prefix_rule(pattern=[{pattern}], decision="allow", '
+                     f'justification="ai4sci 是平台自己的命令行，放行的门（{prefix}）")')
+    path = rules_dir / RULES_NAME
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
 
 
 def skill_off_paths(home: Path, cwd: Path) -> list[Path]:
@@ -224,8 +231,8 @@ def config_args(writable: list[Path], *, tuning: Tuning | None, skills_off: list
 def build_env(timeout_s: float, home: Path, chat_id: str | None = None) -> dict[str, str]:
     """子进程环境：继承本进程，venv 的 bin **追加**进 PATH（裸 `ai4sci` 找得到，
     同 Claude Code 的教训）、
-    `CODEX_HOME` 指到私有 home、`AI4SCI_CHAT_ID` 告诉它调用的命令属于哪段对话。Codex 缺省把整个环境
-    透传给它跑的命令（`shell_environment_policy.inherit = all`），AI4SCI_* 不用另外放行。
+    `CODEX_HOME` 指到这一层的私有 home、`AI4SCI_CHAT_ID` 告诉它调用的命令属于哪段对话。Codex 缺省把
+    整个环境透传给它跑的命令（`shell_environment_policy.inherit = all`），AI4SCI_* 不用另外放行。
     `timeout_s` 留着与 Claude Code 的签名对齐：Codex 没有每条命令的超时，agent 自己等。"""
     assert timeout_s > 0
     bin_dir = str(Path(sys.executable).parent)
@@ -297,26 +304,26 @@ class CodexRunner:
     def tool_guide(bash_rules: tuple[str, ...]) -> str:
         return tool_guide(bash_rules)
 
-    def build_argv(self, cwd: Path, allowed_paths: list[Path], runtime_paths: list[Path] = (),
+    def build_argv(self, cwd: Path, allowed_paths: list[Path], bash_rules: tuple[str, ...] = (),
                    tuning: Tuning | None = None, *, home: Path | None = None) -> list[str]:
-        """一次性会话：`--ephemeral`（不留 rollout）。可写根 = 只许改的目录 + 平台自己要写的目录。
-        `--ephemeral` 与 `--color` 只在根形态有（resume 没有）。"""
-        home = codex_home() if home is None else home
-        writable = [*allowed_paths, *runtime_paths]
+        """一次性会话：`--ephemeral`（不留 rollout）。可写根 = 只许改的目录；放行的命令前缀写进
+        这一层 home 的规则。`--ephemeral` 与 `--color` 只在根形态有（resume 没有）。"""
+        home = codex_home("executor") if home is None else home
+        write_rules(home, bash_rules)
         return [self.cli, "exec", *BASE_ARGS, "--ephemeral", "--color", "never",
                 "-C", str(Path(cwd).resolve()),
-                *config_args(writable, tuning=tuning, skills_off=skill_off_paths(home, Path(cwd))),
+                *config_args(list(allowed_paths), tuning=tuning,
+                             skills_off=skill_off_paths(home, Path(cwd))),
                 "-"]
 
     def run(self, prompt: str, cwd: Path, timeout_s: float,
             allowed_paths: list[Path], bash_rules: tuple[str, ...] = (),
-            runtime_paths: list[Path] = (), tuning: Tuning | None = None,
-            max_turns: int | None = None, max_budget_usd: float | None = None) -> RunResult:
-        # max_turns / max_budget_usd：Codex 没有这两个闸（文档与 --help 都没有），超时是唯一的闸；
-        # bash_rules 进了 tool_guide（调用方拼提示时已加），这里没有可翻的白名单
-        home = codex_home()
+            tuning: Tuning | None = None, max_turns: int | None = None,
+            max_budget_usd: float | None = None) -> RunResult:
+        # max_turns / max_budget_usd：Codex 没有这两个闸（文档与 --help 都没有），超时是唯一的闸
+        home = codex_home("executor")
         before = snapshot(cwd)
-        argv = self.build_argv(cwd, allowed_paths, runtime_paths, tuning, home=home)
+        argv = self.build_argv(cwd, allowed_paths, bash_rules, tuning, home=home)
         raw: list[str] = []
         err: list[str] = []
         started = time.monotonic()
@@ -442,11 +449,9 @@ class Translator:
 class CodexChat:
     """协调层：开新线程用 `codex exec`（不 ephemeral），续接用 `codex exec resume <thread_id>`。
 
-    实测：第一轮 thread.started 给 thread_id，第二轮 resume 带上它模型记得第一轮说的词；
-    resume 认 `-c`
-    的沙箱与可写根覆盖（read-only 开的线程 resume 成 workspace-write 后能写）；
-    `developer_instructions`
-    只在开线程那次生效。`cost_reporting = "turn"`，值永远 NaN（订阅账号）。
+    实测：第一轮 thread.started 给 thread_id，第二轮 resume 带上它模型记得第一轮说的词；resume 认
+    `-c` 的沙箱与可写根覆盖（read-only 开的线程 resume 成 workspace-write 后能写）；
+    `developer_instructions` 只在开线程那次生效。`cost_reporting = "turn"`，值永远 NaN（订阅账号）。
     """
 
     name = NAME
@@ -465,33 +470,32 @@ class CodexChat:
         return chat_tool_guide(bash_rules)
 
     def build_argv(self, cwd: Path, *, session_id: str | None, system_prompt: str,
-                   allowed_paths: list[Path], runtime_paths: list[Path] = (),
+                   allowed_paths: list[Path], bash_rules: tuple[str, ...] = (),
                    tuning: Tuning | None = None, home: Path | None = None) -> list[str]:
-        home = codex_home() if home is None else home
-        writable = [*allowed_paths, *runtime_paths]
+        home = codex_home("chat") if home is None else home
+        write_rules(home, bash_rules)
         skills_off = skill_off_paths(home, Path(cwd))
         if session_id:
             # resume 没有 -C / -s / --add-dir / --color；线程的 cwd 记在 rollout 里，
             # 沙箱与可写根靠 -c
             return [self.cli, "exec", "resume", *BASE_ARGS,
-                    *config_args(writable, tuning=tuning, skills_off=skills_off), session_id, "-"]
+                    *config_args(list(allowed_paths), tuning=tuning, skills_off=skills_off),
+                    session_id, "-"]
         return [self.cli, "exec", *BASE_ARGS, "--color", "never", "-C", str(Path(cwd).resolve()),
-                *config_args(writable, tuning=tuning, skills_off=skills_off,
+                *config_args(list(allowed_paths), tuning=tuning, skills_off=skills_off,
                              developer_instructions=system_prompt), "-"]
 
     def turn(
         self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
         system_prompt: str, allowed_paths: list[Path], bash_rules: tuple[str, ...],
-        readable_paths: list[Path] = (), runtime_paths: list[Path] = (),
-        chat_id: str | None = None, tuning: Tuning | None = None,
+        readable_paths: list[Path] = (), chat_id: str | None = None,
+        tuning: Tuning | None = None,
     ) -> Iterator[ChatEvent]:
-        # bash_rules：没有按命令的白名单可翻，指南前言已经写了只许 ai4sci；readable_paths：
-        # 沙箱读是全盘
-        # 放开的，不用管
-        home = codex_home()
+        # readable_paths 用不上：沙箱里读是全盘放开的
+        home = codex_home("chat")
         argv = self.build_argv(cwd, session_id=session_id, system_prompt=system_prompt,
-                               allowed_paths=allowed_paths, runtime_paths=runtime_paths,
-                               tuning=tuning, home=home)
+                               allowed_paths=allowed_paths, bash_rules=bash_rules, tuning=tuning,
+                               home=home)
         err: list[str] = []
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.PIPE,
@@ -563,7 +567,7 @@ def probe(cli: str = "codex", speak_timeout_s: float = 120.0) -> AgentProbe:
         result.items.append(("版本", False, f"{raw}，要 ≥ {want}（这版实测过的 flag）"))
         return result
     result.items.append(("版本", True, raw))
-    home = codex_home()
+    home = codex_home("chat")
     env = build_env(30.0, home)
     status = subprocess.run([cli, "login", "status"], capture_output=True, text=True, timeout=30,
                             env=env)
@@ -574,6 +578,7 @@ def probe(cli: str = "codex", speak_timeout_s: float = 120.0) -> AgentProbe:
         return result
     result.items.append(("登录", True, (status.stderr or status.stdout).strip() or "已登录"))
     started = time.monotonic()
+    write_rules(home, ())
     argv = [cli, "exec", *BASE_ARGS, "--ephemeral", "--color", "never", "-C", str(home),
             *config_args([], tuning=None, skills_off=skill_off_paths(home, home)), "-"]
     try:

@@ -61,8 +61,8 @@ class ScriptedRunner:
 
     def run(
         self, prompt: str, cwd: Path, timeout_s: float, allowed_paths: list[Path],
-        bash_rules: tuple[str, ...] = (), runtime_paths: list[Path] = (),
-        tuning: Tuning | None = None, max_turns: int | None = None,
+        bash_rules: tuple[str, ...] = (), tuning: Tuning | None = None,
+        max_turns: int | None = None,
         max_budget_usd: float | None = None,
     ) -> RunResult:
         self.calls += 1

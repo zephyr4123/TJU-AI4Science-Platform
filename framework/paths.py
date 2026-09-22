@@ -5,10 +5,9 @@ skill 库 `skills/`、两位助理的指南 `coordinator/`、页面构建 `ui/we
 随使用长出来的**数据**——工作区 `workspaces/`、编辑台的对话 `studio/`——根是 `AI4SCI_HOME`，
 0.x 缺省也是仓根。五个环境变量各自只在这里读一次、断言一次：指向的不是目录当场炸，
 不静默回落（P-7 / P-8）。
-按人的配置目录 `~/.config/ai4sci/`（算力清单、底座清单，纲领 P-23 P-25）与 uv 的缓存也在这里给出：
-它们和数据根一起是「平台自己要写的目录」（`runtime_paths`），有沙箱的 agent CLI（Codex）要把它们设成
-可写根，agent 敲的 `ai4sci` 才写得进去；两份清单各自的读写点仍在 `framework/computes.py` 与
-`framework/agents.py`。
+按人的配置目录 `~/.config/ai4sci/`（算力清单、底座清单，纲领 P-23 P-25）
+与 uv 的缓存也在这里给出（页面「设置 → 存放」
+念给人看）；两份清单各自的读写点仍在 `framework/computes.py` 与 `framework/agents.py`。
 
 `parents[1]` 是 framework/paths.py 往上两级，即仓根——搬包时这个数字要跟着改，所以它只在这一处出现。
 """
@@ -68,15 +67,6 @@ def uv_cache_dir() -> Path:
     """
     raw = os.environ.get(UV_CACHE_ENV)
     return Path(raw).expanduser() if raw else DEFAULT_UV_CACHE
-
-
-def runtime_paths() -> list[Path]:
-    """平台自己要写的目录（数据根、按人的配置、uv 缓存）：agent 敲的 `ai4sci` 会往里写。
-    给端口的 `runtime_paths`（纲领 P-25）；不存在的先建——沙箱的可写根要是真目录。"""
-    dirs = [home(), config_dir(), uv_cache_dir()]
-    for path in dirs:
-        path.mkdir(parents=True, exist_ok=True)
-    return dirs
 
 
 def _root(env: str, default: Path) -> Path:

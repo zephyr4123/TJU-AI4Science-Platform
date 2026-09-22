@@ -83,7 +83,7 @@ class ScriptedChat:
     def turn(self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
              system_prompt: str, allowed_paths: list[Path],
              bash_rules: tuple[str, ...], readable_paths: list[Path] = (),
-             runtime_paths: list[Path] = (), chat_id: str | None = None,
+             chat_id: str | None = None,
              tuning: Tuning | None = None) -> Iterator[ChatEvent]:
         assert self.turns, "剧本用完了还在调 turn()"
         self.calls.append({"message": message, "cwd": Path(cwd), "timeout_s": timeout_s,

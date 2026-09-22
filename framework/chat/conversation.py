@@ -183,8 +183,7 @@ def event_payload(event: ChatEvent) -> dict[str, Any]:
 def send(
     conv: Conversation, chat: Chat, message: str, *, system_prompt: str,
     allowed_paths: list[Path], bash_rules: tuple[str, ...], readable_paths: list[Path] = (),
-    runtime_paths: list[Path] = (), timeout_s: float | None = None, origin: str = "人",
-    tuning: Tuning | None = None,
+    timeout_s: float | None = None, origin: str = "人", tuning: Tuning | None = None,
 ) -> Iterator[ChatEvent]:
     """发一轮：写 message.md → 逐个事件落盘并往外吐 → done/error 时更新 meta 与 transcript。
 
@@ -234,8 +233,7 @@ def send(
             for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
                                    system_prompt=system_prompt, allowed_paths=allowed_paths,
                                    bash_rules=bash_rules, readable_paths=readable_paths,
-                                   runtime_paths=list(runtime_paths), chat_id=conv.chat_id,
-                                   tuning=conv.tuning):
+                                   chat_id=conv.chat_id, tuning=conv.tuning):
                 if event.session_id and event.session_id != conv.session_id:
                     conv.session_id = event.session_id
                     conv.save()

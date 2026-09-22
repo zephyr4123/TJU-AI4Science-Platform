@@ -165,9 +165,8 @@ class ClaudeCodeRunner:
 
     def run(self, prompt: str, cwd: Path, timeout_s: float,
             allowed_paths: list[Path], bash_rules: tuple[str, ...] = (),
-            runtime_paths: list[Path] = (), tuning: Tuning | None = None,
-            max_turns: int | None = None, max_budget_usd: float | None = None) -> RunResult:
-        # runtime_paths 用不上：这家没有沙箱，Bash 起的 ai4sci 子进程本来就能写平台自己的目录
+            tuning: Tuning | None = None, max_turns: int | None = None,
+            max_budget_usd: float | None = None) -> RunResult:
         before = snapshot(cwd)
         argv = self.build_argv(prompt, cwd, allowed_paths, bash_rules, tuning, max_turns,
                                max_budget_usd)
@@ -328,10 +327,9 @@ class ClaudeCodeChat:
     def turn(
         self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
         system_prompt: str, allowed_paths: list[Path], bash_rules: tuple[str, ...],
-        readable_paths: list[Path] = (), runtime_paths: list[Path] = (),
-        chat_id: str | None = None, tuning: Tuning | None = None,
+        readable_paths: list[Path] = (), chat_id: str | None = None,
+        tuning: Tuning | None = None,
     ) -> Iterator[ChatEvent]:
-        # runtime_paths 用不上：没有沙箱，Bash 起的 ai4sci 子进程本来就能写平台自己的目录
         argv = self.build_argv(message, cwd, session_id=session_id, system_prompt=system_prompt,
                                allowed_paths=allowed_paths, bash_rules=bash_rules,
                                readable_paths=readable_paths, tuning=tuning)

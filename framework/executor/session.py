@@ -14,7 +14,7 @@ import shutil
 from pathlib import Path
 
 from backends import Runner, RunResult
-from framework import agents, paths
+from framework import agents
 from framework.skills import EXECUTOR_BASH_RULES
 
 EXECUTOR_TIMEOUT_ENV = "AI4SCI_EXECUTOR_TIMEOUT_S"
@@ -41,14 +41,13 @@ def run_session(
     `allowed_paths` 只是"尽量收紧"的意图，各家 CLI 的权限模型对不齐；真正的门是回来
     之后按 `changed_files` 判越界，那是能力的事（纲领 §5）。命令只放行 `ai4sci skill …`：
     执行层面前只有工具包（纲领 P-22），能力与签字是协调层的。
-    提示末尾接这家 CLI 自己的「工具怎么用」；模型与深度按人的设置里这家的（P-25）；平台自己要写的
-    目录（数据根、配置、uv 缓存）给有沙箱的 CLI 放行。
+    提示末尾接这家 CLI 自己的「工具怎么用」；模型与深度按人的设置里这家的（P-25）。
     """
     result = runner.run(
         prompt=full_prompt(runner, prompt), cwd=cwd,
         timeout_s=executor_timeout_s() if timeout_s is None else timeout_s,
         allowed_paths=allowed_paths, bash_rules=EXECUTOR_BASH_RULES,
-        runtime_paths=paths.runtime_paths(), tuning=agents.tuning_for(runner.name),
+        tuning=agents.tuning_for(runner.name),
         max_turns=max_turns, max_budget_usd=max_budget_usd,
     )
     stash_executor_logs(cwd, log_dir)

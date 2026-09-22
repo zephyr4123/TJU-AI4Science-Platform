@@ -52,8 +52,7 @@ def wake(workspace: Workspace, job: Job, *, retry_s: float = RETRY_S,
             for event in conversation.send(
                 conv, chat, text, system_prompt=system_prompt,
                 allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
-                readable_paths=list(where.readable_paths),
-                runtime_paths=list(where.runtime_paths), origin=ORIGIN,
+                readable_paths=list(where.readable_paths), origin=ORIGIN,
             ):
                 last = event
         except conversation.ConversationBusy:

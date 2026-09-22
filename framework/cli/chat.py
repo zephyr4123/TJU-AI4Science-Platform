@@ -105,8 +105,7 @@ def cmd_send(args: argparse.Namespace) -> int:
         for event in conversation.send(
             conv, chat, text, system_prompt=system_prompt,
             allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
-            readable_paths=list(where.readable_paths),
-            runtime_paths=list(where.runtime_paths), tuning=tuning,
+            readable_paths=list(where.readable_paths), tuning=tuning,
         ):
             last = event
             if event.kind == "delta":

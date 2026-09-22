@@ -67,10 +67,9 @@ class Runner(Protocol):
     各家适配器翻成自己的（Claude Code 是 `Bash(ai4sci skill *)`；Codex 没有按命令的白名单，
     沙箱是门、
     前缀写进 `tool_guide` 让它照做）；不给就一条命令都不放。
-    `runtime_paths` 是平台自己要写的目录（数据根、按人的配置、uv 缓存）：
-    agent 敲的 `ai4sci` 会往里写，
-    有沙箱的 CLI（Codex）要把它们设成可写根，没有沙箱的（Claude Code，Bash 子进程不受限）不用管；
-    agent 自己不许编辑这些目录，所以它不是 `allowed_paths`。
+    有沙箱的 CLI（Codex）没有按工具名的白名单：`bash_rules` 翻成 execpolicy 规则，
+    命中的命令在沙箱外跑，
+    平台自己的目录（数据根、按人的配置、uv 缓存）由此写得进去，不用加进可写根。
     `tuning` 是这次会话用什么模型、什么深度（从按人的设置来，P-25）；None 用适配器给的起点。
     `max_turns` / `max_budget_usd` 是这一次会话的轮数与花费上限，不给用适配器的缺省（环境变量）：
     读别人整个仓库再写壳的会话（复现）要比从零写一版的多得多——真跑时 30 轮在读完仓库、写完
@@ -94,7 +93,6 @@ class Runner(Protocol):
         timeout_s: float,
         allowed_paths: list[Path],
         bash_rules: tuple[str, ...] = (),
-        runtime_paths: list[Path] = (),
         tuning: Tuning | None = None,
         max_turns: int | None = None,
         max_budget_usd: float | None = None,
@@ -185,8 +183,8 @@ class Chat(Protocol):
     """协调层适配器的唯一形状：一句话进、一串事件出，能按 session id 续。
 
     `session_id=None` 开新会话，否则续接；每一轮至少吐一个 `init`（带 session id）和
-    一个 `done` 或 `error`。`system_prompt` 是协调层指南；`allowed_paths`、`bash_rules`、
-    `runtime_paths` 的语义同 `Runner`：尽量收紧，各家 CLI 的权限模型对不齐，
+    一个 `done` 或 `error`。`system_prompt` 是协调层指南；`allowed_paths` 与 `bash_rules`
+    的语义同 `Runner`：尽量收紧，各家 CLI 的权限模型对不齐，
     自带的联网工具同样必须放行；
     `readable_paths` 是工作目录之外「能读不能写」的目录（研究助理看流程库用，P-16）。
     `chat_id` 是这段对话的名字：
@@ -225,7 +223,6 @@ class Chat(Protocol):
         allowed_paths: list[Path],
         bash_rules: tuple[str, ...],
         readable_paths: list[Path] = (),
-        runtime_paths: list[Path] = (),
         chat_id: str | None = None,
         tuning: Tuning | None = None,
     ) -> Iterator[ChatEvent]: ...
