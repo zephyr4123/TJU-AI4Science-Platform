@@ -275,10 +275,11 @@ def test_translator_maps_file_change_web_search_and_mcp():
     events = [e for line in lines for e in translator.feed(line)]
     assert [(e.kind, e.tool) for e in events] == [
         ("tool_use", "apply_patch"), ("tool_result", ""), ("tool_use", "web_search"),
-        ("tool_use", "pdf.parse"), ("tool_result", "")]
+        ("tool_result", ""), ("tool_use", "pdf.parse"), ("tool_result", "")]
     assert events[0].tool_input == {"changes": ["add harness/launcher.sh"]}
     assert events[2].tool_input == {"query": "site:arxiv.org 2609.01558", "action": "search"}
-    assert events[4].is_error and events[4].text == "no such file"
+    assert events[3].text == "site:arxiv.org 2609.01558" and not events[3].is_error
+    assert events[5].is_error and events[5].text == "no such file"
 
 
 def test_parse_events_and_final_report():

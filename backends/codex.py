@@ -426,10 +426,13 @@ class Translator:
                     ChatEvent("tool_result", text="\n".join(changes), session_id=sid,
                               is_error=item.get("status") == "failed", raw=raw)]
         if itype == "web_search" and done:
+            # 搜索只在 completed 时才有 query，一条事件配成一对：只发 tool_use 页面那一行会一直转
+            # 「运行中」
             action = item.get("action") or {}
+            query = str(item.get("query") or "")
             return [ChatEvent("tool_use", tool="web_search", session_id=sid, raw=raw,
-                              tool_input={"query": str(item.get("query") or ""),
-                                          "action": str(action.get("type") or "")})]
+                              tool_input={"query": query, "action": str(action.get("type") or "")}),
+                    ChatEvent("tool_result", text=query, session_id=sid, raw=raw)]
         if itype == "mcp_tool_call":
             tool = f"{item.get('server', '')}.{item.get('tool', '')}"
             if not done:

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ChatEvent } from '@/api/types'
 
-import { describeTool, reduceTrace, replayTrace, toolLine } from './trace'
+import { commandOf, describeTool, reduceTrace, replayTrace, toolLine } from './trace'
 
 const ev = (partial: Partial<ChatEvent> & { kind: ChatEvent['kind'] }): ChatEvent => ({
   text: '', tool: '', tool_input: {}, is_error: false, session_id: 's', cost_usd: null,
@@ -56,10 +56,21 @@ describe('reduceTrace', () => {
 })
 
 describe('describeTool', () => {
-  it('Bash 显示命令，文件工具显示路径，其余显示工具名', () => {
+  it('Bash 显示命令，文件工具显示路径，搜索显示搜索词，其余显示工具名', () => {
     expect(describeTool('Bash', { command: 'ai4sci show workspaces' })).toBe('ai4sci show workspaces')
     expect(describeTool('Read', { file_path: '/x/scoring.yaml' })).toBe('Read /x/scoring.yaml')
-    expect(describeTool('WebSearch', { query: 'q' })).toBe('WebSearch')
+    expect(describeTool('WebSearch', { query: 'q' })).toBe('WebSearch q')
+    expect(describeTool('WebSearch', {})).toBe('WebSearch')
+  })
+
+  it('Codex 的 shell 剥掉 /bin/zsh -lc 那层壳，apply_patch 列改动', () => {
+    expect(commandOf('shell', { command: "/bin/zsh -lc 'ai4sci show project'" })).toBe('ai4sci show project')
+    expect(commandOf('shell', { command: "/bin/bash -lc 'rg -n \"Table 8\" a.md'" })).toBe('rg -n "Table 8" a.md')
+    expect(commandOf('shell', { command: 'ls' })).toBe('ls')
+    expect(commandOf('Read', { file_path: '/x' })).toBeNull()
+    expect(describeTool('shell', { command: "/bin/zsh -lc 'ai4sci show project'" })).toBe('ai4sci show project')
+    expect(describeTool('apply_patch', { changes: ['add a/b.py', 'update c.md'] })).toBe('apply_patch add a/b.py\nupdate c.md')
+    expect(describeTool('web_search', { query: 'GUA PINN', action: 'search' })).toBe('web_search GUA PINN')
   })
 })
 
@@ -89,6 +100,13 @@ describe('toolLine', () => {
     expect(toolLine('Grep', { pattern: 'x' })).toBe('Grep x')
     expect(toolLine('WebSearch', {})).toBe('WebSearch')
   })
+
+  it('Codex 的工具也是它本来的样子：命令、搜索词整句、改动只留第一条', () => {
+    expect(toolLine('shell', { command: "/bin/zsh -lc 'ai4sci show project'" })).toBe('ai4sci show project')
+    expect(toolLine('web_search', { query: 'site:arxiv.org 2609.01558', action: 'search' })).toBe('web_search site:arxiv.org 2609.01558')
+    expect(toolLine('apply_patch', { changes: ['add workspaces/w/requirement.md', 'update b'] })).toBe('apply_patch w/requirement.md')
+    expect(toolLine('apply_patch', { changes: [] })).toBe('apply_patch')
+  })
 })
 
 describe('replayTrace', () => {
@@ -103,5 +121,13 @@ describe('replayTrace', () => {
     expect(outcome).toEqual({ costUsd: 0.02, durationS: 3, failed: false })
     expect(replayTrace(events.slice(0, 3)).outcome).toBeNull()
     expect(replayTrace([]).trace).toEqual([])
+  })
+
+  it('走完了的一轮里没等到结果的工具行记成跑完；没走完的照旧算在跑', () => {
+    const search = ev({ kind: 'tool_use', tool: 'web_search', tool_input: { query: 'q' } })
+    const finished = replayTrace([search, ev({ kind: 'done', text: '' })]).trace[0]
+    expect(finished.kind === 'tool' && finished.result).toBe('')
+    const live = replayTrace([search]).trace[0]
+    expect(live.kind === 'tool' && live.result).toBeNull()
   })
 })

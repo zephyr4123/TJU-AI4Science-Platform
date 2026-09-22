@@ -90,6 +90,8 @@ function Thinking({ word }: { word: string }) {
 const TOOL_ICON: Record<string, Icon> = {
   Bash: Terminal, Read: File, Write: File, Edit: File, Grep: MagnifyingGlass, Glob: MagnifyingGlass,
   WebSearch: Globe, WebFetch: Globe,
+  // Codex 那一家的叫法
+  shell: Terminal, apply_patch: File, web_search: Globe,
 }
 
 /** 一条工具调用，就是它本来的样子：`ai4sci show workspace`、`Read design/1/scoring.yaml`；点开看输出。它是对话的一部分，一直留着。 */

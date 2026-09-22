@@ -56,10 +56,14 @@ export function outcome(event: ChatEvent): TurnOutcome {
   return { costUsd: event.cost_usd, durationS: event.duration_s, failed: event.kind === 'error' }
 }
 
-/** 落盘的一轮（history 里的 events）重放成条目与结果：没有 done / error 就是没走完 */
+/** 落盘的一轮（history 里的 events）重放成条目与结果：没有 done / error 就是没走完。
+ *  走完了的一轮不可能还有工具在跑：没等到结果的工具行（老日志里 Codex 的 web_search 只记了调用）一律记成跑完、没输出。 */
 export function replayTrace(events: readonly ChatEvent[]): { trace: TraceItem[]; outcome: TurnOutcome | null } {
-  const trace = events.reduce<TraceItem[]>(reduceTrace, [])
+  const folded = events.reduce<TraceItem[]>(reduceTrace, [])
   const last = [...events].reverse().find((e) => e.kind === 'done' || e.kind === 'error')
+  const trace = last
+    ? folded.map((item) => (item.kind === 'tool' && item.result === null ? { ...item, result: '' } : item))
+    : folded
   return { trace, outcome: last ? outcome(last) : null }
 }
 
@@ -86,20 +90,43 @@ function settle(
   return [...items.slice(0, lastTool), merged, ...items.slice(lastTool + 1)]
 }
 
-/** 工具调用的原样：Bash 就是那条命令，读写文件是「工具名 路径」，其余是工具名。展开层用它。 */
-export function describeTool(tool: string, input: Record<string, unknown>): string {
-  const str = (key: string) => (typeof input[key] === 'string' ? (input[key] as string) : null)
-  if (tool === 'Bash') return str('command') ?? 'Bash'
-  const path = str('file_path') ?? str('path') ?? str('pattern')
-  return path ? `${tool} ${path}` : tool
+/** 跑命令的工具：Claude Code 叫 Bash，Codex 叫 shell（命令外面还裹着一层 `/bin/zsh -lc '…'`，给人看要剥掉） */
+const COMMAND_TOOLS = new Set(['Bash', 'shell'])
+const SHELL_WRAP = /^\/bin\/(?:zsh|bash|sh) -lc '([\s\S]*)'$/
+
+/** 一次命令调用里那条命令本身；不是命令工具就是 null */
+export function commandOf(tool: string, input: Record<string, unknown>): string | null {
+  if (!COMMAND_TOOLS.has(tool)) return null
+  const raw = typeof input.command === 'string' ? input.command : tool
+  return SHELL_WRAP.exec(raw)?.[1] ?? raw
 }
 
-/** 对话里的那一行：同 describeTool，只是路径只留末两段（`Read design/1/scoring.yaml`），命令原样一行。 */
-export function toolLine(tool: string, input: Record<string, unknown>): string {
-  const str = (key: string) => (typeof input[key] === 'string' ? (input[key] as string) : null)
-  if (tool === 'Bash') return (str('command') ?? 'Bash').split('\n')[0]
+/** 工具调用里给人看的那个东西：路径、搜索词、改了哪些文件；都没有就是 null */
+function subjectOf(input: Record<string, unknown>): string | null {
+  const str = (key: string) => (typeof input[key] === 'string' && input[key] ? (input[key] as string) : null)
   const path = str('file_path') ?? str('path') ?? str('pattern')
-  if (!path) return tool
-  const parts = path.split('/').filter(Boolean)
+  if (path) return path
+  const query = str('query')
+  if (query) return query
+  const changes = Array.isArray(input.changes) ? input.changes.filter((c) => typeof c === 'string') : []
+  return changes.length ? changes.join('\n') : null
+}
+
+/** 工具调用的原样：命令就是那条命令，读写文件是「工具名 路径」，搜索是「工具名 搜索词」，其余是工具名。展开层用它。 */
+export function describeTool(tool: string, input: Record<string, unknown>): string {
+  const command = commandOf(tool, input)
+  if (command !== null) return command
+  const subject = subjectOf(input)
+  return subject ? `${tool} ${subject}` : tool
+}
+
+/** 对话里的那一行：同 describeTool，只是命令只留第一行、路径只留末两段（`Read design/1/scoring.yaml`）、改动只留第一条。 */
+export function toolLine(tool: string, input: Record<string, unknown>): string {
+  const command = commandOf(tool, input)
+  if (command !== null) return command.split('\n')[0]
+  const subject = subjectOf(input)?.split('\n')[0]
+  if (!subject) return tool
+  if (typeof input.query === 'string' && subject === input.query) return `${tool} ${subject}`
+  const parts = subject.split('/').filter(Boolean)
   return `${tool} ${parts.slice(-2).join('/')}`
 }
