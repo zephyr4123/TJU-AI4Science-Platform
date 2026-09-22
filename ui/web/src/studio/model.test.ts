@@ -27,7 +27,7 @@ describe('画布 ↔ 文件', () => {
   })
   it('库里的一条载入画布时参数跟着来，名字照旧', () => {
     const wf = {
-      name: 'research', title: 't', summary: 's', covers: [], remarks: [], problems: [], layout: null,
+      name: 'research', title: 't', summary: 's', covers: [], remarks: [], problems: [], shipped: false, layout: null,
       stages: [
         { kind: 'stage', stage: '实验', caps: [{ cap: 'auto-research', with: { max_iters: 3 } }] },
         { kind: 'stop', note: '验收' },
@@ -82,7 +82,7 @@ describe('位置与顺序', () => {
     expect(toDraft(draft).layout).toBeUndefined()
     const moved = { ...draft, items: place(items, items[2].uid, { x: 900.4, y: 0 }) }
     expect(toDraft(moved).layout).toEqual([[0, 0], [WIDTH.stage + 56, 0], [900, 0]])
-    const wf = { name: 'x', title: 't', summary: 's', covers: [], remarks: [], problems: [], layout: [[5, 6], [7, 8]],
+    const wf = { name: 'x', title: 't', summary: 's', covers: [], remarks: [], problems: [], shipped: false, layout: [[5, 6], [7, 8]],
       stages: [{ kind: 'stage', stage: '假设', caps: [] }, { kind: 'stop', note: '' }] } as Workflow
     expect(fromWorkflow(wf).items.map((it) => it.pos)).toEqual([{ x: 5, y: 6 }, { x: 7, y: 8 }])
   })

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from backends import BackendNotFound, ChatEvent, Tuning, get_chat
 from framework import agents, paths
-from framework.chat import conversation, guide, scope, settings
+from framework.chat import conversation, guide, removal, scope, settings
 from framework.cli._common import (
     EXIT_INVALID,
     EXIT_OK,
@@ -23,6 +23,7 @@ from framework.cli._common import (
     current_workspace,
     setup_logging,
 )
+from framework.cli.workspace import report
 
 
 def _scope(args: argparse.Namespace) -> scope.Scope | int:
@@ -124,6 +125,22 @@ def cmd_send(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_remove(args: argparse.Namespace) -> int:
+    """删一段对话：目录 + 这家 CLI 存的那条会话；这一轮还在跑就拒。"""
+    where = _scope(args)
+    if isinstance(where, int):
+        return where
+    try:
+        removed = removal.remove_chat(where, args.chat_id, get_chat)
+    except conversation.ConversationNotFound as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    except conversation.ConversationBusy as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_INVALID
+    return report(removed, f"ok 删了对话 {removed.what}")
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     where = _scope(args)
     if isinstance(where, int):
@@ -175,6 +192,11 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     listing = actions.add_parser("list", help="列出这个域的全部对话")
     listing.add_argument("--studio", action="store_true", help="编辑台的对话")
     listing.set_defaults(func=cmd_list)
+
+    removing = actions.add_parser("remove", help="删一段对话：目录 + 这家 CLI 存的会话；在跑就拒")
+    removing.add_argument("chat_id")
+    removing.add_argument("--studio", action="store_true", help="编辑台的对话")
+    removing.set_defaults(func=cmd_remove)
 
 
 def _add_knobs(parser: argparse.ArgumentParser) -> None:

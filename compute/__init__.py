@@ -139,6 +139,11 @@ class Compute(Protocol):
 
     def get(self, remote_dir: str, local_dir: Path) -> None: ...
 
+    def remove_dir(self, remote_dir: str) -> None:
+        """把这台机器上的这个目录整个删掉（删工作区要级联到每台机器上的镜像，主人 2026-09-22）。
+        不在就当已删；删不掉抛 ComputeError。"""
+        ...
+
     def check(self) -> Probe: ...
 
 

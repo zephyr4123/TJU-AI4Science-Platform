@@ -131,7 +131,7 @@ function Editor({ stages, workflows, catalog, skills, onSaved, onOpenCap }: {
                 <ArrowsInLineHorizontal data-icon="inline-start" />排列
               </Button>
             )}
-            <Library workflows={workflows} onLoad={load} />
+            <Library workflows={workflows} onLoad={load} onRemoved={onSaved} />
             <Save draft={draft} setDraft={setDraft} names={workflows.map((wf) => wf.name)}
                   ok={draft.items.length > 0 && check.data !== null && problems.length === 0} onSaved={onSaved} />
           </div>

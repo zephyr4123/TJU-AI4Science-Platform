@@ -43,6 +43,8 @@ from framework.contracts.capability import PARAM_TYPES, Capability
 from framework.contracts.stages import STAGE_NAMES as STAGES
 
 STOP = "断点"
+# 出厂的流程：平台的底，不能删（主人 2026-09-22：出厂的保留，人存进去的能删）
+SHIPPED = frozenset({"research", "reproduce"})
 # 格子上挂的名字的两种 tag（framework/abilities.py 是出处；这里只是响应体里的两个词）
 KIND_STEP = "步骤"
 KIND_SKILL = "skill"
@@ -264,6 +266,18 @@ def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability
     return workflow
 
 
+def remove_workflow(root: Path, name: str) -> Path:
+    """删库里人自己存的一条流程：出厂的拒（WorkflowInvalid），没有的 FileNotFoundError。
+    取到工作区的实例是拷贝，不受影响。"""
+    if name in SHIPPED:
+        raise WorkflowInvalid(f"{name} 是出厂的流程，不能删（出厂的：{sorted(SHIPPED)}）")
+    path = Path(root) / f"{name}.yaml"
+    if not path.is_file():
+        raise FileNotFoundError(f"库里没有叫 {name!r} 的流程")
+    path.unlink()
+    return path
+
+
 class _Row(list):
     """layout 里的一对坐标：写成一行 `[x, y]`，不拆成两行。"""
 
@@ -376,7 +390,8 @@ def describe_dir(root: Path, catalog: dict[str, Capability],
             wf = load_workflow(path)
         except WorkflowInvalid as exc:
             out.append({"name": path.stem, "title": path.stem, "summary": "", "stages": [],
-                        "covers": [], "remarks": [], "problems": [str(exc)]})
+                        "covers": [], "remarks": [], "problems": [str(exc)],
+                        "shipped": path.stem in SHIPPED})
             continue
         out += describe([wf], catalog, skills)
     return out
@@ -393,7 +408,8 @@ def describe(workflows: Sequence[Workflow], catalog: dict[str, Capability],
     问题清单。"""
     kinds = kinds_of(catalog, skills)
     return [{**wf.to_dict(kinds), "covers": wf.covered, "remarks": remarks(wf),
-             "problems": workflow_problems(wf, catalog, skills)} for wf in workflows]
+             "problems": workflow_problems(wf, catalog, skills), "shipped": wf.name in SHIPPED}
+            for wf in workflows]
 
 
 def used_by(workflows: Sequence[Workflow]) -> dict[str, list[str]]:

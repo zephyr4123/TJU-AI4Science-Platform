@@ -1,6 +1,6 @@
 // 对话列表收在左侧抽屉里，对话本身才是主角；入口是一枚带字的大圆角按钮「对话 · N」（reactbits GlareHover 改装，外层 #79 #80：
 // 原来一个小图标谁都看不见）。抽屉顶上是这个工作区的封面（编辑台是库的横幅），清单逐条浮现（reactbits AnimatedList 改装）。
-import { ChatCenteredText, ChatsCircle, NotePencil } from '@phosphor-icons/react'
+import { ChatCenteredText, ChatsCircle, NotePencil, Trash } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import type { ChatMeta } from '@/api/types'
@@ -9,6 +9,7 @@ import { Band } from '@/components/Band'
 import { Dot } from '@/components/bits'
 import { AnimatedList } from '@/components/reactbits/AnimatedList'
 import { GlareHover } from '@/components/reactbits/GlareHover'
+import HoldButton from '@/components/reactbits/HoldButton'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { chatTitle, usd, when } from '@/lib/format'
@@ -22,6 +23,8 @@ interface Props {
   creating: boolean
   onSelect: (chatId: string) => void
   onNew: () => void
+  /** 删一段（主人 2026-09-22）：按住才算数；正在跑的那段服务会拒，错误一句摆在清单顶上 */
+  onRemove: (chatId: string) => Promise<void>
   /** 抽屉顶上那张：工作区的封面或库的横幅 */
   cover: Picture
   /** 这一边是谁的对话：工作区的标题或「编辑台」 */
@@ -29,8 +32,13 @@ interface Props {
   /** 这一边的对话是干什么的，一句话 */
 }
 
-export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect, onNew, cover, title }: Props) {
+export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect, onNew, onRemove, cover, title }: Props) {
   const [open, setOpen] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+  const remove = (chatId: string) => {
+    setFailed(null)
+    onRemove(chatId).catch((exc: unknown) => setFailed(exc instanceof Error ? exc.message : String(exc)))
+  }
   const ordered = chats ? [...chats].sort((a, b) => b.chat_id.localeCompare(a.chat_id)) : null
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -54,7 +62,7 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
             <NotePencil data-icon="inline-start" />新对话
           </Button>
         </div>
-        {error && <p className="px-5 pb-2 text-xs text-bad">{error}</p>}
+        {(error || failed) && <p className="px-5 pb-2 text-xs text-bad">{error ?? failed}</p>}
         {ordered?.length === 0 && (
           <p className="px-5 py-3 text-sm leading-relaxed text-muted-foreground">没有对话</p>
         )}
@@ -62,25 +70,33 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
           items={ordered ?? []} keyOf={(c) => c.chat_id} fade="background"
           className="min-h-0 flex-1" listClassName="h-full space-y-0.5 px-3 pb-3"
           render={(chat) => (
-            <button
-              type="button"
-              onClick={() => { onSelect(chat.chat_id); setOpen(false) }}
-              aria-current={chat.chat_id === selected ? 'true' : undefined}
-              className={cn('flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors duration-150',
-                            'hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-ring',
-                            chat.chat_id === selected && 'bg-sidebar-accent')}
-            >
-              <ChatCenteredText weight={chat.chat_id === selected ? 'fill' : 'regular'}
-                                className={cn('mt-0.5 size-4 shrink-0', chat.chat_id === selected ? 'text-primary' : 'text-muted-foreground')} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{chatTitle(chat)}</span>
-                <span className="t-label mt-0.5 flex items-center gap-1.5">
-                  <span>{when(chat.created_at)}</span><span>·</span>
-                  <span className="tabular">{chat.turns} 轮</span><span>·</span>
-                  <span className="tabular">{usd(chat.cost_usd)}</span>
+            <div className={cn('group/row flex items-start gap-1 rounded-md pr-1 transition-colors duration-150 hover:bg-sidebar-accent',
+                               chat.chat_id === selected && 'bg-sidebar-accent')}>
+              <button
+                type="button"
+                onClick={() => { onSelect(chat.chat_id); setOpen(false) }}
+                aria-current={chat.chat_id === selected ? 'true' : undefined}
+                className="flex min-w-0 flex-1 items-start gap-2.5 rounded-md px-2.5 py-2 text-left focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                <ChatCenteredText weight={chat.chat_id === selected ? 'fill' : 'regular'}
+                                  className={cn('mt-0.5 size-4 shrink-0', chat.chat_id === selected ? 'text-primary' : 'text-muted-foreground')} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{chatTitle(chat)}</span>
+                  <span className="t-label mt-0.5 flex items-center gap-1.5">
+                    <span>{when(chat.created_at)}</span><span>·</span>
+                    <span className="tabular">{chat.turns} 轮</span><span>·</span>
+                    <span className="tabular">{usd(chat.cost_usd)}</span>
+                  </span>
                 </span>
+              </button>
+              {/* 悬停或键盘落到这一行才出现；按住一秒才删 */}
+              <span className="mt-1.5 shrink-0 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100">
+                <HoldButton holdTime={800} doneLabel={<Trash weight="fill" className="size-3.5" />} className="px-2"
+                            onHold={() => remove(chat.chat_id)}>
+                  <Trash className="size-3.5" aria-label="删除这段对话" />
+                </HoldButton>
               </span>
-            </button>
+            </div>
           )}
         />
         <div className="flex items-center gap-2 border-t px-5 py-3 text-xs text-muted-foreground">

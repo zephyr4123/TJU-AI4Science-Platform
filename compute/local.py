@@ -131,6 +131,12 @@ class LocalCompute:
     def cancel(self, job: Job) -> None:
         kill_tree(job.pid, job.pgid)
 
+    def remove_dir(self, remote_dir: str) -> None:
+        """本机的镜像目录就是那个目录本身；不在就算删过了。"""
+        path = Path(remote_dir)
+        if path.is_dir():
+            shutil.rmtree(path)
+
     def cancel_under(self, remote_dir: str) -> list[int]:
         """本机的作业是起它的那个进程的子孙：人叫停时 `kill_tree` 趟树已经把它们带走，这里没活。"""
         return []

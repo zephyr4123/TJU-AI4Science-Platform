@@ -14,9 +14,10 @@ import sys
 
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, current_workspace
 from framework.cli.cap import FLOW_HELP, FROM_HELP, _place_in_flow
+from framework.cli.workspace import report
 from framework.contracts import output, requirement, workflows
 from framework.contracts.stages import STAGE_SLUGS, name_of
-from framework.workspace import jobs, outputs
+from framework.workspace import jobs, outputs, removal
 
 BY_CHOICES = ("assistant", "human")
 
@@ -49,6 +50,19 @@ def cmd_new(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_remove(args: argparse.Namespace) -> int:
+    """删一次产出：只能删叶子（没被下游读过的）；正在跑的拒。"""
+    ws = current_workspace()
+    if isinstance(ws, int):
+        return ws
+    try:
+        removed = removal.remove_output(ws, args.id)
+    except (ValueError, output.OutputNotFound) as exc:  # RemovalRefused 也是 ValueError
+        print(str(exc), file=sys.stderr)
+        return EXIT_INVALID
+    return report(removed, f"ok 删了产出 {removed.what}")
+
+
 def add_parser(groups: argparse._SubParsersAction) -> None:
     out = groups.add_parser("output", help="产出：不经能力在一个阶段下开一次产出目录")
     actions = out.add_subparsers(dest="action", required=True)
@@ -59,3 +73,6 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     new.add_argument("--flow", default="", help=FLOW_HELP)
     new.add_argument("--by", default="assistant", choices=BY_CHOICES, help="谁写的；缺省助理")
     new.set_defaults(func=cmd_new)
+    removing = actions.add_parser("remove", help="删一次产出：只能删没被下游读过的叶子")
+    removing.add_argument("id", metavar="STAGE/N", help="产出 id，比如 design/2")
+    removing.set_defaults(func=cmd_remove)

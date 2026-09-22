@@ -213,6 +213,11 @@ class SshCompute:
                           elapsed_s=time.time() - job.started_at,
                           stdout_path=job.stdout_path, stderr_path=job.stderr_path)
 
+    def remove_dir(self, remote_dir: str) -> None:
+        """远端 `rm -rf`；只许删远端根底下的目录，别的路径当场拒。"""
+        assert remote_dir.startswith(self.root + "/"), f"{remote_dir} 不在远端根 {self.root} 下"
+        self._sh(f"rm -rf {shlex.quote(remote_dir)}")
+
     def cancel_under(self, remote_dir: str) -> list[int]:
         """杀目录下所有还在跑的远端作业：找每个 `.job/pgid`，跑完的（有 exit.code）不碰，
         进程组号被别的进程复用了的（组长的 cwd 不是这个目录）不碰，其余先 TERM 再 KILL。

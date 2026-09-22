@@ -396,4 +396,9 @@ export interface Workflow {
   /** 提醒，不是问题：比如做了实验没验证 */
   remarks: string[]
   problems: string[]
+  /** 出厂的（research、reproduce）：平台的底，不能删 */
+  shipped: boolean
 }
+
+/** 删了什么（`POST …/remove`）：本机那部分已删；`leftovers` 是目录外没清干净的几句（CLI 那边的会话、机器上的镜像） */
+export interface Removed { removed: string; leftovers: string[] }

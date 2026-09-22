@@ -212,6 +212,13 @@ class Chat(Protocol):
 
     def tool_guide(self, bash_rules: tuple[str, ...]) -> str: ...
 
+    def forget(self, session_id: str, cwd: Path) -> None:
+        """把这家 CLI 自己存的那条会话删干净（删对话要级联到根，主人 2026-09-22）：
+        Claude Code 是 `~/.claude/projects/<按 cwd 编的目录>/<session>.jsonl` 与
+        `session-env/<session>`，Codex 是私有 home 下 `sessions/…/rollout-*-<thread>.jsonl`。
+        不在就当已删（幂等）；删不掉抛 OSError。"""
+        ...
+
     def turn(
         self,
         message: str,

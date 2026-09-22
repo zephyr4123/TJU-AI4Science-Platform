@@ -12,7 +12,9 @@ from __future__ import annotations
 import argparse
 import sys
 
+from backends import get_chat
 from framework import paths
+from framework.chat import removal
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE
 from framework.workspace import root
 
@@ -46,6 +48,34 @@ def cmd_new(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_remove(args: argparse.Namespace) -> int:
+    """删整个工作区：需求、原件、产出、流程实例、对话、作业记录，加每段对话在 CLI 那边的会话、
+    每台机器上的镜像。有作业或对话在跑就拒。"""
+    try:
+        ws = root.load(root.workspaces_root(paths.home()) / args.id)
+    except root.WorkspaceNotFound as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        removed = removal.remove_workspace(ws, get_chat)
+    except removal.RemovalRefused as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_INVALID
+    return report(removed, f"ok 删了工作区 {removed.what}")
+
+
+def report(removed: removal.Removed, line: str) -> int:
+    """删完怎么说：全干净一行 ok；目录外有没清的，逐条打到 stderr、退出码非零——本机已删这件事
+    也说清。"""
+    if removed.clean:
+        print(line)
+        return EXIT_OK
+    print(f"{line}（本机已删；下面这些没清干净）")
+    for item in removed.leftovers:
+        print(f"  ! {item}", file=sys.stderr)
+    return EXIT_INVALID
+
+
 def add_parser(groups: argparse._SubParsersAction) -> None:
     space = groups.add_parser("workspace", help="工作区：一份需求的家")
     actions = space.add_subparsers(dest="action", required=True)
@@ -56,3 +86,7 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     creating.add_argument("--template", default=DEFAULT_TEMPLATE,
                           help="需求模板名（ai4sci show templates），缺省 generic")
     creating.set_defaults(func=cmd_new)
+    removing = actions.add_parser(
+        "remove", help="删整个工作区（级联：产出、对话及其会话、机器上的镜像）；有东西在跑就拒")
+    removing.add_argument("id", help="工作区名")
+    removing.set_defaults(func=cmd_remove)

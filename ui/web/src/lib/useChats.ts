@@ -41,10 +41,18 @@ export function useChats(scope: Scope) {
 
   const opened = useCallback(() => setOpening(null), [])
 
+  // 删一段：服务那边连这家 CLI 存的会话一起清；删的是当前这段就落回最近的一段。目录外没清的那几句原样交回去
+  const remove = useCallback(async (chatId: string) => {
+    const removed = await api.removeChat(scope, chatId)
+    setPicked((now) => (now === chatId ? null : now))
+    await chats.reload()
+    return removed
+  }, [chats, scope])
+
   const turnDone = useCallback(() => {
     void chats.reload()
     setEpoch((e) => e + 1)
   }, [chats])
 
-  return { chats, chatId, current, creating, epoch, newChat, opening, start, opened, pick: setPicked, turnDone }
+  return { chats, chatId, current, creating, epoch, newChat, opening, start, opened, pick: setPicked, remove, turnDone }
 }

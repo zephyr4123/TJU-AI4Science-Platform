@@ -467,6 +467,16 @@ class CodexChat:
         return KNOBS
 
     @staticmethod
+    def forget(session_id: str, cwd: Path) -> None:
+        """删这条线程在私有 home 里的 rollout（实测 0.147.0 的布局：`sessions/<年>/<月>/<日>/
+        rollout-<时间>-<thread_id>.jsonl`；官方文档不写存哪、也没有删会话的命令）。cwd 用不上——
+        Codex 的会话不按目录分。"""
+        del cwd
+        home = codex_home("chat")
+        for path in (home / "sessions").glob(f"*/*/*/rollout-*-{session_id}.jsonl"):
+            path.unlink()
+
+    @staticmethod
     def tool_guide(bash_rules: tuple[str, ...]) -> str:
         return chat_tool_guide(bash_rules)
 

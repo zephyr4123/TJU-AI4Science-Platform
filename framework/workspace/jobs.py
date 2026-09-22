@@ -124,6 +124,15 @@ def finish(jobs_dir: Path, job_id: str, *, exit_code: int, result: str) -> Job:
     return job
 
 
+def note(jobs_dir: Path, job_id: str, text: str) -> Job:
+    """往一条作业的结论行后面补一句（产出删了：记录是历史留着，但指向的东西没了要说清）；已有就不重复。"""
+    job = load(jobs_dir, job_id)
+    if text not in job.result:
+        job.result = f"{job.result}\t{text}" if job.result else text
+        _save(jobs_dir, job)
+    return job
+
+
 def stop(ws: Workspace, job_id: str, *, by: str) -> Job:
     """人叫停：杀作业的整棵进程树（它自成会话，pgid 就是 pid；执行层的 Bash、harness 的 launcher
     各自还会开新的进程组，所以趟树逐组杀），记录写 stopped 与谁停的；作业开的那次产出还是 running

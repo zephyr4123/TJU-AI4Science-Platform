@@ -619,3 +619,49 @@ def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     assert call(base, "/workspaces/w1/jobs/nope/stop", {"by": "李四"})[0] == 404
     status, _, body = call(base, "/workspaces/w1/outputs/design/1")
     assert json.loads(body)["status"] == "failed"
+
+
+def test_remove_endpoints_cascade_and_refuse(served, tmp_path):
+    """删（主人 2026-09-22）：对话、产出、流程实例、工作区各一条 `POST …/remove`，库里的流程
+    `POST /workflows/<name>/remove`。拒 409、没有 404、出厂的 403；目录外没清的随 leftovers
+    回去。"""
+    from framework.workspace import outputs as ws_outputs
+    from framework.workspace import root as ws_root
+
+    base, chat = served
+    new_workspace(base, "w1")
+    ws = ws_root.load(tmp_path / "workspaces" / "w1")
+    # 对话：发过一句才有 session；删了目录没了、剧本后端被叫去忘掉那条会话
+    chat_id = json.loads(call(base, "/workspaces/w1/chats", {})[2])["chat_id"]
+    call(base, f"/workspaces/w1/chats/{chat_id}/messages", {"text": "你好"})
+    status, _, body = call(base, f"/workspaces/w1/chats/{chat_id}/remove", {})
+    assert status == 200 and json.loads(body) == {"removed": chat_id, "leftovers": []}
+    assert chat.forgotten and not (ws.chats / chat_id).exists()
+    assert call(base, f"/workspaces/w1/chats/{chat_id}/remove", {})[0] == 404
+    # 产出：被引用的拒 409，叶子 200
+    d1, m1 = ws_outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
+                                    flow=None, step=None, requirement=1, chat_id=None)
+    ws_outputs.close_output(d1, m1, ok=True, line="ok")
+    d2, m2 = ws_outputs.open_output(ws, "experiment", title="t", by="auto-research",
+                                    inputs=["design/1"], params={}, flow="research", step=2,
+                                    requirement=1, chat_id=None)
+    ws_outputs.close_output(d2, m2, ok=True, line="ok")
+    status, _, body = call(base, "/workspaces/w1/outputs/design/1/remove", {})
+    assert status == 409 and "被 experiment/1 读过" in json.loads(body)["error"]
+    # 流程实例：挂着产出拒 409
+    (ws.flows / "research.yaml").write_text("name: research\n", encoding="utf-8")
+    status, _, body = call(base, "/workspaces/w1/flows/research/remove", {})
+    assert status == 409 and "挂着 experiment/1" in json.loads(body)["error"]
+    assert call(base, "/workspaces/w1/outputs/experiment/1/remove", {})[0] == 200
+    assert call(base, "/workspaces/w1/flows/research/remove", {})[0] == 200
+    assert not d2.exists() and not (ws.flows / "research.yaml").exists()
+    # 库里的流程：出厂的 403，没有的 404
+    status, _, body = call(base, "/workflows/research/remove", {})
+    assert status == 403 and "出厂" in json.loads(body)["error"]
+    assert call(base, "/workflows/nope/remove", {})[0] == 404
+    # 整个工作区：目录没了、清单里没了
+    status, _, body = call(base, "/workspaces/w1/remove", {})
+    assert status == 200 and json.loads(body)["removed"] == "w1"
+    assert not ws.root.exists()
+    assert json.loads(call(base, "/workspaces")[2]) == []
+    assert call(base, "/workspaces/w1/remove", {})[0] == 404

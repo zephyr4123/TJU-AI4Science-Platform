@@ -8,7 +8,7 @@ const out = (id: string, signed = false, stale = false) =>
   ({ id, title: 't', status: 'ok' as const, by: 'design', from: [], signed, signed_stale: stale })
 
 const flow = (items: FlowProgress['items']): FlowProgress => ({
-  name: 'f', title: 'f', summary: '', stages: [], layout: null, covers: [], remarks: [], problems: [], items,
+  name: 'f', title: 'f', summary: '', stages: [], layout: null, covers: [], remarks: [], problems: [], shipped: false, items,
   step: 0, total: items?.length ?? 0, waiting: 'sign', job: null,
 })
 

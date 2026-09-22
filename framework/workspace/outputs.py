@@ -18,15 +18,23 @@ from framework.contracts import output
 from framework.contracts.capability import Inputs
 from framework.contracts.output import Meta, OutputId, parse_id
 from framework.contracts.stages import STAGE_SLUGS
+from framework.workspace import jobs
 from framework.workspace.root import Workspace
 
 LOGGER = logging.getLogger("ai4sci.outputs")
 
 
 def next_id(workspace: Workspace, slug: str) -> OutputId:
+    """下一个编号：盘上有的与作业记录里出现过的都跳过——删掉的产出编号不复用，不然作业记录里的
+    「design/1」会指向一个后来的陌生人（删产出是 removal.remove_output）。"""
     stage_dir = workspace.stage_dir(slug)
     taken = [int(p.name) for p in stage_dir.iterdir() if p.is_dir() and p.name.isdigit()] \
         if stage_dir.is_dir() else []
+    prefix = f"{slug}/"
+    for job in jobs.list_jobs(workspace.jobs):
+        number = job.output[len(prefix):] if job.output and job.output.startswith(prefix) else ""
+        if number.isdigit():
+            taken.append(int(number))
     return OutputId(slug, max(taken, default=0) + 1)
 
 

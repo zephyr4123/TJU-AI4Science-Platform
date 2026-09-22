@@ -290,6 +290,20 @@ class ClaudeCodeChat:
         return KNOBS
 
     @staticmethod
+    def forget(session_id: str, cwd: Path) -> None:
+        """删这条会话在本机的痕迹（实测 2.1.278 的布局，官方没有删会话的命令）：
+        `~/.claude/projects/<cwd 里的 / 换成 ->/<session>.jsonl` 与
+        `~/.claude/session-env/<session>`。"""
+        home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+        encoded = str(Path(cwd).resolve()).replace("/", "-")
+        for path in (home / "projects" / encoded / f"{session_id}.jsonl",
+                     home / "session-env" / session_id):
+            if path.is_dir():
+                shutil.rmtree(path)
+            elif path.exists() or path.is_symlink():
+                path.unlink()
+
+    @staticmethod
     def tool_guide(bash_rules: tuple[str, ...]) -> str:
         return chat_tool_guide(bash_rules)
 

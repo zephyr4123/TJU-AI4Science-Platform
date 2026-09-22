@@ -24,6 +24,7 @@ import math
 import os
 import re
 import secrets
+import shutil
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -136,6 +137,24 @@ def load_conversation(chats_dir: Path, chat_id: str) -> Conversation:
     conv = Conversation(**json.loads(meta.read_text(encoding="utf-8")))
     conv._dir = directory
     return conv
+
+
+def busy(conv: Conversation) -> bool:
+    """这段对话是不是正有一轮在跑（锁在、锁的主人还活着）。"""
+    inflight = conv.dir / INFLIGHT_NAME
+    return inflight.exists() and _lock_holder_alive(inflight)
+
+
+def remove_conversation(conv: Conversation, chat: Chat | None) -> None:
+    """删一段对话（主人 2026-09-22：级联到根）：这一轮还在跑就拒；先让这家 CLI 忘掉它存的那条会话
+    （`Chat.forget`，适配器不在就跳过、由调用方记一句），再删目录。"""
+    if busy(conv):
+        raise ConversationBusy(f"这段对话正有一轮在跑（{conv.dir / INFLIGHT_NAME}），等它结束再删")
+    if chat is not None and conv.session_id:
+        chat.forget(conv.session_id, Path(conv.cwd))
+    shutil.rmtree(conv.dir)
+    LOGGER.info("chat_removed chat_id=%s backend=%s session=%s", conv.chat_id, conv.backend,
+                conv.session_id)
 
 
 def list_conversations(chats_dir: Path) -> list[Conversation]:

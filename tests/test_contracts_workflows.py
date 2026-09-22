@@ -227,3 +227,18 @@ def test_a_skill_hangs_on_any_stage_without_params_and_is_tagged(tmp_path):
         workflows.save_workflow(tmp_path / "lib2", {**yaml.safe_load(GOOD), "name": "w",
                                                     "stages": [{"文献": ["nope"]}]},
                                 catalog(), skills={"pdf"})
+
+
+def test_shipped_workflows_cannot_be_removed_but_user_ones_can(tmp_path):
+    """主人 2026-09-22：出厂的流程是平台的底不能删，人存进去的能删；describe 里标 shipped。"""
+    (tmp_path / "mine.yaml").write_text(GOOD.replace("name: w", "name: mine"), encoding="utf-8")
+    (tmp_path / "research.yaml").write_text(GOOD.replace("name: w", "name: research"),
+                                            encoding="utf-8")
+    flags = {d["name"]: d["shipped"] for d in workflows.describe_dir(tmp_path, catalog())}
+    assert flags == {"mine": False, "research": True}
+    with pytest.raises(workflows.WorkflowInvalid, match="出厂的流程，不能删"):
+        workflows.remove_workflow(tmp_path, "research")
+    assert workflows.remove_workflow(tmp_path, "mine") == tmp_path / "mine.yaml"
+    assert not (tmp_path / "mine.yaml").exists()
+    with pytest.raises(FileNotFoundError):
+        workflows.remove_workflow(tmp_path, "mine")

@@ -70,8 +70,12 @@ class ScriptedChat:
                  cost_reporting: str = "turn") -> None:
         self.turns = list(turns)
         self.calls: list[dict] = []
+        self.forgotten: list[str] = []
         self._knobs = knobs
         self.cost_reporting = cost_reporting
+
+    def forget(self, session_id: str, cwd) -> None:
+        self.forgotten.append(session_id)
 
     def knobs(self) -> Knobs:
         return self._knobs

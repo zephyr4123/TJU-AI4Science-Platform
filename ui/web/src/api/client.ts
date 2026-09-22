@@ -3,7 +3,7 @@
 // 端点按域分前缀（纲领 P-16）：工作区 `/workspaces/<id>` 是研究助理的域，`/studio` 是造流助理的域；
 // 对话四个端点在两个域下共用，`Scope` 决定前缀。
 
-import type { Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, Job, OutputDetail, RequirementDetail, SettingsDoc, SkillEntry, StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary } from './types'
+import type { Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, Job, OutputDetail, Removed, RequirementDetail, SettingsDoc, SkillEntry, StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary } from './types'
 
 export type Scope = { kind: 'workspace'; id: string } | { kind: 'studio' }
 
@@ -62,6 +62,13 @@ export const api = {
     request<CheckReport>('/settings/check', post(name ? { what, name } : { what })),
   addCompute: (body: { name: string; ssh: string; key: string; root?: string }) =>
     request<SettingsDoc>('/settings/computes', post(body)),
+  /** 删（主人 2026-09-22：人产生的都能删，级联到根；拒 409、没有 404、出厂的 403） */
+  removeWorkspace: (id: string) => request<Removed>(`${ws(id)}/remove`, post({})),
+  removeOutput: (id: string, oid: string) => request<Removed>(`${ws(id)}/outputs/${oid}/remove`, post({})),
+  removeFlow: (id: string, name: string) => request<Removed>(`${ws(id)}/flows/${encodeURIComponent(name)}/remove`, post({})),
+  removeWorkflow: (name: string) => request<Removed>(`/workflows/${encodeURIComponent(name)}/remove`, post({})),
+  removeChat: (scope: Scope, chatId: string) =>
+    request<Removed>(`${scopePath(scope)}/chats/${encodeURIComponent(chatId)}/remove`, post({})),
   removeCompute: (name: string) =>
     request<SettingsDoc>(`/settings/computes/${encodeURIComponent(name)}/remove`, post({})),
   stages: () => request<StageInfo[]>('/stages'),

@@ -4,6 +4,7 @@
 // 流程（画布）与能力（陈列与详情，外层 #112）——加流程助理的悬浮对话窗（外层 #100）；和工作区是两个平行的世界：地方栏上是一个
 // 开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。设置（P-25，外层 #134）是全局的一块，开着时地方的页眉让开，
 // 入口在地方栏的脚，主题开关也在里面。对话那块板两边同一个（chat/ChatPanel.tsx）。页面只是 `ai4sci serve` 的客户端。
+import { DotsThree, Trash } from '@phosphor-icons/react'
 import { type ReactNode, useEffect, useState } from 'react'
 
 import { api, inWorkspace, STUDIO } from '@/api/client'
@@ -13,7 +14,11 @@ import { Board } from '@/board/Board'
 import { ChatPanel } from '@/chat/ChatPanel'
 import { ChatView } from '@/chat/ChatView'
 import { Band } from '@/components/Band'
+import { ErrorNote } from '@/components/bits'
 import { Scene } from '@/components/Scene'
+import HoldButton from '@/components/reactbits/HoldButton'
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Files } from '@/files/Files'
@@ -46,6 +51,8 @@ export default function App() {
   const backends = useResource(api.backends, [])
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settingsDot = health.data ? health.data.checks_ok === false : false
+  // 删了东西之后目录外没清干净的几句（CLI 那边的会话、机器上的镜像），摆在正文顶上，点一下收
+  const [leftovers, setLeftovers] = useState<string[]>([])
   // 上次看的哪个工作区记在浏览器里；没记过就是清单里第一个
   const [picked, setPickedState] = useState<string | null>(() => {
     try { return window.localStorage.getItem(PICKED_KEY) } catch { return null }
@@ -79,6 +86,14 @@ export default function App() {
     await workspaces.reload()
     setPicked(id)
     setCreating(false)
+  }
+  // 删了当前工作区：清单重读、落回第一个（一个不剩就是门口）；没清干净的几句摆出来
+  const removedWorkspace = async (rest: string[]) => {
+    setLeftovers(rest)
+    setPicked(null)
+    setOpened(null)
+    setFocus(null)
+    await workspaces.reload()
   }
   const places = {
     workspaces: workspaces.data,
@@ -114,7 +129,13 @@ export default function App() {
                    : place.kind === 'studio'
                      ? { value: studioView, options: [{ value: 'flow', label: '流程' }, { value: 'caps', label: '能力' }],
                          onChange: (v) => { setStudioView(v as StudioView); setCapFocus(null) } }
-                     : null} />
+                     : null}
+                 tail={place.kind === 'workspace' ? <WorkspaceMenu id={place.id} onRemoved={removedWorkspace} /> : null} />
+          )}
+          {leftovers.length > 0 && (
+            <button type="button" onClick={() => setLeftovers([])} className="w-full text-left">
+              <ErrorNote text={`本机已删，没清干净的：${leftovers.join('；')}`} className="rounded-none" />
+            </button>
           )}
           <div className="relative flex min-h-0 flex-1 flex-col">
             {settingsOpen
@@ -152,8 +173,10 @@ export default function App() {
 
 /** 页眉只属于当前地方：标题 + 走到哪 + 两个镜头的开关（工作区是看板 / 文件，编辑台是流程 / 能力），底下封面糊成一抹颜色
  *  （换工作区就换色）；门口宽屏不要页眉（画面铺满），窄屏留一条放入口。主题开关搬进了设置（P-25）。 */
-function Top({ place, title, note, menu, lens }: {
+function Top({ place, title, note, menu, lens, tail }: {
   place: Place; title: string; note: string | null; menu: ReactNode; lens: Lens | null
+  /** 镜头开关右边再放一个：工作区的「…」（删除工作区在里面） */
+  tail?: ReactNode
 }) {
   if (place.kind === 'door' && !menu) return null
   const picture = place.kind === 'studio' ? ASSETS.studio : place.kind === 'workspace' ? coverOf(place.id) : null
@@ -169,6 +192,7 @@ function Top({ place, title, note, menu, lens }: {
           </TabsList>
         </Tabs>
       )}
+      {tail}
     </header>
   )
   if (!picture) return <div className="shrink-0 border-b bg-card">{row}</div>
@@ -196,6 +220,7 @@ function MainView({ wsId, title, healthy, backends, view, focus, opened, onOpen,
       drawer={
         <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                     creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
+                    onRemove={async (id) => { await c.remove(id) }}
                     cover={coverOf(wsId)} title={title} />
       }
     />
@@ -242,11 +267,40 @@ function StudioPlace({ healthy, backends, view, focus, onFocus }: {
           drawer={
             <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                         creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
+                        onRemove={async (id) => { await c.remove(id) }}
                         cover={ASSETS.studio} title="编辑台" />
           }
         />
       )}>
       <Studio epoch={c.epoch} view={view} focus={focus} onFocus={onFocus} />
     </ChatPanel>
+  )
+}
+
+
+/** 工作区页眉右端的「…」：里面只有一件事——删除工作区（连产出、对话及其会话、机器上的镜像一起）；按住一秒才删 */
+function WorkspaceMenu({ id, onRemoved }: { id: string; onRemoved: (leftovers: string[]) => Promise<void> }) {
+  const [open, setOpen] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+  const remove = () => {
+    setFailed(null)
+    api.removeWorkspace(id)
+      .then(async (removed) => { setOpen(false); await onRemoved(removed.leftovers) })
+      .catch((exc: unknown) => setFailed(exc instanceof Error ? exc.message : String(exc)))
+  }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label="更多"><DotsThree weight="bold" /></Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[18rem] space-y-3 p-4">
+        <p className="text-[0.875rem] font-medium">删除工作区</p>
+        <p className="text-[0.75rem] text-muted-foreground">需求、原件、全部产出、对话及其会话、机器上的镜像一起删，回不来。</p>
+        <div className="flex items-center gap-3">
+          <HoldButton onHold={remove} doneLabel="已删除"><Trash className="size-3.5" />删除</HoldButton>
+          {failed && <span className="text-[0.75rem] text-bad">{failed}</span>}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

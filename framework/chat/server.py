@@ -78,10 +78,11 @@ from backends import (
     probe,
 )
 from framework import agents, computes, paths
-from framework.chat import boards, conversation, guide, scope, settings
-from framework.contracts import output, requirement, stages
+from framework.chat import boards, conversation, guide, removal, scope, settings
+from framework.contracts import output, requirement, stages, workflows
 from framework.contracts.capability import Capability
 from framework.workspace import jobs, outputs, root
+from framework.workspace import removal as ws_removal
 
 LOGGER = logging.getLogger("ai4sci.serve")
 MAX_BODY = 1 << 20
@@ -302,6 +303,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.server.check_workflow(body))
         if parts[:1] == ["settings"]:
             return self._post_settings(parts[1:], body)
+        if len(parts) == 3 and parts[0] == "workflows" and parts[2] == "remove":
+            try:
+                workflows.remove_workflow(paths.workflows_root(), parts[1])
+            except FileNotFoundError as exc:
+                return self._error(HTTPStatus.NOT_FOUND, str(exc))
+            except workflows.WorkflowInvalid as exc:  # 出厂的
+                return self._error(HTTPStatus.FORBIDDEN, str(exc))
+            return self._json({"removed": parts[1], "leftovers": []})
         if parts == ["workflows"]:
             if self.server.save_workflow is None:
                 return self._error(HTTPStatus.NOT_IMPLEMENTED, "这个服务没开存流程")
@@ -332,6 +341,8 @@ class Handler(BaseHTTPRequestHandler):
         if found is None:
             return None
         where, rest = found
+        if rest[-1:] == ["remove"]:
+            return self._post_remove(where, rest[:-1])
         if rest == ["chats"]:
             try:
                 knobs = self.server.knobs_of
@@ -525,6 +536,29 @@ class Handler(BaseHTTPRequestHandler):
                          if target.parent.name == "assets" else "no-cache")
         self.end_headers()
         self.wfile.write(data)
+
+    def _post_remove(self, where: scope.Scope, what: list[str]) -> None:
+        """删：对话（两个域都有）、产出、流程实例、整个工作区。拒是 409，没有是 404；
+        目录外没清干净的随 `leftovers` 回去，本机那部分已经删了。"""
+        ws = where.workspace
+        try:
+            if what[:1] == ["chats"] and len(what) == 2:
+                removed = removal.remove_chat(where, what[1], self.server.chat_factory)
+            elif ws is None:
+                return self._error(HTTPStatus.NOT_FOUND, f"编辑台下只有对话：{self.path}")
+            elif what == []:
+                removed = removal.remove_workspace(ws, self.server.chat_factory)
+            elif what[:1] == ["outputs"] and len(what) == 3:
+                removed = ws_removal.remove_output(ws, f"{what[1]}/{what[2]}")
+            elif what[:1] == ["flows"] and len(what) == 2:
+                removed = ws_removal.remove_flow(ws, what[1])
+            else:
+                return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
+        except (ws_removal.RemovalRefused, conversation.ConversationBusy) as exc:
+            return self._error(HTTPStatus.CONFLICT, str(exc))
+        except (conversation.ConversationNotFound, output.OutputNotFound, FileNotFoundError) as exc:
+            return self._error(HTTPStatus.NOT_FOUND, str(exc))
+        return self._json({"removed": removed.what, "leftovers": removed.leftovers})
 
     def _conversation(self, where: scope.Scope, chat_id: str) -> conversation.Conversation | None:
         try:

@@ -1,11 +1,12 @@
 // 需求确认之后的主页面：一条流程一张表。横向是流程经过的阶段（有什么阶段就几列），纵向是每一列跑过的每一次产出；
 // 断点是两列之间的一道线。右上角一句话说在等谁。流程没经过的阶段不出现；不在任何流程里的产出只在最底下一行「其它」。
-import { CheckCircle, Signature } from '@phosphor-icons/react'
+import { CheckCircle, Signature, Trash } from '@phosphor-icons/react'
 import { createElement, useState } from 'react'
 
 import { api } from '@/api/client'
 import type { FlowOutput, FlowPick, FlowProgress, FlowProgressItem, ResearchStage, WorkspaceDetail } from '@/api/types'
 import { Dot, ErrorNote, Problems } from '@/components/bits'
+import HoldButton from '@/components/reactbits/HoldButton'
 import { useSigner } from '@/lib/useSigner'
 import { stageIcon } from '@/lib/stages'
 import { cn } from '@/lib/utils'
@@ -75,6 +76,9 @@ function FlowTable({ workspace, flow, pending, nameOf, capsOf, onOpen, onChanged
             {sentence}
           </span>
           {flow.waiting === 'job' && flow.job && <StopKey workspace={workspace} jobId={flow.job.job_id} onChanged={onChanged} />}
+          {!flow.job && !(flow.items ?? []).some((i) => i.outputs.length > 0) && (
+            <RemoveFlowKey workspace={workspace} name={flow.name} onChanged={onChanged} />
+          )}
         </span>
       </header>
       {broken ? <div className="mt-3"><Problems items={flow.problems} /></div> : (
@@ -202,6 +206,22 @@ function StopKey({ workspace, jobId, onChanged }: { workspace: string; jobId: st
         {busy ? '停止中' : armed ? '确认停止' : '停止'}
       </button>
       {error && <ErrorNote text={error} />}
+    </span>
+  )
+}
+
+
+/** 删这条流程实例（主人 2026-09-22）：一次产出都没挂、没在跑才出现；按住一秒才删 */
+function RemoveFlowKey({ workspace, name, onChanged }: { workspace: string; name: string; onChanged: () => Promise<void> }) {
+  const [failed, setFailed] = useState<string | null>(null)
+  const remove = () => {
+    setFailed(null)
+    api.removeFlow(workspace, name).then(() => onChanged()).catch((exc: unknown) => setFailed(exc instanceof Error ? exc.message : String(exc)))
+  }
+  return (
+    <span className="flex items-center gap-2">
+      <HoldButton onHold={remove} doneLabel="已删除"><Trash className="size-3.5" />删除</HoldButton>
+      {failed && <span className="text-[0.75rem] text-bad">{failed}</span>}
     </span>
   )
 }
