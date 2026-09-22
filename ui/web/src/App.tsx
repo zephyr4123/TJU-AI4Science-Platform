@@ -2,26 +2,22 @@
 // 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的两个镜头——看板（需求没确认就是需求文档，确认了是一条流程
 // 一张表）与文件（盘上的目录树与文件内容，只读），页眉上切换，对话在右边两个镜头都在。编辑台是全局一个流程库，也是两个镜头——
 // 流程（画布）与能力（陈列与详情，外层 #112）——加流程助理的悬浮对话窗（外层 #100）；和工作区是两个平行的世界：地方栏上是一个
-// 开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。设置（P-25，外层 #134）是压在当前地方上的一块悬浮板，
-// 入口在地方栏的脚，主题开关也在里面。页面只是 `ai4sci serve` 的客户端。
-import { ChatsCircle } from '@phosphor-icons/react'
-import { useReducedMotion } from 'motion/react'
+// 开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。设置（P-25，外层 #134）是全局的一块，开着时地方的页眉让开，
+// 入口在地方栏的脚，主题开关也在里面。对话那块板两边同一个（chat/ChatPanel.tsx）。页面只是 `ai4sci serve` 的客户端。
 import { type ReactNode, useEffect, useState } from 'react'
 
 import { api, inWorkspace, STUDIO } from '@/api/client'
 import type { Backend } from '@/api/types'
 import { ASSETS, coverOf } from '@/assets'
 import { Board } from '@/board/Board'
+import { ChatPanel } from '@/chat/ChatPanel'
 import { ChatView } from '@/chat/ChatView'
 import { Band } from '@/components/Band'
 import { Scene } from '@/components/Scene'
-import SpecularButton from '@/components/reactbits/SpecularButton'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Files } from '@/files/Files'
 import { stageSentence } from '@/lib/humanize'
-import { useToken } from '@/lib/tokens'
 import { useChats } from '@/lib/useChats'
 import { useMediaQuery, WIDE } from '@/lib/useMediaQuery'
 import { useResource } from '@/lib/useResource'
@@ -188,13 +184,10 @@ function MainView({ wsId, title, healthy, backends, view, focus, opened, onOpen,
 }) {
   const scope = inWorkspace(wsId)
   const c = useChats(scope)
-  const wide = useMediaQuery(WIDE)
-  const [chatOpen, setChatOpen] = useState<boolean | null>(null)
-  const open = chatOpen ?? true
-  const chat = (
+  const chat = (close: () => void) => (
     <ChatView
       key={c.chatId ?? 'none'} scope={scope} chatId={c.chatId} current={c.current}
-      onClose={() => setChatOpen(false)}
+      onClose={close}
       autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning, backend) => void c.start(text, tuning, backend)}
       onTurnDone={c.turnDone}
       backends={backends}
@@ -220,65 +213,25 @@ function MainView({ wsId, title, healthy, backends, view, focus, opened, onOpen,
     return () => clearInterval(timer)
   }, [busy, reload])
   return (
-    <div className="relative flex min-h-0 flex-1">
-      <main className="relative min-w-0 flex-1">
-        {/* 两个镜头都常驻，切换只是显示 / 隐藏：不重新挂载、不重新拉数据，树的展开与滚动位置也都保住 */}
-        <div className={cn('relative h-full', view !== 'board' && 'hidden')}>
-          <Board workspace={wsId} doc={doc} caps={caps} skills={skills} opened={opened} onOpen={onOpen} onOpenFiles={onOpenFiles} />
-        </div>
-        <div className={cn('relative h-full', view !== 'files' && 'hidden')}>
-          <Files key={focus ?? ''} workspace={wsId} doc={doc} caps={caps} epoch={c.epoch} focus={focus} onOpenBoard={onOpenBoard} />
-        </div>
-        {!open && <ChatEntry onOpen={() => setChatOpen(true)} />}
-      </main>
-      {wide ? (
-        // 对话是一块悬在雾景上的板，不是一列（主人：border-l 一刀切出来的全高区域像拼上去的）：四周留 12px，
-        // 和文件镜头的内容面同一种材料——圆角、长而软的投影、一圈 6% 的 ring；板和看板之间露出的雾景就是分隔
-        <aside className={cn('relative h-full shrink-0 transition-[width] duration-200',
-                             open ? 'w-[31.5rem]' : 'w-0 overflow-hidden')}
-               aria-label="对话" aria-hidden={!open}>
-          <div className="relative my-3 mr-3 h-[calc(100%-1.5rem)] w-[30rem] overflow-hidden rounded-2xl bg-card shadow-[0_1px_2px_rgb(0_0_0/0.05),0_18px_44px_-22px_rgb(0_0_0/0.28)] ring-1 ring-foreground/[0.06]">
-            {chat}
-          </div>
-        </aside>
-      ) : (
-        <Sheet open={open} onOpenChange={setChatOpen}>
-          <SheetContent side="right"
-                        className="gap-0 p-0 data-[side=right]:w-[100vw] data-[side=right]:sm:w-[30rem] data-[side=right]:sm:max-w-[30rem]">
-            <SheetHeader className="sr-only"><SheetTitle>对话</SheetTitle></SheetHeader>
-            <div className="relative h-full">{chat}</div>
-          </SheetContent>
-        </Sheet>
-      )}
-    </div>
+    <ChatPanel chat={chat}>
+      {/* 两个镜头都常驻，切换只是显示 / 隐藏：不重新挂载、不重新拉数据，树的展开与滚动位置也都保住 */}
+      <div className={cn('relative h-full', view !== 'board' && 'hidden')}>
+        <Board workspace={wsId} doc={doc} caps={caps} skills={skills} opened={opened} onOpen={onOpen} onOpenFiles={onOpenFiles} />
+      </div>
+      <div className={cn('relative h-full', view !== 'files' && 'hidden')}>
+        <Files key={focus ?? ''} workspace={wsId} doc={doc} caps={caps} epoch={c.epoch} focus={focus} onOpenBoard={onOpenBoard} />
+      </div>
+    </ChatPanel>
   )
 }
 
-/** 对话收起后右下角的入口：一颗带字的玻璃键（主人：小圆钮太小、看不出是干什么的），工作区与编辑台同一颗 */
-export function ChatEntry({ onOpen }: { onOpen: () => void }) {
-  const still = useReducedMotion() === true
-  const indigo = useToken('--primary')
-  const card = useToken('--card')
-  const ink = useToken('--foreground')
-  return (
-    <div className="absolute right-5 bottom-5 z-10">
-      <SpecularButton size="lg" radius={18} tint={card} tintOpacity={0.78} blur={12} textColor={ink} lineColor={indigo} baseColor={ink}
-                      intensity={1.1} speed={still ? 0 : 0.35} followMouse={!still} autoAnimate={false} onClick={onOpen}
-                      className="shadow-lg ring-1 ring-foreground/10">
-        <span className="inline-flex items-center gap-2"><ChatsCircle weight="fill" className="size-5 text-primary" />打开对话</span>
-      </SpecularButton>
-    </div>
-  )
-}
-
-/** 编辑台：两个镜头铺满，流程助理的对话是右下角的悬浮窗（对话的状态在这儿，窗口在画布上）。 */
+/** 编辑台：两个镜头铺满，流程助理的对话是右边同一块板（与工作区同一个 ChatPanel）。 */
 function StudioPlace({ healthy, backends, view, focus, onFocus }: {
   healthy: boolean | null; backends: Backend[] | null; view: StudioView; focus: string | null; onFocus: (name: string | null) => void
 }) {
   const c = useChats(STUDIO)
   return (
-    <div className="flex min-h-0 flex-1">
-      <Studio epoch={c.epoch} view={view} focus={focus} onFocus={onFocus} chat={(close) => (
+    <ChatPanel chat={(close) => (
         <ChatView
           key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current} onClose={close}
           autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning, backend) => void c.start(text, tuning, backend)}
@@ -292,7 +245,8 @@ function StudioPlace({ healthy, backends, view, focus, onFocus }: {
                         cover={ASSETS.studio} title="编辑台" />
           }
         />
-      )} />
-    </div>
+      )}>
+      <Studio epoch={c.epoch} view={view} focus={focus} onFocus={onFocus} />
+    </ChatPanel>
   )
 }

@@ -9,7 +9,6 @@ import {
   ReactFlowProvider, useNodesState, useReactFlow,
 } from '@xyflow/react'
 import { ArrowsInLineHorizontal } from '@phosphor-icons/react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ChangeEvent, type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api } from '@/api/client'
@@ -17,7 +16,6 @@ import type { Capability, SkillEntry, StageInfo, Workflow, WorkflowCheck } from 
 import { ASSETS } from '@/assets'
 import { ErrorNote, Problems, Skeleton } from '@/components/bits'
 import GlassSurface from '@/components/reactbits/GlassSurface'
-import { ChatEntry } from '@/App'
 
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
@@ -49,8 +47,8 @@ type SetItems = (change: (items: Item[]) => Item[]) => void
 export type StudioView = 'flow' | 'caps'
 
 
-export function Studio({ epoch, chat, view, focus, onFocus }: {
-  epoch: number; chat: (close: () => void) => ReactNode
+export function Studio({ epoch, view, focus, onFocus }: {
+  epoch: number
   view: StudioView
   /** 「能力」镜头里打开的是哪个能力的详情（null 是陈列页）；从画布或配置板点名字过来时父组件同时切镜头 */
   focus: string | null
@@ -79,7 +77,6 @@ export function Studio({ epoch, chat, view, focus, onFocus }: {
       <div className={cn('relative h-full', view !== 'caps' && 'hidden')}>
         <Catalog stages={stages.data} catalog={catalog.data} skills={skills.data} focus={focus} onFocus={onFocus} />
       </div>
-      <ChatDock chat={chat} />
     </div>
   )
 }
@@ -176,29 +173,6 @@ function Heading({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) =
   )
 }
 
-/** 右下角：悬浮的对话窗默认开着（主人：对话默认展开，人手动关）；关了剩一枚带字的玻璃键（和工作区同一枚） */
-function ChatDock({ chat }: { chat: (close: () => void) => ReactNode }) {
-  const [open, setOpen] = useState(true)
-  const still = useReducedMotion() === true
-  const close = () => setOpen(false)
-  return (
-    <>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div key="window" style={{ transformOrigin: 'bottom right' }}
-                      initial={{ opacity: 0, scale: still ? 1 : 0.9, y: still ? 0 : 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: still ? 1 : 0.9, y: still ? 0 : 12 }} transition={{ duration: still ? 0 : 0.22, ease: [0.2, 0.8, 0.2, 1] }}
-                      className="absolute right-4 bottom-4 z-10 h-[min(38rem,calc(100dvh-9rem))] w-[26rem] max-w-[calc(100vw-2rem)]">
-            <GlassSurface borderRadius={22} height="100%" className="h-full shadow-lg">
-              <div className="h-full overflow-hidden rounded-[20px]">{chat(close)}</div>
-            </GlassSurface>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      {!open && <ChatEntry onOpen={() => setOpen(true)} />}
-    </>
-  )
-}
 
 /** 右上角：保存。从流程库载入的（或存过一次的）就是覆盖它自己；新拼的文件名从标题生成、避开库里已有的，所以没有「同名」这回事 */
 function Save({ draft, setDraft, names, ok, onSaved }: {

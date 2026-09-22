@@ -75,8 +75,8 @@ export function Composer({ busy, thinking, knobs, tuning, onTune, onSend, who }:
           />
           <div className="mt-3 flex items-center gap-2">
             {/* 工具位：两枚旋钮在左，上传以后排在它们后面 */}
-            {/* 窄的悬浮窗里三枚片放不下就折到下一行，片自己不许被压得字换行 */}
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {/* 三枚片一行排到底、不折行（主人 2026-09-22）；板是 30rem 的，三枚放得下 */}
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap">
               {who && who.options.length > 0 && (
                 <GlideSelect prefix="助理" ariaLabel="哪家助理" disabled={busy} value={who.value} className="shrink-0 whitespace-nowrap"
                              options={who.options.map((b) => ({ value: b.name, label: b.title }))}
