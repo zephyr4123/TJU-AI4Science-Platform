@@ -10,10 +10,12 @@ import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
 import { stageIcon } from '@/lib/stages'
 import { cn } from '@/lib/utils'
 
+import type { AbilityKind } from '@/api/types'
+
 import { WIDTH } from './model'
 
-/** 节点上一枚能力小片：名字直接显示、一行 hover、点了跳详情（P-21） */
-export interface CapChip { name: string; title: string; brief: string }
+/** 节点上一枚能力小片：名字直接显示、一行 hover、点了跳详情（P-21）；`kind` 是 tag——步骤靛色、skill 描边 */
+export interface CapChip { name: string; title: string; brief: string; kind: AbilityKind }
 export interface StageData extends Record<string, unknown> {
   n: number
   stage: string
@@ -86,7 +88,10 @@ export function StageNode({ data, selected }: NodeProps<StageNodeType>) {
               : data.caps.map((cap) => (
                 <li key={cap.name}>
                   <button type="button" title={cap.brief} onPointerDown={(e) => e.stopPropagation()} onClick={() => data.onOpenCap(cap.name)}
-                          className="nodrag rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.75rem] text-primary transition-colors hover:bg-primary/20 focus-visible:outline-2 focus-visible:outline-ring">
+                          className={cn('nodrag rounded-md px-1.5 py-0.5 text-[0.75rem] transition-colors focus-visible:outline-2 focus-visible:outline-ring',
+                                        cap.kind === 'skill'
+                                          ? 'text-foreground/80 ring-1 ring-inset ring-foreground/15 hover:bg-muted'
+                                          : 'bg-primary/10 text-primary hover:bg-primary/20')}>
                     {cap.title}
                   </button>
                 </li>

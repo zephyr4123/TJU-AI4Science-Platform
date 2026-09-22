@@ -13,7 +13,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ChangeEvent, type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api } from '@/api/client'
-import type { Capability, StageInfo, Workflow, WorkflowCheck } from '@/api/types'
+import type { Capability, SkillEntry, StageInfo, Workflow, WorkflowCheck } from '@/api/types'
 import { ASSETS } from '@/assets'
 import { ErrorNote, Problems, Skeleton } from '@/components/bits'
 import GlassSurface from '@/components/reactbits/GlassSurface'
@@ -59,10 +59,11 @@ export function Studio({ epoch, chat, view, focus, onFocus }: {
   const stages = useResource(api.stages, [])
   const workflows = useResource(api.workflows, [epoch])
   const catalog = useResource(api.capabilities, [])
-  const loading = [stages, workflows, catalog].some((r) => r.loading && !r.data)
-  const errors = [stages.error, workflows.error, catalog.error].filter((e): e is string => e !== null)
+  const skills = useResource(api.skills, [])
+  const loading = [stages, workflows, catalog, skills].some((r) => r.loading && !r.data)
+  const errors = [stages.error, workflows.error, catalog.error, skills.error].filter((e): e is string => e !== null)
   if (loading) return <div className="flex-1 p-6"><Skeleton lines={6} /></div>
-  if (!stages.data || !workflows.data || !catalog.data) {
+  if (!stages.data || !workflows.data || !catalog.data || !skills.data) {
     return <div className="flex-1 space-y-2 p-6">{errors.map((e) => <ErrorNote key={e} text={e} />)}</div>
   }
   return (
@@ -71,26 +72,30 @@ export function Studio({ epoch, chat, view, focus, onFocus }: {
       <Scene picture={ASSETS.studio} veil="mist" />
       <div className={cn('relative h-full', view !== 'flow' && 'hidden')}>
         <ReactFlowProvider>
-          <Editor stages={stages.data} workflows={workflows.data} catalog={catalog.data} onSaved={() => void workflows.reload()}
+          <Editor stages={stages.data} workflows={workflows.data} catalog={catalog.data} skills={skills.data} onSaved={() => void workflows.reload()}
                   onOpenCap={onFocus} />
         </ReactFlowProvider>
       </div>
       <div className={cn('relative h-full', view !== 'caps' && 'hidden')}>
-        <Catalog stages={stages.data} catalog={catalog.data} focus={focus} onFocus={onFocus} />
+        <Catalog stages={stages.data} catalog={catalog.data} skills={skills.data} focus={focus} onFocus={onFocus} />
       </div>
       <ChatDock chat={chat} />
     </div>
   )
 }
 
-function Editor({ stages, workflows, catalog, onSaved, onOpenCap }: {
-  stages: StageInfo[]; workflows: Workflow[]; catalog: Capability[]; onSaved: () => void; onOpenCap: (name: string) => void
+function Editor({ stages, workflows, catalog, skills, onSaved, onOpenCap }: {
+  stages: StageInfo[]; workflows: Workflow[]; catalog: Capability[]; skills: SkillEntry[]; onSaved: () => void; onOpenCap: (name: string) => void
 }) {
   const wide = useMediaQuery(WIDE)
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [selected, setSelected] = useState<number | null>(null)
   const setItems: SetItems = useCallback((change) => setDraft((d) => ({ ...d, items: change(d.items) })), [])
-  const chips = useMemo(() => new Map<string, CapChip>(catalog.map((c) => [c.name, { name: c.name, title: c.title, brief: c.brief }])), [catalog])
+  // 画布节点上的小片：步骤与 skill 都在一张表里，带 kind 让小片分得出来
+  const chips = useMemo(() => new Map<string, CapChip>([
+    ...catalog.map((c): [string, CapChip] => [c.name, { name: c.name, title: c.title, brief: c.brief, kind: '步骤' }]),
+    ...skills.map((s): [string, CapChip] => [s.name, { name: s.name, title: s.title, brief: s.brief, kind: 'skill' }]),
+  ]), [catalog, skills])
 
   // 边拼边查：形状同文件；空画布不问
   const doc = toDraft(draft)
@@ -109,7 +114,7 @@ function Editor({ stages, workflows, catalog, onSaved, onOpenCap }: {
   const load = (wf: Workflow) => { setDraft(fromWorkflow(wf)); setSelected(null) }
   const current = selected === null ? null : draft.items.find((it) => it.uid === selected) ?? null
   const inspector = current && (
-    <Inspector key={current.uid} item={current} catalog={catalog} onOpenCap={onOpenCap}
+    <Inspector key={current.uid} item={current} catalog={catalog} skills={skills} onOpenCap={onOpenCap}
                onChange={(next) => setItems((items) => patch(items, next.uid, () => next))} />
   )
 
@@ -263,7 +268,7 @@ function Canvas({ items, chips, perItem, selected, onSelect, setItems, onOpenCap
         const problems = perItem.get(i) ?? []
         const onRemove = () => setItems((all) => remove(all, item.uid))
         if (item.kind === 'stop') return { ...base, type: 'stop', data: { n: i + 1, note: item.note, problems, onRemove } }
-        const caps = item.caps.map((p) => chips.get(p.cap) ?? { name: p.cap, title: p.cap, brief: '' })
+        const caps = item.caps.map((p) => chips.get(p.cap) ?? { name: p.cap, title: p.cap, brief: '', kind: '步骤' as const })
         return { ...base, type: 'stage', data: { n: i + 1, stage: item.stage, caps, problems, onRemove, onOpenCap } }
       })
     })

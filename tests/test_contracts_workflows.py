@@ -31,6 +31,9 @@ def catalog():
     return {name: module.DESCRIPTOR for name, module in discover().items()}
 
 
+SKILLS = frozenset({"pdf", "download"})
+
+
 def write(tmp_path, text: str) -> None:
     (tmp_path / "w.yaml").write_text(text, encoding="utf-8")
 
@@ -39,9 +42,16 @@ def test_shipped_workflow_is_one_line_from_design_to_verification():
     found = workflows.load_workflows(paths.workflows_root())
     assert [wf.name for wf in found] == ["reproduce", "research"]
     repro, wf = found
-    assert workflows.workflow_problems(repro, catalog()) == [] and workflows.remarks(repro) == []
+    assert workflows.workflow_problems(repro, catalog(), SKILLS) == []
+    assert workflows.remarks(repro) == []
     assert repro.covered == ["文献", "设计", "分析", "验证"]
-    assert repro.caps == ["reproduction", "reproducibility"]
+    # 文献格挂的是两个 skill（能力库里 tag 为 skill 的那一半），不认 skill 时就是「没有这个能力」
+    assert repro.caps == ["pdf", "download", "reproduction", "reproducibility"]
+    assert [p for p in workflows.workflow_problems(repro, catalog()) if "pdf" in p]
+    # 文献格上只有 skill：跑这一阶段的步骤按阶段对，不按名字（格子上的 skill 不算点名）
+    assert workflows.matching_step(repro, "reproduction", "设计", skills=SKILLS) == 1
+    assert workflows.matching_step(repro, "anything", "文献", skills=SKILLS) == 0
+    assert workflows.matching_step(repro, "anything", "文献") is None
     assert workflows.workflow_problems(wf, catalog()) == [] and workflows.remarks(wf) == []
     assert wf.covered == ["设计", "实验", "分析", "验证"]
     assert wf.caps == ["auto-research"]  # 只点名了实验阶段；别的间由助理看着办
@@ -88,6 +98,7 @@ def test_describe_dir_keeps_a_broken_file_as_a_problem_row(tmp_path):
 def test_used_by_is_looked_up_from_the_files():
     found = workflows.load_workflows(paths.workflows_root())
     assert workflows.used_by(found) == {"auto-research": ["research"],
+                                        "pdf": ["reproduce"], "download": ["reproduce"],
                                         "reproduction": ["reproduce"],
                                         "reproducibility": ["reproduce"]}
 
@@ -110,8 +121,8 @@ def test_a_capability_must_sit_in_its_own_room(tmp_path):
     problems = workflows.workflow_problems(wf, catalog())
     assert problems == [
         "第 3 项「设计」里的 verify 属于「验证」阶段，不能放在「设计」阶段里",
-        "第 3 项「设计」里的 nope：没有这个能力（有的：['analysis', 'auto-research', 'design', "
-        "'reproducibility', 'reproduction', 'verify']）"]
+        "第 3 项「设计」里的 nope：没有这个能力（步骤：['analysis', 'auto-research', 'design', "
+        "'reproducibility', 'reproduction', 'verify']；skill：[]）"]
 
 
 def test_any_order_of_stages_is_fine_including_going_back(tmp_path):
@@ -190,3 +201,29 @@ def test_layout_is_optional_and_round_trips(tmp_path):
     with pytest.raises(workflows.WorkflowInvalid, match="layout 要是与 stages 一样长"):
         workflows.load_workflows(tmp_path)
 
+
+
+def test_a_skill_hangs_on_any_stage_without_params_and_is_tagged(tmp_path):
+    """主人 2026-09-22：skill 是能力的一种（tag skill）。哪个阶段都能挂、不带参数；响应体给每个名字
+    标 kind，步骤与 skill 不许重名（framework/abilities.py 查）。"""
+    write(tmp_path, GOOD.replace("- 设计: [design]", "- 设计: [design, pdf]")
+          .replace("- 验证", "- 验证: {download: {depth: 1}}"))
+    [wf] = workflows.load_workflows(tmp_path)
+    problems = workflows.workflow_problems(wf, catalog(), SKILLS)
+    assert problems == ["第 6 项「验证」里的 download 是 skill，不带参数：它的参数在调用时给"]
+    [described] = workflows.describe([wf], catalog(), SKILLS)
+    assert described["stages"][2]["caps"] == [{"cap": "design", "with": {}, "kind": "步骤"},
+                                              {"cap": "pdf", "with": {}, "kind": "skill"}]
+    # 不认 skill：既不是步骤也不是 skill，报错里两半都列出来
+    [problem, *_] = workflows.workflow_problems(wf, catalog())
+    assert "没有这个能力" in problem and "skill：[]" in problem
+    # 存回文件还是最短写法，skill 与步骤混在一个清单里
+    doc = {**yaml.safe_load(GOOD), "name": "w", "stages": ["文献", {"设计": ["design", "pdf"]}]}
+    saved = workflows.save_workflow(tmp_path / "lib", doc, catalog(), skills=SKILLS)
+    text = (tmp_path / "lib" / "w.yaml").read_text(encoding="utf-8")
+    assert text.endswith("- 设计:\n  - design\n  - pdf\n")
+    assert saved.caps == ["design", "pdf"]
+    with pytest.raises(workflows.WorkflowInvalid, match="skill：\\['pdf'\\]"):
+        workflows.save_workflow(tmp_path / "lib2", {**yaml.safe_load(GOOD), "name": "w",
+                                                    "stages": [{"文献": ["nope"]}]},
+                                catalog(), skills={"pdf"})

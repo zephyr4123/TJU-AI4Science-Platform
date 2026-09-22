@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 import mimetypes
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +52,8 @@ def workspace_summary(workspace: Workspace) -> dict[str, Any]:
             "running": len(jobs.running_jobs(workspace.jobs))}
 
 
-def workspace_detail(workspace: Workspace, catalog: dict[str, Capability]) -> dict[str, Any]:
+def workspace_detail(workspace: Workspace, catalog: dict[str, Capability],
+                     skills: Collection[str] = ()) -> dict[str, Any]:
     """主页面要的一整份：需求 + 七个阶段各自的产出 + 每条流程实例的进度 + 作业。"""
     found = outputs.list_outputs(workspace)
     briefs = {meta.id: output_brief(directory, meta) for directory, meta in found}
@@ -59,12 +61,13 @@ def workspace_detail(workspace: Workspace, catalog: dict[str, Capability]) -> di
                "outputs": [b for b in briefs.values() if b["stage"] == s.slug]}
               for s in STAGES]
     flows = []
-    for described in workflows.describe_dir(workspace.flows, catalog):
+    kinds = workflows.kinds_of(catalog, skills)
+    for described in workflows.describe_dir(workspace.flows, catalog, skills):
         if described["problems"]:
             flows.append(described)
             continue
         wf = workflows.load_workflow(workspace.flows / f"{described['name']}.yaml")
-        flows.append({**described, **progress.flow_progress(workspace, wf, found)})
+        flows.append({**described, **progress.flow_progress(workspace, wf, found, kinds)})
     return {**workspace_summary(workspace), "requirement": requirement_detail(workspace),
             "stages": stages, "flows": flows,
             "jobs": [job.to_dict() for job in jobs.list_jobs(workspace.jobs)]}

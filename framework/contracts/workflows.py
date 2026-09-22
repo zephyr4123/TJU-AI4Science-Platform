@@ -15,12 +15,16 @@
       - 分析: [analysis]                         # 点名但不带参数也行
       - 验证
       - 断点: 验收
+      - 文献: [pdf, download]                    # 挂 skill 也是这个写法：这一步推荐的工具，不带参数
     layout:                      # 可选：画布上每一项的坐标，与 stages 一样长；框架只原样存取
       - [0, 0]
       - [264, 0]
 
 断点是开放的：几个、放哪由流程定——端到端全自动的流程一个没有，步步确认的流程每步一个。含义只有一个：
 前一个阶段的产出要人签（产出目录里的 signed.json）了，下游能力才能 `--from` 它。
+一格上挂的名字有两种（`framework/abilities.py`）：步骤（描述符，得属于那个阶段、参数按描述符核对）
+与 skill（任何阶段都能挂、不带参数——它的参数在调用时给）；`describe` 给每个名字标 `kind`，页面与
+`show flows` 照着分开画。
 阶段之间没有显式的输入输出接口：检查只看阶段名对不对、点名的能力在不在那个阶段、参数名与类型对不对、断点位置合不合法
 （不能开头就是断点、不能两个断点挨着）。一个阶段里要的东西盘上有没有，是那个能力开始执行时自己查的（P-7）。
 """
@@ -28,7 +32,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -39,6 +43,9 @@ from framework.contracts.capability import PARAM_TYPES, Capability
 from framework.contracts.stages import STAGE_NAMES as STAGES
 
 STOP = "断点"
+# 格子上挂的名字的两种 tag（framework/abilities.py 是出处；这里只是响应体里的两个词）
+KIND_STEP = "步骤"
+KIND_SKILL = "skill"
 # 文件名就是流程的名字（P-13）：小写英文加连字符，页面存流程时也按这个拒
 NAME_RE = re.compile(r"[a-z][a-z0-9-]*")
 
@@ -66,8 +73,13 @@ class Stage:
     stage: str
     picks: tuple[Pick, ...] = ()
 
-    def to_dict(self) -> dict[str, Any]:
-        return {"kind": "stage", "stage": self.stage, "caps": [p.to_dict() for p in self.picks]}
+    def to_dict(self, kinds: dict[str, str] | None = None) -> dict[str, Any]:
+        """`kinds` 是名字 → 步骤 / skill；给了就每个名字标上，页面与终端照着分开画。"""
+        caps = [p.to_dict() for p in self.picks]
+        if kinds is not None:
+            for cap in caps:
+                cap["kind"] = kinds.get(cap["cap"])
+        return {"kind": "stage", "stage": self.stage, "caps": caps}
 
 
 @dataclass(frozen=True)
@@ -103,9 +115,10 @@ class Workflow:
                 out.append(r.stage)
         return out
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, kinds: dict[str, str] | None = None) -> dict[str, Any]:
         return {"name": self.name, "title": self.title, "summary": self.summary,
-                "stages": [r.to_dict() for r in self.stages],
+                "stages": [r.to_dict(kinds) if isinstance(r, Stage) else r.to_dict()
+                           for r in self.stages],
                 "layout": [list(xy) for xy in self.layout] if self.layout else None}
 
 
@@ -227,13 +240,13 @@ def _picks(label: str, raw: Any) -> tuple[Pick, ...]:
 
 
 def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability], *,
-                  overwrite: bool = False) -> Workflow:
+                  skills: Collection[str] = (), overwrite: bool = False) -> Workflow:
     """编辑台存一条流程：形状与检查都过了才写 `<root>/<name>.yaml`；已有同名不覆盖，除非明说。
 
     存的是页面交来的原样映射（只留认识的键），YAML 里中文原样、键序照给。
     """
     workflow = parse_workflow(f"{raw.get('name')}.yaml", raw)
-    problems = workflow_problems(workflow, catalog)
+    problems = workflow_problems(workflow, catalog, skills)
     if problems:
         raise WorkflowInvalid(f"{workflow.name}.yaml: " + "；".join(problems))
     path = Path(root) / f"{workflow.name}.yaml"
@@ -273,8 +286,10 @@ def _item_doc(item: Stage | Stop) -> Any:
     return {item.stage: {p.cap: (dict(p.with_) or None) for p in item.picks}}
 
 
-def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> list[str]:
-    """点名的能力都在清单里、都属于那个阶段、参数对得上描述符。空清单表示通。"""
+def workflow_problems(workflow: Workflow, catalog: dict[str, Capability],
+                      skills: Collection[str] = ()) -> list[str]:
+    """点名的能力都在库里：步骤得属于那个阶段、参数对得上描述符；skill 哪个阶段都能挂、不带参数。
+    空清单表示通。"""
     problems: list[str] = []
     for i, item in enumerate(workflow.stages, start=1):
         if not isinstance(item, Stage):
@@ -282,8 +297,13 @@ def workflow_problems(workflow: Workflow, catalog: dict[str, Capability]) -> lis
         for pick in item.picks:
             cap = catalog.get(pick.cap)
             label = f"第 {i} 项「{item.stage}」里的 {pick.cap}"
+            if cap is None and pick.cap in skills:
+                if pick.with_:
+                    problems.append(f"{label} 是 skill，不带参数：它的参数在调用时给")
+                continue
             if cap is None:
-                problems.append(f"{label}：没有这个能力（有的：{sorted(catalog)}）")
+                problems.append(f"{label}：没有这个能力（步骤：{sorted(catalog)}；"
+                                f"skill：{sorted(skills)}）")
                 continue
             if cap.stage != item.stage:
                 problems.append(
@@ -330,20 +350,23 @@ def stop_after(workflow: Workflow, index: int) -> Stop | None:
     return None
 
 
-def matching_step(workflow: Workflow, cap: str, stage: str, after: int = -1) -> int | None:
-    """一个能力跑在这条流程的第几项（0 起）：`after` 之后第一个阶段对得上的项——点了名看名字，
-    没点名看阶段。
+def matching_step(workflow: Workflow, cap: str, stage: str, after: int = -1,
+                  skills: Collection[str] = ()) -> int | None:
+    """一个步骤跑在这条流程的第几项（0 起）：`after` 之后第一个阶段对得上的项——点了名看名字，
+    没点名看阶段。格子上挂的 skill 不算点名（那是这一步推荐的工具，不是谁来跑这一步）。
     流程里没有它就是 None。"""
     for i in range(after + 1, len(workflow.stages)):
         item = workflow.stages[i]
         if not isinstance(item, Stage):
             continue
-        if (any(p.cap == cap for p in item.picks) if item.picks else item.stage == stage):
+        named = [p.cap for p in item.picks if p.cap not in skills]
+        if (cap in named if named else item.stage == stage):
             return i
     return None
 
 
-def describe_dir(root: Path, catalog: dict[str, Capability]) -> list[dict[str, Any]]:
+def describe_dir(root: Path, catalog: dict[str, Capability],
+                 skills: Collection[str] = ()) -> list[dict[str, Any]]:
     """目录里每个文件一条：读得出来的带 covers / remarks / problems；读不出来的（形状不对、YAML 坏）
     也占一条，名字是文件名，problems 里是那句原因。一个坏文件不能让整张清单打不开——研究助理
     在工作区 flows/ 里随手写个只有一行的文件，主页面就整个「Failed to fetch」，实测撞过。"""
@@ -355,14 +378,22 @@ def describe_dir(root: Path, catalog: dict[str, Capability]) -> list[dict[str, A
             out.append({"name": path.stem, "title": path.stem, "summary": "", "stages": [],
                         "covers": [], "remarks": [], "problems": [str(exc)]})
             continue
-        out += describe([wf], catalog)
+        out += describe([wf], catalog, skills)
     return out
 
 
-def describe(workflows: Sequence[Workflow], catalog: dict[str, Capability]) -> list[dict[str, Any]]:
-    """给页面与 `show workflows` 的响应体：每条流程带它走过的阶段、提醒与问题清单。"""
-    return [{**wf.to_dict(), "covers": wf.covered, "remarks": remarks(wf),
-             "problems": workflow_problems(wf, catalog)} for wf in workflows]
+def kinds_of(catalog: dict[str, Capability], skills: Collection[str]) -> dict[str, str]:
+    """名字 → 步骤 / skill，给响应体标 kind 用。"""
+    return {**dict.fromkeys(catalog, KIND_STEP), **dict.fromkeys(skills, KIND_SKILL)}
+
+
+def describe(workflows: Sequence[Workflow], catalog: dict[str, Capability],
+             skills: Collection[str] = ()) -> list[dict[str, Any]]:
+    """给页面与 `show workflows` 的响应体：每条流程带它走过的阶段（格子上每个名字标 kind）、提醒与
+    问题清单。"""
+    kinds = kinds_of(catalog, skills)
+    return [{**wf.to_dict(kinds), "covers": wf.covered, "remarks": remarks(wf),
+             "problems": workflow_problems(wf, catalog, skills)} for wf in workflows]
 
 
 def used_by(workflows: Sequence[Workflow]) -> dict[str, list[str]]:

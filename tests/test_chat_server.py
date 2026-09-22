@@ -165,6 +165,7 @@ def test_everything_named_in_the_page_api_carries_a_readable_name(tmp_path, monk
     把页面会读的端点走一遍。"""
     monkeypatch.setenv("AI4SCI_HOME", str(tmp_path))
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=serve_cli._catalog,
+                        skills=serve_cli._skills, skill_names=serve_cli._skill_names,
                         workflows=serve_cli._workflows, check_workflow=serve_cli._check_workflow,
                         descriptors=serve_cli._descriptor_map, stage_table=stage_table,
                         system_prompts=PROMPTS)
@@ -181,6 +182,29 @@ def test_everything_named_in_the_page_api_carries_a_readable_name(tmp_path, monk
         caps = json.loads(call(base, "/cap")[2])
         assert {c["name"]: c["title"] for c in caps}["auto-research"] == "AutoResearch"
         assert all(c["brief"] and all(p["label"] for p in c["params"]) for c in caps)
+        # 能力库的两半各带 tag：/cap 是步骤，/skills 是 skill（名字、一行、正文、脚本、used_by）
+        assert {c["kind"] for c in caps} == {"步骤"}
+        status, _, body = call(base, "/skills")
+        skills = {s["name"]: s for s in json.loads(body)}
+        assert status == 200 and {"pdf", "download"} <= set(skills)
+        assert skills["pdf"]["kind"] == "skill" and skills["pdf"]["title"] == "pdf"
+        assert skills["pdf"]["brief"] and skills["pdf"]["body"] and skills["pdf"]["scripts"]
+        assert skills["pdf"]["used_by"] == ["reproduce"]
+        flows = {w["name"]: w for w in json.loads(call(base, "/workflows")[2])}
+        assert flows["reproduce"]["stages"][0]["caps"] == [
+            {"cap": "pdf", "with": {}, "kind": "skill"},
+            {"cap": "download", "with": {}, "kind": "skill"}]
+        assert flows["reproduce"]["stages"][1]["caps"][0]["kind"] == "步骤"
+        # 工作区里取来的实例：进度里的格子同样带 kind（看板按它分两行画）
+        instance = tmp_path / "workspaces" / "w1" / "flows" / "reproduce.yaml"
+        instance.parent.mkdir(parents=True, exist_ok=True)
+        instance.write_text((paths.workflows_root() / "reproduce.yaml").read_text(encoding="utf-8"),
+                            encoding="utf-8")
+        [taken] = json.loads(call(base, "/workspaces/w1/flows")[2])
+        assert taken["problems"] == []
+        assert [c["kind"] for c in taken["items"][0]["caps"]] == ["skill", "skill"]
+        assert taken["items"][1]["caps"][0]["kind"] == "步骤"
+
     finally:
         server.shutdown()
         server.server_close()

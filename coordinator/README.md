@@ -44,7 +44,9 @@ literature/ hypothesis/ design/ experiment/ analysis/ writing/ verification/
 | 分析 | `reproducibility` 复现性分析 | `--from design/<n>`（原码复现基线跑过的）+ `--from literature/<m>` | 论文值 vs 我们的值、复现到第几级、环境差异、偏离与改动、容易与困难，写 analysis.md |
 | 验证 | `verify` 数字核对 | `--from analysis/<n>` + 它读的实验（或设计） | 零模型：分析里的数回溯到 results.json（复现性分析回溯到 baseline/ 与论文值），账本与 git 对账，PASS / FAIL |
 
-文献、假设、写作三个阶段还没有能力。流程里排了这些阶段，你自己写：`ai4sci output new <stage> --title <一句>`（要读谁就加 `--from`）开一个产出目录，然后往里写文件（文献笔记、假设、稿子）。文献阶段的主文件叫 `sources.md`（材料来源）：复现那条流程里下游按这个名字找，写法不限。
+能力有两种 tag，`ai4sci show caps` 与 `show flows` 都标出来：**步骤**（上表这些，`ai4sci cap <name>`，框架开产出目录、起执行层）与 **skill**（`ai4sci skill run <name>`，教你怎么做一件事的指南 + 脚本，随手用、不开编号产出——「工具包」一节列的就是它们）。流程的格子上两种都能挂：`文献(pdf[skill],download[skill])` 的意思是这一步推荐用这两个 skill，不是让你 `cap`；没挂的 skill 照样能用。
+
+文献、假设、写作三个阶段还没有步骤。流程里排了这些阶段，你自己写：`ai4sci output new <stage> --title <一句>`（要读谁就加 `--from`）开一个产出目录，然后往里写文件（文献笔记、假设、稿子）。文献阶段的主文件叫 `sources.md`（材料来源）：复现那条流程里下游按这个名字找，写法不限。
 
 **能力是纯函数**：读 `--from` 点名的产出，在自己的阶段下开一次新产出。它不看「最新」——选读哪几次是你的事，`ai4sci show workspace` 看每个阶段有哪几次、成没成、签没签。同一个阶段可以有很多次产出（实验跑三次就是 experiment/1、2、3），分析可以读几次实验（`--from experiment/1 --from experiment/2`）。产出被下游读过或被签过就冻住，改了框架按 hash 查得出并拒读；要改就新开一次。`auto-research` 与 `design` 可以接着上一次干：`--continue <id>`（接着跑一批、喂回修改意见），那还是同一次产出。
 

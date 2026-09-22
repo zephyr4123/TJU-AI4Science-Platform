@@ -113,8 +113,13 @@ export interface FlowOutput {
   signed_stale: boolean
 }
 
+/** 能力的两个 tag（主人 2026-09-22）：步骤 = 描述符，走到那一格框架起执行层、开产出；skill = SKILL.md，随手用、不开产出 */
+export type AbilityKind = '步骤' | 'skill'
+/** 流程的一格上挂的一个名字：`kind` 由后端按库标（不认识的名字是 null，problems 里会说） */
+export interface FlowPick { cap: string; with: Record<string, unknown>; kind?: AbilityKind | null }
+
 export type FlowProgressItem =
-  | { kind: 'stage'; index: number; stage: ResearchStage; caps: { cap: string; with: Record<string, unknown> }[]; outputs: FlowOutput[] }
+  | { kind: 'stage'; index: number; stage: ResearchStage; caps: FlowPick[]; outputs: FlowOutput[] }
   | { kind: 'stop'; index: number; note: string; outputs: FlowOutput[]; signed: boolean }
 
 /** 在等谁：作业 / 人签 / 助理 / 走完 */
@@ -316,9 +321,10 @@ export interface CapabilityParam {
   in_flow?: boolean
 }
 
-/** 一颗能力：一个阶段里的一件活，对助理就是一条命令。五栏是给人读的机制说明（纲领 P-18）。 */
+/** 能力库里 tag 为步骤的一条：一个阶段里的一件活，对助理就是一条命令。五栏是给人读的机制说明（纲领 P-18）。 */
 export interface Capability {
   name: string
+  kind: '步骤'
   /** 属于哪个阶段：标签，不定先后；`stage_slug` 是那个阶段的目录名 */
   stage: ResearchStage
   stage_slug: string
@@ -341,9 +347,22 @@ export interface Capability {
   used_by: string[]
 }
 
+/** 能力库里 tag 为 skill 的一条（`GET /skills`）：名字就是页面上的名，一行是 SKILL.md 的 description，
+ *  正文是 SKILL.md 去掉 frontmatter；哪个阶段都能挂到流程的格子上 */
+export interface SkillEntry {
+  name: string
+  kind: 'skill'
+  title: string
+  brief: string
+  library: string
+  body: string
+  scripts: string[]
+  used_by: string[]
+}
+
 /** 流里的一项：一个阶段（可点名能力、带参数），或一个断点（前一项的产出要人签了下游才能读）。 */
 export type FlowItem =
-  | { kind: 'stage'; stage: ResearchStage; caps: { cap: string; with: Record<string, unknown> }[] }
+  | { kind: 'stage'; stage: ResearchStage; caps: FlowPick[] }
   | { kind: 'stop'; note: string }
 
 /** 编辑台交给 `POST /workflows`（存）与 `POST /workflows/check`（只查）的一条流：形状同文件。

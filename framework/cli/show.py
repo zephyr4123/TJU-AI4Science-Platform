@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from framework import computes, paths
-from framework.capabilities import discover
+from framework.capabilities import abilities, discover
 from framework.chat import boards
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, current_workspace
 from framework.cli.workspace import read_template
@@ -39,7 +39,7 @@ def cmd_workspace(args: argparse.Namespace) -> int:
     ws = current_workspace()
     if isinstance(ws, int):
         return ws
-    detail = boards.workspace_detail(ws, _catalog())
+    detail = boards.workspace_detail(ws, _catalog(), _skills())
     if args.json:
         print(json.dumps(boards.jsonable(detail), ensure_ascii=False, indent=2))
         return EXIT_OK
@@ -170,8 +170,10 @@ def cmd_caps(args: argparse.Namespace) -> int:
     # 坏掉的流程文件不算进反查；坏在哪由 show workflows 报
     uses = workflows.used_by(workflows.load_valid(paths.workflows_root()))
     if args.json:
-        print(json.dumps([{**d.to_dict(), "used_by": uses.get(d.name, [])} for d in descriptors],
-                         ensure_ascii=False, indent=2))
+        rows = [{**d.to_dict(), "kind": abilities.KIND_STEP, "used_by": uses.get(d.name, [])}
+                for d in descriptors]
+        rows += [{**e, "used_by": uses.get(e["name"], [])} for e in abilities.skill_entries()]
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
         return EXIT_OK
     for stage in STAGES:
         caps = [d for d in descriptors if d.stage == stage.name]
@@ -184,11 +186,21 @@ def cmd_caps(args: argparse.Namespace) -> int:
                   f"\tused_by={','.join(uses.get(d.name, [])) or '-'}")
             for key, label in COLUMNS:
                 print(f"  {label}：{getattr(d, key)}")
+    # 能力库的另一半：tag 为 skill 的，哪个阶段都能挂、随手用（ai4sci skill show <name> 看全文）
+    for entry in abilities.skill_entries():
+        used = ",".join(uses.get(entry["name"], [])) or "-"
+        print(f"skill\t{entry['name']}\t{entry['brief']}\tused_by={used}")
     return EXIT_OK
 
 
 def _catalog():
-    return {name: module.DESCRIPTOR for name, module in discover().items()}
+    return abilities.steps()
+
+
+def _skills() -> frozenset[str]:
+    names = abilities.skill_names()
+    abilities.check_disjoint(set(discover()), names)
+    return names
 
 
 def cmd_workflows(args: argparse.Namespace) -> int:
@@ -205,7 +217,8 @@ def cmd_flows(args: argparse.Namespace) -> int:
 
 
 def _print_flows(root_dir: Path, as_json: bool) -> int:
-    found = workflows.describe_dir(root_dir, _catalog())  # 坏文件也是一条，problems 里说原因
+    # 坏文件也是一条，problems 里说原因
+    found = workflows.describe_dir(root_dir, _catalog(), _skills())
     if as_json:
         print(json.dumps(found, ensure_ascii=False, indent=2))
     else:
@@ -220,10 +233,12 @@ def _print_flows(root_dir: Path, as_json: bool) -> int:
 
 
 def _stage_word(item: dict) -> str:
-    """一项一个词：阶段名（点了名带能力），断点画成 ◆（带一句话就写）。"""
+    """一项一个词：阶段名（点了名带能力，skill 标 `[skill]`——它是这一步推荐的工具，
+    `ai4sci skill run`，不是 `cap`），断点画成 ◆（带一句话就写）。"""
     if item["kind"] == "stop":
         return f"◆{item['note'] or ''}"
-    picks = ",".join(c["cap"] for c in item["caps"])
+    picks = ",".join(c["cap"] + ("[skill]" if c.get("kind") == workflows.KIND_SKILL else "")
+                     for c in item["caps"])
     return f"{item['stage']}({picks})" if picks else item["stage"]
 
 

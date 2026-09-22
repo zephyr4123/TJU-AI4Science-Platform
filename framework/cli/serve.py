@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from framework import paths
-from framework.capabilities import discover, stage_table
+from framework.capabilities import abilities, discover, stage_table
 from framework.chat import guide, settings
 from framework.chat.server import ChatServer
 from framework.cli import compute as compute_cli
@@ -38,18 +38,32 @@ def _add_compute(body: dict) -> dict:
 
 
 def _descriptors() -> dict[str, object]:
-    return {name: module.DESCRIPTOR for name, module in discover().items()}
+    return abilities.steps()
+
+
+def _skill_names() -> frozenset[str]:
+    """两处库里 skill 的名字；与步骤重名当场报，不让页面拿到分辨不出的清单。"""
+    names = abilities.skill_names()
+    abilities.check_disjoint(set(discover()), names)
+    return names
 
 
 def _catalog() -> list[dict]:
-    """与 `ai4sci show caps --json` 同一个形状：描述符加反查出来的 used_by。"""
+    """与 `ai4sci show caps --json` 同一个形状：步骤描述符加 tag 与反查出来的 used_by。"""
     uses = workflows.used_by(workflows.load_valid(paths.workflows_root()))
-    return [{**module.DESCRIPTOR.to_dict(), "used_by": uses.get(name, [])}
-            for name, module in discover().items()]
+    return [{**module.DESCRIPTOR.to_dict(), "kind": abilities.KIND_STEP,
+             "used_by": uses.get(name, [])} for name, module in discover().items()]
+
+
+def _skills() -> list[dict]:
+    """能力库里 tag 为 skill 的那些：名字、一行、SKILL.md 正文、脚本名，加反查出来的 used_by。"""
+    uses = workflows.used_by(workflows.load_valid(paths.workflows_root()))
+    return [{**entry, "used_by": uses.get(entry["name"], [])}
+            for entry in abilities.skill_entries()]
 
 
 def _workflows() -> list[dict]:
-    return workflows.describe_dir(paths.workflows_root(), _descriptors())
+    return workflows.describe_dir(paths.workflows_root(), _descriptors(), _skill_names())
 
 
 def _descriptor_map() -> dict[str, object]:
@@ -58,10 +72,11 @@ def _descriptor_map() -> dict[str, object]:
 
 def _save_workflow(doc: dict) -> dict:
     """编辑台存流程：核对形状与通不通，写进库，回它在清单里的样子。"""
-    catalog = _descriptors()
+    catalog, skills = _descriptors(), _skill_names()
     overwrite = bool(doc.pop("overwrite", False))
-    saved = workflows.save_workflow(paths.workflows_root(), doc, catalog, overwrite=overwrite)
-    [described] = workflows.describe([saved], catalog)
+    saved = workflows.save_workflow(paths.workflows_root(), doc, catalog, skills=skills,
+                                    overwrite=overwrite)
+    [described] = workflows.describe([saved], catalog, skills)
     return described
 
 
@@ -79,7 +94,7 @@ def _check_workflow(doc: dict) -> dict:
         # 文件名前缀是给终端看的；页面上这条流程还没有文件
         return {"covers": [], "remarks": [], "problems": [str(exc).removeprefix(f"{name}.yaml: ")]}
     return {"covers": workflow.covered, "remarks": workflows.remarks(workflow),
-            "problems": workflows.workflow_problems(workflow, catalog)}
+            "problems": workflows.workflow_problems(workflow, catalog, _skill_names())}
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -93,6 +108,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     setup_logging()
     try:
         server = ChatServer((args.host, args.port), home=paths.home(), catalog=_catalog,
+                            skills=_skills, skill_names=_skill_names,
                             workflows=_workflows, check_workflow=_check_workflow,
                             save_workflow=_save_workflow, descriptors=_descriptor_map,
                             stage_table=stage_table, add_compute=_add_compute, ui_dir=ui_dir)

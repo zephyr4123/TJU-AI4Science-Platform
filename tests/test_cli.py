@@ -402,8 +402,12 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
     proc = run_cli("show", "caps", "--json")
     assert proc.returncode == EXIT_OK, proc.stderr
     doc = {c["name"]: c for c in json.loads(proc.stdout)}
-    assert set(doc) == {"design", "reproduction", "auto-research", "analysis", "reproducibility",
-                        "verify"}
+    # 能力库的两半：步骤（描述符）与 skill（SKILL.md），每条带 kind
+    assert {n for n, c in doc.items() if c["kind"] == "步骤"} == {
+        "design", "reproduction", "auto-research", "analysis", "reproducibility", "verify"}
+    assert {"pdf", "download"} <= {n for n, c in doc.items() if c["kind"] == "skill"}
+    assert doc["pdf"]["used_by"] == ["reproduce"] and doc["pdf"]["brief"]
+    assert "scripts" in doc["pdf"]
     assert doc["auto-research"]["used_by"] == ["research"] and doc["verify"]["used_by"] == []
     assert doc["design"]["stage"] == "设计" and doc["design"]["stage_slug"] == "design"
     assert doc["auto-research"]["continuable"] is True
@@ -413,7 +417,9 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
 def test_show_workflows_lists_stages_and_stops():
     proc = run_cli("show", "workflows")
     assert proc.returncode == EXIT_OK, proc.stderr
-    assert proc.stdout.startswith("reproduce\t论文复现\t文献 → 设计(reproduction) → ◆复现结果核对")
+    # 文献格上挂的两个 skill 标 [skill]：助理一眼分得出哪个是 cap、哪个是 skill run
+    assert proc.stdout.startswith("reproduce\t论文复现\t文献(pdf[skill],download[skill]) → "
+                                  "设计(reproduction) → ◆复现结果核对")
     assert "\nresearch\t从设计到验证\t设计 → ◆评分指标核对" in proc.stdout
     assert proc.stdout.rstrip().endswith("→ 验证 → ◆验收")
 

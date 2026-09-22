@@ -28,7 +28,7 @@ from pathlib import Path
 
 from compute import ComputeError
 from framework import agents
-from framework.capabilities import discover
+from framework.capabilities import abilities, discover
 from framework.chat import notify
 from framework.cli._common import (
     EXIT_INVALID,
@@ -219,7 +219,7 @@ def _place_in_flow(ws: Workspace, by: str, stage: str, inputs: Inputs,
                 f"流程 {workflow.name} 在 {oid} 之后有断点{what}：这次产出要人签了下游才能读"
                 + ("（签过但之后改了，签字过期）" if signed else "")
                 + f"；研究者在页面上签，或终端 ai4sci sign {oid}")
-    step = workflows.matching_step(workflow, by, stage, after)
+    step = workflows.matching_step(workflow, by, stage, after, abilities.skill_names())
     return workflow.name, step
 
 

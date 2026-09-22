@@ -4,7 +4,7 @@ import { CheckCircle, Signature } from '@phosphor-icons/react'
 import { createElement, useState } from 'react'
 
 import { api } from '@/api/client'
-import type { FlowOutput, FlowProgress, FlowProgressItem, ResearchStage, WorkspaceDetail } from '@/api/types'
+import type { FlowOutput, FlowPick, FlowProgress, FlowProgressItem, ResearchStage, WorkspaceDetail } from '@/api/types'
 import { Dot, ErrorNote, Problems } from '@/components/bits'
 import { useSigner } from '@/lib/useSigner'
 import { stageIcon } from '@/lib/stages'
@@ -16,12 +16,15 @@ const STATE_WORD: Record<OutputState, string> = {
   running: '运行中', failed: '失败', pending: '待确认', confirmed: '已确认', done: '完成',
 }
 
-/** 一列底下列哪些能力：流程点名的（靛色小片），或没点名时这个阶段能用的（素色小片）；名直接显示、一行 hover */
-export interface ColumnCaps { caps: { title: string; brief: string }[]; named: boolean }
+/** 一列底下的能力，按 tag 分两行（主人 2026-09-22：一眼看出哪个是步骤、哪个是 skill）：
+ *  `caps` 是步骤——流程点名的（靛色小片），或没点名时这个阶段能用的（素色小片）；`skills` 是挂在这一格上的
+ *  skill（描边小片，只在挂了时出现）。名直接显示、一行 hover。 */
+export interface ColumnCaps { caps: Chip[]; named: boolean; skills: Chip[] }
+export interface Chip { title: string; brief: string }
 
 export function Flows({ doc, capsOf, onOpen, onChanged }: {
   doc: WorkspaceDetail
-  capsOf: (stage: ResearchStage, named: string[]) => ColumnCaps
+  capsOf: (stage: ResearchStage, picks: FlowPick[]) => ColumnCaps
   onOpen: (oid: string) => void
   onChanged: () => Promise<void>
 }) {
@@ -56,7 +59,7 @@ export function Flows({ doc, capsOf, onOpen, onChanged }: {
 /** 一条流程一张表：题头（标题 + 在等谁）、一行列（阶段列与断点线交替） */
 function FlowTable({ workspace, flow, pending, nameOf, capsOf, onOpen, onChanged }: {
   workspace: string; flow: FlowProgress; pending: Set<string>; nameOf: NameOf
-  capsOf: (stage: ResearchStage, named: string[]) => ColumnCaps; onOpen: (oid: string) => void
+  capsOf: (stage: ResearchStage, picks: FlowPick[]) => ColumnCaps; onOpen: (oid: string) => void
   onChanged: () => Promise<void>
 }) {
   const broken = flow.problems.length > 0 || !flow.items
@@ -77,7 +80,7 @@ function FlowTable({ workspace, flow, pending, nameOf, capsOf, onOpen, onChanged
       {broken ? <div className="mt-3"><Problems items={flow.problems} /></div> : (
         <ol className="mt-4 flex items-stretch gap-3 overflow-x-auto pb-1" aria-label="步">
           {flow.items!.map((item) => item.kind === 'stage'
-            ? <StageColumn key={item.index} item={item} flow={flow} pending={pending} caps={capsOf(item.stage, item.caps.map((c) => c.cap))}
+            ? <StageColumn key={item.index} item={item} flow={flow} pending={pending} caps={capsOf(item.stage, item.caps)}
                            current={item.index === next?.index} runningOutput={runningOutput} onOpen={onOpen} />
             : <StopLine key={item.index} item={item} flow={flow} />)}
         </ol>
@@ -102,14 +105,12 @@ function StageColumn({ item, flow, pending, caps, current, runningOutput, onOpen
         {createElement(stageIcon(item.stage), { weight: 'duotone', 'aria-hidden': true, className: cn('size-4 shrink-0', current ? 'text-primary' : reached ? 'text-foreground/70' : 'text-muted-foreground/60') })}
         <span className="font-serif text-[1rem] font-semibold">{item.stage}</span>
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-1">
-        <span className="mr-0.5 text-[0.6875rem] text-muted-foreground">能力</span>
-        {caps.caps.length === 0 && <span className="text-[0.6875rem] text-muted-foreground/70">无</span>}
-        {caps.caps.map((cap) => (
-          <span key={cap.title} title={cap.brief} className={cn('rounded-md px-1.5 py-0.5 text-[0.6875rem] leading-tight',
-                                                               caps.named ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{cap.title}</span>
-        ))}
-      </div>
+      {/* 两行，行名就是 tag：步骤（点名的靛色、没点名时这个阶段能用的素色、一个没有写「无」）、skill（挂了才有这一行，描边） */}
+      <dl className="mt-1.5 space-y-1">
+        <TagRow tag="步骤" chips={caps.caps}
+                chipClass={caps.named ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'} />
+        {caps.skills.length > 0 && <TagRow tag="skill" chips={caps.skills} chipClass="ring-1 ring-inset ring-foreground/15 text-foreground/80" />}
+      </dl>
       <ul className="mt-2 space-y-1.5">
         {item.outputs.map((o) => <OutputCard key={o.id} output={o} state={outputState(o, pending)} onOpen={() => onOpen(o.id)} />)}
         {showNext && <li className="rounded-lg border border-dashed border-primary/60 px-2.5 py-1.5 text-[0.8125rem] text-primary">下一步</li>}
@@ -117,6 +118,19 @@ function StageColumn({ item, flow, pending, caps, current, runningOutput, onOpen
         {!reached && !showNext && !showRunning && <li className="h-7 rounded-lg border border-dashed border-border/70" aria-hidden />}
       </ul>
     </li>
+  )
+}
+
+/** 一行：左边 tag 一个词（步骤 / skill），右边一枚枚小片；空着写「无」 */
+function TagRow({ tag, chips, chipClass }: { tag: string; chips: Chip[]; chipClass: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <dt className="mr-0.5 w-7 text-[0.6875rem] text-muted-foreground">{tag}</dt>
+      {chips.length === 0 && <dd className="text-[0.6875rem] text-muted-foreground/70">无</dd>}
+      {chips.map((chip) => (
+        <dd key={chip.title} title={chip.brief} className={cn('rounded-md px-1.5 py-0.5 text-[0.6875rem] leading-tight', chipClass)}>{chip.title}</dd>
+      ))}
+    </div>
   )
 }
 

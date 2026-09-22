@@ -15,7 +15,7 @@ import sys
 import yaml
 
 from framework import paths
-from framework.capabilities import discover
+from framework.capabilities import abilities
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, current_workspace
 from framework.contracts import workflows
 
@@ -34,9 +34,9 @@ def cmd_take(args: argparse.Namespace) -> int:
     name = args.as_name or args.name
     if isinstance(raw, dict):
         raw["name"] = name  # 实例可以换个名字：同一条库里的流程按两种参数各取一份
-    catalog = {cap: module.DESCRIPTOR for cap, module in discover().items()}
     try:
-        taken = workflows.save_workflow(ws.flows, raw, catalog)
+        taken = workflows.save_workflow(ws.flows, raw, abilities.steps(),
+                                        skills=abilities.skill_names())
     except (workflows.WorkflowInvalid, FileExistsError) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID

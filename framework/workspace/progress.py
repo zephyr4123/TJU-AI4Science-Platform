@@ -23,13 +23,16 @@ DONE = "done"
 
 
 def flow_progress(workspace: Workspace, workflow: workflows.Workflow,
-                  outputs: list[tuple[Path, Meta]]) -> dict[str, Any]:
-    """一条流程实例的进度：每一项下有哪几次产出、走到第几项、在等谁。"""
+                  outputs: list[tuple[Path, Meta]],
+                  kinds: dict[str, str] | None = None) -> dict[str, Any]:
+    """一条流程实例的进度：每一项下有哪几次产出、走到第几项、在等谁。`kinds` 是名字 → 步骤 / skill，
+    给了就格子上每个名字标上（看板按 tag 分两行画）。"""
     mine = [(d, m) for d, m in outputs if m.flow == workflow.name and m.step is not None]
     items: list[dict[str, Any]] = []
     for i, item in enumerate(workflow.stages):
         here = [(d, m) for d, m in mine if m.step == i]
-        entry = {**item.to_dict(), "index": i,
+        doc = item.to_dict(kinds) if isinstance(item, workflows.Stage) else item.to_dict()
+        entry = {**doc, "index": i,
                  "outputs": [_brief(d, m) for d, m in here]}
         if isinstance(item, workflows.Stop):
             # 断点管的是前一项的产出：签了没

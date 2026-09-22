@@ -23,6 +23,7 @@
     POST /settings/computes/<name>/remove   删一台
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
     GET  /cap                               能力描述符清单：每个带 stage、五栏与 used_by
+    GET  /skills                            能力库里 tag 为 skill 的：名字、一行、正文、脚本名
     GET  /workflows                         库：`workflows/*.yaml`，covers / remarks / problems
     POST /workflows                         {name, title, summary, stages[, overwrite]} → 存进库
     POST /workflows/check                   同一个 body，只查不存：covers / remarks / problems
@@ -85,7 +86,7 @@ from framework.workspace import jobs, outputs, root
 LOGGER = logging.getLogger("ai4sci.serve")
 MAX_BODY = 1 << 20
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
-API_ROOTS = ("health", "backends", "settings", "stages", "cap", "workflows", "templates",
+API_ROOTS = ("health", "backends", "settings", "stages", "cap", "skills", "workflows", "templates",
              "workspaces", "studio")
 
 
@@ -101,6 +102,8 @@ class ChatServer(ThreadingHTTPServer):
 
     def __init__(self, address: tuple[str, int], *, home: Path,
                  catalog: Callable[[], list[dict[str, Any]]],
+                 skills: Callable[[], list[dict[str, Any]]] = lambda: [],
+                 skill_names: Callable[[], frozenset[str]] = frozenset,
                  workflows: Callable[[], list[dict[str, Any]]],
                  stage_table: Callable[[], list[dict[str, Any]]] = stages.to_dicts,
                  check_workflow: Callable[[dict[str, Any]], dict[str, Any]],
@@ -114,6 +117,8 @@ class ChatServer(ThreadingHTTPServer):
         super().__init__(address, Handler)
         self.home = Path(home).resolve()
         self.catalog = catalog
+        self.skills = skills
+        self.skill_names = skill_names
         self.workflows = workflows
         # 阶段表：cli 注入带主文件与它页面上的名字的那份（主文件表在 capabilities，chat 层不认识它）
         self.stage_table = stage_table
@@ -201,6 +206,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.server.stage_table())
         if parts == ["cap"]:
             return self._json(self.server.catalog())
+        if parts == ["skills"]:
+            return self._json(self.server.skills())
         if parts == ["workflows"]:
             return self._json(self.server.workflows())
         if parts == ["templates"]:
@@ -218,11 +225,11 @@ class Handler(BaseHTTPRequestHandler):
         if ws is None:
             return self._error(HTTPStatus.NOT_FOUND, f"编辑台下只有对话：{url.path}")
         if rest == []:
-            return self._json(boards.workspace_detail(ws, self.server.descriptors()))
+            return self._json(self._detail(ws))
         if rest == ["requirement"]:
             return self._json(boards.requirement_detail(ws))
         if rest == ["flows"]:
-            return self._json(boards.workspace_detail(ws, self.server.descriptors())["flows"])
+            return self._json(self._detail(ws)["flows"])
         if len(rest) == 3 and rest[0] == "outputs":
             try:
                 return self._json(boards.output_detail(ws, f"{rest[1]}/{rest[2]}"))
@@ -555,6 +562,10 @@ class Handler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.BAD_REQUEST, "body 要是 JSON 对象")
             return None
         return body
+
+    def _detail(self, ws):
+        """主页面那一整份：流程实例的格子上步骤与 skill 都要认。"""
+        return boards.workspace_detail(ws, self.server.descriptors(), self.server.skill_names())
 
     def _json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(boards.jsonable(payload), ensure_ascii=False,

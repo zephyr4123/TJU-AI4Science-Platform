@@ -200,6 +200,7 @@ function MainView({ wsId, title, healthy, backends, view, focus, opened, onOpen,
   // 能力表也拉一次：看板每一列底下的能力、产出记录里能力的名与参数的 label 都从它查（P-21：翻译在源头，页面只查表）
   const doc = useResource(() => api.workspace(wsId), [wsId, c.epoch])
   const caps = useResource(api.capabilities, [])
+  const skills = useResource(api.skills, [])
   const busy = (doc.data?.running ?? 0) > 0
   const reload = doc.reload
   useEffect(() => {
@@ -212,7 +213,7 @@ function MainView({ wsId, title, healthy, backends, view, focus, opened, onOpen,
       <main className="relative min-w-0 flex-1">
         {/* 两个镜头都常驻，切换只是显示 / 隐藏：不重新挂载、不重新拉数据，树的展开与滚动位置也都保住 */}
         <div className={cn('relative h-full', view !== 'board' && 'hidden')}>
-          <Board workspace={wsId} doc={doc} caps={caps} opened={opened} onOpen={onOpen} onOpenFiles={onOpenFiles} />
+          <Board workspace={wsId} doc={doc} caps={caps} skills={skills} opened={opened} onOpen={onOpen} onOpenFiles={onOpenFiles} />
         </div>
         <div className={cn('relative h-full', view !== 'files' && 'hidden')}>
           <Files key={focus ?? ''} workspace={wsId} doc={doc} caps={caps} epoch={c.epoch} focus={focus} onOpenBoard={onOpenBoard} />

@@ -4,7 +4,7 @@
 import { CaretRight, Signature } from '@phosphor-icons/react'
 import { createElement } from 'react'
 
-import type { Capability, CapabilityParam } from '@/api/types'
+import type { Capability, CapabilityParam, SkillEntry } from '@/api/types'
 import SquishSwitch from '@/components/reactbits/SquishSwitch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -13,15 +13,16 @@ import { cn } from '@/lib/utils'
 
 import { type Item, parseParam, setParam, type StageItem, type StopItem, toggleCap } from './model'
 
-export function Inspector({ item, catalog, onChange, onOpenCap }: {
-  item: Item; catalog: Capability[]; onChange: (item: Item) => void; onOpenCap: (name: string) => void
+export function Inspector({ item, catalog, skills, onChange, onOpenCap }: {
+  item: Item; catalog: Capability[]; skills: SkillEntry[]; onChange: (item: Item) => void; onOpenCap: (name: string) => void
 }) {
   if (item.kind === 'stop') return <StopPanel item={item} onChange={onChange} />
-  return <StagePanel item={item} caps={catalog.filter((c) => c.stage === item.stage)} onChange={onChange} onOpenCap={onOpenCap} />
+  return <StagePanel item={item} caps={catalog.filter((c) => c.stage === item.stage)} skills={skills} onChange={onChange} onOpenCap={onOpenCap} />
 }
 
-function StagePanel({ item, caps, onChange, onOpenCap }: {
-  item: StageItem; caps: Capability[]; onChange: (item: StageItem) => void; onOpenCap: (name: string) => void
+/** 阶段面板两段，段名就是 tag：步骤（这个阶段的，勾上就点名、带参数）、skill（哪个阶段都能挂，勾上就挂、没有参数） */
+function StagePanel({ item, caps, skills, onChange, onOpenCap }: {
+  item: StageItem; caps: Capability[]; skills: SkillEntry[]; onChange: (item: StageItem) => void; onOpenCap: (name: string) => void
 }) {
   return (
     <div>
@@ -29,10 +30,11 @@ function StagePanel({ item, caps, onChange, onOpenCap }: {
         {createElement(stageIcon(item.stage), { weight: 'duotone', 'aria-hidden': true, className: 'size-[1.125rem] text-primary' })}
         {item.stage}
       </h2>
+      <h3 className="mt-3 text-[0.75rem] text-muted-foreground">步骤</h3>
       {caps.length === 0
-        ? <p className="mt-3 text-[0.8125rem] text-muted-foreground">暂无能力</p>
+        ? <p className="mt-1.5 text-[0.8125rem] text-muted-foreground/70">无</p>
         : (
-          <ul className="mt-3 space-y-2">
+          <ul className="mt-1.5 space-y-2">
             {caps.map((cap) => {
               const pick = item.caps.find((p) => p.cap === cap.name)
               return (
@@ -44,7 +46,37 @@ function StagePanel({ item, caps, onChange, onOpenCap }: {
             })}
           </ul>
         )}
+      <h3 className="mt-4 text-[0.75rem] text-muted-foreground">skill</h3>
+      {skills.length === 0
+        ? <p className="mt-1.5 text-[0.8125rem] text-muted-foreground/70">无</p>
+        : (
+          <ul className="mt-1.5 space-y-2">
+            {skills.map((skill) => (
+              <SkillRow key={skill.name} skill={skill} picked={item.caps.some((p) => p.cap === skill.name)}
+                        onToggle={(on) => onChange(toggleCap(item, skill.name, on))} onOpen={() => onOpenCap(skill.name)} />
+            ))}
+          </ul>
+        )}
     </div>
+  )
+}
+
+/** 一个 skill：勾选、名字（hover 一行、点了跳详情）；没有参数——它的参数在调用时给 */
+function SkillRow({ skill, picked, onToggle, onOpen }: {
+  skill: SkillEntry; picked: boolean; onToggle: (on: boolean) => void; onOpen: () => void
+}) {
+  const id = `skill-${skill.name}`
+  return (
+    <li className={cn('rounded-xl border', picked ? 'border-foreground/30 bg-card' : 'bg-card/60')}>
+      <div className="flex items-center gap-2.5 px-3 py-2.5">
+        <Checkbox id={id} checked={picked} onCheckedChange={(v) => onToggle(v === true)} aria-label={skill.title} />
+        <button type="button" onClick={onOpen} title={skill.brief}
+                className="group flex min-w-0 flex-1 items-center gap-1 text-left text-[0.9375rem] font-medium hover:text-primary focus-visible:outline-2 focus-visible:outline-ring">
+          <span className="truncate">{skill.title}</span>
+          <CaretRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+        </button>
+      </div>
+    </li>
   )
 }
 

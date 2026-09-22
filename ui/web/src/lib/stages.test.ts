@@ -5,7 +5,7 @@ import type { Capability } from '@/api/types'
 import { coverageSentence, groupByStage } from './stages'
 
 const cap = (name: string, stage: string, needs_executor = false): Capability => ({
-  name, stage, stage_slug: stage, title: `${name} 的活`, brief: 'b', does: 'd', does_not: 'n', brings: 'b', leaves: 'l',
+  name, kind: '步骤', stage, stage_slug: stage, title: `${name} 的活`, brief: 'b', does: 'd', does_not: 'n', brings: 'b', leaves: 'l',
   stops: 's', params: [], needs_executor, needs_compute: false, continuable: false, used_by: [],
 })
 

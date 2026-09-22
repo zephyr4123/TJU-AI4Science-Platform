@@ -3,11 +3,7 @@
 // 端点按域分前缀（纲领 P-16）：工作区 `/workspaces/<id>` 是研究助理的域，`/studio` 是造流助理的域；
 // 对话四个端点在两个域下共用，`Scope` 决定前缀。
 
-import type {
-  Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, OutputDetail, RequirementDetail,
-  SettingsDoc, StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
-  Job,
-} from './types'
+import type { Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, Job, OutputDetail, RequirementDetail, SettingsDoc, SkillEntry, StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary } from './types'
 
 export type Scope = { kind: 'workspace'; id: string } | { kind: 'studio' }
 
@@ -71,6 +67,7 @@ export const api = {
   stages: () => request<StageInfo[]>('/stages'),
   templates: () => request<Template[]>('/templates'),
   capabilities: () => request<Capability[]>('/cap'),
+  skills: () => request<SkillEntry[]>('/skills'),
   workflows: () => request<Workflow[]>('/workflows'),
   saveWorkflow: (doc: WorkflowDraft) => request<Workflow>('/workflows', post(doc)),
   checkWorkflow: (doc: WorkflowDraft) => request<WorkflowCheck>('/workflows/check', post(doc)),
