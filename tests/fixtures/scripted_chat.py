@@ -12,9 +12,9 @@ from pathlib import Path
 from backends import ChatEvent, Choice, Knobs, Tuning
 
 SESSION = "sess-0001"
-# 剧本后端的两个旋钮：两个模型、两档深度，缺省都是「后端自己定」（None）
+# 剧本后端的两个旋钮：两个模型、两档深度，起点 a / low（P-25：旋钮上只有具体值）
 KNOBS = Knobs(models=(Choice("a", "甲", "快"), Choice("b", "乙")),
-              efforts=(Choice("low", "低"), Choice("high", "高")))
+              efforts=(Choice("low", "低"), Choice("high", "高")), model="a", effort="low")
 
 
 def reply(text: str, *, cost: float = 0.01, session: str = SESSION) -> list[ChatEvent]:
@@ -61,6 +61,8 @@ def failure(why: str) -> list[ChatEvent]:
 
 
 class ScriptedChat:
+    # 顶着真适配器的名字：按人的设置按名字查这家用什么（P-25），剧本不在 `_BACKENDS` 里
+    name = "claude_code"
     cost_reporting = "turn"
 
     def __init__(self, turns: list[list[ChatEvent]], knobs: Knobs = KNOBS,
@@ -76,7 +78,8 @@ class ScriptedChat:
     def turn(self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
              system_prompt: str, allowed_paths: list[Path],
              bash_rules: tuple[str, ...], readable_paths: list[Path] = (),
-             chat_id: str | None = None, tuning: Tuning | None = None) -> Iterator[ChatEvent]:
+             runtime_paths: list[Path] = (), chat_id: str | None = None,
+             tuning: Tuning | None = None) -> Iterator[ChatEvent]:
         assert self.turns, "剧本用完了还在调 turn()"
         self.calls.append({"message": message, "cwd": Path(cwd), "timeout_s": timeout_s,
                            "session_id": session_id, "system_prompt": system_prompt,

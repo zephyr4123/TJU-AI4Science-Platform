@@ -216,9 +216,9 @@ def test_executor_prompt_appends_catalog_and_web_rule(libraries, tmp_path):
 
 
 def test_executor_bash_whitelist_is_only_the_skill_subcommands():
-    assert skills.EXECUTOR_BASH_RULES == ("Bash(ai4sci skill *)",)
-    assert set(skills.EXECUTOR_BASH_RULES) < {"Bash(ai4sci *)", "Bash(ai4sci skill *)"}
-    assert "Bash(ai4sci skill *)" not in guide.BASH_RULES  # 协调层的 `ai4sci *` 已经盖住它
+    assert skills.EXECUTOR_BASH_RULES == ("ai4sci skill",)  # 命令前缀，与 CLI 无关
+    assert all(p.startswith("ai4sci") for p in skills.EXECUTOR_BASH_RULES)
+    assert "ai4sci skill" not in guide.BASH_RULES  # 协调层的 `ai4sci` 已经盖住它
 
 
 # ── 起脚本 ───────────────────────────────────────────────────────────────────

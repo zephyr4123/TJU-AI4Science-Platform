@@ -9,7 +9,7 @@ import urllib.request
 
 import pytest
 
-from backends import BackendNotFound
+from backends import AgentProbe, BackendNotFound, available_backends
 from framework import paths
 from framework.capabilities import stage_table
 from framework.chat.server import ChatServer
@@ -55,7 +55,8 @@ def served(tmp_path):
     chat = ScriptedChat([reply("你好"), with_tool("三个", "Bash", {"command": "ls"}, "a\nb")])
 
     def factory(name: str):
-        if name != "claude_code":
+        # 顶着真适配器的名字（P-25 按人的设置按名字查每家的清单），两家都是同一份剧本
+        if name not in available_backends():
             raise BackendNotFound(f"未知的 agent 后端 {name!r}")
         return chat
 
@@ -66,11 +67,25 @@ def served(tmp_path):
             raise ValueError("x.yaml: stages 要是非空列表")
         return {**doc, "covers": ["实验"], "remarks": [], "problems": []}
 
+    def probe_agent(name: str) -> AgentProbe:
+        # 自检不跑真 CLI：claude_code 过、codex 没登录
+        if name == "codex":
+            return AgentProbe(items=[("装了没", True, "/x"), ("登录", False, "没登录")],
+                              installed=True, version="codex-cli 0.147.0")
+        return AgentProbe(items=[("装了没", True, "/x"), ("说话", True, "pong")],
+                          installed=True, version="2.1.278", logged_in=True, spoke_s=0.8)
+
+    def add_compute(body: dict) -> dict:
+        added.append(body)
+        return {"agents": {}, "computes": [{"name": body["name"]}], "storage": {}}
+
+    added: list[dict] = []
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
                         workflows=lambda: WORKFLOWS, check_workflow=check_workflow,
                         save_workflow=save_workflow, descriptors=descriptors,
-                        stage_table=stage_table, chat_factory=factory, system_prompts=PROMPTS,
-                        ui_dir=ui_dir(tmp_path))
+                        stage_table=stage_table, chat_factory=factory, probe_agent=probe_agent,
+                        add_compute=add_compute, system_prompts=PROMPTS, ui_dir=ui_dir(tmp_path))
+    server.added = added
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -107,7 +122,7 @@ def new_workspace(base, ws_id="w1", title=""):
 
 def test_health_and_catalog(served):
     base, _ = served
-    assert call(base, "/health")[2] == '{"ok": true}'
+    assert json.loads(call(base, "/health")[2]) == {"ok": True, "checks_ok": True}
     status, _, body = call(base, "/stages")
     assert status == 200
     stages = json.loads(body)
@@ -252,20 +267,33 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
 
 
 def test_backends_endpoint_reports_each_backends_knobs(served):
-    """外层 #86：页面照单渲染模型与思考深度两枚旋钮，清单是后端自报的。"""
+    """外层 #86 / P-25：页面照单渲染模型与思考深度两枚旋钮，清单是后端自报的；每家带产品名与新对话
+    用的具体值（按人的设置，没填就是起点）；「对话用」那家 default。"""
     base, _ = served
     status, _, body = call(base, "/backends")
     assert status == 200
-    [claude] = json.loads(body)
-    assert claude["name"] == "claude_code" and claude["default"] is True
+    rows = {r["name"]: r for r in json.loads(body)}
+    assert set(rows) == set(available_backends())
+    claude = rows["claude_code"]
+    assert claude["default"] is True and claude["title"] == "Claude Code"
+    assert rows["codex"]["default"] is False and rows["codex"]["title"] == "Codex"
     assert claude["models"] == [{"id": "a", "label": "甲", "note": "快"},
                                 {"id": "b", "label": "乙", "note": ""}]
     assert [e["id"] for e in claude["efforts"]] == ["low", "high"]
-    assert claude["model"] is None and claude["effort"] is None
+    assert claude["model"] == "a" and claude["effort"] == "low"  # 起点：旋钮上没有「默认」
+    # 设置里改了缺省，/backends 跟着变；换「对话用」那家，default 跟着换
+    status, _, body = call(base, "/settings/agents",
+                           {"chat": "codex", "agents": {"claude_code": {"model": "b"}}})
+    assert status == 200, body
+    rows = {r["name"]: r for r in json.loads(call(base, "/backends")[2])}
+    assert rows["claude_code"]["model"] == "b" and rows["codex"]["default"] is True
+    status, _, body = call(base, "/settings/agents", {"agents": {"claude_code": {"model": "zz"}}})
+    assert status == 400 and "模型 'zz' 不在清单上" in json.loads(body)["error"]
 
 
 def test_chat_tuning_is_checked_against_the_knobs_and_remembered(served, tmp_path):
-    """外层 #86：开对话与发消息都能带 model / effort；不在清单上 400；给了记住、null 回缺省。"""
+    """外层 #86 / P-25：开对话与发消息都能带 model / effort；不在清单上 400；给了记住；没给的沿用，
+    开对话时从按人的设置抄具体值——meta 里从来没有 null。"""
     from backends import Tuning
 
     base, chat = served
@@ -273,11 +301,11 @@ def test_chat_tuning_is_checked_against_the_knobs_and_remembered(served, tmp_pat
     status, _, body = call(base, "/studio/chats", {"model": "zz"})
     assert status == 400 and "模型 'zz' 不在清单上" in json.loads(body)["error"]
     status, _, body = call(base, "/studio/chats", {"effort": 3})
-    assert status == 400 and json.loads(body)["error"] == "effort 要是字符串或 null"
+    assert status == 400 and json.loads(body)["error"] == "effort 要是字符串"
     status, _, body = call(base, "/studio/chats", {"model": "a"})
     assert status == 201
     meta = json.loads(body)
-    assert meta["model"] == "a" and meta["effort"] is None
+    assert meta["model"] == "a" and meta["effort"] == "low"  # 深度没给：设置里这家的起点
     chat_id = meta["chat_id"]
 
     # 发消息时改深度：模型沿用对话上记的，深度记进去
@@ -293,13 +321,52 @@ def test_chat_tuning_is_checked_against_the_knobs_and_remembered(served, tmp_pat
     assert status == 400
     assert "思考深度 'ultra' 不在清单上；可选：low, high" in json.loads(body)["error"]
     assert not (tmp_path / "studio" / "chats" / chat_id / "turn-2").exists()
-    # null 是回到后端缺省
+    # null 与没给一样：沿用对话上记的（旋钮上没有「回缺省」这一项）
     status, _, body = call(base, f"/studio/chats/{chat_id}/messages",
                            {"text": "再来", "model": None, "effort": None})
-    assert status == 200 and chat.calls[-1]["tuning"] == Tuning()
+    assert status == 200 and chat.calls[-1]["tuning"] == Tuning(model="a", effort="high")
     doc = json.loads(call(base, f"/studio/chats/{chat_id}")[2])
-    assert doc["model"] is None and doc["effort"] is None and doc["turns"] == 2
+    assert doc["model"] == "a" and doc["effort"] == "high" and doc["turns"] == 2
     assert KNOBS.models[0].id == "a"  # 清单与剧本夹具对账
+
+
+def test_settings_endpoints_snapshot_check_and_computes(served, tmp_path):
+    """P-25：设置那块板的读盘、真探（注入的 probe）、接机器、删机器；`/health` 的 checks_ok 随在用的
+    那家上次自检翻转（没检查过不算没过）。"""
+    base, _ = served
+    status, _, body = call(base, "/settings")
+    assert status == 200
+    snap = json.loads(body)
+    table = snap["agents"]
+    assert table["chat"] == table["executor"] == "claude_code"
+    codex = next(e for e in table["entries"] if e["name"] == "codex")
+    assert codex["title"] == "Codex" and codex["last_check"] is None
+    assert codex["models"][0]["id"] == "a"  # 清单跟着服务接的那家适配器（剧本）走
+    assert [c["name"] for c in snap["computes"]] == ["local"]
+    assert snap["storage"]["home"] == str(tmp_path) and snap["storage"]["writable"] is True
+    assert json.loads(call(base, "/health")[2])["checks_ok"] is True
+
+    status, _, body = call(base, "/settings/check", {"what": "agents"})
+    assert status == 200
+    report = json.loads(body)
+    assert report["ok"] is False and report["failed"] == ["agent:codex"]
+    codex = next(e for e in report["agents"]["entries"] if e["name"] == "codex")
+    assert codex["last_check"]["items"][1] == {"name": "登录", "ok": False, "note": "没登录"}
+    # codex 没在用（两层都是 claude_code）：页面那个点不亮；换成执行用 codex 就亮
+    assert json.loads(call(base, "/health")[2])["checks_ok"] is True
+    assert call(base, "/settings/agents", {"executor": "codex"})[0] == 200
+    assert json.loads(call(base, "/health")[2])["checks_ok"] is False
+    status, _, body = call(base, "/settings/check", {"what": "nope"})
+    assert status == 400 and "what 只认" in json.loads(body)["error"]
+    status, _, body = call(base, "/settings/check", {"what": "storage"})
+    assert status == 200 and json.loads(body)["ok"] is True
+
+    status, _, body = call(base, "/settings/computes",
+                           {"name": "box", "ssh": "u@h:22", "key": "~/.ssh/id_ed25519"})
+    assert status == 201 and json.loads(body)["computes"] == [{"name": "box"}]
+    assert call(base, "/settings/computes/nope/remove", {})[0] == 400
+    assert call(base, "/settings/computes/local/remove", {})[0] == 400  # 出厂的删不掉
+    assert call(base, "/settings/nope", {})[0] == 404
 
 
 def test_error_status_codes(served, tmp_path):

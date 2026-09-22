@@ -8,7 +8,7 @@
 - `run`：`uv run --locked --offline` 起脚本，参数原样递过去，stdout 与退出码原样透出。
 
 在 `contracts` 之上、`workspace` 之下的一层：它只认 SKILL.md 与脚本，不认工作区。
-执行层会话要能跑 `ai4sci skill …`，Bash 白名单只放行这一组（`EXECUTOR_BASH_RULES`）——
+执行层会话要能跑 `ai4sci skill …`，放行的命令前缀只有这一组（`EXECUTOR_BASH_RULES`）——
 `ai4sci cap` 那些是协调层的，执行层不该碰。
 """
 
@@ -34,4 +34,4 @@ __all__ = ["Skill", "SkillInvalid", "SkillNotFound", "all_skills", "find", "for_
 
 # 执行层会话的 Bash 白名单：只有 skill 的三个子命令。与协调层的 `Bash(ai4sci *)`（chat/guide.py）
 # 不同：执行层不许调能力、不许签字，它面前只有工具包
-EXECUTOR_BASH_RULES = ("Bash(ai4sci skill *)",)
+EXECUTOR_BASH_RULES = ("ai4sci skill",)  # 命令前缀，与 CLI 无关；适配器翻成自己的白名单写法

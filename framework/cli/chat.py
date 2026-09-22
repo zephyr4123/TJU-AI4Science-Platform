@@ -14,8 +14,8 @@ import sys
 from pathlib import Path
 
 from backends import BackendNotFound, ChatEvent, Tuning, get_chat
-from framework import paths
-from framework.chat import conversation, guide, scope
+from framework import agents, paths
+from framework.chat import conversation, guide, scope, settings
 from framework.cli._common import (
     EXIT_INVALID,
     EXIT_OK,
@@ -23,8 +23,6 @@ from framework.cli._common import (
     current_workspace,
     setup_logging,
 )
-
-DEFAULT_BACKEND = "claude_code"
 
 
 def _scope(args: argparse.Namespace) -> scope.Scope | int:
@@ -55,18 +53,21 @@ def _tuning(args: argparse.Namespace, current: Tuning, backend: str) -> Tuning |
 
 
 def cmd_new(args: argparse.Namespace) -> int:
+    """开一段：哪家、什么模型与深度都从按人的设置来（P-25：旋钮上只有具体值），命令行上给的压过它。"""
     try:
-        get_chat(args.backend)
-    except BackendNotFound as exc:
+        backend = args.backend or agents.role_backend("chat")
+        get_chat(backend)
+        start = agents.tuning_for(backend)
+    except (BackendNotFound, agents.AgentsInvalid) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
-    tuning = _tuning(args, Tuning(), args.backend)
+    tuning = _tuning(args, start, backend)
     if isinstance(tuning, int):
         return tuning
     where = _scope(args)
     if isinstance(where, int):
         return where
-    conv = conversation.new_conversation(where.chats, args.backend, where.cwd, tuning=tuning)
+    conv = conversation.new_conversation(where.chats, backend, where.cwd, tuning=tuning or start)
     studio = " --studio" if args.studio else ""
     print(f"ok {conv.chat_id}\t{conv.dir}\tnext=ai4sci chat send {conv.chat_id}{studio} \"<说话>\"")
     return EXIT_OK
@@ -77,8 +78,8 @@ def cmd_send(args: argparse.Namespace) -> int:
     if isinstance(where, int):
         return where
     try:
-        conv = conversation.load_conversation(where.chats, args.chat_id)
-    except conversation.ConversationNotFound as exc:
+        conv = settings.ensure_tuned(conversation.load_conversation(where.chats, args.chat_id))
+    except (conversation.ConversationNotFound, agents.AgentsInvalid) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
     text = args.text
@@ -103,7 +104,8 @@ def cmd_send(args: argparse.Namespace) -> int:
         for event in conversation.send(
             conv, get_chat(conv.backend), text, system_prompt=system_prompt,
             allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
-            readable_paths=list(where.readable_paths), tuning=tuning,
+            readable_paths=list(where.readable_paths),
+            runtime_paths=list(where.runtime_paths), tuning=tuning,
         ):
             last = event
             if event.kind == "delta":
@@ -157,7 +159,8 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     actions = chat.add_subparsers(dest="action", required=True)
 
     creating = actions.add_parser("new", help="开一段对话：<域>/chats/<id>/")
-    creating.add_argument("--backend", default=DEFAULT_BACKEND, help="agent 后端名")
+    creating.add_argument("--backend", default=None,
+                          help="用哪家 agent；缺省照设置里「对话用」的那家（ai4sci agent list）")
     creating.add_argument("--studio", action="store_true", help="编辑台的流程助理，不看工作区")
     _add_knobs(creating)
     creating.set_defaults(func=cmd_new)

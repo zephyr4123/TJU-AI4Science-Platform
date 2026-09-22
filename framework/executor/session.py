@@ -14,6 +14,7 @@ import shutil
 from pathlib import Path
 
 from backends import Runner, RunResult
+from framework import agents, paths
 from framework.skills import EXECUTOR_BASH_RULES
 
 EXECUTOR_TIMEOUT_ENV = "AI4SCI_EXECUTOR_TIMEOUT_S"
@@ -38,17 +39,26 @@ def run_session(
     """起一次执行层会话，然后把它写在 `cwd/.ai4sci/` 下的事件流搬到 `log_dir`。
 
     `allowed_paths` 只是"尽量收紧"的意图，各家 CLI 的权限模型对不齐；真正的门是回来
-    之后按 `changed_files` 判越界，那是能力的事（纲领 §5）。Bash 只放行 `ai4sci skill *`：
+    之后按 `changed_files` 判越界，那是能力的事（纲领 §5）。命令只放行 `ai4sci skill …`：
     执行层面前只有工具包（纲领 P-22），能力与签字是协调层的。
+    提示末尾接这家 CLI 自己的「工具怎么用」；模型与深度按人的设置里这家的（P-25）；平台自己要写的
+    目录（数据根、配置、uv 缓存）给有沙箱的 CLI 放行。
     """
     result = runner.run(
-        prompt=prompt, cwd=cwd,
+        prompt=full_prompt(runner, prompt), cwd=cwd,
         timeout_s=executor_timeout_s() if timeout_s is None else timeout_s,
         allowed_paths=allowed_paths, bash_rules=EXECUTOR_BASH_RULES,
+        runtime_paths=paths.runtime_paths(), tuning=agents.tuning_for(runner.name),
         max_turns=max_turns, max_budget_usd=max_budget_usd,
     )
     stash_executor_logs(cwd, log_dir)
     return result
+
+
+def full_prompt(runner: Runner, prompt: str) -> str:
+    """真正喂给执行层的提示：能力组的正文 + 这家 CLI 自己的「工具怎么用」。留档 prompt.md 的用它，
+    与会话看到的一字不差。"""
+    return prompt.rstrip() + "\n\n" + runner.tool_guide(EXECUTOR_BASH_RULES)
 
 
 def stash_executor_logs(cwd: Path, log_dir: Path) -> None:
@@ -68,7 +78,6 @@ def stash_executor_logs(cwd: Path, log_dir: Path) -> None:
 
 
 def executor_report(result: RunResult) -> str:
-    """执行层这一轮的自述 = stream-json 最终 result 事件的文本；没有就空串，不编。"""
-    final = next((e for e in reversed(result.events) if e.get("type") == "result"), None)
-    text = (final or {}).get("result")
-    return text.strip() if isinstance(text, str) else ""
+    """执行层这一轮的自述：适配器从自己的事件流里取（Claude Code 是 result 事件的文本，Codex 是最后
+    一条 agent_message）；没有就空串，不编。"""
+    return result.report.strip()

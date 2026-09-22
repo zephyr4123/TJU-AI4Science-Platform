@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import math
 import os
-import signal
+import shutil
 import subprocess
 import sys
 import threading
@@ -24,9 +24,15 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import ChatEvent, Choice, Knobs, RunResult, Tuning
+from backends import AgentProbe, ChatEvent, Choice, Knobs, RunResult, Tuning
+from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
+__all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "KNOBS", "MODELS", "EFFORTS", "WEB_TOOLS",
+           "build_env", "bash_rule", "tool_guide", "parse_events", "final_metrics", "final_report",
+           "kill_tree", "probe", "parse_version", "make_runner", "make_chat"]
+
+NAME = "claude_code"
 # 不读 user/project/local 任何设置源：会话因此不继承本机的 CLAUDE.md、hook、plugin、
 # 自定义 agent（P-11）。执行层再加 --no-session-persistence（一次性会话，不留）；协调层
 # 不加：多轮靠 --resume 续接，靠的就是 CLI 自己的会话持久化
@@ -38,18 +44,27 @@ WEB_TOOLS = ("WebSearch", "WebFetch")
 # 名字抄一份，测试对账
 CHAT_ID_ENV = "AI4SCI_CHAT_ID"
 EXECUTOR_ISOLATION_ARGS = ("--no-session-persistence", *ISOLATION_ARGS)
-# 协调层的两个旋钮（外层 #86）。起服务的人在环境里给缺省，人在页面或终端上每轮可改。
-MODEL_ENV = "AI4SCI_COORDINATOR_MODEL"
-EFFORT_ENV = "AI4SCI_COORDINATOR_EFFORT"
-# 模型写 CLI 认的别名（`--model` 也收全名：环境里给了全名照样能用，清单上会多出那一项）
+# 模型写 CLI 认的别名（`--model` 也收全名）；起点 sonnet / medium（纲领 P-25：按人的设置里没填这家时
+# 用它，旋钮上只有具体值）。`--effort` 的五档按 2.1.276 的 --help，顺序就是从浅到深
 MODELS = (Choice("sonnet", "Sonnet", "快"), Choice("opus", "Opus", "强"),
           Choice("fable", "Fable", "最强"))
-# `--effort` 的五档，按 2.1.276 的 --help；顺序就是从浅到深
 EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
            Choice("xhigh", "超高"), Choice("max", "最高"))
+KNOBS = Knobs(models=MODELS, efforts=EFFORTS, model="sonnet", effort="medium")
+# 自检认的最低版本：`--effort` 与 `--setting-sources` 都是这之后才有的
+MIN_VERSION = (2, 1, 276)
 _TAIL_CHARS = 4000
 # tool_result 进事件的正文上限：页面与 CLI 打印只要开头，全文在 raw 里落盘
 _RESULT_CHARS = 4000
+# 执行层提示末尾「工具怎么用」：这家 CLI 有 Read / Glob / Grep，Bash 只放行框架给的前缀（真跑时
+# cd &&、mkdir、awk 三条被拒白耗三轮，外层 #122）
+TOOL_GUIDE = """## 工具怎么用
+
+- 读文件、找文件、搜内容用 Read / Glob / Grep 工具；不要用 Bash 去 cat、find、awk。
+- Bash 只放行 {commands} 一类命令；cd、mkdir、管道、`&&` 串起来的命令都会被拒，
+  拒一次白耗一轮。建目录不用 mkdir：Write 会自己建。
+- 写完不用自己查行宽、跑 lint：框架会跑 ruff 与校验，问题喂回给你。
+"""
 
 
 def _env_num(name: str, default: float, cast: type) -> float:
@@ -60,14 +75,16 @@ def _env_num(name: str, default: float, cast: type) -> float:
     return value
 
 
-def _default_effort() -> str | None:
-    """环境里给的缺省思考深度；没给就 None（CLI 自己定），给错就炸，不静默回落（P-7）。"""
-    raw = os.environ.get(EFFORT_ENV)
-    if not raw:
-        return None
-    assert raw in {c.id for c in EFFORTS}, \
-        f"{EFFORT_ENV} 只认 {', '.join(c.id for c in EFFORTS)}，得到 {raw!r}"
-    return raw
+def bash_rule(prefix: str) -> str:
+    """端口给的是与 CLI 无关的命令前缀（`ai4sci skill`），
+    这家的白名单写法是 `Bash(ai4sci skill *)`。"""
+    return f"Bash({prefix} *)"
+
+
+def tool_guide(bash_rules: tuple[str, ...]) -> str:
+    commands = ("、".join(f"`{p} …`" for p in bash_rules) if bash_rules
+                else "（没有：这次一条都不放）")
+    return TOOL_GUIDE.format(commands=commands)
 
 
 def build_env(timeout_s: float, chat_id: str | None = None) -> dict[str, str]:
@@ -101,77 +118,44 @@ def _abs_glob(path: Path) -> str:
     return f"//{path.resolve().as_posix().lstrip('/')}/**"
 
 
-def _pgids_below(pid: int) -> list[int]:
-    """自顶向下趟出后代进程所在的进程组 id（叶子在前）。
-
-    为什么不能只 killpg 自己那一组：实测 Claude Code 的 Bash 工具把 shell 起在**新的进程组**里，
-    `sleep 300` 的 PGID 与 CLI 的 PGID 不同（还会被 run_in_background 放到后台），
-    只杀 CLI 那一组会留下 PPID=1 的孤儿 sleep。必须趁父进程还活着把树趟完。
-    """
-    pgids: list[int] = []
-    frontier = [pid]
-    while frontier:
-        proc = subprocess.run(["pgrep", "-P", str(frontier.pop())], capture_output=True, text=True)
-        # pgrep 无匹配时退出码是 1，这是"没有子进程"不是故障；别的非零码才要炸
-        if proc.returncode not in (0, 1):
-            raise RuntimeError(f"pgrep 失败（退出码 {proc.returncode}）：{proc.stderr.strip()}")
-        for token in proc.stdout.split():
-            child = int(token)
-            frontier.append(child)
-            try:
-                pgids.append(os.getpgid(child))
-            except ProcessLookupError:
-                continue  # 趟树期间自己退了，不是错误
-    return pgids
-
-
-def kill_tree(pid: int) -> list[int]:
-    """杀干净：后代的进程组先杀，最后杀 pid 自己那一组。返回实际下手的 pgid 列表。"""
-    own = os.getpgid(0)
-    groups = [*_pgids_below(pid), os.getpgid(pid)]
-    killed: list[int] = []
-    for pgid in dict.fromkeys(groups):
-        if pgid <= 1 or pgid == own:  # 护栏：绝不把框架自己那一组带走
-            continue
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-        except ProcessLookupError:
-            continue  # 已经死了
-        killed.append(pgid)
-    return killed
-
-
 class ClaudeCodeRunner:
+    name = NAME
+
     def __init__(self, cli: str = "claude") -> None:
         self.cli = cli
 
+    @staticmethod
+    def tool_guide(bash_rules: tuple[str, ...]) -> str:
+        return tool_guide(bash_rules)
+
     def build_argv(self, prompt: str, cwd: Path, allowed_paths: list[Path],
-                   bash_rules: tuple[str, ...] = (), max_turns: int | None = None,
-                   max_budget_usd: float | None = None) -> list[str]:
+                   bash_rules: tuple[str, ...] = (), tuning: Tuning | None = None,
+                   max_turns: int | None = None, max_budget_usd: float | None = None) -> list[str]:
         # bash_rules 由调用方显式给而不是默认放行：dontAsk 下只读 Bash（grep/ls/wc）本就自动放行，
         # 写操作（sed -i）实测被拒——不给 Bash 规则，才守得住"只能改 allowed_paths"
         rules: list[str] = []
         for path in allowed_paths:
             rules += [f"Edit({_abs_glob(path)})", f"Write({_abs_glob(path)})"]
         rules.append(f"Read({_abs_glob(cwd)})")  # 读整个工作目录：harness 与 data 要看得见
-        rules += [*bash_rules, *WEB_TOOLS]
-        argv = [self.cli, "-p", prompt, "--output-format", "stream-json", "--verbose",
+        rules += [*(bash_rule(p) for p in bash_rules), *WEB_TOOLS]
+        picked = KNOBS.fill(tuning)  # 按人的设置里这家用什么；没给用起点，从不让 CLI 自己猜
+        return [self.cli, "-p", prompt, "--output-format", "stream-json", "--verbose",
                 "--permission-mode", "dontAsk", *EXECUTOR_ISOLATION_ARGS,
                 "--allowedTools", *rules,
                 "--max-turns", str(int(_env_num("AI4SCI_EXECUTOR_MAX_TURNS", 30, int))
                                    if max_turns is None else int(max_turns)),
                 "--max-budget-usd", str(_env_num("AI4SCI_EXECUTOR_MAX_BUDGET_USD", 2.0, float)
-                                        if max_budget_usd is None else float(max_budget_usd))]
-        model = os.environ.get("AI4SCI_EXECUTOR_MODEL")
-        if model:  # 缺省不传，让 CLI 用它自己的默认模型
-            argv += ["--model", model]
-        return argv
+                                        if max_budget_usd is None else float(max_budget_usd)),
+                "--model", picked.model, "--effort", picked.effort]
 
     def run(self, prompt: str, cwd: Path, timeout_s: float,
             allowed_paths: list[Path], bash_rules: tuple[str, ...] = (),
+            runtime_paths: list[Path] = (), tuning: Tuning | None = None,
             max_turns: int | None = None, max_budget_usd: float | None = None) -> RunResult:
+        # runtime_paths 用不上：这家没有沙箱，Bash 起的 ai4sci 子进程本来就能写平台自己的目录
         before = snapshot(cwd)
-        argv = self.build_argv(prompt, cwd, allowed_paths, bash_rules, max_turns, max_budget_usd)
+        argv = self.build_argv(prompt, cwd, allowed_paths, bash_rules, tuning, max_turns,
+                               max_budget_usd)
         raw: list[str] = []
         err: list[str] = []
         started = time.monotonic()
@@ -203,7 +187,8 @@ class ClaudeCodeRunner:
         return RunResult(exit_code=proc.returncode, events=events,
                          changed_files=diff(before, snapshot(cwd)), cost_usd=cost,
                          duration_s=duration_s, timed_out=timed_out,
-                         stdout_tail="".join(junk + err)[-_TAIL_CHARS:])
+                         stdout_tail="".join(junk + err)[-_TAIL_CHARS:],
+                         report=final_report(events))
 
     @staticmethod
     def _persist(cwd: Path, raw: list[str], err: list[str]) -> None:
@@ -255,6 +240,13 @@ def final_metrics(
     return cost, duration_s
 
 
+def final_report(events: list[dict]) -> str:
+    """执行层收尾的自述 = 最终 result 事件的文本；没有就空串，不编。"""
+    final = next((e for e in reversed(events) if e.get("type") == "result"), None)
+    text = (final or {}).get("result")
+    return text.strip() if isinstance(text, str) else ""
+
+
 class ClaudeCodeChat:
     """协调层适配器：同一个 CLI，多轮靠 `--resume <session id>`，指南靠 `--append-system-prompt`。
 
@@ -271,6 +263,7 @@ class ClaudeCodeChat:
     这一轮花了多少由框架减。
     """
 
+    name = NAME
     cost_reporting = "session"
 
     def __init__(self, cli: str = "claude") -> None:
@@ -278,13 +271,8 @@ class ClaudeCodeChat:
 
     @staticmethod
     def knobs() -> Knobs:
-        """有哪些模型、哪几档思考深度、不选时用什么。缺省模型是环境里给的那个（没给就 None：
-        CLI 自己定，我们不猜）；给的是清单外的全名就把它也列上，页面上才对得上号。"""
-        model = os.environ.get(MODEL_ENV) or None
-        models = MODELS
-        if model is not None and model not in {c.id for c in MODELS}:
-            models = (*MODELS, Choice(model, model, "环境里给的"))
-        return Knobs(models=models, efforts=EFFORTS, model=model, effort=_default_effort())
+        """有哪些模型、哪几档思考深度，以及起点（按人的设置里没填这家时用；P-25）。"""
+        return KNOBS
 
     def build_argv(
         self, message: str, cwd: Path, *, session_id: str | None, system_prompt: str,
@@ -299,7 +287,7 @@ class ClaudeCodeChat:
         # dontAsk 下不被拒；Edit / Write 的白名单没有它，写照旧被拒
         for path in readable_paths:
             rules.append(f"Read({_abs_glob(path)})")
-        rules += [*bash_rules, *WEB_TOOLS]
+        rules += [*(bash_rule(p) for p in bash_rules), *WEB_TOOLS]
         argv = [self.cli, "-p", message, "--output-format", "stream-json", "--verbose",
                 "--include-partial-messages",  # 逐字吐（端口的 delta 事件，外层 #65）
                 "--permission-mode", "dontAsk", *ISOLATION_ARGS,
@@ -313,25 +301,17 @@ class ClaudeCodeChat:
             argv += ["--append-system-prompt", system_prompt]
         if session_id:
             argv += ["--resume", session_id]
-        # 这一轮选的压过环境里的缺省；都没有就不传，让 CLI 用它自己的
-        picked = tuning or Tuning()
-        model = picked.model or os.environ.get(MODEL_ENV)
-        if model:
-            argv += ["--model", model]
-        effort = picked.effort or _default_effort()
-        if effort:
-            if effort not in {c.id for c in EFFORTS}:
-                raise ValueError(
-                    f"思考深度只认 {', '.join(c.id for c in EFFORTS)}，得到 {effort!r}")
-            argv += ["--effort", effort]
-        return argv
+        # 对话 meta 里记的具体值；没给用起点（P-25：从不让 CLI 自己猜）
+        picked = KNOBS.fill(tuning)
+        return [*argv, "--model", picked.model, "--effort", picked.effort]
 
     def turn(
         self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
         system_prompt: str, allowed_paths: list[Path], bash_rules: tuple[str, ...],
-        readable_paths: list[Path] = (), chat_id: str | None = None,
-        tuning: Tuning | None = None,
+        readable_paths: list[Path] = (), runtime_paths: list[Path] = (),
+        chat_id: str | None = None, tuning: Tuning | None = None,
     ) -> Iterator[ChatEvent]:
+        # runtime_paths 用不上：没有沙箱，Bash 起的 ai4sci 子进程本来就能写平台自己的目录
         argv = self.build_argv(message, cwd, session_id=session_id, system_prompt=system_prompt,
                                allowed_paths=allowed_paths, bash_rules=bash_rules,
                                readable_paths=readable_paths, tuning=tuning)
@@ -441,6 +421,73 @@ def _translate(line: str) -> ChatEvent | None:
                          duration_s=float(duration) / 1000.0 if duration is not None else 0.0,
                          exit_code=0, raw=raw)
     return None
+
+
+def parse_version(text: str) -> tuple[int, ...] | None:
+    """`claude --version` 的原文形如 `2.1.278 (Claude Code)`：取开头的三段数字；认不出返回 None。"""
+    head = text.strip().split()[0] if text.strip() else ""
+    parts = head.split(".")
+    if len(parts) < 3 or not all(p.isdigit() for p in parts[:3]):
+        return None
+    return tuple(int(p) for p in parts[:3])
+
+
+def probe(cli: str = "claude", speak_timeout_s: float = 120.0) -> AgentProbe:
+    """四句人话（纲领 P-25）：装了没、版本够不够、登录了没、能不能说话。
+
+    登录看 `claude auth status`（实测 2.1.278 打一份 JSON，`loggedIn` 布尔）；说话是真跑一句 pong，
+    走与真会话同一组隔离参数——顺带验证新版本没把承重位弄坏。任何一步不过后面的不再试（没装就
+    没有版本，没登录说不了话），但每一步都留一行给人看。
+    """
+    result = AgentProbe()
+    exe = shutil.which(cli)
+    if exe is None:
+        result.items.append(("装了没", False, f"找不到 `{cli}`：装 Claude Code 后再检查"))
+        return result
+    result.installed = True
+    result.items.append(("装了没", True, exe))
+    version = subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=30)
+    raw = (version.stdout or version.stderr).strip()
+    result.version = raw
+    parsed = parse_version(raw)
+    want = ".".join(map(str, MIN_VERSION))
+    if version.returncode != 0 or parsed is None:
+        result.items.append(("版本", False, f"`{cli} --version` 认不出：{raw or '无输出'}"))
+        return result
+    if parsed < MIN_VERSION:
+        result.items.append(("版本", False, f"{raw}，要 ≥ {want}（`--effort` 与隔离参数）"))
+        return result
+    result.items.append(("版本", True, raw))
+    status = subprocess.run([cli, "auth", "status"], capture_output=True, text=True, timeout=30)
+    try:
+        doc = json.loads(status.stdout or "{}")
+    except json.JSONDecodeError:
+        doc = {}
+    result.logged_in = status.returncode == 0 and bool(doc.get("loggedIn"))
+    if not result.logged_in:
+        result.items.append(("登录", False, "没登录：在终端跑 `claude`，按提示登录后再检查"))
+        return result
+    result.items.append(("登录", True, str(doc.get("authMethod") or "已登录")))
+    started = time.monotonic()
+    argv = [cli, "-p", "Reply with exactly the word pong and nothing else.",
+            "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
+            *EXECUTOR_ISOLATION_ARGS, "--max-turns", "1", "--model", KNOBS.model]
+    try:
+        spoke = subprocess.run(argv, capture_output=True, text=True, timeout=speak_timeout_s,
+                               stdin=subprocess.DEVNULL, env=build_env(speak_timeout_s))
+    except subprocess.TimeoutExpired:
+        result.items.append(("说话", False, f"{speak_timeout_s:g} 秒没回话"))
+        return result
+    events, _ = parse_events(spoke.stdout.splitlines(keepends=True))
+    reply = final_report(events)
+    if spoke.returncode != 0 or "pong" not in reply.lower():
+        tail = (spoke.stderr or reply or "无输出").strip()[-300:]
+        result.items.append(("说话", False, f"退出码 {spoke.returncode}：{tail}"))
+        return result
+    result.spoke_s = time.monotonic() - started
+    result.cost_usd, _ = final_metrics(events, False, result.spoke_s, spoke.returncode)
+    result.items.append(("说话", True, f"pong，{result.spoke_s:.1f} 秒，${result.cost_usd:.3f}"))
+    return result
 
 
 def make_runner() -> ClaudeCodeRunner:

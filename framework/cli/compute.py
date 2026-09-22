@@ -23,28 +23,34 @@ _SSH_RE = re.compile(r"^(?P<user>[A-Za-z0-9._-]+)@(?P<host>[A-Za-z0-9.-]+)(?::(?
 DEFAULT_ROOT = "~/ai4sci"
 
 
-def cmd_add(args: argparse.Namespace) -> int:
-    match = _SSH_RE.match(args.ssh)
+def add_and_check(name: str, ssh: str, key: str, root: str = DEFAULT_ROOT,
+                  default: bool = False) -> tuple[computes.Entry, Probe]:
+    """接一台机器：ssh 那一行拆开、密钥要在、写进清单、就地探测、记回。CLI 与页面「设置」共用；
+    参数不对是 ValueError（ComputesInvalid 也是），调用方各自翻成退出码或 400。"""
+    match = _SSH_RE.match(ssh)
     if not match:
-        print(f"--ssh 要写成 user@host 或 user@host:port，得到 {args.ssh!r}", file=sys.stderr)
-        return EXIT_USAGE
-    key = Path(args.key).expanduser()
-    if not key.is_file():
-        print(f"密钥文件不存在：{key}（只认密钥，不收密码；先把公钥贴到那台机器上）",
-              file=sys.stderr)
-        return EXIT_USAGE
+        raise ValueError(f"--ssh 要写成 user@host 或 user@host:port，得到 {ssh!r}")
+    key_path = Path(key).expanduser()
+    if not key_path.is_file():
+        raise ValueError(f"密钥文件不存在：{key_path}"
+                         "（只认密钥，不收密码；先把公钥贴到那台机器上）")
     params = {"host": match["host"], "user": match["user"],
               "port": int(match["port"] or computes.DEFAULT_SSH_PORT),
-              "key": str(key), "root": args.root}
-    try:
-        entry = computes.add(args.name, "ssh", params)
-    except computes.ComputesInvalid as exc:
-        print(str(exc), file=sys.stderr)
-        return EXIT_USAGE
+              "key": str(key_path), "root": root or DEFAULT_ROOT}
+    entry = computes.add(name, "ssh", params)
     probe = computes.instance(entry.name).check()
     computes.record_check(entry.name, probe)
-    if args.default:
+    if default:
         computes.set_default(entry.name)
+    return entry, probe
+
+
+def cmd_add(args: argparse.Namespace) -> int:
+    try:
+        entry, probe = add_and_check(args.name, args.ssh, args.key, args.root, args.default)
+    except ValueError as exc:  # 含 ComputesInvalid
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
     _print_probe(probe)
     state = "可用" if probe.ok else "探测没过，记录留着"
     print(f"ok {entry.name}\t{state}\t写入 {computes.path()}"

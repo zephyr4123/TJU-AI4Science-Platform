@@ -26,6 +26,7 @@ import sys
 import time
 from pathlib import Path
 
+from framework import agents
 from framework.capabilities import discover
 from framework.chat import notify
 from framework.cli._common import (
@@ -64,7 +65,10 @@ def cmd_cap(args: argparse.Namespace) -> int:
     if isinstance(ws, int):
         return ws
     descriptor: Capability = args.module.DESCRIPTOR
-    ports = resolve_ports(getattr(args, "backend", None), getattr(args, "compute", None))
+    backend = getattr(args, "backend", None)
+    if descriptor.needs_executor and backend is None:
+        backend = agents.role_backend("executor")  # 按人的设置（P-25），不在代码里写死哪家
+    ports = resolve_ports(backend, getattr(args, "compute", None))
     if isinstance(ports, int):
         return ports
     job_id = os.environ.get(jobs.JOB_ID_ENV)
@@ -254,7 +258,9 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
             sub.add_argument("--continue", dest="continuing", default=None, metavar="STAGE/N",
                              help=CONTINUE_HELP)
         if descriptor.needs_executor:
-            sub.add_argument("--backend", default="claude_code", help="执行层后端名")
+            sub.add_argument("--backend", default=None,
+                             help="执行层用哪家 agent；缺省照设置里「执行用」的那家"
+                                  "（ai4sci agent list）")
         if descriptor.needs_compute:
             sub.add_argument("--compute", default="",
                              help="在哪台机器上跑（ai4sci show computes 里的名字）；缺省照清单")

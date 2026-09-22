@@ -20,7 +20,7 @@ platform/
 │   ├── workspace/     工作区的磁盘：根、产出目录、流程的进度、后台作业
 │   ├── skills/        skill 库的读取点：扫两处库、校验 SKILL.md 与脚本、拼清单、uv run 起脚本
 │   └── contracts/     框架认的东西：阶段表、需求与确认、产出与签字、流程文件、能力描述符
-├── backends/      执行层适配器：claude_code.py …
+├── backends/      agent 适配器：claude_code.py、codex.py（执行层 + 协调层 + 自检各一份）
 ├── compute/       算力适配器：local.py 本机、ssh.py 一台能 ssh 上去的 Linux（按人的清单 ~/.config/ai4sci/computes.yaml 选，P-23）
 ├── tools/         确定性脚本
 ├── domains/       领域包，按工具链命名（generic/ 兜底、petab/ 参数估计）；prompts/ 随实验快照进执行层提示，skills/ 进执行层的 skill 清单
@@ -62,7 +62,7 @@ ai4sci cap verify --from analysis/1                        # 零模型核对数�
 ai4sci show caps                                           # 七个研究阶段、每个阶段的能力与五栏；show workflows 列流程经过哪几个阶段
 ```
 
-执行层用哪个模型、超时多久走环境变量：`AI4SCI_EXECUTOR_MODEL=sonnet`、`AI4SCI_EXECUTOR_TIMEOUT_S=600`；协调层同理 `AI4SCI_COORDINATOR_MODEL` / `_EFFORT`（思考深度 low / medium / high / xhigh / max）/ `_TIMEOUT_S` / `_MAX_BUDGET_USD`。这些是起 `ai4sci serve` 或 `ai4sci chat` 的人在环境里配的缺省，协调 agent 敲的命令上不带（纲领 P-14：它面前只有裸 `ai4sci`）；人在页面的输入框上或 `ai4sci chat new|send --model --effort` 随时换，选了记进那段对话（`GET /backends` 列出每家后端有哪些可选）。
+助理与执行层各用哪家 coding agent（Claude Code、Codex，可以不同）、每家新对话用的模型与思考深度，是使用者自己的设置（纲领 P-25 底座归人）：按人的 `~/.config/ai4sci/agents.yaml`，与算力清单并列，`ai4sci agent list | check <名字> | use <名字> --for chat|executor --model --effort` 维护，页面「设置」是同一份。`check` 四句人话：装了没、版本够不够、登录了没、能不能说话；`ai4sci check` 把底座、算力、存放一起查一遍，一项不过退出码非零。旋钮上只有具体值：开新对话把设置里的值抄进这段对话，`ai4sci chat send --model --effort` 或页面输入框随时换、记进那段对话，改设置只影响之后开的对话。Codex 用 ChatGPT 账号登录（`codex login`），订阅报不出美元，成本记 NaN、token 用量在事件里。超时与额度仍走环境变量：`AI4SCI_EXECUTOR_TIMEOUT_S`、`AI4SCI_COORDINATOR_TIMEOUT_S` / `_MAX_TURNS` / `_MAX_BUDGET_USD`。
 
 课题跑在自己的环境里：`cap design` 把 `materials/env/` 带进设计那包，`cap auto-research` 开实验时按它建 `experiment/<n>/.venv`，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新课题看 [`docs/start-a-workspace.md`](docs/start-a-workspace.md)。往平台里加一个能力看 [`docs/add-a-capability.md`](docs/add-a-capability.md)：文件名按阶段定、不按能力定，谁产的记在 meta。
 

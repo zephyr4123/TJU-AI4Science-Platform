@@ -97,7 +97,8 @@ def test_domain_prompt_is_snapshotted_and_skills_go_in_as_a_catalog(tmp_path, mo
     assert "## 领域约定" in prompt and "实验时只调学习率。" in prompt
     assert "<skill><name>petab</name><description>夹具 skill</description></skill>" in prompt
     assert "边界不许动" not in prompt, "skill 正文不进提示，执行层 ai4sci skill show 按需读"
-    assert runner.bash_rules == ("Bash(ai4sci skill *)",)
+    assert runner.bash_rules == ("ai4sci skill",)
+    assert prompt.rstrip().endswith("一类命令。"), "提示末尾接这家 CLI 自己的「工具怎么用」"
 
 
 def test_domain_without_prompt_or_skills_injects_nothing(tmp_path, monkeypatch):

@@ -21,8 +21,10 @@ import argparse
 import sys
 
 from framework.cli import (
+    agent,
     cap,
     chat,
+    check,
     compute,
     env,
     flow,
@@ -52,6 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
     job.add_parser(groups)
     env.add_parser(groups)
     compute.add_parser(groups)
+    agent.add_parser(groups)
+    check.add_parser(groups)
     skill.add_parser(groups)
     workspace.add_parser(groups)
     chat.add_parser(groups)

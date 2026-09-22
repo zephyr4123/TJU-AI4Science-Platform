@@ -8,8 +8,19 @@
 端点按域分前缀（纲领 P-16）：工作区 `/workspaces/<id>/…` 是研究助理的域，`/studio/…` 是流程助理
 的域，对话四个端点在两个前缀下共用一套实现；主页面的对话物理上到不了库。
 
-    GET  /health                            {"ok": true}
-    GET  /backends                          每家 agent 后端的旋钮：模型清单、思考深度档位、缺省
+    GET  /health                            {"ok": true, "checks_ok":
+    bool}（在用的底座与每台算力上次自检都过）
+    GET  /backends                          每家 agent：产品名、模型清单、深度档位、
+    新对话用的值（照设置）、
+                                            哪家是「对话用」的缺省
+    GET  /settings                          设置那一整份：底座（两层各用哪家、每家清单与缺省、
+    上次检查）、算力、存放
+    POST /settings/agents                   {"chat"?, "executor"?, "agents"?: {name: {model?,
+    effort?}}} → 新的一整份
+    POST /settings/check                    {"what"?: all|agents|computes|storage, "name"?} →
+    真探并记回，带 ok / failed
+    POST /settings/computes                 {"name", "ssh", "key", "root"?} 接一台机器（探测后记回）
+    POST /settings/computes/<name>/remove   删一台
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
     GET  /cap                               能力描述符清单：每个带 stage、五栏与 used_by
     GET  /workflows                         库：`workflows/*.yaml`，covers / remarks / problems
@@ -37,8 +48,7 @@
     POST <域>/chats                         {"backend"?, "model"?, "effort"?} → 新对话的 meta
     GET  <域>/chats/<cid>                   meta + transcript + history
     POST <域>/chats/<cid>/messages          {"text", "model"?, "effort"?} → text/event-stream，
-                                            一个事件一条；model / effort 给了就记进对话
-                                            （null 是回到后端缺省）
+                                            一个事件一条；model / effort 给了就记进对话（没给沿用）
     GET  /<其它>                            `ui_dir` 里的静态文件，找不到的回 index.html（单页应用）
 """
 
@@ -55,19 +65,32 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from backends import BackendNotFound, Chat, ChatEvent, Tuning, available_backends, get_chat
-from framework import paths
-from framework.chat import boards, conversation, guide, scope
+from backends import (
+    TITLES,
+    AgentProbe,
+    BackendNotFound,
+    Chat,
+    ChatEvent,
+    Tuning,
+    available_backends,
+    get_chat,
+    probe,
+)
+from framework import agents, computes, paths
+from framework.chat import boards, conversation, guide, scope, settings
 from framework.contracts import output, requirement, stages
 from framework.contracts.capability import Capability
 from framework.workspace import jobs, outputs, root
 
 LOGGER = logging.getLogger("ai4sci.serve")
-DEFAULT_BACKEND = "claude_code"
 MAX_BODY = 1 << 20
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
-API_ROOTS = ("health", "backends", "stages", "cap", "workflows", "templates", "workspaces",
-             "studio")
+API_ROOTS = ("health", "backends", "settings", "stages", "cap", "workflows", "templates",
+             "workspaces", "studio")
+
+
+def _no_add_compute(body: dict[str, Any]) -> dict[str, Any]:
+    raise ValueError("这个服务没开「接机器」：在终端 ai4sci compute add")
 INDEX_NAME = "index.html"
 
 
@@ -84,6 +107,8 @@ class ChatServer(ThreadingHTTPServer):
                  save_workflow: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  descriptors: Callable[[], dict[str, Capability]] = dict,
                  chat_factory: Callable[[str], Chat] = get_chat,
+                 add_compute: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+                 probe_agent: Callable[[str], AgentProbe] = probe,
                  system_prompts: dict[str, str] | None = None,
                  ui_dir: Path | None = None) -> None:
         super().__init__(address, Handler)
@@ -98,6 +123,12 @@ class ChatServer(ThreadingHTTPServer):
         # 能力描述符表：流程实例的进度要按它核对点名的能力；cli 注入，chat 层不认识 capabilities
         self.descriptors = descriptors
         self.chat_factory = chat_factory
+        # 设置那块板要的清单与自检都跟着接的是哪家适配器走（测试里是剧本，不跑真 CLI）
+        self.knobs_of = lambda name: chat_factory(name).knobs()
+        self.probe_agent = probe_agent
+        # 接一台机器：cli 注入（要就地探测，与 `ai4sci compute add` 同一段代码）；
+        # None 是这个服务不开这功能
+        self.add_compute = add_compute or _no_add_compute
         # 页面构建目录；None 就是没构建，根路径回一句怎么构建，接口照常
         self.ui_dir = None if ui_dir is None else Path(ui_dir).resolve()
         # 两份指南在起服务时各读一次：文件不在当场炸，不等第一条消息才发现
@@ -134,11 +165,26 @@ class Handler(BaseHTTPRequestHandler):
         if not parts or parts[0] not in API_ROOTS:
             return self._static(url.path)
         if parts == ["health"]:
-            return self._json({"ok": True})
+            # checks_ok：设置里在用的两家与每台算力上次自检都过了（没检查过也算过：不拦人）
+            return self._json({"ok": True,
+                               "checks_ok": not settings.problems(knobs=self.server.knobs_of,
+                                                                  home=self.server.home)})
         if parts == ["backends"]:
-            return self._json([{"name": name, "default": name == DEFAULT_BACKEND,
-                                **asdict(self.server.chat_factory(name).knobs())}
-                               for name in available_backends()])
+            # 页面开新对话那一屏的三枚旋钮：哪家（缺省照设置里「对话用」的）、
+            # 每家的清单与新对话用的值
+            table = settings.agents_table(self.server.knobs_of)
+            picked = {e["name"]: e for e in table["entries"]}
+            rows = []
+            for name in available_backends():
+                knobs = asdict(self.server.chat_factory(name).knobs())
+                entry = picked.get(name) or {}
+                rows.append({"name": name, "title": TITLES.get(name, name),
+                             "default": name == table["chat"], **knobs,
+                             "model": entry.get("model", knobs["model"]),
+                             "effort": entry.get("effort", knobs["effort"])})
+            return self._json(rows)
+        if parts == ["settings"]:
+            return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
         if parts == ["stages"]:
             return self._json(self.server.stage_table())
         if parts == ["cap"]:
@@ -235,6 +281,8 @@ class Handler(BaseHTTPRequestHandler):
             return None
         if parts == ["workflows", "check"]:
             return self._json(self.server.check_workflow(body))
+        if parts[:1] == ["settings"]:
+            return self._post_settings(parts[1:], body)
         if parts == ["workflows"]:
             if self.server.save_workflow is None:
                 return self._error(HTTPStatus.NOT_IMPLEMENTED, "这个服务没开存流程")
@@ -266,12 +314,16 @@ class Handler(BaseHTTPRequestHandler):
             return None
         where, rest = found
         if rest == ["chats"]:
-            backend = str(body.get("backend") or DEFAULT_BACKEND)
             try:
+                knobs = self.server.knobs_of
+                backend = str(body.get("backend") or agents.role_backend("chat", knobs))
                 chat = self.server.chat_factory(backend)  # 名字不对现在就报，别等发消息
-            except BackendNotFound as exc:
+                # 新对话从按人的设置抄具体值（P-25），body 里给的压过它；剧本后端不在设置里就用起点
+                start = (agents.tuning_for(backend, knobs) if backend in available_backends()
+                         else chat.knobs().fill(None))
+            except (BackendNotFound, agents.AgentsInvalid) as exc:
                 return self._error(HTTPStatus.BAD_REQUEST, str(exc))
-            tuning = self._tuning(body, Tuning(), chat)
+            tuning = self._tuning(body, start, chat)
             if tuning is None:
                 return None
             conv = conversation.new_conversation(where.chats, backend, where.cwd, tuning=tuning)
@@ -352,13 +404,16 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def _tuning(self, body: dict[str, Any], current: Tuning, chat: Chat) -> Tuning | None:
-        """body 里的 model / effort：没给的键沿用 current，给 null 是回到后端缺省；
+        """body 里的 model / effort：没给或 null 的键沿用 current（旋钮上只有具体值，没有「回缺省」
+        ）；
         不是字符串或不在这家后端的清单上就 400。"""
         picked: dict[str, str | None] = {}
         for key in ("model", "effort"):
-            value = body.get(key, getattr(current, key))
+            value = body.get(key)
+            if value is None:
+                value = getattr(current, key)
             if value is not None and not isinstance(value, str):
-                self._error(HTTPStatus.BAD_REQUEST, f"{key} 要是字符串或 null")
+                self._error(HTTPStatus.BAD_REQUEST, f"{key} 要是字符串")
                 return None
             picked[key] = value
         tuning = Tuning(**picked)
@@ -375,7 +430,8 @@ class Handler(BaseHTTPRequestHandler):
             events = conversation.send(
                 conv, chat, text, system_prompt=self.server.system_prompts[where.kind],
                 allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
-                readable_paths=list(where.readable_paths), tuning=tuning)
+                readable_paths=list(where.readable_paths),
+                runtime_paths=list(where.runtime_paths), tuning=tuning)
             first = next(events)  # 忙、空消息这类错误在头响应之前就要报出来
         except conversation.ConversationBusy as exc:
             return self._error(HTTPStatus.CONFLICT, str(exc))
@@ -391,6 +447,32 @@ class Handler(BaseHTTPRequestHandler):
         self._sse(first)
         for event in events:
             self._sse(event)
+
+    def _post_settings(self, rest: list[str], body: dict[str, Any]) -> None:
+        """设置那块板的四个动作，都落到 chat/settings 与两份清单的读写点。"""
+        try:
+            if rest == ["agents"]:
+                return self._json(settings.update_agents(body, self.server.knobs_of,
+                                                         self.server.home))
+            if rest == ["check"]:
+                what = str(body.get("what") or "all")
+                name = body.get("name")
+                if what not in settings.WHATS or (name is not None and not isinstance(name, str)):
+                    return self._error(HTTPStatus.BAD_REQUEST,
+                                       f"what 只认 {settings.WHATS}，name 要是字符串")
+                return self._json(settings.check(what, name, knobs=self.server.knobs_of,
+                                                 probe_agent=self.server.probe_agent,
+                                                 home=self.server.home))
+            if rest == ["computes"]:
+                return self._json(self.server.add_compute(body), HTTPStatus.CREATED)
+            if len(rest) == 3 and rest[0] == "computes" and rest[2] == "remove":
+                computes.remove(rest[1])
+                return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+        except ValueError as exc:
+            # 名字不对（BackendNotFound / ComputeNotFound）、清单不合形状、值不在清单上：都是配置值
+            # 非法
+            return self._error(HTTPStatus.BAD_REQUEST, str(exc))
+        return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
 
     def _sse(self, event: ChatEvent) -> None:
         data = json.dumps(conversation.event_payload(event), ensure_ascii=False)
@@ -428,9 +510,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _conversation(self, where: scope.Scope, chat_id: str) -> conversation.Conversation | None:
         try:
-            return conversation.load_conversation(where.chats, chat_id)
+            # 老对话 meta 里的 null 读到时填成当时的缺省（P-25 之后旋钮上只有具体值）
+            return settings.ensure_tuned(conversation.load_conversation(where.chats, chat_id),
+                                         self.server.knobs_of)
         except conversation.ConversationNotFound as exc:
             self._error(HTTPStatus.NOT_FOUND, str(exc))
+            return None
+        except agents.AgentsInvalid as exc:
+            self._error(HTTPStatus.BAD_REQUEST, str(exc))
             return None
 
     def _by(self, body: dict[str, Any]) -> str | None:

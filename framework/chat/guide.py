@@ -20,10 +20,11 @@ KINDS = (WORKSPACE, STUDIO)
 GUIDE_PATHS = {WORKSPACE: paths.REPO_ROOT / paths.GUIDES_DIRNAME / "README.md",
                STUDIO: paths.REPO_ROOT / paths.GUIDES_DIRNAME / "studio.md"}
 # 两位助理能运行的命令都只有 `ai4sci`（纲领 P-14 CLI 主导封装）。指南只教裸写法（服务把自己 venv 的
-# bin 放进了 agent 的 PATH，`ClaudeCodeChat.build_env`）；带 `.venv/bin/` 路径的写法也放行——老会话里
-# 模型会照自己以前几轮的写法来，主人 2026-09-17：前期别设坎，真出问题再收（外层 #69）。规则按命令
-# 文本前缀匹配，命令前挂环境变量仍对不上。只读的 Bash（ls / grep）在 dontAsk 下是 CLI 自己放行的
-BASH_RULES = ("Bash(ai4sci *)", "Bash(.venv/bin/ai4sci *)")
+# bin 放进了 agent 的 PATH，适配器的 `build_env`）；带 `.venv/bin/` 路径的写法也放行——老会话里
+# 模型会照自己以前几轮的写法来，主人 2026-09-17：前期别设坎，真出问题再收（外层 #69）。这里写的是
+# 与 CLI 无关的命令前缀，各家适配器自己翻（Claude Code 是 `Bash(ai4sci *)`，按命令文本前缀匹配、
+# 命令前挂环境变量仍对不上；Codex 没有按命令的白名单，沙箱是门）
+BASH_RULES = ("ai4sci", ".venv/bin/ai4sci")
 
 PREAMBLES = {
     WORKSPACE: """# 你在服务里

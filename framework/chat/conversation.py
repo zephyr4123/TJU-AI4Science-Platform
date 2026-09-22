@@ -76,7 +76,9 @@ class Conversation:
     # 后端上次报的这段会话的累计花费（`Chat.cost_reporting == "session"` 的后端才用得上）：
     # 这一轮的花费 = 这次报的 − 它；换了会话就从零算
     session_cost_usd: float = 0.0
-    # 这段对话上次选的模型与思考深度（外层 #86）：每轮可改、改了记住；None 是后端缺省
+    # 这段对话用的模型与思考深度（外层 #86）：开对话时从按人的设置抄进来、每轮可改、改了记住，
+    # 一律具体值（纲领 P-25）。None 只剩两种情况：老对话（升级前记的），由 chat/settings 读到时填成
+    # 当时的缺省；测试里的剧本后端。适配器遇到 None 用自己的起点
     model: str | None = None
     effort: str | None = None
     # 上一轮塞给它的指南（system prompt）的指纹：指南中途更新了（平台加了命令）要提醒它——真跑时
@@ -181,7 +183,8 @@ def event_payload(event: ChatEvent) -> dict[str, Any]:
 def send(
     conv: Conversation, chat: Chat, message: str, *, system_prompt: str,
     allowed_paths: list[Path], bash_rules: tuple[str, ...], readable_paths: list[Path] = (),
-    timeout_s: float | None = None, origin: str = "人", tuning: Tuning | None = None,
+    runtime_paths: list[Path] = (), timeout_s: float | None = None, origin: str = "人",
+    tuning: Tuning | None = None,
 ) -> Iterator[ChatEvent]:
     """发一轮：写 message.md → 逐个事件落盘并往外吐 → done/error 时更新 meta 与 transcript。
 
@@ -228,7 +231,8 @@ def send(
             for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
                                    system_prompt=system_prompt, allowed_paths=allowed_paths,
                                    bash_rules=bash_rules, readable_paths=readable_paths,
-                                   chat_id=conv.chat_id, tuning=conv.tuning):
+                                   runtime_paths=list(runtime_paths), chat_id=conv.chat_id,
+                                   tuning=conv.tuning):
                 if event.session_id and event.session_id != conv.session_id:
                     conv.session_id = event.session_id
                     conv.save()

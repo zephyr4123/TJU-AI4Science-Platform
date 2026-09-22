@@ -16,12 +16,25 @@ from pathlib import Path
 
 from framework import paths
 from framework.capabilities import discover, stage_table
-from framework.chat import guide
+from framework.chat import guide, settings
 from framework.chat.server import ChatServer
+from framework.cli import compute as compute_cli
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, setup_logging
 from framework.contracts import workflows
 
 DEFAULT_UI_DIR = paths.REPO_ROOT / "ui" / "web" / "dist"
+
+
+def _add_compute(body: dict) -> dict:
+    """页面「设置 → 算力 → 添加」：与 `ai4sci compute add` 同一段代码（写清单、就地探测、记回），
+    回新的一整份设置。"""
+    for key in ("name", "ssh", "key"):
+        if not isinstance(body.get(key), str) or not body[key].strip():
+            raise ValueError(f"body 要有非空的 {key}")
+    compute_cli.add_and_check(body["name"].strip(), body["ssh"].strip(), body["key"].strip(),
+                              str(body.get("root") or compute_cli.DEFAULT_ROOT),
+                              bool(body.get("default")))
+    return settings.snapshot()
 
 
 def _descriptors() -> dict[str, object]:
@@ -82,7 +95,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         server = ChatServer((args.host, args.port), home=paths.home(), catalog=_catalog,
                             workflows=_workflows, check_workflow=_check_workflow,
                             save_workflow=_save_workflow, descriptors=_descriptor_map,
-                            stage_table=stage_table, ui_dir=ui_dir)
+                            stage_table=stage_table, add_compute=_add_compute, ui_dir=ui_dir)
     except guide.GuideMissing as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID

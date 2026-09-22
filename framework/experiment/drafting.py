@@ -88,7 +88,8 @@ def draft(
 
     log_dir, number = _next_session_dir(pack / LOG_DIRNAME)
     log_dir.mkdir(parents=True)
-    (log_dir / "prompt.md").write_text(prompt, encoding="utf-8")  # 先落盘：会话死了也知道喂了什么
+    # 先落盘：会话死了也知道喂了什么；记的是连同这家 CLI「工具怎么用」在内的整份
+    (log_dir / "prompt.md").write_text(session.full_prompt(runner, prompt), encoding="utf-8")
     result = session.run_session(
         runner, prompt, cwd=pack,
         allowed_paths=[pack / name for name in (*WRITABLE_DIRS, *WRITABLE_FILES)],

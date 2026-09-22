@@ -151,7 +151,8 @@ def test_prompt_carries_requirement_hypothesis_skills_rules_and_escaped_dollars(
         assert token in prompt, token
     assert "别 import 第三方库" not in prompt, "skill 正文不进提示，执行层按需 show"
     assert "这次要改什么" not in prompt
-    assert runner.bash_rules == ("Bash(ai4sci skill *)",)
+    assert runner.bash_rules == ("ai4sci skill",)
+    assert "## 工具怎么用" in prompt and "Bash 只放行 `ai4sci skill …`" in prompt
 
 
 def test_unknown_domain_fails_before_the_session(ws):

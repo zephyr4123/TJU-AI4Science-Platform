@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from backends import RunResult
+from backends import RunResult, Tuning
 from backends._snapshot import diff, snapshot
 
 # 一个 move 要么是 {相对路径: 内容}，要么是一个拿 cwd 干活的函数
@@ -26,6 +26,9 @@ class ScriptExhausted(AssertionError):
 
 
 class ScriptedRunner:
+    # 顶着真适配器的名字：起会话那层按名字查按人的设置里这家用什么模型（P-25）
+    name = "claude_code"
+
     def __init__(
         self,
         moves: list[Move],
@@ -50,14 +53,22 @@ class ScriptedRunner:
         # 每轮的自述，与 moves 一一对应；缺省一句"剧本第 N 步"，测试笔记时显式给
         self.reports: list[str] = []
 
+    @staticmethod
+    def tool_guide(bash_rules: tuple[str, ...]) -> str:
+        """与 Claude Code 适配器同一段话：能力的测试对着「Bash 只放行」这几个字对账。"""
+        commands = "、".join(f"`{p} …`" for p in bash_rules)
+        return f"## 工具怎么用\n\n- Bash 只放行 {commands} 一类命令。\n"
+
     def run(
         self, prompt: str, cwd: Path, timeout_s: float, allowed_paths: list[Path],
-        bash_rules: tuple[str, ...] = (), max_turns: int | None = None,
+        bash_rules: tuple[str, ...] = (), runtime_paths: list[Path] = (),
+        tuning: Tuning | None = None, max_turns: int | None = None,
         max_budget_usd: float | None = None,
     ) -> RunResult:
         self.calls += 1
         self.prompts.append(prompt)
         self.bash_rules = bash_rules  # 框架给执行层放行了哪些命令，测试对账（只该有 ai4sci skill）
+        self.tuning = tuning  # 按人的设置里这家用什么，测试对账
         self.limits = (max_turns, max_budget_usd)  # 能力给这次会话的轮数 / 花费上限
         assert timeout_s > 0 and allowed_paths, "runner 的调用形状变了，剧本要跟着改"
         if self.raise_at is not None and self.calls == self.raise_at:
@@ -80,11 +91,11 @@ class ScriptedRunner:
         report = self.reports.pop(0) if self.reports else f"剧本第 {self.calls} 步"
         return RunResult(
             exit_code=0,
-            # 与真后端同形：自述放在最终 result 事件的 result 字段里
+            # 与真后端同形：Claude Code 的自述在最终 result 事件里，适配器抄进 report
             events=[{"type": "result", "result": report}],
             changed_files=diff(before, snapshot(cwd)),
             cost_usd=self.cost_usd, duration_s=self.duration_s, timed_out=False,
-            stdout_tail="scripted",
+            stdout_tail="scripted", report=report,
         )
 
 

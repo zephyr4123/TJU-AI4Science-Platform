@@ -48,10 +48,11 @@ def test_get_backend_returns_runner_shaped_object():
 
 def test_backend_not_found_lists_available_names():
     with pytest.raises(BackendNotFound) as excinfo:
-        get_backend("codex")
+        get_backend("nope")
     # 报错必须把可用名字带上，否则调用方只能去翻源码
-    assert "claude_code" in str(excinfo.value)
-    assert available_backends() == ["claude_code"]
+    assert "claude_code" in str(excinfo.value) and "codex" in str(excinfo.value)
+    assert available_backends() == ["claude_code", "codex"]
+    assert get_backend("claude_code").name == "claude_code"  # 名字贴在适配器上（P-25 按名字查设置）
 
 
 # --- argv 组装 ------------------------------------------------------------
@@ -68,9 +69,10 @@ def test_argv_turns_allowed_paths_into_absolute_tool_rules(tmp_path: Path):
     assert f"Read(//{str(tmp_path).lstrip('/')}/**)" in rules
     # 没给 bash_rules 就一条 Bash 规则都不该有：Bash 是绕开路径白名单的口子
     assert not [r for r in rules if r.startswith("Bash(")]
-    with_skill = ClaudeCodeRunner().build_argv("改点东西", tmp_path, [code],
-                                               ("Bash(ai4sci skill *)",))
+    # 端口给的是与 CLI 无关的命令前缀，这家翻成 `Bash(<前缀> *)`
+    with_skill = ClaudeCodeRunner().build_argv("改点东西", tmp_path, [code], ("ai4sci skill",))
     assert "Bash(ai4sci skill *)" in with_skill[with_skill.index("--allowedTools"):]
+    assert "ai4sci skill" not in with_skill  # 裸前缀不进 argv
 
 
 def test_runner_argv_takes_per_session_turn_and_budget_limits(tmp_path: Path):
@@ -138,18 +140,26 @@ def test_argv_carries_isolation_flags_and_never_bypasses_permissions(tmp_path: P
 
 
 def test_env_config_has_read_points_and_defaults(tmp_path: Path, monkeypatch):
+    from backends import Tuning
+
     argv = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path])
     assert argv[argv.index("--max-turns") + 1] == "30"
     assert argv[argv.index("--max-budget-usd") + 1] == "2.0"
-    assert "--model" not in argv  # 缺省不传，用 CLI 自己的默认模型
+    # 模型与深度永远显式传（P-25：从不让 CLI 自己猜）：没给用起点 sonnet / medium
+    assert argv[argv.index("--model") + 1] == "sonnet"
+    assert argv[argv.index("--effort") + 1] == "medium"
+    import backends.claude_code as module
+    source = Path(module.__file__).read_text(encoding="utf-8")
+    assert "AI4SCI_EXECUTOR_MODEL" not in source  # 环境变量退役了（P-25：模型从按人的设置来）
 
     monkeypatch.setenv("AI4SCI_EXECUTOR_MAX_TURNS", "7")
     monkeypatch.setenv("AI4SCI_EXECUTOR_MAX_BUDGET_USD", "0.5")
-    monkeypatch.setenv("AI4SCI_EXECUTOR_MODEL", "opus")
-    argv = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path])
+    argv = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path], tuning=Tuning(model="opus"))
     assert argv[argv.index("--max-turns") + 1] == "7"
     assert argv[argv.index("--max-budget-usd") + 1] == "0.5"
     assert argv[argv.index("--model") + 1] == "opus"
+    with pytest.raises(ValueError, match="模型 'gpt' 不在清单上"):
+        ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path], tuning=Tuning(model="gpt"))
 
 
 @pytest.mark.parametrize("value", ["0", "-3"])
@@ -421,11 +431,12 @@ def test_chat_env_carries_the_chat_id_to_the_buttons_the_agent_presses(monkeypat
     assert CHAT_ID_ENV not in build_env(1.0)
 
 
-def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path, monkeypatch):
-    monkeypatch.delenv("AI4SCI_COORDINATOR_MODEL", raising=False)
+def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
+    from backends import Tuning
+
     chat = ClaudeCodeChat()
     common = dict(system_prompt="指南", allowed_paths=[tmp_path / "tasks"],
-                  bash_rules=("Bash(.venv/bin/ai4sci *)",))
+                  bash_rules=(".venv/bin/ai4sci",))
     first = chat.build_argv("你好", tmp_path, session_id=None, **common)
     second = chat.build_argv("继续", tmp_path, session_id=SID, **common)
     assert "--resume" not in first
@@ -437,64 +448,49 @@ def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path, m
         assert "--permission-mode" in argv and "dontAsk" in argv
         assert "--dangerously-skip-permissions" not in argv
         rules = argv[argv.index("--allowedTools") + 1: argv.index("--max-turns")]
-        assert "Bash(.venv/bin/ai4sci *)" in rules
+        assert "Bash(.venv/bin/ai4sci *)" in rules  # 前缀翻成这家的白名单写法
         assert any(r.startswith("Write(//") and r.endswith("/tasks/**)") for r in rules)
-    monkeypatch.setenv("AI4SCI_COORDINATOR_MODEL", "sonnet")
-    assert "sonnet" in chat.build_argv("x", tmp_path, session_id=None, **common)
+    picked = chat.build_argv("x", tmp_path, session_id=None, tuning=Tuning(model="opus"), **common)
+    assert picked[picked.index("--model") + 1] == "opus"
 
 
-def test_chat_knobs_list_models_and_efforts_and_read_the_env_defaults(monkeypatch):
-    """外层 #86：适配器自报有哪些模型、哪几档思考深度；缺省是环境里给的，没给就 None（不猜）。"""
+def test_chat_knobs_list_models_and_efforts_with_a_concrete_start():
+    """外层 #86 / P-25：适配器自报有哪些模型、哪几档思考深度，以及起点（具体值，不是 None）。"""
     from backends import Knobs, Tuning
-    from backends.claude_code import EFFORT_ENV, EFFORTS, MODEL_ENV, MODELS
+    from backends.claude_code import EFFORTS, MODELS
 
-    monkeypatch.delenv(MODEL_ENV, raising=False)
-    monkeypatch.delenv(EFFORT_ENV, raising=False)
     knobs = ClaudeCodeChat().knobs()
     assert isinstance(knobs, Knobs) and knobs.models == MODELS and knobs.efforts == EFFORTS
-    assert knobs.model is None and knobs.effort is None
+    assert knobs.model == "sonnet" and knobs.effort == "medium"
     assert [c.id for c in knobs.efforts] == ["low", "medium", "high", "xhigh", "max"]
     knobs.check(Tuning(model="opus", effort="max"))
     knobs.check(Tuning())
+    assert knobs.fill(None) == Tuning(model="sonnet", effort="medium")
+    assert knobs.fill(Tuning(effort="high")) == Tuning(model="sonnet", effort="high")
     with pytest.raises(ValueError, match="模型 'gpt' 不在清单上；可选：sonnet, opus, fable"):
         knobs.check(Tuning(model="gpt"))
     with pytest.raises(ValueError, match="思考深度 'ultra' 不在清单上"):
         knobs.check(Tuning(effort="ultra"))
-    # 环境里给了清单外的全名：照样是缺省，清单上多出那一项，页面才对得上号
-    monkeypatch.setenv(MODEL_ENV, "claude-haiku-4-5-20251001")
-    monkeypatch.setenv(EFFORT_ENV, "high")
-    knobs = ClaudeCodeChat().knobs()
-    assert knobs.model == "claude-haiku-4-5-20251001" and knobs.effort == "high"
-    assert knobs.models[-1].id == "claude-haiku-4-5-20251001" and knobs.models[-1].note
-    monkeypatch.setenv(MODEL_ENV, "sonnet")
-    assert ClaudeCodeChat().knobs().models == MODELS
-    monkeypatch.setenv(EFFORT_ENV, "ultra")
-    with pytest.raises(AssertionError, match="AI4SCI_COORDINATOR_EFFORT 只认"):
-        ClaudeCodeChat().knobs()
+    with pytest.raises(AssertionError, match="起点 'nope' 不在清单"):
+        Knobs(models=MODELS, efforts=EFFORTS, model="nope", effort="low")
 
 
-def test_chat_argv_takes_model_and_effort_from_the_turn_over_the_env(tmp_path: Path, monkeypatch):
+def test_chat_argv_always_passes_model_and_effort(tmp_path: Path):
+    """P-25：对话 meta 里记的是具体值；没给的用起点；从不让 CLI 自己猜。"""
     from backends import Tuning
-    from backends.claude_code import EFFORT_ENV, MODEL_ENV
 
     chat = ClaudeCodeChat()
     common = dict(session_id=None, system_prompt="", allowed_paths=[], bash_rules=())
-    monkeypatch.delenv(MODEL_ENV, raising=False)
-    monkeypatch.delenv(EFFORT_ENV, raising=False)
     bare = chat.build_argv("x", tmp_path, **common)
-    assert "--model" not in bare and "--effort" not in bare  # 都没给：让 CLI 用它自己的
+    assert bare[bare.index("--model") + 1] == "sonnet"
+    assert bare[bare.index("--effort") + 1] == "medium"
     picked = chat.build_argv("x", tmp_path, tuning=Tuning(model="opus", effort="max"), **common)
     assert picked[picked.index("--model") + 1] == "opus"
     assert picked[picked.index("--effort") + 1] == "max"
-    monkeypatch.setenv(MODEL_ENV, "sonnet")
-    monkeypatch.setenv(EFFORT_ENV, "low")
-    by_env = chat.build_argv("x", tmp_path, **common)
-    assert by_env[by_env.index("--model") + 1] == "sonnet"
-    assert by_env[by_env.index("--effort") + 1] == "low"
     half = chat.build_argv("x", tmp_path, tuning=Tuning(effort="high"), **common)
     assert half[half.index("--model") + 1] == "sonnet"
     assert half[half.index("--effort") + 1] == "high"
-    with pytest.raises(ValueError, match="思考深度只认"):
+    with pytest.raises(ValueError, match="思考深度 'ultra' 不在清单上"):
         chat.build_argv("x", tmp_path, tuning=Tuning(effort="ultra"), **common)
 
 
@@ -528,20 +524,19 @@ def test_chat_event_rejects_unknown_kind():
 
 
 @pytest.mark.skipif(os.environ.get("AI4SCI_LIVE") != "1", reason="真 CLI，AI4SCI_LIVE=1 才跑")
-def test_live_chat_two_turns_remember_across_resume(tmp_path: Path, monkeypatch):
+def test_live_chat_two_turns_remember_across_resume(tmp_path: Path):
     from backends import Tuning
 
-    monkeypatch.setenv("AI4SCI_COORDINATOR_MODEL", "claude-haiku-4-5-20251001")
     chat = ClaudeCodeChat()
     common = dict(system_prompt="你是测试助手，回答极短。", allowed_paths=[], bash_rules=())
     first = list(chat.turn("记住这个数字：17。只回“好”。", tmp_path, 120, session_id=None,
-                           tuning=Tuning(effort="low"), **common))
+                           tuning=Tuning(model="sonnet", effort="low"), **common))
     sid = first[0].session_id
     assert first[0].kind == "init" and sid and first[-1].kind == "done"
-    # 旋钮真拧到了 CLI 上：init 事件回报的模型就是环境里给的那个（外层 #86）
-    assert "haiku" in str(first[0].raw.get("model", ""))
+    # 旋钮真拧到了 CLI 上：init 事件回报的模型就是这一轮给的那个（外层 #86）
+    assert "sonnet" in str(first[0].raw.get("model", ""))
     second = list(chat.turn("刚才的数字是多少？只回数字。", tmp_path, 120, session_id=sid,
-                            **common))
+                            tuning=Tuning(model="sonnet", effort="low"), **common))
     assert second[-1].kind == "done" and "17" in second[-1].text
     assert second[-1].session_id == sid
     # 端口契约：助理的话逐字先到，完整的 text 后到（外层 #65）

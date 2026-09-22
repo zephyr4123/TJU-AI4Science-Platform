@@ -59,7 +59,8 @@ def test_the_two_scopes_write_to_disjoint_places(tmp_path, monkeypatch):
 
 def test_bash_rules_only_allow_bare_ai4sci():
     """纲领 P-14：指南只教裸 `ai4sci`；带路径的老写法也放行（老会话照自己以前的写法来，别设坎）。"""
-    assert guide.BASH_RULES == ("Bash(ai4sci *)", "Bash(.venv/bin/ai4sci *)")
+    # 与 CLI 无关的命令前缀（P-25 两家适配器各自翻）：Claude Code 翻成 `Bash(ai4sci *)`
+    assert guide.BASH_RULES == ("ai4sci", ".venv/bin/ai4sci")
     for kind in guide.KINDS:
         preamble = guide.PREAMBLES[kind]
         assert "不加路径、不在前面挂环境变量" in preamble and "按按钮" not in preamble

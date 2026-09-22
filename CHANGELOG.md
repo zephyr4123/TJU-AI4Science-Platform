@@ -8,6 +8,16 @@
 
 ## [Unreleased]
 
+### 新增
+- Codex 适配器 `backends/codex.py`（外层 [#131](https://github.com/zephyr4123/TJU-AI4Science/issues/131)，纲领 P-25）：执行层 `codex exec --json --ephemeral`、协调层 `codex exec` 开线程 + `exec resume <thread_id>` 续接、模块级 `probe()` 自检；每条 flag 与配置键先对官方文档与 rust-v0.147.0 源码、再在本机 codex-cli 0.147.0 实测（私有 `CODEX_HOME` 是隔离承重位、auth.json 软链不复制；skills 要按 SKILL.md 逐个关；`workspace-write` + `writable_roots` + `network_access`；`developer_instructions` 塞指南；`web_search="live"`；prompt 走 stdin 不然挂住；`--ephemeral` 续不了；resume 静默开新线程要对账；订阅账号成本 NaN），实测都记在文件头。真 CLI 冒烟 `AI4SCI_LIVE=1` 才跑。
+- 按人的底座清单 `~/.config/ai4sci/agents.yaml`（`framework/agents.py`，`AI4SCI_AGENTS` 可指向别处）：助理与执行层各用哪家（可以不同）、每家新对话用的模型与深度（具体值，没填用适配器起点，值要在清单上）、上次自检；`ai4sci agent list | check <名字> | use <名字> --for chat|executor --model --effort`；`ai4sci check [--only agents|computes|storage]` 冷启动自检，一项不过退出码非零（[#132](https://github.com/zephyr4123/TJU-AI4Science/issues/132) [#133](https://github.com/zephyr4123/TJU-AI4Science/issues/133)）。
+- 服务端设置端点 `GET /settings`、`POST /settings/agents`、`POST /settings/check`、`POST /settings/computes[/<name>/remove]`，`GET /health` 带 `checks_ok`，`GET /backends` 每家带产品名、新对话用的值与「对话用」缺省（`chat/settings.py`；清单与自检跟着服务接的适配器走，测试里注入剧本）（[#133](https://github.com/zephyr4123/TJU-AI4Science/issues/133)）。
+
+### 变更
+- 端口（P-25）：`bash_rules` 改成与 CLI 无关的命令前缀（`ai4sci`、`ai4sci skill`），各家适配器自己翻；`Runner.run` / `Chat.turn` 加 `runtime_paths`（平台自己要写的目录：数据根、按人的配置、uv 缓存，`paths.runtime_paths()`，有沙箱的 CLI 设成可写根）；`Runner.run` 加 `tuning`（按人的设置里这家用什么，`session.run_session` 查 `runner.name`）；`Runner.tool_guide()` 接管执行层提示末尾「工具怎么用」那段（`prompting.TOOLS_RULE` 删，`session.full_prompt` 留档整份）；`RunResult.report` 是各家自己取的自述；`Knobs.model` / `.effort` 必填且在清单上（起点），`Knobs.fill()`；`get_backend` / `get_chat` 把名字贴在适配器上；杀树搬到 `backends/_procs.py` 两家共用。
+- 旋钮上只有具体值（主人 2026-09-22）：开新对话从 `agents.yaml` 抄模型与深度进 meta（`ai4sci chat new` 与 `POST <域>/chats` 都是），发消息时给 null 与没给一样沿用；`Knobs` 里的 None 缺省、`AI4SCI_COORDINATOR_MODEL` / `_EFFORT` / `AI4SCI_EXECUTOR_MODEL` 三个环境变量退役；老对话 meta 里的 null 读到时按当时的缺省填成具体值并落盘（`settings.ensure_tuned`）；`cap --backend` 与 `chat new --backend` 缺省不再写死 `claude_code`，照设置里「执行用 / 对话用」的那家。
+- `ai4sci compute add` 的「写清单 + 就地探测 + 记回」抽成 `cli/compute.add_and_check`，页面「设置 → 算力 → 添加」走同一段。
+
 ### 修复
 - 指南：喂回执行层的意见文件放 `materials/` 或 `.ai4sci/`，不写进产出目录（演练里助理把意见写进了 `analysis/3/executor/`，那是被引用后冻住的产出）（[#123](https://github.com/zephyr4123/TJU-AI4Science/issues/123)）。
 - 复现性分析第二版把训练超参（`lr=1e-3`、`betas=(0.9, 0.999)`）写在正文里，数字核对当它是编的数拦下；第三版不知道第二版错在哪（[#123](https://github.com/zephyr4123/TJU-AI4Science/issues/123)）：提示里「写反引号」的规则扩到凡不是从结果清单抄的数（版本、commit、超参、轮数），并加一句「文字事实照材料来源抄，不凭记忆补论文里没有的名字」（第一版编了个 Allen-Cahn）；`reproducibility` 加 `--feedback`（重写仍是新开一份，上一版的问题进提示）。指南同步。

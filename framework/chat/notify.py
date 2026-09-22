@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable
 
 from backends import BackendNotFound, get_chat
-from framework.chat import conversation, guide, scope
+from framework.chat import conversation, guide, scope, settings
 from framework.workspace.jobs import Job
 from framework.workspace.root import Workspace
 
@@ -38,7 +38,7 @@ def wake(workspace: Workspace, job: Job, *, retry_s: float = RETRY_S,
     assert job.chat_id, "没有 chat_id 的作业不该来叫醒"
     where = scope.for_workspace(workspace)
     try:
-        conv = conversation.load_conversation(where.chats, job.chat_id)
+        conv = settings.ensure_tuned(conversation.load_conversation(where.chats, job.chat_id))
         chat = get_chat(conv.backend)
         system_prompt = where.system_prompt()
     except (conversation.ConversationNotFound, BackendNotFound, guide.GuideMissing) as exc:
@@ -52,7 +52,8 @@ def wake(workspace: Workspace, job: Job, *, retry_s: float = RETRY_S,
             for event in conversation.send(
                 conv, chat, text, system_prompt=system_prompt,
                 allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
-                readable_paths=list(where.readable_paths), origin=ORIGIN,
+                readable_paths=list(where.readable_paths),
+                runtime_paths=list(where.runtime_paths), origin=ORIGIN,
             ):
                 last = event
         except conversation.ConversationBusy:
