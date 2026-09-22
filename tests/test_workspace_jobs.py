@@ -14,6 +14,7 @@ import pytest
 from framework.workspace import jobs
 from framework.workspace import root as workspace
 from tests.fixtures import runs_factory as rf
+from tests.fixtures import spaces
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -21,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 def _env(monkeypatch, ws: workspace.Workspace) -> None:
     """作业子进程靠环境认工作区（它的 cwd 是测试进程的），和 agent 调用的命令一样只认一个工作区。"""
     monkeypatch.setenv("PYTHONPATH", str(REPO_ROOT))
-    monkeypatch.setenv(workspace.WORKSPACE_ENV, str(ws.root))
+    monkeypatch.chdir(ws.root)
 
 
 def _wait_done(jobs_dir: Path, job_id: str, timeout_s: float = 90.0) -> jobs.Job:
@@ -59,7 +60,7 @@ def test_spawned_job_runs_the_capability_and_writes_back(tmp_path: Path, monkeyp
 
 
 def test_failed_job_writes_the_capabilitys_own_sentence(tmp_path: Path, monkeypatch):
-    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
+    ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
     _env(monkeypatch, ws)  # 需求没确认：门关着
     job = jobs.spawn(ws.jobs, ["cap", "verify", "--from", "analysis/1"], cap="verify",
                      stage="verification", chat_id=None)
@@ -92,7 +93,7 @@ def test_stop_kills_the_whole_tree_and_closes_the_output(tmp_path: Path):
     from framework.contracts import output
     from framework.workspace import outputs
 
-    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
+    ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
     directory, _ = outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
                                        flow=None, step=None, requirement=1, chat_id=None)
     # 顶上一个 python 自成会话，再起一个自成进程组的孙子（像执行层的 Bash、harness 的 launcher）
@@ -136,7 +137,7 @@ def test_stop_also_cancels_whatever_runs_under_the_output_on_its_compute(tmp_pat
     from framework.contracts import output
     from framework.workspace import outputs
 
-    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
+    ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
     label = {"name": "box", "kind": "ssh", "hostname": "h", "gpu": ""}
     directory, _ = outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
                                        flow=None, step=None, requirement=1, chat_id=None,

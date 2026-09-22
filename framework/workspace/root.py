@@ -1,6 +1,6 @@
-"""工作区：一份需求的家（纲领 P-15、P-19，外层 #70 #104）。
+"""工作区：一份需求的家（纲领 P-15、P-19，外层 #70 #104 #136）。
 
-    workspaces/<id>/
+    projects/<p>/workspaces/<id>/
     ├── requirement.md       需求：有它才算工作区（标记就是它）；一级标题是课题标题
     ├── requirement.lock     人的确认（contracts.requirement）
     ├── materials/           原件：PDF / 数据 / 代码，只增不改
@@ -8,19 +8,18 @@
     ├── literature/ hypothesis/ design/ experiment/ analysis/ writing/ verification/
     │                        七个阶段各一个目录（英文 slug），每次产出一个子目录 <stage>/<n>/；
     流程没走的阶段没有目录
-    └── .ai4sci/             平台自己的记录，不是研究产物：chats/ jobs/ logs/ requirement/
-    （每版确认的存档）
+    └── .ai4sci/             平台自己的记录，不是研究产物：jobs/ logs/ requirement/
+    （每版确认的存档）。对话不在这儿：对话归项目（project.py）
 
 在工作区层：它只是磁盘上的位置约定，不认识能力、不认识对话——上面各层拿着它找自己的目录。
-找当前工作区的办法和 git 找 `.git` 一样：从 cwd 往上找 `requirement.md`，`AI4SCI_WORKSPACE`
-可以指定。
-agent 的工作目录就是工作区，所以它敲的命令一个路径都不带（P-14）。
+工作区总在一个项目里（一个项目一位助理，工作区是它的工位）；助理站在项目里，工作区级的命令带
+`--ws <id>` 点名；人在终端、执行层在产出目录里则和 git 找 `.git` 一样从 cwd 往上找
+`requirement.md`（`find`）。
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,14 +30,11 @@ from framework.contracts.stages import STAGE_SLUGS
 
 LOGGER = logging.getLogger("ai4sci.workspace")
 MARKER = requirement.FILE_NAME
-WORKSPACES_DIRNAME = "workspaces"
 MATERIALS_DIRNAME = "materials"
 FLOWS_DIRNAME = "flows"
 PLATFORM_DIRNAME = requirement.PLATFORM_DIRNAME
-CHATS_DIRNAME = "chats"
 JOBS_DIRNAME = "jobs"
 LOGS_DIRNAME = "logs"
-WORKSPACE_ENV = "AI4SCI_WORKSPACE"
 # 目录名就是 id：小写英文、数字、连字符（与流程名同一规矩）
 ID_RE = re.compile(r"[a-z][a-z0-9-]*")
 
@@ -76,10 +72,6 @@ class Workspace:
         return self.root / PLATFORM_DIRNAME
 
     @property
-    def chats(self) -> Path:
-        return self.platform / CHATS_DIRNAME
-
-    @property
     def jobs(self) -> Path:
         return self.platform / JOBS_DIRNAME
 
@@ -103,12 +95,9 @@ class Workspace:
                 "requirement": requirement.status(self.root)}
 
 
-def workspaces_root(home: Path) -> Path:
-    return Path(home) / WORKSPACES_DIRNAME
-
-
 def create(root: Path, ws_id: str, *, title: str = "", template: str = "") -> Workspace:
     """起一个工作区：建目录、写需求的初稿（模板 + 标题）。阶段目录等流程走到再建。
+    `root` 是项目的 workspaces/ 目录（project.new_workspace 传进来）。
 
     `template` 是模板原文（`templates/<name>.md`），第一个一级标题换成课题标题；没给模板就只写标题。
     """
@@ -148,18 +137,15 @@ def load(root: Path) -> Workspace:
 
 
 def find(start: Path | None = None) -> Workspace:
-    """当前工作区：`AI4SCI_WORKSPACE` 指定的，否则从 cwd 往上找 requirement.md。
-    找不到就说清怎么办。"""
-    override = os.environ.get(WORKSPACE_ENV)
-    if override:
-        return load(Path(override))
+    """当前工作区：从 cwd 往上找 requirement.md（人在终端、执行层在产出目录里）。找不到就说清
+    怎么办；
+    站在项目里的助理不靠这个，靠命令上的 `--ws`（cli._common.current_workspace）。"""
     origin = (Path.cwd() if start is None else Path(start)).resolve()
     for directory in (origin, *origin.parents):
         if (directory / MARKER).is_file():
             return Workspace(directory)
     raise WorkspaceNotFound(
-        f"{origin} 不在任何工作区里：cd 进 {WORKSPACES_DIRNAME}/<id>/ 再跑，"
-        f"或者 ai4sci workspace new <id> 起一个")
+        f"{origin} 不在任何工作区里：命令上带 --ws <工作区名>，或 cd 进 workspaces/<id>/ 再跑")
 
 
 def list_workspaces(root: Path) -> list[Workspace]:

@@ -1,6 +1,6 @@
-"""删：产出只删叶子、流程实例没挂产出才删、工作区级联（主人 2026-09-22：人产生的都能删，
-从根删干净，没有软删除）。目录外那部分（会话、镜像）这一层只收回调，两个回调返回的「没清干净」
-原样进 Removed。"""
+"""删：产出只删叶子（兄弟读过的也算）、流程实例没挂产出才删、工作区与项目级联（主人 2026-09-22：
+人产生的都能删，从根删干净，没有软删除）。目录外那部分（会话、镜像）这一层只收回调，回调返回的
+「没清干净」原样进 Removed。"""
 
 from __future__ import annotations
 
@@ -10,11 +10,12 @@ import pytest
 
 from framework.contracts import output
 from framework.workspace import jobs, outputs, removal
-from framework.workspace import root as ws_mod
+from framework.workspace import project as project_mod
+from tests.fixtures import spaces
 
 
 def _ws(tmp_path):
-    return ws_mod.create(ws_mod.workspaces_root(tmp_path), "w")
+    return spaces.make_workspace(tmp_path, "w")
 
 
 def _open(ws, slug, inputs=(), **kw):
@@ -86,21 +87,59 @@ def test_workspace_removal_cascades_through_callbacks_and_refuses_while_running(
     _open(ws, "design", compute={"name": "local", "kind": "local"})
     _job(ws, "job-1")
     with pytest.raises(removal.RemovalRefused, match="有作业在跑（job-1）"):
-        removal.remove_workspace(ws, forget_chats=lambda _: [], remove_mirrors=lambda *_: [])
+        removal.remove_workspace(ws, remove_mirrors=lambda *_: [])
     jobs.finish(ws.jobs, "job-1", exit_code=0, result="ok")
     seen: dict = {}
 
-    def forget(workspace):
-        seen["chats"] = workspace.id
+    def mirrors(workspace, metas):
+        seen["mirrors"] = removal.mirrors_of(metas)
+        return ["gone 上的镜像没删：连不上"]
+
+    removed = removal.remove_workspace(ws, remove_mirrors=mirrors)
+    # ssh 机器按名字去重，本机不算镜像；没清干净的原样带回；目录没了
+    assert seen == {"mirrors": ["autodl"]} and removed.what == "w"
+    assert removed.leftovers == ["gone 上的镜像没删：连不上"]
+    assert not removed.clean and not ws.root.exists()
+
+
+def test_sibling_references_freeze_removal_across_workspaces(tmp_path):
+    """兄弟工作区 `from` 过的产出不能删，它所在的工作区也不能删；先删下游。"""
+    ws = _ws(tmp_path)
+    paper = spaces.make_workspace(tmp_path, "paper")
+    _open(ws, "analysis")
+    _open(paper, "writing", inputs=["w:analysis/1"])
+    assert removal.referencing(ws, "analysis/1") == ["paper:writing/1"]
+    with pytest.raises(removal.RemovalRefused, match="被 paper:writing/1 读过"):
+        removal.remove_output(ws, "analysis/1")
+    with pytest.raises(removal.RemovalRefused,
+                       match="兄弟工作区读过它的产出（paper:writing/1 读了"):
+        removal.remove_workspace(ws, remove_mirrors=lambda *_: [])
+    # 从末端往回删：删了 paper 里的叶子，w 就能删了
+    assert removal.remove_output(paper, "writing/1").clean
+    assert removal.remove_workspace(ws, remove_mirrors=lambda *_: []).clean
+
+
+def test_project_removal_cascades_and_refuses_while_any_workspace_runs(tmp_path):
+    ws = _ws(tmp_path)
+    other = spaces.make_workspace(tmp_path, "other")
+    _open(other, "design", compute={"name": "autodl", "kind": "ssh"})
+    _job(ws, "job-1")
+    project = project_mod.of(ws)
+    with pytest.raises(removal.RemovalRefused, match="工作区 w 有作业在跑（job-1）"):
+        removal.remove_project(project, forget_chats=lambda _: [], remove_mirrors=lambda *_: [])
+    jobs.finish(ws.jobs, "job-1", exit_code=0, result="ok")
+    seen: dict = {"mirrors": []}
+
+    def forget(found):
+        seen["chats"] = found.id
         return ["对话 chat-1 在 codex 那边的会话没清：没登录"]
 
     def mirrors(workspace, metas):
-        seen["mirrors"] = removal.mirrors_of(metas)
+        seen["mirrors"].append((workspace.id, removal.mirrors_of(metas)))
         return []
 
-    removed = removal.remove_workspace(ws, forget_chats=forget, remove_mirrors=mirrors)
-    # ssh 机器按名字去重，本机不算镜像；没清干净的原样带回；目录没了
-    assert seen == {"chats": "w", "mirrors": ["autodl"]}
-    assert removed.what == "w"
+    removed = removal.remove_project(project, forget_chats=forget, remove_mirrors=mirrors)
+    assert seen == {"chats": "p", "mirrors": [("other", ["autodl"]), ("w", [])]}
+    assert removed.what == "p"
     assert removed.leftovers == ["对话 chat-1 在 codex 那边的会话没清：没登录"]
-    assert not removed.clean and not ws.root.exists()
+    assert not project.root.exists()

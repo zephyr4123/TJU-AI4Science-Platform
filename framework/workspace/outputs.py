@@ -7,6 +7,9 @@ ok / failed。
 
 冻结：`resolve_inputs` 把 `--from` 点名的 id 换成目录，同时核对每一个——不存在、没成、
 被引用或被签之后改过（`check_frozen`）都拒，信息说清怎么办。
+
+跨工作区（外层 #136）：同一项目里兄弟工作区的产出写成 `<工作区>:<stage>/<n>`，`find_output` 到兄弟
+目录下找；`from` 原样记这个写法；「被谁引用」扫整个项目——兄弟读过的也冻住。项目外读不到。
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from framework.contracts import output
 from framework.contracts.capability import Inputs
 from framework.contracts.output import Meta, OutputId, parse_id
 from framework.contracts.stages import STAGE_SLUGS
-from framework.workspace import jobs
+from framework.workspace import jobs, project, root
 from framework.workspace.root import Workspace
 
 LOGGER = logging.getLogger("ai4sci.outputs")
@@ -45,7 +48,7 @@ def open_output(workspace: Workspace, slug: str, *, title: str, by: str, inputs:
     oid = next_id(workspace, slug)
     directory = oid.path(workspace.root)
     directory.mkdir(parents=True)
-    recorded = [output.Input(i, output.tree_hash(parse_id(i).path(workspace.root))) for i in inputs]
+    recorded = [output.Input(i, output.tree_hash(find_output(workspace, i)[0])) for i in inputs]
     meta = Meta(id=str(oid), stage=slug, title=title, by=by, created_at=output.now(),
                 inputs=recorded, params=dict(params), flow=flow, step=step,
                 requirement=requirement, chat_id=chat_id, compute=compute)
@@ -88,10 +91,24 @@ def touch_output(directory: Path, meta: Meta, *, line: str) -> Meta:
     return meta
 
 
-def find_output(workspace: Workspace, text: str) -> tuple[Path, Meta]:
-    """按 id 找产出目录与 meta；形状不对 ValueError，不存在 OutputNotFound。"""
+def owner_of(workspace: Workspace, text: str) -> tuple[Workspace, OutputId]:
+    """一个 id 指的是哪个工作区里的哪次产出：没前缀或前缀就是自己 → 自己；兄弟 → 同一项目里按名字取
+    （不在项目里、项目里没有这个工作区都照抛）。返回的 OutputId 去掉了指向自己的前缀。"""
     oid = parse_id(text)
-    directory = oid.path(workspace.root)
+    if oid.workspace is None or oid.workspace == workspace.id:
+        return workspace, OutputId(oid.stage, oid.n)
+    try:
+        return project.of(workspace).workspace(oid.workspace), oid
+    except (project.ProjectNotFound, root.WorkspaceNotFound, root.WorkspaceInvalid) as exc:
+        # 兄弟不在（名字打错、项目里没有）：对调用方就是「没有这个产出」，和自己的产出不在同一种错
+        raise output.OutputNotFound(f"没有产出 {oid}：{exc}") from None
+
+
+def find_output(workspace: Workspace, text: str) -> tuple[Path, Meta]:
+    """按 id 找产出目录与 meta（兄弟工作区的到兄弟目录下找）；形状不对 ValueError，
+    不存在 OutputNotFound。"""
+    owner, oid = owner_of(workspace, text)
+    directory = oid.path(owner.root)
     if not directory.is_dir():
         raise output.OutputNotFound(f"没有产出 {oid}：{directory} 不存在")
     return directory, output.read_meta(directory)
@@ -111,16 +128,43 @@ def list_outputs(workspace: Workspace, slug: str | None = None) -> list[tuple[Pa
     return found
 
 
+def referencing(workspace: Workspace, oid: str) -> list[tuple[Workspace, Meta]]:
+    """哪些产出 `from` 了它——扫整个项目：自己工作区里的，和兄弟工作区里用 `<工作区>:` 前缀读过它的。
+    工作区不在任何项目里（老布局）就只扫自己。"""
+    owner, target = owner_of(workspace, oid)
+    try:
+        siblings = project.of(owner).workspaces()
+    except project.ProjectNotFound:
+        siblings = [owner]
+    users: list[tuple[Workspace, Meta]] = []
+    for sibling in siblings:
+        for _, meta in list_outputs(sibling):
+            for item in meta.inputs:
+                got = parse_id(item.id)
+                if (got.workspace or sibling.id) == owner.id and got.local == target.local:
+                    users.append((sibling, meta))
+                    break
+    return users
+
+
+def qualified(seen_from: Workspace, owner: Workspace, meta: Meta) -> str:
+    """一次产出从某个工作区看过去的写法：自己的就是 `stage/n`，兄弟的带前缀。"""
+    return meta.id if owner.id == seen_from.id else f"{owner.id}:{meta.id}"
+
+
 def referenced_hash(workspace: Workspace, oid: str) -> str | None:
-    """这个产出被冻住时的 hash：第一个 `from` 它的产出记的、或它自己的签字记的（先者为准）；
-    没人引用没人签就是 None——还没冻。"""
-    signed = output.read_signed(parse_id(oid).path(workspace.root))
+    """这个产出被冻住时的 hash：第一个 `from` 它的产出记的（项目里任何一个工作区）、或它自己的签字
+    记的
+    （先者为准）；没人引用没人签就是 None——还没冻。"""
+    owner, target = owner_of(workspace, oid)
+    signed = output.read_signed(target.path(owner.root))
     candidates: list[tuple[str, str]] = []
     if signed is not None:
         candidates.append((signed["signed_at"], signed["sha256"]))
-    for _, meta in list_outputs(workspace):
+    for sibling, meta in referencing(workspace, oid):
         for item in meta.inputs:
-            if item.id == oid:
+            got = parse_id(item.id)
+            if (got.workspace or sibling.id) == owner.id and got.local == target.local:
                 candidates.append((meta.created_at, item.sha256))
     if not candidates:
         return None
@@ -132,7 +176,8 @@ def check_frozen(workspace: Workspace, oid: str) -> None:
     frozen = referenced_hash(workspace, oid)
     if frozen is None:
         return
-    current = output.tree_hash(parse_id(oid).path(workspace.root))
+    owner, target = owner_of(workspace, oid)
+    current = output.tree_hash(target.path(owner.root))
     if current != frozen:
         raise output.OutputChanged(
             f"{oid} 被引用或签字之后改过了（内容 hash 对不上）：冻住的产出不能改，"
@@ -140,12 +185,14 @@ def check_frozen(workspace: Workspace, oid: str) -> None:
 
 
 def resolve_inputs(workspace: Workspace, ids: list[str]) -> Inputs:
-    """`--from` 的 id 清单 → Inputs。每一个都得存在、成了、没被改过；重复的去掉。"""
+    """`--from` 的 id 清单 → Inputs。每一个都得存在、成了、没被改过；重复的去掉。
+    记进 meta 的 id 是规范写法：自己的不带前缀，兄弟的带。"""
     seen: list[str] = []
     dirs: list[Path] = []
     for raw in ids:
         directory, meta = find_output(workspace, raw)
-        oid = str(parse_id(raw))
+        owner, target = owner_of(workspace, raw)
+        oid = str(target)
         if oid in seen:
             continue
         if meta.status != "ok":

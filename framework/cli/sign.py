@@ -11,13 +11,19 @@ import argparse
 import getpass
 import sys
 
-from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, current_workspace
+from framework.cli._common import (
+    EXIT_INVALID,
+    EXIT_OK,
+    EXIT_USAGE,
+    add_ws_option,
+    current_workspace,
+)
 from framework.contracts import output
 from framework.workspace import outputs
 
 
 def cmd_sign(args: argparse.Namespace) -> int:
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     try:
@@ -39,4 +45,5 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     sign.add_argument("output", metavar="STAGE/N", help="签哪次产出，比如 design/1")
     sign.add_argument("--by", default=getpass.getuser(), help="谁签的，记在记录上；缺省当前登录名")
     sign.add_argument("--note", default="", help="一句话：确认了什么")
+    add_ws_option(sign)
     sign.set_defaults(func=cmd_sign)

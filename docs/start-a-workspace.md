@@ -14,10 +14,14 @@
 
 ## 目录
 
-一个工作区一个课题（纲领 P-15 P-19）。`ai4sci workspace new <id> --title <标题> --template <模板>`，或页面上「新建」：
+一个项目一位助理、一个工作区一份需求（纲领 P-15 P-19，外层 #136）：一个课题的几份需求（复现一个模块、写综述、跑实验、合成论文）各开一个工作区，都在同一个项目里。先 `ai4sci project new <p> --title <标题>`，cd 进去，再 `ai4sci workspace new <id> --title <标题> --template <模板>`，或页面上「新建」：
 
 ```
-workspaces/<id>/
+projects/<p>/
+├── project.md           目标一段；一级标题是项目名
+├── materials/           几个工作区共用的原件
+├── .ai4sci/chats/       助理的对话（归项目）
+└── workspaces/<id>/
 ├── requirement.md       需求：课题的根。按模板起草，人和助理对话后由助理写
 ├── requirement.lock     确认记录：人确认后才有；是框架唯一内置的门
 ├── materials/           原件：你给的数据、代码；只追加
@@ -30,8 +34,10 @@ workspaces/<id>/
 ├── analysis/            analysis/1/analysis.md
 ├── writing/
 ├── verification/        verification/1/report.json
-└── .ai4sci/             平台记录：chats/ jobs/ logs/ requirement/v<n>.md
+└── .ai4sci/             平台记录：jobs/ logs/ requirement/v<n>.md
 ```
+
+（`workspaces/<id>/` 下面那几行是每个工作区里的。）助理站在项目里，工作区级的命令带 `--ws <id>`；人在终端 cd 进工作区就不用带。兄弟工作区的产出写 `<工作区>:<stage>/<n>`（`--from gua:analysis/3`），只限同一项目。
 
 `<id>` 只用小写字母、数字、连字符。每次产出目录里 `meta.yaml` 记它读了谁（`from`，带 sha256）、挂在哪条流程第几步；`signed.json` 是人签字的记录。被下游引用或签过字的产出就冻结，改了 hash 对不上，下游拒开工。
 
@@ -42,7 +48,7 @@ workspaces/<id>/
 写好了确认：
 
 ```bash
-cd workspaces/<id>
+cd projects/<p>/workspaces/<id>
 ai4sci requirement confirm --by <你>     # 写 requirement.lock，存档 .ai4sci/requirement/v1.md
 ```
 
@@ -129,4 +135,4 @@ ai4sci sign verification/1 --by <你>                               # 断点：�
 
 ## 谁做什么
 
-研究者：说清课题、给材料、确认需求、核对评分脚本、验收。研究助理（页面上的那位）：写需求、取流程、按流程调用能力、看着磁盘决定下一步喂什么、停下来等人签。执行层（能力起的会话）：只在自己那次产出目录里写。框架：开门（需求确认）、开产出目录、封 harness、跑打分、记账本、判冻结与签字。协调层的操作步骤见 `coordinator/README.md`。第一个真课题 `workspaces/boehm-nll/` 就是这么接进来的，它的 `requirement.md` 是样本。
+研究者：说清课题、给材料、确认需求、核对评分脚本、验收。研究助理（页面上的那位）：写需求、取流程、按流程调用能力、看着磁盘决定下一步喂什么、停下来等人签。执行层（能力起的会话）：只在自己那次产出目录里写。框架：开门（需求确认）、开产出目录、封 harness、跑打分、记账本、判冻结与签字。协调层的操作步骤见 `coordinator/README.md`。第一个真课题 `projects/boehm-nll/workspaces/boehm-nll/` 就是这么接进来的，它的 `requirement.md` 是样本。

@@ -16,8 +16,8 @@ from typing import Any
 
 from framework.contracts import requirement
 from framework.workspace import outputs
-from framework.workspace import root as ws_mod
 from framework.workspace.root import Workspace
+from tests.fixtures import spaces
 
 # 夹具 harness：形状与真任务一致（清产物 → 训练 → 评分），但只有几行。
 LAUNCHER_SH = """#!/usr/bin/env bash
@@ -121,7 +121,7 @@ def to_yaml(doc: dict[str, Any]) -> str:
 
 def make_workspace(tmp_path: Path, ws_id: str = "toy", *, confirmed: bool = True) -> Workspace:
     """一个工作区：需求写好（缺省已确认）、materials/env/ 备好。"""
-    workspace = ws_mod.create(ws_mod.workspaces_root(tmp_path), ws_id)
+    workspace = spaces.make_workspace(tmp_path, ws_id)
     workspace.requirement.write_text(REQUIREMENT, encoding="utf-8")
     write_env(workspace.materials)
     if confirmed:

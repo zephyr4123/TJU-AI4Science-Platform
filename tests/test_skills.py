@@ -192,7 +192,7 @@ def test_research_assistant_prompt_carries_the_catalog_and_the_web_rule(librarie
     write_skill(domains / "petab" / "skills", "petab")
     path = tmp_path / "README.md"
     path.write_text("# 指南正文\n", encoding="utf-8")
-    text = guide.system_prompt(guide.WORKSPACE, path)
+    text = guide.system_prompt(guide.PROJECT, path)
     head, _, tail = text.partition("# 指南正文")
     assert "<skill><name>pdf</name>" in head and "petab" not in head  # 领域 skill 不给协调层
     assert "自带的联网搜索与网页读取工具" in head and "curl" in head

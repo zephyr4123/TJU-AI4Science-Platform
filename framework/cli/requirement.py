@@ -10,12 +10,12 @@ import argparse
 import getpass
 import sys
 
-from framework.cli._common import EXIT_INVALID, EXIT_OK, current_workspace
+from framework.cli._common import EXIT_INVALID, EXIT_OK, add_ws_option, current_workspace
 from framework.contracts import requirement
 
 
 def cmd_confirm(args: argparse.Namespace) -> int:
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     try:
@@ -29,9 +29,10 @@ def cmd_confirm(args: argparse.Namespace) -> int:
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
-    req = groups.add_parser("requirement", help="需求：确认当前工作区的 requirement.md")
+    req = groups.add_parser("requirement", help="需求：确认一个工作区的 requirement.md")
     actions = req.add_subparsers(dest="action", required=True)
     confirming = actions.add_parser("confirm", help="确认需求：写 requirement.lock，阶段才能开工")
     confirming.add_argument("--by", default=getpass.getuser(),
                             help="谁确认的，记在记录上；缺省当前登录名")
+    add_ws_option(confirming)
     confirming.set_defaults(func=cmd_confirm)

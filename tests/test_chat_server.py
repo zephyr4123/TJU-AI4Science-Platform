@@ -14,7 +14,8 @@ from framework import paths
 from framework.capabilities import stage_table
 from framework.chat.server import ChatServer
 from framework.cli import serve as serve_cli
-from framework.workspace import root as workspace
+from framework.workspace import project as project_mod
+from tests.fixtures import spaces
 from tests.fixtures.scripted_chat import KNOBS, ScriptedChat, reply, with_tool
 
 CATALOG = [{"name": "design", "stage": "设计"}, {"name": "auto-research", "stage": "实验"}]
@@ -22,7 +23,7 @@ WORKFLOWS = [{"name": "w", "title": "一条", "summary": "…",
               "stages": [{"kind": "stage", "stage": "设计",
                           "caps": [{"cap": "design", "with": {}}]}],
               "covers": ["设计"], "remarks": [], "problems": []}]
-PROMPTS = {"workspace": "研究助理指南", "studio": "流程助理指南"}
+PROMPTS = {"project": "研究助理指南", "studio": "流程助理指南"}
 
 
 def check_workflow(doc: dict) -> dict:
@@ -80,6 +81,7 @@ def served(tmp_path):
         return {"agents": {}, "computes": [{"name": body["name"]}], "storage": {}}
 
     added: list[dict] = []
+    spaces.make_project(tmp_path, "p")
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
                         workflows=lambda: WORKFLOWS, check_workflow=check_workflow,
                         save_workflow=save_workflow, descriptors=descriptors,
@@ -115,9 +117,14 @@ def sse_events(text: str) -> list[dict]:
 
 
 def new_workspace(base, ws_id="w1", title=""):
-    status, _, body = call(base, "/workspaces", {"id": ws_id, "title": title})
+    """项目 p 里起一个工作区（served 夹具已经建了项目 p）。"""
+    status, _, body = call(base, "/projects/p/workspaces", {"id": ws_id, "title": title})
     assert status == 201, body
     return json.loads(body)
+
+
+def listed_workspaces(base, project_id="p"):
+    return json.loads(call(base, f"/projects/{project_id}")[2])["workspaces"]
 
 
 def test_health_and_catalog(served):
@@ -164,6 +171,7 @@ def test_everything_named_in_the_page_api_carries_a_readable_name(tmp_path, monk
     （title / label），前端不用拼也不用猜。用仓里真的能力表与流程库起服务，起一个工作区，
     把页面会读的端点走一遍。"""
     monkeypatch.setenv("AI4SCI_HOME", str(tmp_path))
+    spaces.make_project(tmp_path, "p")
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=serve_cli._catalog,
                         skills=serve_cli._skills, skill_names=serve_cli._skill_names,
                         workflows=serve_cli._workflows, check_workflow=serve_cli._check_workflow,
@@ -174,8 +182,8 @@ def test_everything_named_in_the_page_api_carries_a_readable_name(tmp_path, monk
     base = f"http://127.0.0.1:{server.server_address[1]}"
     try:
         new_workspace(base, "w1", "一个课题")
-        for path in ("/stages", "/cap", "/workflows", "/templates", "/workspaces",
-                     "/workspaces/w1"):
+        for path in ("/stages", "/cap", "/workflows", "/templates", "/projects", "/projects/p",
+                     "/projects/p/workspaces/w1"):
             status, _, body = call(base, path)
             assert status == 200, (path, body)
             assert _unnamed(json.loads(body), path) == [], path
@@ -196,11 +204,11 @@ def test_everything_named_in_the_page_api_carries_a_readable_name(tmp_path, monk
             {"cap": "download", "with": {}, "kind": "skill"}]
         assert flows["reproduce"]["stages"][1]["caps"][0]["kind"] == "步骤"
         # 工作区里取来的实例：进度里的格子同样带 kind（看板按它分两行画）
-        instance = tmp_path / "workspaces" / "w1" / "flows" / "reproduce.yaml"
+        instance = tmp_path / "projects" / "p" / "workspaces" / "w1" / "flows" / "reproduce.yaml"
         instance.parent.mkdir(parents=True, exist_ok=True)
         instance.write_text((paths.workflows_root() / "reproduce.yaml").read_text(encoding="utf-8"),
                             encoding="utf-8")
-        [taken] = json.loads(call(base, "/workspaces/w1/flows")[2])
+        [taken] = json.loads(call(base, "/projects/p/workspaces/w1/flows")[2])
         assert taken["problems"] == []
         assert [c["kind"] for c in taken["items"][0]["caps"]] == ["skill", "skill"]
         assert taken["items"][1]["caps"][0]["kind"] == "步骤"
@@ -213,31 +221,32 @@ def test_everything_named_in_the_page_api_carries_a_readable_name(tmp_path, monk
 def test_workspaces_are_created_listed_and_read(served, tmp_path):
     """工作区（纲领 P-15）：起、列、读一整份；名字规矩与重名的状态码；URL 片段拼不出路径。"""
     base, _ = served
-    assert json.loads(call(base, "/workspaces")[2]) == []
+    assert listed_workspaces(base) == []
     made = new_workspace(base, "rahman-nll", "Rahman 稳定性")
     assert made["id"] == "rahman-nll" and made["title"] == "Rahman 稳定性"
     assert made["requirement"]["confirmed"] is False and made["running"] == 0
-    requirement = tmp_path / "workspaces" / "rahman-nll" / "requirement.md"
+    requirement = tmp_path / "projects" / "p" / "workspaces" / "rahman-nll" / "requirement.md"
     assert requirement.read_text(encoding="utf-8").startswith("# Rahman 稳定性\n")
     assert "## 问题" in requirement.read_text(encoding="utf-8")  # 按 generic 模板起草
-    assert call(base, "/workspaces", {"id": "rahman-nll"})[0] == 409
-    assert call(base, "/workspaces", {"id": "Bad Name"})[0] == 400
-    assert call(base, "/workspaces", {"id": "x2", "template": "nope"})[0] == 400
-    assert call(base, "/workspaces", {})[0] == 400
-    status, _, body = call(base, "/workspaces/rahman-nll")
+    assert call(base, "/projects/p/workspaces", {"id": "rahman-nll"})[0] == 409
+    assert call(base, "/projects/p/workspaces", {"id": "Bad Name"})[0] == 400
+    assert call(base, "/projects/p/workspaces", {"id": "x2", "template": "nope"})[0] == 400
+    assert call(base, "/projects/p/workspaces", {})[0] == 400
+    status, _, body = call(base, "/projects/p/workspaces/rahman-nll")
     doc = json.loads(body)
     assert status == 200 and doc["flows"] == [] and doc["jobs"] == []
     assert all(s["outputs"] == [] for s in doc["stages"])
     assert doc["requirement"]["title"] == "Rahman 稳定性" and doc["requirement"]["pending"]
-    assert [w["id"] for w in json.loads(call(base, "/workspaces")[2])] == ["rahman-nll"]
-    assert call(base, "/workspaces/nope")[0] == 404
-    assert call(base, "/workspaces/../etc")[0] == 404
-    assert call(base, "/workspaces/rahman-nll/nothing")[0] == 404
+    assert [w["id"] for w in listed_workspaces(base)] == ["rahman-nll"]
+    assert call(base, "/projects/p/workspaces/nope")[0] == 404
+    assert call(base, "/projects/p/workspaces/../etc")[0] == 404
+    assert call(base, "/projects/p/workspaces/rahman-nll/nothing")[0] == 404
+    assert call(base, "/projects/nope")[0] == 404 and call(base, "/projects/nope/chats")[0] == 404
 
 
-@pytest.mark.parametrize("prefix", ["/workspaces/w1", "/studio"])
+@pytest.mark.parametrize("prefix", ["/projects/p", "/studio"])
 def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
-    """对话四个端点在两个域下共用一套：工作区的对话落在工作区里，编辑台的落在 studio/ 里；
+    """对话四个端点在两个域下共用一套：项目的对话落在项目里，编辑台的落在 studio/ 里；
     两位助理各拿各的指南、各写各的目录（P-16）。"""
     base, chat = served
     new_workspace(base, "w1")
@@ -246,7 +255,7 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
     meta = json.loads(body)
     chat_id = meta["chat_id"]
     assert meta["backend"] == "claude_code" and meta["turns"] == 0
-    where = tmp_path / ("studio" if prefix == "/studio" else "workspaces/w1/.ai4sci")
+    where = tmp_path / ("studio" if prefix == "/studio" else "projects/p/.ai4sci")
     assert (where / "chats" / chat_id / "meta.json").is_file()
 
     status, ctype, body = call(base, f"{prefix}/chats/{chat_id}/messages", {"text": "你好"})
@@ -260,9 +269,9 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
         assert call_["cwd"] == paths.workflows_root().parent
         assert call_["allowed_paths"] == [paths.workflows_root()] and call_["readable_paths"] == []
     else:
-        ws = workspace.load(tmp_path / "workspaces" / "w1")
-        assert call_["system_prompt"] == "研究助理指南" and call_["cwd"] == ws.root
-        assert call_["allowed_paths"] == [ws.root]
+        made = spaces.make_project(tmp_path, "p")
+        assert call_["system_prompt"] == "研究助理指南" and call_["cwd"] == made.root
+        assert call_["allowed_paths"] == [made.root]
         assert call_["readable_paths"] == [paths.workflows_root(), paths.templates_root()]
 
     status, _, body = call(base, f"{prefix}/chats/{chat_id}/messages", {"text": "有几个？"})
@@ -285,7 +294,7 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
     assert status == 200 and [(c["chat_id"], c["title"]) for c in json.loads(body)] == [
         (chat_id, "你好")]
     # 另一个域看不到这段对话
-    other = "/studio" if prefix != "/studio" else "/workspaces/w1"
+    other = "/studio" if prefix != "/studio" else "/projects/p"
     assert json.loads(call(base, f"{other}/chats")[2]) == []
     assert call(base, f"{other}/chats/{chat_id}")[0] == 404
 
@@ -396,17 +405,18 @@ def test_settings_endpoints_snapshot_check_and_computes(served, tmp_path):
 def test_error_status_codes(served, tmp_path):
     base, _ = served
     new_workspace(base, "w1")
-    assert call(base, "/workspaces/w1/chats/nope")[0] == 404
-    assert call(base, "/workspaces/w1/chats/nope/messages", {"text": "x"})[0] == 404
-    assert call(base, "/workspaces/nope/chats", {})[0] == 404
-    status, _, body = call(base, "/workspaces/w1/chats", {"backend": "nope"})
+    assert call(base, "/projects/p/chats/nope")[0] == 404
+    assert call(base, "/projects/p/chats/nope/messages", {"text": "x"})[0] == 404
+    assert call(base, "/projects/nope/chats", {})[0] == 404
+    assert call(base, "/projects/p/workspaces/w1/chats", {})[0] == 404  # 对话归项目，不归工作区
+    status, _, body = call(base, "/projects/p/chats", {"backend": "nope"})
     assert status == 400 and "nope" in json.loads(body)["error"]
-    chat_id = json.loads(call(base, "/workspaces/w1/chats", {})[2])["chat_id"]
-    assert call(base, f"/workspaces/w1/chats/{chat_id}/messages", {"text": "  "})[0] == 400
-    assert call(base, f"/workspaces/w1/chats/{chat_id}/messages", {})[0] == 400
-    (tmp_path / "workspaces" / "w1" / ".ai4sci" / "chats" / chat_id / "inflight.json").write_text(
+    chat_id = json.loads(call(base, "/projects/p/chats", {})[2])["chat_id"]
+    assert call(base, f"/projects/p/chats/{chat_id}/messages", {"text": "  "})[0] == 400
+    assert call(base, f"/projects/p/chats/{chat_id}/messages", {})[0] == 400
+    (tmp_path / "projects" / "p" / ".ai4sci" / "chats" / chat_id / "inflight.json").write_text(
         "{}", encoding="utf-8")
-    status, _, body = call(base, f"/workspaces/w1/chats/{chat_id}/messages", {"text": "插队"})
+    status, _, body = call(base, f"/projects/p/chats/{chat_id}/messages", {"text": "插队"})
     assert status == 409 and "在跑" in json.loads(body)["error"]
     assert call(base, "/studio/requirement")[0] == 404  # 编辑台下只有对话
     assert call(base, "/studio/requirement/confirm", {"by": "x"})[0] == 404
@@ -414,7 +424,7 @@ def test_error_status_codes(served, tmp_path):
 
 def test_bad_json_body_is_400(served):
     base, _ = served
-    req = urllib.request.Request(base + "/workspaces", data=b"{not json", method="POST",
+    req = urllib.request.Request(base + "/projects", data=b"{not json", method="POST",
                                  headers={"Content-Type": "application/json"})
     with pytest.raises(urllib.error.HTTPError) as exc:
         urllib.request.urlopen(req, timeout=10)
@@ -428,36 +438,37 @@ def test_requirement_board_and_confirm(served, tmp_path):
 
     base, _ = served
     ws = make_workspace(tmp_path, "toy", confirmed=False)  # 夹具的工作区落在同一个 home 下
-    status, _, body = call(base, "/workspaces")
-    rows = json.loads(body)
+    status, _, body = call(base, "/projects/p")
+    rows = json.loads(body)["workspaces"]
     assert status == 200 and [r["id"] for r in rows] == ["toy"]
     assert rows[0]["requirement"]["confirmed"] is False
 
-    status, _, body = call(base, "/workspaces/toy/requirement")
+    status, _, body = call(base, "/projects/p/workspaces/toy/requirement")
     doc = json.loads(body)
     assert status == 200 and doc["text"] == REQUIREMENT
     assert [s["heading"] for s in doc["sections"]] == ["问题", "怎么算好"]
 
-    assert call(base, "/workspaces/toy/requirement/confirm", {})[0] == 400  # 不署名不确认
-    status, _, body = call(base, "/workspaces/toy/requirement/confirm", {"by": "张三"})
+    # 不署名不确认
+    assert call(base, "/projects/p/workspaces/toy/requirement/confirm", {})[0] == 400
+    status, _, body = call(base, "/projects/p/workspaces/toy/requirement/confirm", {"by": "张三"})
     doc = json.loads(body)
     assert status == 201 and doc["confirmed"] and doc["version"] == 1 and doc["by"] == "张三"
     assert doc["dirty"] is False and requirement.lock_path(ws.root).is_file()
     # 改了：dirty，页面拿 confirmed_text 做 diff；再确认成 v2
     ws.requirement.write_text(REQUIREMENT + "\n## 预算\n\n一天。\n", encoding="utf-8")
-    doc = json.loads(call(base, "/workspaces/toy/requirement")[2])
+    doc = json.loads(call(base, "/projects/p/workspaces/toy/requirement")[2])
     assert doc["dirty"] and doc["confirmed_text"] == REQUIREMENT
-    status, _, body = call(base, "/workspaces/toy/requirement/confirm", {"by": "张三"})
+    status, _, body = call(base, "/projects/p/workspaces/toy/requirement/confirm", {"by": "张三"})
     assert status == 201 and json.loads(body)["version"] == 2
     # 内容没变再确认：422 一句话
-    status, _, body = call(base, "/workspaces/toy/requirement/confirm", {"by": "张三"})
+    status, _, body = call(base, "/projects/p/workspaces/toy/requirement/confirm", {"by": "张三"})
     assert status == 422 and "内容没变" in json.loads(body)["error"]
     # 盘上的东西不合约：回 422 一句话，不是断连接让页面「Failed to fetch」
     (ws.flows / "boom.yaml").write_text("name: boom\n", encoding="utf-8")
-    doc = json.loads(call(base, "/workspaces/toy")[2])
+    doc = json.loads(call(base, "/projects/p/workspaces/toy")[2])
     assert doc["flows"][0]["problems"] == ["boom.yaml: 缺 title"]
     requirement.lock_path(ws.root).write_text("{}", encoding="utf-8")
-    status, _, body = call(base, "/workspaces/toy")
+    status, _, body = call(base, "/projects/p/workspaces/toy")
     assert status == 422 and "不是一份确认记录" in json.loads(body)["error"]
 
 
@@ -469,7 +480,7 @@ def test_output_board_and_sign(served, tmp_path):
     doc_dir = write_analysis(pack, good_analysis(run_dir))
     (pack.workspace.flows / "research.yaml").write_text(
         (paths.workflows_root() / "research.yaml").read_text(encoding="utf-8"), encoding="utf-8")
-    status, _, body = call(base, "/workspaces/toy")
+    status, _, body = call(base, "/projects/p/workspaces/toy")
     doc = json.loads(body)
     assert status == 200
     experiment = next(s for s in doc["stages"] if s["slug"] == "experiment")
@@ -478,22 +489,23 @@ def test_output_board_and_sign(served, tmp_path):
     assert experiment["outputs"][0]["signed"] is None
     [flow] = doc["flows"]
     assert flow["name"] == "research" and flow["waiting"] == "assistant"  # 产出没记流程，流程还没动
-    status, _, body = call(base, "/workspaces/toy/outputs/analysis/1")
+    status, _, body = call(base, "/projects/p/workspaces/toy/outputs/analysis/1")
     doc = json.loads(body)
     assert status == 200 and doc["id"] == f"analysis/{doc_dir.name}"
     assert [f["path"] for f in doc["files"]] == ["analysis.md"]
-    assert call(base, "/workspaces/toy/outputs/analysis/9")[0] == 404
-    assert call(base, "/workspaces/toy/outputs/runs/1")[0] == 404
+    assert call(base, "/projects/p/workspaces/toy/outputs/analysis/9")[0] == 404
+    assert call(base, "/projects/p/workspaces/toy/outputs/runs/1")[0] == 404
 
-    assert call(base, "/workspaces/toy/outputs/analysis/1/sign", {"by": ""})[0] == 400
-    status, _, body = call(base, "/workspaces/toy/outputs/analysis/1/sign",
+    assert call(base, "/projects/p/workspaces/toy/outputs/analysis/1/sign", {"by": ""})[0] == 400
+    status, _, body = call(base, "/projects/p/workspaces/toy/outputs/analysis/1/sign",
                            {"by": "李四", "note": "看过了"})
     doc = json.loads(body)
     assert status == 201 and doc["signed"]["by"] == "李四" and doc["signed"]["stale"] is False
-    status, _, body = call(base, "/workspaces/toy/outputs/analysis/1/sign", {"by": "李四"})
+    status, _, body = call(base, "/projects/p/workspaces/toy/outputs/analysis/1/sign",
+                           {"by": "李四"})
     assert status == 422 and "已经签过了" in json.loads(body)["error"]
     (doc_dir / "analysis.md").write_text("改了", encoding="utf-8")
-    doc = json.loads(call(base, "/workspaces/toy/outputs/analysis/1")[2])
+    doc = json.loads(call(base, "/projects/p/workspaces/toy/outputs/analysis/1")[2])
     assert doc["signed"]["stale"] is True
 
 
@@ -502,22 +514,22 @@ def test_file_view_endpoints(served, tmp_path):
 
     base, _ = served
     make_run(tmp_path)
-    status, _, body = call(base, "/workspaces/toy/files")
+    status, _, body = call(base, "/projects/p/workspaces/toy/files")
     doc = json.loads(body)
     assert status == 200 and doc["path"] == ""
     assert "experiment" in [e["name"] for e in doc["entries"]]
-    status, _, body = call(base, "/workspaces/toy/files?path=experiment%2F1")
+    status, _, body = call(base, "/projects/p/workspaces/toy/files?path=experiment%2F1")
     assert status == 200 and "ledger.tsv" in [e["name"] for e in json.loads(body)["entries"]]
-    status, _, body = call(base, "/workspaces/toy/file?path=experiment%2F1%2Fledger.tsv")
+    status, _, body = call(base, "/projects/p/workspaces/toy/file?path=experiment%2F1%2Fledger.tsv")
     doc = json.loads(body)
     assert status == 200 and doc["text"] is not None and doc["truncated"] is False
-    status, ctype, body = call(base, "/workspaces/toy/raw?path=requirement.md")
+    status, ctype, body = call(base, "/projects/p/workspaces/toy/raw?path=requirement.md")
     assert status == 200 and ctype.startswith("text/markdown") and body.startswith("#")
-    assert call(base, "/workspaces/toy/files?path=nope")[0] == 404
-    assert call(base, "/workspaces/toy/file?path=nope.txt")[0] == 404
-    status, _, body = call(base, "/workspaces/toy/file?path=..%2F..%2Fetc%2Fpasswd")
+    assert call(base, "/projects/p/workspaces/toy/files?path=nope")[0] == 404
+    assert call(base, "/projects/p/workspaces/toy/file?path=nope.txt")[0] == 404
+    status, _, body = call(base, "/projects/p/workspaces/toy/file?path=..%2F..%2Fetc%2Fpasswd")
     assert status == 422 and "要在工作区里" in json.loads(body)["error"]
-    assert call(base, "/workspaces/toy/raw?path=%2Fetc%2Fpasswd")[0] == 422
+    assert call(base, "/projects/p/workspaces/toy/raw?path=%2Fetc%2Fpasswd")[0] == 422
 
 
 def test_jobs_endpoints(served, tmp_path):
@@ -529,17 +541,17 @@ def test_jobs_endpoints(served, tmp_path):
 
     base, _ = served
     make_run(tmp_path)
-    assert json.loads(call(base, "/workspaces/toy/jobs")[2]) == []
-    assert call(base, "/workspaces/toy/jobs/nope")[0] == 404
+    assert json.loads(call(base, "/projects/p/workspaces/toy/jobs")[2]) == []
+    assert call(base, "/projects/p/workspaces/toy/jobs/nope")[0] == 404
     job = jobs.Job(job_id="job-1", cap="auto-research", stage="experiment",
                    argv=["cap", "auto-research", "--continue", "experiment/1"], pid=os.getpid(),
                    started_at="t", output="experiment/1")
-    jobs._save(tmp_path / "workspaces" / "toy" / ".ai4sci" / "jobs", job)
-    status, _, body = call(base, "/workspaces/toy/jobs/job-1")
+    jobs._save(tmp_path / "projects" / "p" / "workspaces" / "toy" / ".ai4sci" / "jobs", job)
+    status, _, body = call(base, "/projects/p/workspaces/toy/jobs/job-1")
     assert status == 200 and json.loads(body)["effective_status"] == "running"
-    doc = json.loads(call(base, "/workspaces/toy")[2])
+    doc = json.loads(call(base, "/projects/p/workspaces/toy")[2])
     assert [j["job_id"] for j in doc["jobs"]] == ["job-1"] and doc["running"] == 1
-    doc = json.loads(call(base, "/workspaces/toy/outputs/experiment/1")[2])
+    doc = json.loads(call(base, "/projects/p/workspaces/toy/outputs/experiment/1")[2])
     assert [j["job_id"] for j in doc["jobs"]] == ["job-1"]
 
 
@@ -597,10 +609,9 @@ def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     import time
 
     from framework.workspace import jobs, outputs
-    from framework.workspace import root as workspace
 
     base, _ = served
-    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
+    ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
     directory, _ = outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
                                        flow=None, step=None, requirement=1, chat_id=None)
     proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"],
@@ -610,14 +621,14 @@ def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     record = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=proc.pid,
                       started_at="t", output="design/1")
     (ws.jobs / "job-s.json").write_text(json.dumps(record.__dict__), encoding="utf-8")
-    assert call(base, "/workspaces/w1/jobs/job-s/stop", {"by": ""})[0] == 400
-    status, _, body = call(base, "/workspaces/w1/jobs/job-s/stop", {"by": "李四"})
+    assert call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {"by": ""})[0] == 400
+    status, _, body = call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {"by": "李四"})
     doc = json.loads(body)
     assert status == 201 and doc["status"] == "stopped" and "李四" in doc["result"]
     proc.wait(timeout=5)
-    assert call(base, "/workspaces/w1/jobs/job-s/stop", {"by": "李四"})[0] == 422
-    assert call(base, "/workspaces/w1/jobs/nope/stop", {"by": "李四"})[0] == 404
-    status, _, body = call(base, "/workspaces/w1/outputs/design/1")
+    assert call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {"by": "李四"})[0] == 422
+    assert call(base, "/projects/p/workspaces/w1/jobs/nope/stop", {"by": "李四"})[0] == 404
+    status, _, body = call(base, "/projects/p/workspaces/w1/outputs/design/1")
     assert json.loads(body)["status"] == "failed"
 
 
@@ -630,14 +641,14 @@ def test_remove_endpoints_cascade_and_refuse(served, tmp_path):
 
     base, chat = served
     new_workspace(base, "w1")
-    ws = ws_root.load(tmp_path / "workspaces" / "w1")
+    ws = ws_root.load(tmp_path / "projects" / "p" / "workspaces" / "w1")
     # 对话：发过一句才有 session；删了目录没了、剧本后端被叫去忘掉那条会话
-    chat_id = json.loads(call(base, "/workspaces/w1/chats", {})[2])["chat_id"]
-    call(base, f"/workspaces/w1/chats/{chat_id}/messages", {"text": "你好"})
-    status, _, body = call(base, f"/workspaces/w1/chats/{chat_id}/remove", {})
+    chat_id = json.loads(call(base, "/projects/p/chats", {})[2])["chat_id"]
+    call(base, f"/projects/p/chats/{chat_id}/messages", {"text": "你好"})
+    status, _, body = call(base, f"/projects/p/chats/{chat_id}/remove", {})
     assert status == 200 and json.loads(body) == {"removed": chat_id, "leftovers": []}
-    assert chat.forgotten and not (ws.chats / chat_id).exists()
-    assert call(base, f"/workspaces/w1/chats/{chat_id}/remove", {})[0] == 404
+    assert chat.forgotten and not (project_mod.of(ws).chats / chat_id).exists()
+    assert call(base, f"/projects/p/chats/{chat_id}/remove", {})[0] == 404
     # 产出：被引用的拒 409，叶子 200
     d1, m1 = ws_outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
                                     flow=None, step=None, requirement=1, chat_id=None)
@@ -646,22 +657,31 @@ def test_remove_endpoints_cascade_and_refuse(served, tmp_path):
                                     inputs=["design/1"], params={}, flow="research", step=2,
                                     requirement=1, chat_id=None)
     ws_outputs.close_output(d2, m2, ok=True, line="ok")
-    status, _, body = call(base, "/workspaces/w1/outputs/design/1/remove", {})
+    status, _, body = call(base, "/projects/p/workspaces/w1/outputs/design/1/remove", {})
     assert status == 409 and "被 experiment/1 读过" in json.loads(body)["error"]
     # 流程实例：挂着产出拒 409
     (ws.flows / "research.yaml").write_text("name: research\n", encoding="utf-8")
-    status, _, body = call(base, "/workspaces/w1/flows/research/remove", {})
+    status, _, body = call(base, "/projects/p/workspaces/w1/flows/research/remove", {})
     assert status == 409 and "挂着 experiment/1" in json.loads(body)["error"]
-    assert call(base, "/workspaces/w1/outputs/experiment/1/remove", {})[0] == 200
-    assert call(base, "/workspaces/w1/flows/research/remove", {})[0] == 200
+    assert call(base, "/projects/p/workspaces/w1/outputs/experiment/1/remove", {})[0] == 200
+    assert call(base, "/projects/p/workspaces/w1/flows/research/remove", {})[0] == 200
     assert not d2.exists() and not (ws.flows / "research.yaml").exists()
     # 库里的流程：出厂的 403，没有的 404
     status, _, body = call(base, "/workflows/research/remove", {})
     assert status == 403 and "出厂" in json.loads(body)["error"]
     assert call(base, "/workflows/nope/remove", {})[0] == 404
     # 整个工作区：目录没了、清单里没了
-    status, _, body = call(base, "/workspaces/w1/remove", {})
+    status, _, body = call(base, "/projects/p/workspaces/w1/remove", {})
     assert status == 200 and json.loads(body)["removed"] == "w1"
     assert not ws.root.exists()
-    assert json.loads(call(base, "/workspaces")[2]) == []
-    assert call(base, "/workspaces/w1/remove", {})[0] == 404
+    assert listed_workspaces(base) == []
+    assert call(base, "/projects/p/workspaces/w1/remove", {})[0] == 404
+    # 整个项目：级联；清单里没了
+    new_workspace(base, "w2")
+    chat_id = json.loads(call(base, "/projects/p/chats", {})[2])["chat_id"]
+    call(base, f"/projects/p/chats/{chat_id}/messages", {"text": "你好"})
+    status, _, body = call(base, "/projects/p/remove", {})
+    assert status == 200 and json.loads(body)["removed"] == "p"
+    assert json.loads(call(base, "/projects")[2]) == []
+    assert not (tmp_path / "projects" / "p").exists()
+    assert call(base, "/projects/p/remove", {})[0] == 404

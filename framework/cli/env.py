@@ -23,12 +23,18 @@ from pathlib import Path
 
 from compute import ComputeNotFound
 from framework import computes
-from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, current_workspace
+from framework.cli._common import (
+    EXIT_INVALID,
+    EXIT_OK,
+    EXIT_USAGE,
+    add_ws_option,
+    current_workspace,
+)
 from framework.experiment import env
 
 
 def cmd_resolve(args: argparse.Namespace) -> int:
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     target = ws.materials / env.ENV_DIRNAME
@@ -78,7 +84,7 @@ def _requirements_of(path: Path) -> list[str]:
 
 
 def cmd_use(args: argparse.Namespace) -> int:
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     if not args.python.startswith("/"):
@@ -100,7 +106,7 @@ def cmd_use(args: argparse.Namespace) -> int:
 
 
 def cmd_add(args: argparse.Namespace) -> int:
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     packages = list(args.packages)
@@ -139,11 +145,13 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
                         help="从一份 requirements.txt 读包名（复现：上游仓库里的那份）")
     adding.add_argument("--compute", required=True,
                         help="哪台机器（ai4sci show computes 里的名字）")
+    add_ws_option(adding)
     adding.set_defaults(func=cmd_add)
     using = actions.add_parser(
         "use", help="用某台机器上现成的解释器：探版本、pip freeze 当清单、写 env/interpreter")
     using.add_argument("python", help="那台机器上解释器的绝对路径（compute check「已有环境」列的）")
     using.add_argument("--compute", required=True, help="哪台机器（ai4sci show computes 里的名字）")
+    add_ws_option(using)
     using.set_defaults(func=cmd_use)
     resolving = actions.add_parser(
         "resolve", help="按几个包名算出钉死传递依赖的完整清单，写进 materials/env/（会联网）")
@@ -155,4 +163,5 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     resolving.add_argument("--compute", default="",
                            help="到哪台机器上算（ai4sci show computes 里的名字）：GPU 版 torch"
                                 "只在那边解析得对；缺省本机")
+    add_ws_option(resolving)
     resolving.set_defaults(func=cmd_resolve)

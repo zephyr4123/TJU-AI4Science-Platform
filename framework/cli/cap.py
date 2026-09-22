@@ -34,6 +34,7 @@ from framework.cli._common import (
     EXIT_INVALID,
     EXIT_OK,
     EXIT_USAGE,
+    add_ws_option,
     current_workspace,
     resolve_ports,
     setup_logging,
@@ -50,7 +51,8 @@ from framework.contracts.output import Meta
 from framework.workspace import jobs, outputs
 from framework.workspace.root import Workspace
 
-FROM_HELP = "读哪几个产出（<阶段目录>/<序号>，比如 design/1），可以给几个"
+FROM_HELP = ("读哪几个产出（<阶段目录>/<序号>，比如 design/1；同一项目里兄弟工作区的写 "
+             "<工作区>:<阶段目录>/<序号>），可以给几个")
 FLOW_HELP = ("照当前工作区里哪条流程跑（show flows 里的名字）：记进产出，断点按它查；"
              "只有一条流程时可省")
 CONTINUE_HELP = "接着上一次的产出干（<阶段目录>/<序号>），不另开目录"
@@ -62,7 +64,7 @@ _DETACH_POLL_S = 0.1
 
 
 def cmd_cap(args: argparse.Namespace) -> int:
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     descriptor: Capability = args.module.DESCRIPTOR
@@ -267,6 +269,7 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     for name, module in discover().items():
         descriptor = module.DESCRIPTOR
         sub = actions.add_parser(name, help=descriptor.title)
+        add_ws_option(sub)
         sub.add_argument("--from", dest="inputs", action="append", metavar="STAGE/N",
                          help=FROM_HELP)
         sub.add_argument("--flow", default="", help=FLOW_HELP)

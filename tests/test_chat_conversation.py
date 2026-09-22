@@ -235,3 +235,48 @@ def test_session_cumulative_cost_is_turned_into_per_turn_cost(tmp_path):
     plain = ScriptedChat([reply("一", cost=0.10), reply("二", cost=0.15)])
     conv2 = conv_mod.new_conversation(tmp_path / "chats2", "scripted", tmp_path)
     assert [drain(conv2, plain, "x")[-1].cost_usd for _ in range(2)] == pytest.approx([0.10, 0.15])
+
+
+def test_inbox_notes_are_read_in_one_framework_turn_under_the_lock(tmp_path):
+    """收件箱（外层 #136）：作业跑完的话排进去，`send_inbox` 一次念完（先到先念、并成一轮、
+    origin 框架）；空的一个事件都不吐；忙就抛；念过的没了。"""
+    conv, chat = start(tmp_path, reply("两条都看了"))
+    assert list(conv_mod.send_inbox(conv, chat, system_prompt=GUIDE, allowed_paths=[],
+                                    bash_rules=())) == []
+    assert chat.calls == [] and conv.turns == 0
+    with pytest.raises(ValueError, match="空话"):
+        conv_mod.queue_note(conv, "  ")
+    first = conv_mod.queue_note(conv, "作业 job-1 跑完了")
+    second = conv_mod.queue_note(conv, "作业 job-2 没跑成")
+    assert conv_mod.pending_notes(conv) == [first, second]
+    (conv.dir / conv_mod.INFLIGHT_NAME).write_text(json.dumps({"pid": 0}), encoding="utf-8")
+    with pytest.raises(conv_mod.ConversationBusy):
+        next(conv_mod.send_inbox(conv, chat, system_prompt=GUIDE, allowed_paths=[], bash_rules=()))
+    (conv.dir / conv_mod.INFLIGHT_NAME).unlink()
+    events = list(conv_mod.send_inbox(conv, chat, system_prompt=GUIDE, allowed_paths=[],
+                                      bash_rules=()))
+    assert [e.kind for e in events] == ["init", "text", "done"]
+    assert chat.calls[0]["message"] == "作业 job-1 跑完了\n\n作业 job-2 没跑成"
+    assert conv_mod.pending_notes(conv) == [] and not first.exists()
+    turns = conv_mod.read_turns(conv_mod.load_conversation(tmp_path / "chats", conv.chat_id))
+    assert turns == [{"turn": 1, "origin": "框架", "reply": "两条都看了",
+                      "message": "作业 job-1 跑完了\n\n作业 job-2 没跑成",
+                      "events": turns[0]["events"]}]
+    assert not (conv.dir / conv_mod.INFLIGHT_NAME).exists()
+
+
+def test_lock_is_taken_atomically_and_a_moved_conversation_cannot_continue(tmp_path):
+    """锁是原子建文件：拿到的那一方写自己的 pid。工作目录不在了（搬家前的旧对话）不能续，能看。"""
+    conv, chat = start(tmp_path, reply("好"))
+    events = conv_mod.send(conv, chat, "你好", system_prompt=GUIDE, allowed_paths=[], bash_rules=())
+    first = next(events)
+    lock = json.loads((conv.dir / conv_mod.INFLIGHT_NAME).read_text(encoding="utf-8"))
+    assert first.kind == "init" and lock["turn"] == 1 and lock["pid"] > 0
+    list(events)
+    assert not (conv.dir / conv_mod.INFLIGHT_NAME).exists()
+    conv.cwd = str(tmp_path / "gone")
+    conv.save()
+    with pytest.raises(conv_mod.ConversationStale, match="搬家前的旧对话"):
+        drain(conv, chat, "再来")
+    assert not (conv.dir / conv_mod.INFLIGHT_NAME).exists()  # 拒了也把锁摘掉
+    assert conv_mod.read_turns(conv)[0]["reply"] == "好"  # 旧的照样能读

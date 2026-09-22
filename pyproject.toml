@@ -37,7 +37,7 @@ include = ["framework*", "backends*", "compute*", "tools*"]
 line-length = 100
 target-version = "py312"
 # 样例工作区里设计那包的基线代码是执行层写的，各有自己的 venv 与 lint 规则（design 能力 --isolated 跑 ruff）
-extend-exclude = ["workspaces/*/design/*/code", "workspaces/*/design/*/baseline"]
+extend-exclude = ["projects/*/workspaces/*/design/*/code", "projects/*/workspaces/*/design/*/baseline"]
 
 [tool.ruff.lint]
 # BLE：裸 except 与 except Exception 不带 raise 直接报错，这是红线「不吞异常」的机器判据

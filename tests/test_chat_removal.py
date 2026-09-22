@@ -1,5 +1,5 @@
-"""删对话与删工作区时目录外那部分：这家 CLI 存的会话（`Chat.forget`）、每台机器上的镜像
-（`Compute.remove_dir`）；适配器不在、机器连不上不吞也不拦——记一句、本机照删。"""
+"""删对话、删工作区、删项目时目录外那部分：这家 CLI 存的会话（`Chat.forget`，对话归项目）、
+每台机器上的镜像（`Compute.remove_dir`）；适配器不在、机器连不上不吞也不拦——记一句、本机照删。"""
 
 from __future__ import annotations
 
@@ -13,12 +13,13 @@ from compute import ComputeError
 from framework import computes
 from framework.chat import conversation, removal, scope
 from framework.workspace import outputs
-from framework.workspace import root as ws_mod
+from framework.workspace import project as project_mod
+from tests.fixtures import spaces
 from tests.fixtures.scripted_chat import ScriptedChat
 
 
 def _ws(tmp_path):
-    return ws_mod.create(ws_mod.workspaces_root(tmp_path), "w")
+    return spaces.make_workspace(tmp_path, "w")
 
 
 def _chat_with_session(where, backend="claude_code", session="sess-1"):
@@ -30,7 +31,7 @@ def _chat_with_session(where, backend="claude_code", session="sess-1"):
 
 def test_remove_chat_forgets_the_cli_session_and_refuses_while_a_turn_runs(tmp_path):
     ws = _ws(tmp_path)
-    where = scope.for_workspace(ws)
+    where = scope.for_project(project_mod.of(ws))
     chat = ScriptedChat([[ChatEvent(kind="done", text="")]])
     conv = _chat_with_session(where)
     removed = removal.remove_chat(where, conv.chat_id, lambda name: chat)
@@ -53,9 +54,10 @@ def test_remove_chat_forgets_the_cli_session_and_refuses_while_a_turn_runs(tmp_p
     assert removed.leftovers == ["claude_code 那边的会话没清：未知的 agent 后端 'claude_code'"]
 
 
-def test_remove_workspace_forgets_every_chat_and_wipes_mirrors(tmp_path, monkeypatch):
+def test_remove_project_forgets_every_chat_and_workspace_removal_wipes_mirrors(tmp_path,
+                                                                                monkeypatch):
     ws = _ws(tmp_path)
-    where = scope.for_workspace(ws)
+    where = scope.for_project(project_mod.of(ws))
     chat = ScriptedChat([])
     _chat_with_session(where, session="a")
     _chat_with_session(where, backend="codex", session="b")
@@ -83,7 +85,18 @@ def test_remove_workspace_forgets_every_chat_and_wipes_mirrors(tmp_path, monkeyp
         return {"autodl": FakeCompute(), "gone": BrokenCompute()}[name]
 
     monkeypatch.setattr(computes, "instance", instance)
-    removed = removal.remove_workspace(ws, lambda name: chat)
-    assert sorted(chat.forgotten) == ["a", "b"]
-    assert wiped == [f"/remote{ws.root}"]
+    # 删工作区：只清镜像，对话是项目的、不动
+    removed = removal.remove_workspace(ws)
+    assert chat.forgotten == [] and wiped == [f"/remote{ws.root}"]
     assert removed.leftovers == ["gone 上的镜像没删：连不上"] and not ws.root.exists()
+    assert len(conversation.list_conversations(where.chats)) == 2
+    # 删项目：每段对话的会话都忘掉，剩下的工作区的镜像也清，目录没了
+    ws2 = spaces.make_workspace(tmp_path, "w2")
+    d, m = outputs.open_output(ws2, "design", title="t", by="design", inputs=[], params={},
+                               flow=None, step=None, requirement=1, chat_id=None,
+                               compute={"name": "autodl", "kind": "ssh"})
+    outputs.close_output(d, m, ok=True, line="ok")
+    project = project_mod.of(ws2)
+    removed = removal.remove_project(project, lambda name: chat)
+    assert sorted(chat.forgotten) == ["a", "b"] and wiped[-1] == f"/remote{ws2.root}"
+    assert removed.what == "p" and removed.clean and not project.root.exists()

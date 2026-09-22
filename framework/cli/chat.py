@@ -1,8 +1,10 @@
 """`ai4sci chat new|send|list [--studio]`：在终端里和助理聊，网页没来之前的入口，也是排障入口。
 
-在 cli 层，调 `framework.chat`。域由 `--studio` 定：给了就是编辑台的流程助理，不给就是当前工作区的
-研究助理（P-16）。`send` 把事件逐行打到 stdout：助理的话逐字打（delta），工具一行一个，
-最后一行 `done` 或 `error`；退出码照旧 0 / 1 / 2。`new` 与 `send` 的 `--model` / `--effort`
+在 cli 层，调 `framework.chat`。域由 `--studio` 定：给了就是编辑台的流程助理，不给就是当前项目的
+研究助理（P-16；一个项目一位助理，外层 #136）。`send` 把事件逐行打到 stdout：助理的话逐字打
+（delta），工具一行一个，最后一行 `done` 或 `error`；人这一轮说完，收件箱里排着的作业结果接着以
+「框架」的身份念，
+事件接在后面打。退出码照旧 0 / 1 / 2。`new` 与 `send` 的 `--model` / `--effort`
 选模型与思考深度（外层 #86）：只认后端自报的清单，选了记进对话、之后每轮沿用；页面同一套。
 """
 
@@ -15,22 +17,22 @@ from pathlib import Path
 
 from backends import BackendNotFound, ChatEvent, Tuning, get_chat
 from framework import agents, paths
-from framework.chat import conversation, guide, removal, scope, settings
+from framework.chat import conversation, guide, notify, removal, scope, settings
 from framework.cli._common import (
     EXIT_INVALID,
     EXIT_OK,
     EXIT_USAGE,
-    current_workspace,
+    current_project,
     setup_logging,
 )
-from framework.cli.workspace import report
+from framework.cli.project import report
 
 
 def _scope(args: argparse.Namespace) -> scope.Scope | int:
     if args.studio:
         return scope.studio(paths.home())
-    ws = current_workspace()
-    return ws if isinstance(ws, int) else scope.for_workspace(ws)
+    found = current_project()
+    return found if isinstance(found, int) else scope.for_project(found)
 
 
 def _tuning(args: argparse.Namespace, current: Tuning, backend: str) -> Tuning | None | int:
@@ -103,11 +105,7 @@ def cmd_send(args: argparse.Namespace) -> int:
     last: ChatEvent | None = None
     streaming = False  # 正在逐字打一段话：完整的 text 来了只补个换行，不再打一遍
     try:
-        for event in conversation.send(
-            conv, chat, text, system_prompt=system_prompt,
-            allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
-            readable_paths=list(where.readable_paths), tuning=tuning,
-        ):
+        for event in _turns(where, conv, chat, text, system_prompt, tuning):
             last = event
             if event.kind == "delta":
                 print(event.text, end="", flush=True)
@@ -123,6 +121,16 @@ def cmd_send(args: argparse.Namespace) -> int:
     if last is None or last.kind != "done":
         return EXIT_INVALID
     return EXIT_OK
+
+
+def _turns(where: scope.Scope, conv: conversation.Conversation, chat, text: str,
+           system_prompt: str, tuning: Tuning | None):
+    """人这一轮，然后把收件箱里排着的念完（服务端 `_stream` 同一个顺序）。"""
+    yield from conversation.send(
+        conv, chat, text, system_prompt=system_prompt,
+        allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
+        readable_paths=list(where.readable_paths), tuning=tuning)
+    yield from notify.follow_up(where, conv, chat, system_prompt)
 
 
 def cmd_remove(args: argparse.Namespace) -> int:

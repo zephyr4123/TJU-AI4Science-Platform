@@ -8,17 +8,18 @@ import pytest
 from framework import paths
 from framework.contracts.stages import STAGE_SLUGS
 from framework.workspace import root as workspace
+from tests.fixtures import spaces
 
 TEMPLATE = "# 课题标题\n\n> 模板说明\n\n## 问题\n\n待填\n"
 
 
 def test_create_load_list_and_the_layout(tmp_path):
-    root = workspace.workspaces_root(tmp_path)
+    root = tmp_path / "workspaces"
     ws = workspace.create(root, "rahman-nll", title="Rahman 稳定性", template=TEMPLATE)
     assert ws.root == (tmp_path / "workspaces" / "rahman-nll").resolve() and ws.id == "rahman-nll"
     assert (ws.requirement, ws.materials, ws.flows, ws.platform) == tuple(
         ws.root / name for name in ("requirement.md", "materials", "flows", ".ai4sci"))
-    assert ws.chats == ws.platform / "chats" and ws.jobs == ws.platform / "jobs"
+    assert ws.jobs == ws.platform / "jobs" and not hasattr(ws, "chats")  # 对话归项目
     assert ws.materials.is_dir() and ws.flows.is_dir() and ws.platform.is_dir()
     # 模板的一级标题换成课题标题，其余照抄；标题从文件读
     text = ws.requirement.read_text(encoding="utf-8")
@@ -59,23 +60,18 @@ def test_create_refuses_bad_ids_and_duplicates(tmp_path):
         workspace.load(tmp_path)
 
 
-def test_find_walks_up_from_cwd_or_takes_the_env(tmp_path, monkeypatch):
-    """像 git 找 .git：从 cwd 往上找 requirement.md；`AI4SCI_WORKSPACE` 指定的优先；
-    找不到说清怎么办。"""
-    ws = workspace.create(tmp_path / "workspaces", "w1")
+def test_find_walks_up_from_cwd(tmp_path, monkeypatch):
+    """像 git 找 .git：从 cwd 往上找 requirement.md（人在终端、执行层在产出目录里）；
+    找不到说清怎么办（带 --ws）。没有环境变量这条路：助理站在项目里靠 `--ws`。"""
+    ws = spaces.make_workspace(tmp_path, "w1")
     deep = ws.root / "design" / "1"
     deep.mkdir(parents=True)
-    monkeypatch.delenv(workspace.WORKSPACE_ENV, raising=False)
     assert workspace.find(deep) == ws and workspace.find(ws.root) == ws
     monkeypatch.chdir(deep)
     assert workspace.find() == ws
-    with pytest.raises(workspace.WorkspaceNotFound, match="workspace new"):
+    with pytest.raises(workspace.WorkspaceNotFound, match="--ws"):
         workspace.find(tmp_path)
-    monkeypatch.setenv(workspace.WORKSPACE_ENV, str(ws.root))
-    assert workspace.find(tmp_path) == ws
-    monkeypatch.setenv(workspace.WORKSPACE_ENV, str(tmp_path))
-    with pytest.raises(workspace.WorkspaceNotFound):
-        workspace.find(deep)
+    assert not hasattr(workspace, "WORKSPACE_ENV")
 
 
 def test_paths_read_each_env_once_and_refuse_non_directories(tmp_path, monkeypatch):

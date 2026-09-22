@@ -17,17 +17,18 @@ from framework import computes
 from framework.chat import conversation, scope
 from framework.contracts.output import Meta
 from framework.workspace import removal
+from framework.workspace.project import Project
 from framework.workspace.removal import RemovalRefused, Removed
 from framework.workspace.root import Workspace
 
 LOGGER = logging.getLogger("ai4sci.removal")
 
 
-def forget_chats(workspace: Workspace, chat_factory: Callable[[str], Chat]) -> list[str]:
-    """工作区里每段对话：还在一轮里就整个拒；让这家 CLI 忘掉那条会话，适配器不在或删不掉记一句。
-    目录本身随工作区一起删，这里不动。"""
+def forget_chats(project: Project, chat_factory: Callable[[str], Chat]) -> list[str]:
+    """项目里每段对话：还在一轮里就整个拒；让这家 CLI 忘掉那条会话，适配器不在或删不掉记一句。
+    目录本身随项目一起删，这里不动。"""
     leftovers: list[str] = []
-    for conv in conversation.list_conversations(workspace.chats):
+    for conv in conversation.list_conversations(project.chats):
         if conversation.busy(conv):
             raise RemovalRefused(f"对话 {conv.chat_id} 正有一轮在跑，等它结束再删")
         if not conv.session_id:
@@ -54,10 +55,14 @@ def remove_mirrors(workspace: Workspace, metas: list[Meta]) -> list[str]:
     return leftovers
 
 
-def remove_workspace(workspace: Workspace, chat_factory: Callable[[str], Chat]) -> Removed:
-    return removal.remove_workspace(
-        workspace, forget_chats=lambda ws: forget_chats(ws, chat_factory),
+def remove_project(project: Project, chat_factory: Callable[[str], Chat]) -> Removed:
+    return removal.remove_project(
+        project, forget_chats=lambda p: forget_chats(p, chat_factory),
         remove_mirrors=remove_mirrors)
+
+
+def remove_workspace(workspace: Workspace) -> Removed:
+    return removal.remove_workspace(workspace, remove_mirrors=remove_mirrors)
 
 
 def remove_chat(where: scope.Scope, chat_id: str, chat_factory: Callable[[str], Chat]) -> Removed:
@@ -75,4 +80,4 @@ def remove_chat(where: scope.Scope, chat_id: str, chat_factory: Callable[[str], 
 
 
 __all__ = ["Removed", "RemovalRefused", "forget_chats", "remove_chat", "remove_mirrors",
-           "remove_workspace"]
+           "remove_project", "remove_workspace"]

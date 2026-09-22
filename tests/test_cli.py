@@ -18,8 +18,10 @@ import pytest
 from compute.local import LocalCompute
 from framework.contracts import output, requirement
 from framework.workspace import outputs
+from framework.workspace import project as project_mod
 from tests.fixtures import packs_factory as pf
 from tests.fixtures import runs_factory as rf
+from tests.fixtures import spaces
 from tests.fixtures.scripted_backend import ScriptedRunner
 from tests.test_experiment_loop import start_run
 
@@ -45,28 +47,63 @@ def in_pack(pack: pf.Pack) -> dict:
 
 
 def env_of(pack: pf.Pack, monkeypatch) -> None:
-    """进程内跑 main() 时的同一件事：环境指定工作区与领域包。"""
-    monkeypatch.setenv("AI4SCI_WORKSPACE", str(pack.workspace.root))
+    """进程内跑 main() 时的同一件事：站在工作区里（cwd 往上找得到）、领域包指到夹具的。"""
+    monkeypatch.chdir(pack.workspace.root)
     monkeypatch.setenv("AI4SCI_DOMAINS_ROOT", str(pack.domains_root))
 
 
-# ── workspace new / show workspaces / show workspace / templates ──────────────
-def test_workspace_new_and_show_workspaces(tmp_path):
+# ── project new / workspace new / show projects / show project / templates ────
+def test_project_and_workspace_new_and_show(tmp_path):
+    """外层 #136：先起项目，再在项目里起工作区；`show projects` 列项目，`show project` 是助理的
+    全局视角（每个工作区一行），工作区级的命令站在项目里要带 --ws。"""
     env = {"AI4SCI_HOME": str(tmp_path)}
-    made = run_cli("workspace", "new", "rahman-nll", "--title", "Rahman 稳定性", env=env)
+    assert run_cli("workspace", "new", "rahman-nll", cwd=tmp_path,
+                   env=env).returncode == EXIT_USAGE
+    made = run_cli("project", "new", "paper", "--title", "一篇论文", "--goal", "把它写出来",
+                   env=env)
     assert made.returncode == EXIT_OK, made.stderr
-    assert made.stdout.startswith("ok rahman-nll\t")
-    text = (tmp_path / "workspaces" / "rahman-nll" / "requirement.md").read_text(encoding="utf-8")
+    assert made.stdout.startswith("ok paper\t")
+    project_dir = tmp_path / "projects" / "paper"
+    assert (project_dir / "project.md").read_text(encoding="utf-8") == "# 一篇论文\n\n把它写出来\n"
+    assert run_cli("project", "new", "paper", env=env).returncode == EXIT_INVALID
+    assert run_cli("project", "new", "Bad Name", env=env).returncode == EXIT_INVALID
+    made = run_cli("workspace", "new", "rahman-nll", "--title", "Rahman 稳定性", cwd=project_dir,
+                   env=env)
+    assert made.returncode == EXIT_OK, made.stderr
+    assert made.stdout.startswith("ok rahman-nll\t") and "--ws rahman-nll" in made.stdout
+    requirement_md = project_dir / "workspaces" / "rahman-nll" / "requirement.md"
+    text = requirement_md.read_text(encoding="utf-8")
     assert text.startswith("# Rahman 稳定性\n") and "## 问题" in text  # generic 模板
-    assert run_cli("workspace", "new", "rahman-nll", env=env).returncode == EXIT_INVALID
-    assert run_cli("workspace", "new", "Bad", env=env).returncode == EXIT_INVALID
-    assert run_cli("workspace", "new", "x", "--template", "nope", env=env).returncode == EXIT_USAGE
-    ai = run_cli("workspace", "new", "vision", "--template", "ai", env=env)
+    assert run_cli("workspace", "new", "rahman-nll", cwd=project_dir,
+                   env=env).returncode == EXIT_INVALID
+    assert run_cli("workspace", "new", "Bad", cwd=project_dir, env=env).returncode == EXIT_INVALID
+    assert run_cli("workspace", "new", "x", "--template", "nope", cwd=project_dir,
+                   env=env).returncode == EXIT_USAGE
+    ai = run_cli("workspace", "new", "vision", "--template", "ai", cwd=project_dir, env=env)
     assert ai.returncode == EXIT_OK
-    assert "## 指标与基线" in (tmp_path / "workspaces" / "vision" / "requirement.md").read_text()
-    listed = run_cli("show", "workspaces", env=env)
+    assert "## 指标与基线" in (project_dir / "workspaces" / "vision" / "requirement.md").read_text()
+    listed = run_cli("show", "projects", env=env)
     assert listed.returncode == EXIT_OK, listed.stderr
-    assert listed.stdout.splitlines()[0].startswith("rahman-nll\tRahman 稳定性\t需求 未确认\t")
+    assert listed.stdout.splitlines() == [f"paper\t一篇论文\t2 个工作区\t跑着 0\t{project_dir}"]
+    # 站在项目里：show project 每个工作区一行；工作区级的命令不带 --ws 退 2 并列出有哪些
+    shown = run_cli("show", "project", cwd=project_dir, env=env)
+    assert shown.returncode == EXIT_OK, shown.stderr
+    lines = shown.stdout.splitlines()
+    assert lines[0] == "project\tpaper\t一篇论文"
+    assert lines[1] == "workspace\trahman-nll\tRahman 稳定性\t需求 未确认\t-"
+    assert lines[2].startswith("workspace\tvision\tvision\t需求 未确认")
+    bare = run_cli("show", "workspace", cwd=project_dir, env=env)
+    assert bare.returncode == EXIT_USAGE and "带 --ws" in bare.stderr
+    assert "rahman-nll, vision" in bare.stderr
+    picked = run_cli("show", "workspace", "--ws", "vision", cwd=project_dir, env=env)
+    assert picked.returncode == EXIT_OK and picked.stdout.startswith("workspace\tvision\t")
+    assert run_cli("show", "workspace", "--ws", "nope", cwd=project_dir,
+                   env=env).returncode == EXIT_USAGE
+    # 工作区能删（级联镜像）、项目能删（级联全部）
+    assert run_cli("workspace", "remove", "vision", cwd=project_dir, env=env).returncode == EXIT_OK
+    assert not (project_dir / "workspaces" / "vision").exists()
+    assert run_cli("project", "remove", "paper", env=env).returncode == EXIT_OK
+    assert not project_dir.exists() and run_cli("show", "projects", env=env).stdout == ""
     templates = run_cli("show", "templates")
     assert templates.returncode == EXIT_OK
     assert [line.split("\t")[0] for line in templates.stdout.splitlines()] == [
@@ -79,7 +116,10 @@ def test_workspace_new_and_show_workspaces(tmp_path):
 def test_outside_a_workspace_is_a_usage_error_that_says_what_to_do(tmp_path):
     proc = run_cli("show", "workspace", cwd=tmp_path)
     assert proc.returncode == EXIT_USAGE
-    assert "不在任何工作区里" in proc.stderr and "workspace new" in proc.stderr
+    assert "不在任何工作区里" in proc.stderr and "--ws" in proc.stderr
+    proc = run_cli("show", "project", cwd=tmp_path)
+    assert proc.returncode == EXIT_USAGE
+    assert "不在任何项目里" in proc.stderr and "project new" in proc.stderr
 
 
 def test_show_workspace_walks_requirement_outputs_flows_and_jobs(tmp_path):
@@ -501,7 +541,7 @@ def test_cap_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch
     (domains / "generic" / "skills" / "toy").mkdir(parents=True)
     (domains / "generic" / "profile.yaml").write_text("id: generic\n", encoding="utf-8")
     (domains / "generic" / "skills" / "toy" / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
-    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    monkeypatch.chdir(ws.root)
     monkeypatch.setenv("AI4SCI_DOMAINS_ROOT", str(domains))
     scoring = {k: v for k, v in pf.default_scoring().items() if k != "domain"}
     scoring["budget"]["min_delta"] = 0.001  # 夹具训练是确定性的，门靠 min_delta 撑起来
@@ -628,20 +668,20 @@ def test_chat_new_send_list_in_the_workspace_with_a_scripted_backend(tmp_path, m
     from framework import paths
     from framework.chat import guide
     from framework.cli import main
-    from framework.workspace import root as workspace
     from tests.fixtures.scripted_chat import ScriptedChat, streamed, with_tool
 
     chat = ScriptedChat([with_tool("有一份需求。", "Bash", {"command": "ai4sci show workspace"},
                                    "ok w")])
     monkeypatch.setattr("framework.cli.chat.get_chat", lambda name: chat)
-    monkeypatch.setitem(guide.GUIDE_PATHS, guide.WORKSPACE, tmp_path / "README.md")
+    monkeypatch.setitem(guide.GUIDE_PATHS, guide.PROJECT, tmp_path / "README.md")
     (tmp_path / "README.md").write_text("# 指南\n用流程不造流程。", encoding="utf-8")
-    ws = workspace.create(tmp_path / "workspaces", "w")
-    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    ws = spaces.make_workspace(tmp_path, "w")
+    monkeypatch.chdir(ws.root)
 
     assert main(["chat", "new"]) == EXIT_OK
     chat_id = capsys.readouterr().out.split("\t")[0].split(" ")[1]
-    assert chat_id.startswith("chat-") and (ws.chats / chat_id / "meta.json").is_file()
+    project = project_mod.of(ws)
+    assert chat_id.startswith("chat-") and (project.chats / chat_id / "meta.json").is_file()
 
     assert main(["chat", "send", chat_id, "需求在哪？"]) == EXIT_OK
     out = capsys.readouterr().out.splitlines()
@@ -650,8 +690,8 @@ def test_chat_new_send_list_in_the_workspace_with_a_scripted_backend(tmp_path, m
     assert out[4].startswith("done\tcost_usd=0.0100")
     assert chat.calls[0]["system_prompt"].startswith("# 你在服务里") and \
         "用流程不造流程" in chat.calls[0]["system_prompt"]
-    assert chat.calls[0]["cwd"] == ws.root
-    assert chat.calls[0]["allowed_paths"] == [ws.root]
+    assert chat.calls[0]["cwd"] == project.root  # 助理站在项目里
+    assert chat.calls[0]["allowed_paths"] == [project.root]
     assert chat.calls[0]["readable_paths"] == [paths.workflows_root(), paths.templates_root()]
 
     assert main(["chat", "list"]) == EXIT_OK
@@ -670,21 +710,21 @@ def test_chat_new_and_send_take_model_and_effort_from_the_backends_list(tmp_path
     from backends import Tuning
     from framework.chat import conversation, guide
     from framework.cli import main
-    from framework.workspace import root as workspace
     from tests.fixtures.scripted_chat import ScriptedChat, reply
 
     chat = ScriptedChat([reply("好"), reply("好")])
     monkeypatch.setattr("framework.cli.chat.get_chat", lambda name: chat)
-    monkeypatch.setitem(guide.GUIDE_PATHS, guide.WORKSPACE, tmp_path / "README.md")
+    monkeypatch.setitem(guide.GUIDE_PATHS, guide.PROJECT, tmp_path / "README.md")
     (tmp_path / "README.md").write_text("# 指南\n", encoding="utf-8")
-    ws = workspace.create(tmp_path / "workspaces", "w")
-    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    ws = spaces.make_workspace(tmp_path, "w")
+    monkeypatch.chdir(ws.root)
 
     assert main(["chat", "new", "--model", "gpt"]) == EXIT_USAGE
     assert "模型 'gpt' 不在清单上；可选：a, b" in capsys.readouterr().err
     assert main(["chat", "new", "--model", "b", "--effort", "low"]) == EXIT_OK
     chat_id = capsys.readouterr().out.split("\t")[0].split(" ")[1]
-    assert conversation.load_conversation(ws.chats, chat_id).tuning == Tuning("b", "low")
+    loaded = conversation.load_conversation(project_mod.of(ws).chats, chat_id)
+    assert loaded.tuning == Tuning("b", "low")
 
     assert main(["chat", "send", chat_id, "一", "--effort", "ultra"]) == EXIT_USAGE
     assert "思考深度 'ultra' 不在清单上" in capsys.readouterr().err and chat.calls == []
@@ -730,9 +770,8 @@ def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_p
 
 
 def test_chat_send_unknown_id_and_missing_file_exit_two(tmp_path):
-    from framework.workspace import root as workspace
 
-    ws = workspace.create(tmp_path / "workspaces", "w")
+    ws = spaces.make_workspace(tmp_path, "w")
     assert run_cli("chat", "send", "nope", "hi", cwd=ws.root).returncode == EXIT_USAGE
     proc = run_cli("chat", "new", cwd=ws.root)
     chat_id = proc.stdout.split("\t")[0].split(" ")[1]
@@ -764,10 +803,9 @@ def test_serve_helpers_check_a_draft_and_list_the_catalog():
 def test_env_resolve_writes_a_complete_lock_into_materials(tmp_path, monkeypatch, capsys):
     """外层 #117：研究者没有环境，助理按包名算清单（会联网），写进 materials/env/。"""
     from framework.cli import main
-    from framework.workspace import root as workspace
 
-    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
-    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
+    monkeypatch.chdir(ws.root)
     assert main(["env", "resolve", "requests"]) == 2  # 没 python-version 又没 --python
     assert "--python" in capsys.readouterr().err
     assert main(["env", "resolve", "--python", "3", "requests"]) == 2
@@ -793,10 +831,9 @@ def test_env_resolve_writes_a_complete_lock_into_materials(tmp_path, monkeypatch
 def test_env_use_records_the_existing_interpreter(tmp_path, monkeypatch, capsys):
     """P-23 的两问：研究者选「用现成的」→ materials/env/ 记解释器与它的 pip freeze。"""
     from framework.cli import main
-    from framework.workspace import root as workspace
 
-    ws = workspace.create(tmp_path / "workspaces", "w1", template="# w1\n\n## 问题\n\n有。\n")
-    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
+    monkeypatch.chdir(ws.root)
     assert main(["env", "use", "--compute", "local", "python"]) == 2  # 要绝对路径
     assert main(["env", "use", "--compute", "nope", sys.executable]) == 1
     assert "没有叫 'nope'" in capsys.readouterr().err
@@ -821,7 +858,7 @@ def test_platform_crash_inside_a_job_is_recorded_not_lost(tmp_path, monkeypatch,
 
     pack = pf.make_pack(tmp_path, confirmed=True)
     ws = pack.workspace
-    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    monkeypatch.chdir(ws.root)
     monkeypatch.setenv("AI4SCI_DOMAINS_ROOT", str(pack.domains_root))
     job = jobs.Job(job_id="job-c", cap="design", stage="design", argv=[], pid=1, started_at="t")
     ws.jobs.mkdir(parents=True, exist_ok=True)
@@ -850,7 +887,7 @@ def test_unreachable_compute_is_reported_as_the_researchers_problem_not_a_bug(tm
 
     pack = pf.make_pack(tmp_path, confirmed=True)
     ws = pack.workspace
-    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    monkeypatch.chdir(ws.root)
     monkeypatch.setenv("AI4SCI_DOMAINS_ROOT", str(pack.domains_root))
     job = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=1, started_at="t")
     ws.jobs.mkdir(parents=True, exist_ok=True)

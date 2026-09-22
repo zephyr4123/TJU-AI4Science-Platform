@@ -5,8 +5,9 @@
 点名的能力）由调用方以函数传入——这一层不认识 capabilities，依赖方向不能反过来。
 页面是这些端点的客户端，换一种 UI 也是同一套（`ui/README.md`）。
 
-端点按域分前缀（纲领 P-16）：工作区 `/workspaces/<id>/…` 是研究助理的域，`/studio/…` 是流程助理
-的域，对话四个端点在两个前缀下共用一套实现；主页面的对话物理上到不了库。
+端点按域分前缀（纲领 P-16）：项目 `/projects/<p>/…` 是研究助理的域（一个项目一位助理，外层 #136），
+`/studio/…` 是流程助理的域，对话四个端点在两个前缀下共用一套实现；主页面的对话物理上到不了库。
+工作区在项目之下：`/projects/<p>/workspaces/<id>/…`。
 
     GET  /health                            {"ok": true, "checks_ok":
     bool}（在用的底座与每台算力上次自检都过）
@@ -28,28 +29,38 @@
     POST /workflows                         {name, title, summary, stages[, overwrite]} → 存进库
     POST /workflows/check                   同一个 body，只查不存：covers / remarks / problems
     GET  /templates                         需求模板的库：名字、标题、一句说明、原文
-    GET  /workspaces                        工作区清单：标题、需求状态、每个阶段几次产出、
-    有没有作业在跑
-    POST /workspaces                        {"id", "title"?, "template"?} → 新工作区（按模板起草
-    requirement.md）
-    GET  /workspaces/<id>                   工作区 + 需求 + 七个阶段的产出 + 每条流程实例的进度
-                                            + 作业
-    GET  /workspaces/<id>/requirement       需求：原文、按二级标题切的格、确认状态、上一版原文
-    POST /workspaces/<id>/requirement/confirm  {"by"} → 确认需求；人的确认，agent 不替人做
-    GET  /workspaces/<id>/flows             流程实例：covers / remarks / problems + 进度
-    GET  /workspaces/<id>/outputs/<stage>/<n>  一次产出：记录、签字、文件清单（小文本带正文）、作业
-    POST /workspaces/<id>/outputs/<stage>/<n>/sign  {"by", "note"?} → 签字记录
-    GET  /workspaces/<id>/files?path=<dir>  文件镜头：目录的一层（目录在前；.venv .git 不列），
+    GET  /projects                          项目清单：标题、几个工作区、有没有作业在跑
+    POST /projects                          {"id", "title"?, "goal"?} → 新项目（写 project.md）
+    GET  /projects/<p>                      项目 + 目标原文 + 每个工作区一行（需求状态、每个阶段几次
+                                            产出、每条流程走到哪、在等谁、跑着的作业）
+    POST /projects/<p>/remove               删整个项目（级联：工作区、对话及其会话、机器上的镜像）
+    POST /projects/<p>/workspaces           {"id", "title"?, "template"?} → 项目里的新工作区
+                                            （按模板起草 requirement.md）
+    GET  /projects/<p>/workspaces/<id>      工作区 + 需求 + 七个阶段的产出 + 每条流程实例的进度
+                                            + 作业（下面 …/ 都是这个前缀）
+    POST …/workspaces/<id>/remove           删整个工作区（级联镜像；兄弟读过它的产出拒）
+    GET  …/workspaces/<id>/requirement      需求：原文、按二级标题切的格、确认状态、上一版原文
+    POST …/workspaces/<id>/requirement/confirm  {"by"} → 确认需求；人的确认，agent 不替人做
+    GET  …/workspaces/<id>/flows            流程实例：covers / remarks / problems + 进度
+    POST …/workspaces/<id>/flows/<name>/remove   删一条流程实例（挂着产出拒）
+    GET  …/workspaces/<id>/outputs/<stage>/<n>  一次产出：记录、签字、文件清单（小文本带正文）、作业
+    POST …/workspaces/<id>/outputs/<stage>/<n>/sign  {"by", "note"?} → 签字记录
+    POST …/workspaces/<id>/outputs/<stage>/<n>/remove  删一次产出（只删叶子）
+    GET  …/workspaces/<id>/files?path=<dir> 文件镜头：目录的一层（目录在前；.venv .git 不列），
                                             懒加载，path 空是工作区根
-    GET  /workspaces/<id>/file?path=<file>  一个文件：文本带正文（大的截断），二进制 text 为 null
-    GET  /workspaces/<id>/raw?path=<file>   文件原样端出（图片让浏览器显示）；出了工作区一律 422
-    GET  /workspaces/<id>/jobs[/<jid>]      作业清单 / 一个作业
-    POST /workspaces/<id>/jobs/<jid>/stop   {"by"} → 人叫停：杀进程树，作业记 stopped、产出记 failed
-    GET  <域>/chats                         对话清单；<域> 是 /workspaces/<id> 或 /studio
+    GET  …/workspaces/<id>/file?path=<file> 一个文件：文本带正文（大的截断），二进制 text 为 null
+    GET  …/workspaces/<id>/raw?path=<file>  文件原样端出（图片让浏览器显示）；出了工作区一律 422
+    GET  …/workspaces/<id>/jobs[/<jid>]     作业清单 / 一个作业
+    POST …/workspaces/<id>/jobs/<jid>/stop  {"by"} → 人叫停：杀进程树，作业记 stopped、产出记 failed
+    GET  <域>/chats                         对话清单；<域> 是 /projects/<p> 或 /studio
     POST <域>/chats                         {"backend"?, "model"?, "effort"?} → 新对话的 meta
     GET  <域>/chats/<cid>                   meta + transcript + history
     POST <域>/chats/<cid>/messages          {"text", "model"?, "effort"?} → text/event-stream，
-                                            一个事件一条；model / effort 给了就记进对话（没给沿用）
+                                            一个事件一条；model / effort 给了就记进对话（没给
+                                            沿用）；
+                                            人这一轮说完，收件箱里排着的作业结果接着以「框架」的身份
+                                            念，事件接在同一条流后面
+    POST <域>/chats/<cid>/remove            删一段对话（连 CLI 那边的会话）
     GET  /<其它>                            `ui_dir` 里的静态文件，找不到的回 index.html（单页应用）
 """
 
@@ -78,17 +89,17 @@ from backends import (
     probe,
 )
 from framework import agents, computes, paths
-from framework.chat import boards, conversation, guide, removal, scope, settings
+from framework.chat import boards, conversation, guide, notify, removal, scope, settings
 from framework.contracts import output, requirement, stages, workflows
 from framework.contracts.capability import Capability
-from framework.workspace import jobs, outputs, root
+from framework.workspace import jobs, outputs, project, root
 from framework.workspace import removal as ws_removal
 
 LOGGER = logging.getLogger("ai4sci.serve")
 MAX_BODY = 1 << 20
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
 API_ROOTS = ("health", "backends", "settings", "stages", "cap", "skills", "workflows", "templates",
-             "workspaces", "studio")
+             "projects", "studio")
 
 
 def _no_add_compute(body: dict[str, Any]) -> dict[str, Any]:
@@ -154,8 +165,8 @@ class ChatServer(ThreadingHTTPServer):
         return guide.system_prompt(kind, tool_guide=tool)
 
     @property
-    def workspaces_root(self) -> Path:
-        return root.workspaces_root(self.home)
+    def projects_root(self) -> Path:
+        return project.projects_root(self.home)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -213,18 +224,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.server.workflows())
         if parts == ["templates"]:
             return self._json(boards.list_templates(paths.templates_root()))
-        if parts == ["workspaces"]:
-            return self._json([boards.workspace_summary(ws) for ws in
-                               root.list_workspaces(self.server.workspaces_root)])
+        if parts == ["projects"]:
+            return self._json([boards.project_summary(p) for p in
+                               project.list_projects(self.server.projects_root)])
         found = self._scope(parts)
         if found is None:
             return None
-        where, rest = found
+        where, ws, rest = found
         if rest[:1] == ["chats"]:
+            if ws is not None:
+                return self._error(HTTPStatus.NOT_FOUND, "对话归项目：/projects/<p>/chats")
             return self._get_chat(where, rest[1:])
-        ws = where.workspace
         if ws is None:
-            return self._error(HTTPStatus.NOT_FOUND, f"编辑台下只有对话：{url.path}")
+            if where.project is not None and rest == []:
+                return self._json(boards.project_detail(where.project, self.server.descriptors(),
+                                                        self.server.skill_names()))
+            return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{url.path}")
         if rest == []:
             return self._json(self._detail(ws))
         if rest == ["requirement"]:
@@ -320,29 +335,28 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
             except FileExistsError as exc:
                 return self._error(HTTPStatus.CONFLICT, str(exc))
-        if parts == ["workspaces"]:
-            ws_id = body.get("id")
-            if not isinstance(ws_id, str) or not ws_id.strip():
-                return self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 id：工作区名")
-            template_name = str(body.get("template") or "generic")
-            template_path = paths.templates_root() / f"{template_name}.md"
-            if not template_path.is_file():
-                return self._error(HTTPStatus.BAD_REQUEST,
-                                   f"库里没有叫 {template_name!r} 的需求模板")
+        if parts == ["projects"]:
+            project_id = body.get("id")
+            if not isinstance(project_id, str) or not project_id.strip():
+                return self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 id：项目名")
             try:
-                ws = root.create(self.server.workspaces_root, ws_id.strip(),
-                                 title=str(body.get("title") or ""),
-                                 template=template_path.read_text(encoding="utf-8"))
-            except root.WorkspaceInvalid as exc:
+                made = project.create(self.server.projects_root, project_id.strip(),
+                                      title=str(body.get("title") or ""),
+                                      goal=str(body.get("goal") or ""))
+            except project.ProjectInvalid as exc:
                 status = HTTPStatus.CONFLICT if "已经有" in str(exc) else HTTPStatus.BAD_REQUEST
                 return self._error(status, str(exc))
-            return self._json(boards.workspace_summary(ws), HTTPStatus.CREATED)
+            return self._json(boards.project_summary(made), HTTPStatus.CREATED)
         found = self._scope(parts)
         if found is None:
             return None
-        where, rest = found
+        where, ws, rest = found
+        if ws is not None and rest[:1] == ["chats"]:
+            return self._error(HTTPStatus.NOT_FOUND, "对话归项目：/projects/<p>/chats")
+        if ws is None and where.project is not None and rest == ["workspaces"]:
+            return self._post_workspace(where.project, body)
         if rest[-1:] == ["remove"]:
-            return self._post_remove(where, rest[:-1])
+            return self._post_remove(where, ws, rest[:-1])
         if rest == ["chats"]:
             try:
                 knobs = self.server.knobs_of
@@ -373,9 +387,8 @@ class Handler(BaseHTTPRequestHandler):
             if tuning is None:
                 return None
             return self._stream(where, conv, chat, text, tuning)
-        ws = where.workspace
         if ws is None:
-            return self._error(HTTPStatus.NOT_FOUND, f"编辑台下只有对话：{self.path}")
+            return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
         if rest == ["requirement", "confirm"]:
             by = self._by(body)
             if by is None:
@@ -413,25 +426,53 @@ class Handler(BaseHTTPRequestHandler):
         return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
 
     # ── 内部 ─────────────────────────────────────────────────────────────
-    def _scope(self, parts: list[str]) -> tuple[scope.Scope, list[str]] | None:
-        """路径前缀定域：`/studio/…` 是编辑台，`/workspaces/<id>/…` 是那个工作区；剩下的路径交回去。
+    def _scope(self, parts: list[str]
+               ) -> tuple[scope.Scope, root.Workspace | None, list[str]] | None:
+        """路径前缀定域：`/studio/…` 是编辑台，`/projects/<p>/…` 是那个项目，再往下
+        `workspaces/<id>/…` 是项目里的那个工作区；剩下的路径交回去。
 
-        工作区只按名字从清单目录下取，不拿 URL 片段拼路径：`..` 之类先被名字规矩拒掉。"""
+        项目与工作区只按名字从清单目录下取，不拿 URL 片段拼路径：`..` 之类先被名字规矩拒掉。"""
         if parts[0] == "studio":
-            return scope.studio(self.server.home), parts[1:]
-        if parts[0] == "workspaces" and len(parts) >= 2:
-            ws_id = parts[1]
-            if not root.ID_RE.fullmatch(ws_id):
-                self._error(HTTPStatus.NOT_FOUND, f"没有这个工作区：{ws_id}")
+            return scope.studio(self.server.home), None, parts[1:]
+        if parts[0] == "projects" and len(parts) >= 2:
+            project_id = parts[1]
+            if not root.ID_RE.fullmatch(project_id):
+                self._error(HTTPStatus.NOT_FOUND, f"没有这个项目：{project_id}")
                 return None
             try:
-                ws = root.load(self.server.workspaces_root / ws_id)
-            except root.WorkspaceNotFound:
-                self._error(HTTPStatus.NOT_FOUND, f"没有这个工作区：{ws_id}")
+                found = project.load(self.server.projects_root / project_id)
+            except project.ProjectNotFound:
+                self._error(HTTPStatus.NOT_FOUND, f"没有这个项目：{project_id}")
                 return None
-            return scope.for_workspace(ws), parts[2:]
+            where = scope.for_project(found)
+            rest = parts[2:]
+            if rest[:1] == ["workspaces"] and len(rest) >= 2:
+                try:
+                    ws = found.workspace(rest[1])
+                except (root.WorkspaceInvalid, root.WorkspaceNotFound):
+                    self._error(HTTPStatus.NOT_FOUND, f"项目 {project_id} 里没有工作区：{rest[1]}")
+                    return None
+                return where, ws, rest[2:]
+            return where, None, rest
         self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
         return None
+
+    def _post_workspace(self, found: project.Project, body: dict[str, Any]) -> None:
+        """项目里起一个工作区：按模板起草 requirement.md。"""
+        ws_id = body.get("id")
+        if not isinstance(ws_id, str) or not ws_id.strip():
+            return self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 id：工作区名")
+        template_name = str(body.get("template") or "generic")
+        template_path = paths.templates_root() / f"{template_name}.md"
+        if not template_path.is_file():
+            return self._error(HTTPStatus.BAD_REQUEST, f"库里没有叫 {template_name!r} 的需求模板")
+        try:
+            ws = project.new_workspace(found, ws_id.strip(), title=str(body.get("title") or ""),
+                                       template=template_path.read_text(encoding="utf-8"))
+        except root.WorkspaceInvalid as exc:
+            status = HTTPStatus.CONFLICT if "已经有" in str(exc) else HTTPStatus.BAD_REQUEST
+            return self._error(status, str(exc))
+        return self._json(boards.workspace_summary(ws), HTTPStatus.CREATED)
 
     def _tuning(self, body: dict[str, Any], current: Tuning, chat: Chat) -> Tuning | None:
         """body 里的 model / effort：没给或 null 的键沿用 current（旋钮上只有具体值，没有「回缺省」
@@ -456,15 +497,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream(self, where: scope.Scope, conv: conversation.Conversation, chat: Chat,
                 text: str, tuning: Tuning) -> None:
+        system_prompt = self.server.system_prompt_for(where.kind, chat)
         try:
             events = conversation.send(
-                conv, chat, text, system_prompt=self.server.system_prompt_for(where.kind, chat),
+                conv, chat, text, system_prompt=system_prompt,
                 allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
                 readable_paths=list(where.readable_paths), tuning=tuning)
             first = next(events)  # 忙、空消息这类错误在头响应之前就要报出来
         except conversation.ConversationBusy as exc:
             return self._error(HTTPStatus.CONFLICT, str(exc))
-        except ValueError as exc:
+        except ValueError as exc:  # 空消息、搬家前的旧对话（ConversationStale）
             return self._error(HTTPStatus.BAD_REQUEST, str(exc))
         except StopIteration:
             return self._error(HTTPStatus.BAD_GATEWAY, "适配器一个事件都没吐")
@@ -475,6 +517,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self._sse(first)
         for event in events:
+            self._sse(event)
+        # 人这一轮说着话时跑完的作业排在收件箱里：接着以「框架」的身份念，事件接在同一条流后面
+        for event in notify.follow_up(where, conv, chat, system_prompt):
             self._sse(event)
 
     def _post_settings(self, rest: list[str], body: dict[str, Any]) -> None:
@@ -537,17 +582,18 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _post_remove(self, where: scope.Scope, what: list[str]) -> None:
-        """删：对话（两个域都有）、产出、流程实例、整个工作区。拒是 409，没有是 404；
+    def _post_remove(self, where: scope.Scope, ws: root.Workspace | None, what: list[str]) -> None:
+        """删：对话（两个域都有）、整个项目、整个工作区、产出、流程实例。拒是 409，没有是 404；
         目录外没清干净的随 `leftovers` 回去，本机那部分已经删了。"""
-        ws = where.workspace
         try:
             if what[:1] == ["chats"] and len(what) == 2:
                 removed = removal.remove_chat(where, what[1], self.server.chat_factory)
+            elif ws is None and where.project is not None and what == []:
+                removed = removal.remove_project(where.project, self.server.chat_factory)
             elif ws is None:
-                return self._error(HTTPStatus.NOT_FOUND, f"编辑台下只有对话：{self.path}")
+                return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
             elif what == []:
-                removed = removal.remove_workspace(ws, self.server.chat_factory)
+                removed = removal.remove_workspace(ws)
             elif what[:1] == ["outputs"] and len(what) == 3:
                 removed = ws_removal.remove_output(ws, f"{what[1]}/{what[2]}")
             elif what[:1] == ["flows"] and len(what) == 2:

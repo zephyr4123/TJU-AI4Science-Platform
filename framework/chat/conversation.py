@@ -8,8 +8,11 @@
                           turn-N/events.jsonl 这一轮 CLI 的原生事件流，一行一个（证据，按后端的形）
                           turn-N/trace.jsonl  同一轮翻成框架事件（kind / text / tool …），不分后端；
                                               页面重开对话时靠它把工具调用原样摆回去
+                          inbox/<stamp>.md    收件箱：作业跑完排队等念的话（外层 #136）；
+                                              空闲就当场发一轮，
+                                              忙就等正跑的那一轮结束接着发，直到空（`send_inbox`）
 
-域是工作区（研究助理）或编辑台（流程助理），由 chat/scope.py 定；这里只拿到对话目录。
+域是项目（研究助理）或编辑台（流程助理），由 chat/scope.py 定；这里只拿到对话目录。
 
 会话内容存在 CLI 自己的目录里（`--resume` 靠它），我们只记 session id；但事件流自己留一份：
 它是"agent 那一轮到底按了什么"的唯一证据（P-3）。
@@ -39,6 +42,7 @@ TRANSCRIPT_NAME = "transcript.md"
 INFLIGHT_NAME = "inflight.json"
 EVENTS_NAME = "events.jsonl"
 TRACE_NAME = "trace.jsonl"
+INBOX_DIRNAME = "inbox"
 TIMEOUT_ENV = "AI4SCI_COORDINATOR_TIMEOUT_S"
 DEFAULT_TIMEOUT_S = 900.0
 # transcript.md 里一轮的样子；写在 `_close_turn`，读在 `read_turns`，两处必须同步改
@@ -46,7 +50,9 @@ TURN_HEADING = "## 第 {n} 轮"
 TURN_RE = re.compile(r"^## 第 (\d+) 轮\n\n\*\*(人|框架)\*\*：(.*?)\n\n\*\*agent\*\*：(.*?)"
                      r"(?=\n## 第 \d+ 轮\n|\Z)", re.S | re.M)
 # 一轮是谁开的口：人在说话，或者框架来叫醒（作业跑完，外层 #63）。页面与 transcript 都要标清
-ORIGINS = ("人", "框架")
+ORIGIN_HUMAN = "人"
+ORIGIN_FRAMEWORK = "框架"
+ORIGINS = (ORIGIN_HUMAN, ORIGIN_FRAMEWORK)
 
 
 class ConversationNotFound(FileNotFoundError):
@@ -55,6 +61,10 @@ class ConversationNotFound(FileNotFoundError):
 
 class ConversationBusy(RuntimeError):
     """这段对话正有一轮在跑。CLI 与 HTTP 都要把它变成"稍等"，不排队、不并发。"""
+
+
+class ConversationStale(ValueError):
+    """这段对话的工作目录已不在：搬家前的旧对话，能看不能续（会话在 CLI 那边按目录存）。"""
 
 
 def coordinator_timeout_s() -> float:
@@ -145,6 +155,25 @@ def busy(conv: Conversation) -> bool:
     return inflight.exists() and _lock_holder_alive(inflight)
 
 
+def queue_note(conv: Conversation, text: str) -> Path:
+    """往收件箱放一句要念给助理的话（作业跑完的结果）。文件名带时间戳，先到先念。"""
+    text = text.strip()
+    if not text:
+        raise ValueError("收件箱里不放空话")
+    inbox = conv.dir / INBOX_DIRNAME
+    inbox.mkdir(exist_ok=True)
+    path = inbox / f"{datetime.now(UTC):%Y%m%dT%H%M%S%fZ}-{secrets.token_hex(2)}.md"
+    path.write_text(text + "\n", encoding="utf-8")
+    LOGGER.info("chat_note_queued chat_id=%s note=%s", conv.chat_id, path.name)
+    return path
+
+
+def pending_notes(conv: Conversation) -> list[Path]:
+    """收件箱里还没念的，按先后。"""
+    inbox = conv.dir / INBOX_DIRNAME
+    return sorted(inbox.glob("*.md")) if inbox.is_dir() else []
+
+
 def remove_conversation(conv: Conversation, chat: Chat | None) -> None:
     """删一段对话（主人 2026-09-22：级联到根）：这一轮还在跑就拒；先让这家 CLI 忘掉它存的那条会话
     （`Chat.forget`，适配器不在就跳过、由调用方记一句），再删目录。"""
@@ -216,13 +245,72 @@ def send(
         raise ValueError("消息是空的")
     if origin not in ORIGINS:
         raise ValueError(f"origin 只认 {ORIGINS}，得到 {origin!r}")
+    inflight = _acquire(conv)
+    try:
+        yield from _turn(conv, chat, message, inflight, system_prompt=system_prompt,
+                         allowed_paths=allowed_paths, bash_rules=bash_rules,
+                         readable_paths=readable_paths, timeout_s=timeout_s, origin=origin,
+                         tuning=tuning)
+    finally:
+        inflight.unlink(missing_ok=True)
+
+
+def send_inbox(
+    conv: Conversation, chat: Chat, *, system_prompt: str, allowed_paths: list[Path],
+    bash_rules: tuple[str, ...], readable_paths: list[Path] = (), timeout_s: float | None = None,
+) -> Iterator[ChatEvent]:
+    """收件箱不空就以「框架」的身份发一轮，把里面的话一次念完；空就什么都不发（一个事件都不吐）。
+    拿锁与读收件箱在同一把锁下：作业跑完往里放的那一句，要么这一轮念、要么下一轮念，不会丢。
+    对话忙照旧抛 ConversationBusy，调用方决定等不等。"""
+    inflight = _acquire(conv)
+    try:
+        notes = pending_notes(conv)
+        if not notes:
+            return
+        message = "\n\n".join(p.read_text(encoding="utf-8").strip() for p in notes)
+        for path in notes:
+            path.unlink()
+        LOGGER.info("chat_inbox_drain chat_id=%s notes=%d", conv.chat_id, len(notes))
+        yield from _turn(conv, chat, message, inflight, system_prompt=system_prompt,
+                         allowed_paths=allowed_paths, bash_rules=bash_rules,
+                         readable_paths=readable_paths, timeout_s=timeout_s,
+                         origin=ORIGIN_FRAMEWORK, tuning=None)
+    finally:
+        inflight.unlink(missing_ok=True)
+
+
+def _acquire(conv: Conversation) -> Path:
+    """拿这段对话的忙锁：原子建文件，建成了就是我的；在而主人还活着就是忙。
+    上一轮的进程死了（人打断、机器重启）没摘锁：锁记着 pid，自己收；半途的那一轮目录留着当证据。"""
     inflight = conv.dir / INFLIGHT_NAME
-    if inflight.exists():
-        if _lock_holder_alive(inflight):
-            raise ConversationBusy(f"这段对话正有一轮在跑（{inflight}），等它结束再发")
-        # 上一轮的进程死了（人打断、机器重启）没摘锁：锁记着 pid，自己收；半途的那一轮目录留着当证据
-        LOGGER.warning("chat_stale_lock chat_id=%s lock=%s", conv.chat_id, inflight.read_text())
-        inflight.unlink()
+    for _ in range(2):
+        try:
+            fd = os.open(inflight, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if _lock_holder_alive(inflight):
+                raise ConversationBusy(
+                    f"这段对话正有一轮在跑（{inflight}），等它结束再发") from None
+            LOGGER.warning("chat_stale_lock chat_id=%s lock=%s", conv.chat_id,
+                           inflight.read_text(encoding="utf-8"))
+            inflight.unlink(missing_ok=True)
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"pid": os.getpid(),
+                                 "started_at": datetime.now(UTC).isoformat(timespec="seconds")}))
+        return inflight
+    raise ConversationBusy(f"这段对话正有一轮在跑（{inflight}），等它结束再发")
+
+
+def _turn(
+    conv: Conversation, chat: Chat, message: str, inflight: Path, *, system_prompt: str,
+    allowed_paths: list[Path], bash_rules: tuple[str, ...], readable_paths: list[Path],
+    timeout_s: float | None, origin: str, tuning: Tuning | None,
+) -> Iterator[ChatEvent]:
+    """一轮的正身：锁已经拿到。写 message.md → 逐个事件落盘并往外吐 → done/error 时更新 meta 与
+    transcript。锁由调用方摘。"""
+    if not Path(conv.cwd).is_dir():
+        raise ConversationStale(f"这段对话的工作目录已不在（{conv.cwd}）：是搬家前的旧对话，"
+                                "能看不能续，开一段新的")
     digest = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
     if system_prompt and conv.guide_sha not in (None, digest):
         message = GUIDE_CHANGED_NOTICE + message
@@ -246,29 +334,26 @@ def send(
     LOGGER.info("chat_turn_start chat_id=%s turn=%d resume=%s model=%s effort=%s", conv.chat_id,
                 turn_n, conv.session_id or "-", conv.model or "-", conv.effort or "-")
     prior_session = conv.session_id
-    try:
-        with events_path.open("a", encoding="utf-8") as fh, \
-                trace_path.open("a", encoding="utf-8") as trace_fh:
-            for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
-                                   system_prompt=system_prompt, allowed_paths=allowed_paths,
-                                   bash_rules=bash_rules, readable_paths=readable_paths,
-                                   chat_id=conv.chat_id, tuning=conv.tuning):
-                if event.session_id and event.session_id != conv.session_id:
-                    conv.session_id = event.session_id
-                    conv.save()
-                if event.kind in ("done", "error"):  # 先把花费换成这一轮的，落盘与出门都是它
-                    event.cost_usd = _turn_cost(conv, chat, event, prior_session)
-                if event.kind != "delta":  # 逐字片段只往外吐不落盘：证据是完整的 text，不是碎片
-                    fh.write(json.dumps(event.raw or _bare(event), ensure_ascii=False) + "\n")
-                    fh.flush()
-                    trace_fh.write(json.dumps(event_payload(event), ensure_ascii=False) + "\n")
-                    trace_fh.flush()
-                if event.kind in ("done", "error"):
-                    conv.guide_sha = digest
-                    _close_turn(conv, turn_n, message, event, origin)
-                yield event
-    finally:
-        inflight.unlink(missing_ok=True)
+    with events_path.open("a", encoding="utf-8") as fh, \
+            trace_path.open("a", encoding="utf-8") as trace_fh:
+        for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
+                               system_prompt=system_prompt, allowed_paths=allowed_paths,
+                               bash_rules=bash_rules, readable_paths=readable_paths,
+                               chat_id=conv.chat_id, tuning=conv.tuning):
+            if event.session_id and event.session_id != conv.session_id:
+                conv.session_id = event.session_id
+                conv.save()
+            if event.kind in ("done", "error"):  # 先把花费换成这一轮的，落盘与出门都是它
+                event.cost_usd = _turn_cost(conv, chat, event, prior_session)
+            if event.kind != "delta":  # 逐字片段只往外吐不落盘：证据是完整的 text，不是碎片
+                fh.write(json.dumps(event.raw or _bare(event), ensure_ascii=False) + "\n")
+                fh.flush()
+                trace_fh.write(json.dumps(event_payload(event), ensure_ascii=False) + "\n")
+                trace_fh.flush()
+            if event.kind in ("done", "error"):
+                conv.guide_sha = digest
+                _close_turn(conv, turn_n, message, event, origin)
+            yield event
 
 
 # 指南变了就在这一轮的话前面加一句：模型每轮都拿到整份指南，但看不出哪儿变了

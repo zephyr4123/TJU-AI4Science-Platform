@@ -8,7 +8,8 @@ import pytest
 
 from framework import paths
 from framework.chat import guide, scope
-from framework.workspace import root as workspace
+from framework.workspace import project as project_mod
+from tests.fixtures import spaces
 
 
 def _commands(text: str) -> list[str]:
@@ -32,9 +33,9 @@ def test_tool_guide_goes_right_after_the_preamble(tmp_path):
 def test_system_prompt_is_preamble_plus_guide(tmp_path):
     path = tmp_path / "README.md"
     path.write_text("# 指南正文\n", encoding="utf-8")
-    text = guide.system_prompt(guide.WORKSPACE, path)
+    text = guide.system_prompt(guide.PROJECT, path)
     assert text.startswith("# 你在服务里") and text.rstrip().endswith("# 指南正文")
-    assert "流程实例在 `flows/`" in text and "--detach" in text
+    assert "流程实例在 `flows/`" in text and "--detach" in text and "--ws" in text
     studio = guide.system_prompt(guide.STUDIO, path)
     assert studio.startswith("# 你在服务里") and "流程助理" in studio and "--detach" not in studio
     with pytest.raises(AssertionError, match="指南只有"):
@@ -43,7 +44,7 @@ def test_system_prompt_is_preamble_plus_guide(tmp_path):
 
 def test_missing_or_empty_guide_is_an_error(tmp_path):
     with pytest.raises(guide.GuideMissing, match="不在"):
-        guide.system_prompt(guide.WORKSPACE, tmp_path / "nope.md")
+        guide.system_prompt(guide.PROJECT, tmp_path / "nope.md")
     empty = tmp_path / "README.md"
     empty.write_text("  \n", encoding="utf-8")
     with pytest.raises(guide.GuideMissing, match="空的"):
@@ -51,18 +52,20 @@ def test_missing_or_empty_guide_is_an_error(tmp_path):
 
 
 def test_the_two_scopes_write_to_disjoint_places(tmp_path, monkeypatch):
-    """分权靠白名单：研究助理只写自己的工作区，流程助理只写库；两组没有交集。"""
-    ws = workspace.create(tmp_path / "workspaces", "w1")
+    """分权靠白名单：研究助理只写自己的项目（全部工作区），流程助理只写库；两组没有交集。"""
+    ws = spaces.make_workspace(tmp_path, "w1")
+    project = project_mod.of(ws)
     library = tmp_path / "lib" / "workflows"
     library.mkdir(parents=True)
     templates = tmp_path / "lib" / "templates"
     templates.mkdir()
     monkeypatch.setenv(paths.WORKFLOWS_ROOT_ENV, str(library))
     monkeypatch.setenv(paths.TEMPLATES_ROOT_ENV, str(templates))
-    research = scope.for_workspace(ws)
+    research = scope.for_project(project)
     studio = scope.studio(tmp_path)
-    assert research.kind == "workspace" and research.cwd == ws.root
-    assert research.allowed_paths == (ws.root,) and research.chats == ws.platform / "chats"
+    assert research.kind == "project" and research.cwd == project.root
+    assert research.allowed_paths == (project.root,) and research.chats == project.chats
+    assert ws.root.is_relative_to(research.allowed_paths[0])  # 工作区在项目里，跟着可写
     assert studio.kind == "studio" and studio.cwd == library.parent
     assert studio.allowed_paths == (library,) and studio.chats == tmp_path / "studio" / "chats"
     assert not set(research.allowed_paths) & set(studio.allowed_paths)
@@ -77,10 +80,10 @@ def test_bash_rules_only_allow_bare_ai4sci():
     for kind in guide.KINDS:
         preamble = guide.PREAMBLES[kind]
         assert "不加路径、不在前面挂环境变量" in preamble and "按按钮" not in preamble
-    assert "现在一律写 `ai4sci`" in guide.PREAMBLES[guide.WORKSPACE]
-    assert "平台还没有这个功能" in guide.PREAMBLES[guide.WORKSPACE]
-    assert "去编辑台拼一条" in guide.PREAMBLES[guide.WORKSPACE]
-    assert "不拼 `find`" in guide.PREAMBLES[guide.WORKSPACE]
+    assert "现在一律写 `ai4sci`" in guide.PREAMBLES[guide.PROJECT]
+    assert "平台还没有这个功能" in guide.PREAMBLES[guide.PROJECT]
+    assert "去编辑台拼一条" in guide.PREAMBLES[guide.PROJECT]
+    assert "不拼 `find`" in guide.PREAMBLES[guide.PROJECT]
     assert "去主页面找研究助理" in guide.PREAMBLES[guide.STUDIO]
 
 
@@ -92,7 +95,7 @@ def test_shipped_guides_never_show_the_agent_a_raw_command(kind):
     assert ".venv/bin/ai4sci" not in guide.GUIDE_PATHS[kind].read_text(encoding="utf-8")
     assert not re.search(r"AI4SCI_[A-Z_]+=\S+\s+ai4sci", text)
     commands = _commands(text)
-    if kind == guide.WORKSPACE:
+    if kind == guide.PROJECT:
         assert commands, "研究助理的指南里总该有几条命令"
     for line in commands:
         head = line.split("#", 1)[0].rstrip()
@@ -102,8 +105,8 @@ def test_shipped_guides_never_show_the_agent_a_raw_command(kind):
 
 def test_research_guide_takes_flows_and_never_builds_them():
     """纲领 P-16 的机器判据：研究助理的指南没有「拼一条自己的流程」、没有往库里写文件的写法；
-    只教取流程、改实例；命令里不带任务包路径（P-15）。"""
-    text = guide.system_prompt(guide.WORKSPACE)
+    只教取流程、改实例；命令里不带路径，工作区靠 `--ws`（P-15）。"""
+    text = guide.system_prompt(guide.PROJECT)
     assert "## 取一条流程，按需求改" in text and "ai4sci flow take" in text
     assert f"库在 `{paths.workflows_root()}`：你能读不能写" in text  # 路径写实，agent 不用去找
     assert "## 拼一条自己的流程" not in text and "workflows/<name>.yaml" not in text

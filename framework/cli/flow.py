@@ -16,14 +16,20 @@ import yaml
 
 from framework import paths
 from framework.capabilities import abilities
-from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, current_workspace
-from framework.cli.workspace import report
+from framework.cli._common import (
+    EXIT_INVALID,
+    EXIT_OK,
+    EXIT_USAGE,
+    add_ws_option,
+    current_workspace,
+)
+from framework.cli.project import report
 from framework.contracts import workflows
 from framework.workspace import removal
 
 
 def cmd_take(args: argparse.Namespace) -> int:
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     library = paths.workflows_root()
@@ -49,7 +55,7 @@ def cmd_take(args: argparse.Namespace) -> int:
 
 def cmd_remove(args: argparse.Namespace) -> int:
     """删工作区里的一条流程实例：有产出挂在它上面就拒。"""
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     try:
@@ -78,15 +84,17 @@ def cmd_remove_workflow(args: argparse.Namespace) -> int:
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
-    flow = groups.add_parser("flow", help="流程实例：把库里的流程取到当前工作区")
+    flow = groups.add_parser("flow", help="流程实例：把库里的流程取到一个工作区")
     actions = flow.add_subparsers(dest="action", required=True)
     taking = actions.add_parser(
         "take", help="取一条：复制库里的 workflows/<name>.yaml 成 flows/<name>.yaml")
     taking.add_argument("name", help="库里的流程名（ai4sci show workflows）")
     taking.add_argument("--as", dest="as_name", default="", help="实例换个名字，缺省同名")
+    add_ws_option(taking)
     taking.set_defaults(func=cmd_take)
     removing = actions.add_parser("remove", help="删工作区里的一条流程实例；有产出挂着就拒")
     removing.add_argument("name", help="实例名（flows/<name>.yaml）")
+    add_ws_option(removing)
     removing.set_defaults(func=cmd_remove)
 
     library = groups.add_parser("workflow", help="流程库：库里的流程文件（workflows/*.yaml）")

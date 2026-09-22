@@ -32,7 +32,8 @@ SIGNED_NAME = "signed.json"
 # 算目录 hash 时跳过的：框架自己的两份文件、环境、git 仓、缓存——它们不是产物
 HASH_IGNORED = frozenset({META_NAME, SIGNED_NAME, ".venv", ".git", "__pycache__", ".ai4sci"})
 STATUSES = ("running", "ok", "failed")
-_ID_RE = re.compile(r"^([a-z]+)/(\d+)$")
+# `<stage>/<n>`，读兄弟工作区的产出时前面加 `<工作区>:`（同一项目里，外层 #136）
+_ID_RE = re.compile(r"^(?:([a-z][a-z0-9-]*):)?([a-z]+)/(\d+)$")
 
 
 class OutputNotFound(FileNotFoundError):
@@ -51,21 +52,31 @@ class SignRefused(ValueError):
 class OutputId:
     stage: str  # slug
     n: int
+    # 兄弟工作区的名字（同一项目里）；None 就是自己的
+    workspace: str | None = None
 
-    def __str__(self) -> str:
+    @property
+    def local(self) -> str:
+        """在它自己工作区里的 id：目录名就是它。"""
         return f"{self.stage}/{self.n}"
 
+    def __str__(self) -> str:
+        return f"{self.workspace}:{self.local}" if self.workspace else self.local
+
     def path(self, root: Path) -> Path:
+        """`root` 是它所在那个工作区的根（兄弟的就是兄弟的根）。"""
         return Path(root) / self.stage / str(self.n)
 
 
 def parse_id(text: str) -> OutputId:
-    """`<stage>/<n>` → OutputId；形状不对就 ValueError（信息给人看）。"""
+    """`[<工作区>:]<stage>/<n>` → OutputId；形状不对就 ValueError（信息给人看）。"""
     match = _ID_RE.match(text.strip())
-    if not match or not is_slug(match.group(1)):
+    if not match or not is_slug(match.group(2)):
         raise ValueError(f"产出的 id 要写成 <阶段目录>/<序号>，比如 experiment/2；"
+                         f"同一项目里兄弟工作区的"
+                         f"写 <工作区>:<阶段目录>/<序号>，比如 gua:analysis/3；"
                          f"阶段目录：{STAGE_SLUGS}。得到 {text!r}")
-    return OutputId(match.group(1), int(match.group(2)))
+    return OutputId(match.group(2), int(match.group(3)), match.group(1))
 
 
 @dataclass

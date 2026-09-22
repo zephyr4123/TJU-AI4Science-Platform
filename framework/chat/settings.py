@@ -75,8 +75,10 @@ def storage_table(home: Path | None = None) -> dict[str, Any]:
     return {"home": str(home), "config": str(paths.config_dir()),
             "uv_cache": str(paths.uv_cache_dir()),
             "writable": _writable(home), "free_gb": round(usage.free / 1e9, 1),
-            "workspaces": sum(1 for p in (home / "workspaces").glob("*/requirement.md"))
-            if (home / "workspaces").is_dir() else 0}
+            "projects": sum(1 for _ in (home / "projects").glob("*/project.md"))
+            if (home / "projects").is_dir() else 0,
+            "workspaces": sum(1 for _ in (home / "projects").glob("*/workspaces/*/requirement.md"))
+            if (home / "projects").is_dir() else 0}
 
 
 def _writable(directory: Path) -> bool:

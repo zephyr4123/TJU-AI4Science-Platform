@@ -1,13 +1,13 @@
-"""删：工作区、产出、流程实例（主人 2026-09-22：人产生的都能删，删就从根级联删干净，
-没有软删除）。
+"""删：项目、工作区、产出、流程实例（主人 2026-09-22：人产生的都能删，删就从根级联删干净，
+没有软删除；外层 #134 #136）。
 
 规矩一句话：一个东西拥有的全在它目录底下，删它 = 删目录；目录外的（对话在 CLI 那边的会话、
 工作区在每台机器上的镜像）由上层用回调递进来——这一层不认识 chat 与 compute（分层单向）。
 什么时候拒：
 
-- 工作区：有作业在跑、有对话正在一轮里；
-- 产出：被别的产出 `from` 引用（删了下游的 hash 对账立刻断）、正在跑；签过的叶子能删——签字是
-  人的决定，删也是；
+- 项目：任何一个工作区有作业在跑、有对话正在一轮里（回调抛）；
+- 工作区：有作业在跑、兄弟工作区 `from` 过它的产出（删了兄弟的 hash 对账立刻断）；
+- 产出：被别的产出 `from` 引用（自己的或兄弟的）、正在跑；签过的叶子能删——签字是人的决定，删也是；
 - 流程实例：有产出挂在它上面、正在照它跑。
 
 级联里外面那部分（会话、镜像）删不掉不吞：本机照删，没清干净的每条记在 `Removed.leftovers` 里，
@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 
 from framework.contracts.output import Meta
 from framework.workspace import jobs, outputs
+from framework.workspace.project import Project
 from framework.workspace.root import Workspace
 
 LOGGER = logging.getLogger("ai4sci.removal")
@@ -44,8 +45,9 @@ class Removed:
 
 
 def referencing(workspace: Workspace, oid: str) -> list[str]:
-    """哪些产出 `from` 了它。"""
-    return [meta.id for _, meta in outputs.list_outputs(workspace) if oid in meta.input_ids]
+    """哪些产出 `from` 了它，写成从这个工作区看过去的 id（兄弟的带前缀）。"""
+    return [outputs.qualified(workspace, owner, meta)
+            for owner, meta in outputs.referencing(workspace, oid)]
 
 
 def remove_output(workspace: Workspace, oid: str) -> Removed:
@@ -80,19 +82,46 @@ def remove_flow(workspace: Workspace, name: str) -> Removed:
     return Removed(name)
 
 
-def remove_workspace(workspace: Workspace, *, forget_chats: Callable[[Workspace], list[str]],
-                     remove_mirrors: Callable[[Workspace, list[Meta]], list[str]]) -> Removed:
-    """删整个工作区：先拒（作业在跑、对话在跑），再清目录外的（每段对话在 CLI 那边的会话、
-    每台机器上的镜像），最后删目录。两个回调各自返回没清干净的那几句。"""
+def _refuse_running(workspace: Workspace) -> None:
     running = jobs.running_jobs(workspace.jobs)
     if running:
         names = ", ".join(j.job_id for j in running)
-        raise RemovalRefused(f"有作业在跑（{names}）：先 ai4sci job stop")
+        raise RemovalRefused(f"工作区 {workspace.id} 有作业在跑（{names}）：先 ai4sci job stop")
+
+
+def remove_workspace(workspace: Workspace, *,
+                     remove_mirrors: Callable[[Workspace, list[Meta]], list[str]]) -> Removed:
+    """删整个工作区：先拒（作业在跑、兄弟读过它的产出），再清每台机器上的镜像，最后删目录。
+    对话不在这儿——对话归项目，删工作区不动它。回调返回没清干净的那几句。"""
+    _refuse_running(workspace)
     metas = [meta for _, meta in outputs.list_outputs(workspace)]
-    leftovers = forget_chats(workspace) + remove_mirrors(workspace, metas)
+    for meta in metas:
+        outsiders = [ref for ref in referencing(workspace, meta.id) if ":" in ref]
+        if outsiders:
+            who = ", ".join(outsiders)
+            raise RemovalRefused(f"兄弟工作区读过它的产出（{who} 读了 {meta.id}）："
+                                 "先删下游，从末端往回删")
+    leftovers = remove_mirrors(workspace, metas)
     shutil.rmtree(workspace.root)
     LOGGER.info("workspace_removed id=%s leftovers=%s", workspace.id, leftovers)
     return Removed(workspace.id, leftovers)
+
+
+def remove_project(project: Project, *, forget_chats: Callable[[Project], list[str]],
+                   remove_mirrors: Callable[[Workspace, list[Meta]], list[str]]) -> Removed:
+    """删整个项目：先拒（任何一个工作区有作业在跑、任何一段对话在跑——后者由回调抛），再清目录外的
+    （每段对话在 CLI 那边的会话、每个工作区在每台机器上的镜像），最后删目录。"""
+    spaces = project.workspaces()
+    for workspace in spaces:
+        _refuse_running(workspace)
+    leftovers = forget_chats(project)
+    for workspace in spaces:
+        metas = [meta for _, meta in outputs.list_outputs(workspace)]
+        leftovers += remove_mirrors(workspace, metas)
+    shutil.rmtree(project.root)
+    LOGGER.info("project_removed id=%s workspaces=%d leftovers=%s", project.id, len(spaces),
+                leftovers)
+    return Removed(project.id, leftovers)
 
 
 def mirrors_of(metas: list[Meta]) -> list[str]:
@@ -106,4 +135,4 @@ def mirrors_of(metas: list[Meta]) -> list[str]:
 
 
 __all__ = ["Removed", "RemovalRefused", "mirrors_of", "referencing", "remove_flow",
-           "remove_output", "remove_workspace"]
+           "remove_output", "remove_project", "remove_workspace"]

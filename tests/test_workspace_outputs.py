@@ -6,11 +6,11 @@ import pytest
 
 from framework.contracts import output
 from framework.workspace import outputs
-from framework.workspace import root as ws_mod
+from tests.fixtures import spaces
 
 
 def _ws(tmp_path):
-    ws = ws_mod.create(ws_mod.workspaces_root(tmp_path), "w")
+    ws = spaces.make_workspace(tmp_path, "w")
     return ws
 
 
@@ -99,3 +99,39 @@ def test_reopen_clears_last_attempt_and_records_this_machine(tmp_path):
     assert again.compute == {"name": "local", "kind": "local"}
     outputs.close_output(d, m, ok=True, line="基线 3 次")
     assert output.read_meta(d).result == "基线 3 次" and output.read_meta(d).error == ""
+
+
+def test_sibling_workspace_outputs_are_read_frozen_and_recorded_with_a_prefix(tmp_path):
+    """跨工作区（外层 #136）：同一项目里兄弟的产出写 `<工作区>:<stage>/<n>`——找得到、当输入时
+    meta 记这个写法、被兄弟读过的也冻住、自己的前缀会去掉；项目外没有这条路。"""
+    ws = _ws(tmp_path)
+    paper = spaces.make_workspace(tmp_path, "paper")
+    d1, m1 = _open(ws, "analysis")
+    outputs.close_output(d1, m1, ok=True, line="ok")
+    (d1 / "analysis.md").write_text("结论", encoding="utf-8")
+    assert output.parse_id("w:analysis/1") == output.OutputId("analysis", 1, "w")
+    assert str(output.parse_id("w:analysis/1")) == "w:analysis/1"
+    assert output.parse_id("w:analysis/1").local == "analysis/1"
+    # 从 paper 看 w 的产出：目录是 w 里的；自己的名字当前缀等于不写
+    assert outputs.find_output(paper, "w:analysis/1")[0] == d1
+    assert outputs.owner_of(ws, "w:analysis/1")[1] == output.OutputId("analysis", 1)
+    with pytest.raises(output.OutputNotFound, match="没有产出 w:analysis/9"):
+        outputs.find_output(paper, "w:analysis/9")
+    with pytest.raises(output.OutputNotFound, match="项目 p 里没有工作区 'nope'"):
+        outputs.find_output(paper, "nope:analysis/1")
+    resolved = outputs.resolve_inputs(paper, ["w:analysis/1", "w:analysis/1"])
+    assert resolved.ids == ("w:analysis/1",) and resolved.outputs == (d1,)
+    assert outputs.resolve_inputs(ws, ["w:analysis/1"]).ids == ("analysis/1",)
+    # paper 读了它：meta 记 `from: [w:analysis/1]`，w 那边它就冻住了
+    d2, m2 = _open(paper, "writing", inputs=["w:analysis/1"])
+    outputs.close_output(d2, m2, ok=True, line="ok")
+    assert m2.input_ids == ["w:analysis/1"]
+    users = [(o.id, m.id) for o, m in outputs.referencing(ws, "analysis/1")]
+    assert users == [("paper", "writing/1")]
+    assert outputs.referenced_hash(ws, "analysis/1") == m2.inputs[0].sha256
+    assert outputs.referenced_hash(paper, "w:analysis/1") == m2.inputs[0].sha256
+    (d1 / "analysis.md").write_text("改了", encoding="utf-8")
+    with pytest.raises(output.OutputChanged, match="w:analysis/1 被引用或签字之后改过了"):
+        outputs.resolve_inputs(paper, ["w:analysis/1"])
+    with pytest.raises(output.OutputChanged, match="analysis/1 被引用或签字之后改过了"):
+        outputs.resolve_inputs(ws, ["analysis/1"])

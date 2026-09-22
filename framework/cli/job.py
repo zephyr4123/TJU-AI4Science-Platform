@@ -12,13 +12,13 @@ import argparse
 import getpass
 import sys
 
-from framework.cli._common import EXIT_OK, EXIT_USAGE, current_workspace
+from framework.cli._common import EXIT_OK, EXIT_USAGE, add_ws_option, current_workspace
 from framework.contracts import output
 from framework.workspace import jobs
 
 
 def cmd_stop(args: argparse.Namespace) -> int:
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     try:
@@ -36,4 +36,5 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     stopping = actions.add_parser("stop", help="停一个正在跑的作业：杀进程树，作业与它的产出都记上")
     stopping.add_argument("job_id", help="作业号（ai4sci show jobs）")
     stopping.add_argument("--by", default="", help="谁停的，记在记录上；缺省当前登录名")
+    add_ws_option(stopping)
     stopping.set_defaults(func=cmd_stop)

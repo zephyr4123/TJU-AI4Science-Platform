@@ -1,4 +1,5 @@
-"""看板读盘：工作区（需求、七个阶段的产出、每条流程走到哪、作业）与一次产出的细节。纯读盘、零模型。
+"""看板读盘：项目（每个工作区一行）、工作区（需求、七个阶段的产出、每条流程走到哪、作业）与一次产出的
+细节。纯读盘、零模型。
 
 页面是 `ai4sci serve` 的客户端（`ui/README.md`）：这里每个函数就是一个端点的响应体，
 server 只做路由；换一种 UI（TUI）读的也是同一份东西。每个响应体都是能直接 `json.dumps`
@@ -24,6 +25,7 @@ from framework.contracts import output, requirement, workflows
 from framework.contracts.capability import Capability
 from framework.contracts.stages import STAGES
 from framework.workspace import jobs, outputs, progress
+from framework.workspace.project import Project
 from framework.workspace.root import Workspace
 
 # 产出目录里给页面列文件时跳过的：框架的两份文件、环境、git、日志、缓存
@@ -39,6 +41,31 @@ TEXT_LIMIT = 200_000
 # 正文最多给这么多字节，再大截断；原样端出的文件上限（数据集不该从这儿下）
 TREE_SKIPPED = frozenset({".venv", ".git", "__pycache__", "node_modules"})
 RAW_LIMIT = 50_000_000
+
+
+# ── 项目 ─────────────────────────────────────────────────────────────────
+def project_summary(project: Project) -> dict[str, Any]:
+    """地方栏用的一行：标题、几个工作区、有没有作业在跑。"""
+    spaces = project.workspaces()
+    return {**project.to_dict(), "workspaces": len(spaces),
+            "running": sum(len(jobs.running_jobs(ws.jobs)) for ws in spaces)}
+
+
+def project_detail(project: Project, catalog: dict[str, Capability],
+                   skills: Collection[str] = ()) -> dict[str, Any]:
+    """项目页要的一整份：目标原文 + 每个工作区一行（需求状态、每个阶段几次产出、每条流程走到哪、
+    在等谁、
+    跑着的作业）。助理的 `show project` 也是它。"""
+    rows = []
+    for ws in project.workspaces():
+        detail = workspace_detail(ws, catalog, skills)
+        rows.append({**workspace_summary(ws),
+                     "flows": [{"name": f["name"], "title": f.get("title"),
+                                "step": f.get("step"), "total": f.get("total"),
+                                "waiting": f.get("waiting"), "problems": f.get("problems", [])}
+                               for f in detail["flows"]],
+                     "jobs": [j for j in detail["jobs"] if j["effective_status"] == "running"]})
+    return {**project_summary(project), "text": project.text(), "workspaces": rows}
 
 
 # ── 工作区 ───────────────────────────────────────────────────────────────

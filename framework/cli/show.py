@@ -1,9 +1,12 @@
-"""`ai4sci show workspaces | workspace | outputs [<stage>] | output <stage>/<n> | jobs | job <id>
+"""`ai4sci show projects | project | workspace | outputs [<stage>] | output <stage>/<n> | jobs
+| job <id>
 | flows | caps | workflows | templates | template <name> | computes`
 
 在 cli 层。这一组只看不做：不产出文件、不起会话、不改任何东西。与 `ai4sci serve` 的 GET
-端点读的是同一批函数（`chat.boards`）——页面和终端是同一份数据的两张脸。workspace / outputs /
-output / jobs / flows 看的是当前工作区（P-15）；caps / workflows / templates 看的是库。
+端点读的是同一批函数（`chat.boards`）——页面和终端是同一份数据的两张脸。project 看的是当前项目
+（每个工作区一行，助理的全局视角就是它）；workspace / outputs / output / jobs / flows 看的是一个
+工作区
+（`--ws`，P-15）；caps / workflows / templates 看的是库。
 """
 
 from __future__ import annotations
@@ -16,27 +19,63 @@ from pathlib import Path
 from framework import computes, paths
 from framework.capabilities import abilities, discover
 from framework.chat import boards
-from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, current_workspace
+from framework.cli._common import (
+    EXIT_INVALID,
+    EXIT_OK,
+    EXIT_USAGE,
+    add_ws_option,
+    current_project,
+    current_workspace,
+)
 from framework.cli.workspace import read_template
 from framework.contracts import output, workflows
 from framework.contracts.capability import COLUMNS
 from framework.contracts.stages import STAGE_SLUGS, STAGES
-from framework.workspace import jobs, outputs, root
+from framework.workspace import jobs, outputs, project
 
 
-def cmd_workspaces(args: argparse.Namespace) -> int:
-    """全部工作区：id、标题、需求确认了没、在哪。"""
-    for ws in root.list_workspaces(root.workspaces_root(paths.home())):
-        state = ws.to_dict()["requirement"]
-        confirmed = f"v{state['version']}" + ("（有改动未确认）" if state["dirty"] else "") \
-            if state["confirmed"] else "未确认"
-        print(f"{ws.id}\t{ws.title()}\t需求 {confirmed}\t{ws.root}")
+def cmd_projects(args: argparse.Namespace) -> int:
+    """全部项目：id、标题、几个工作区、在哪。"""
+    for found in project.list_projects(project.projects_root(paths.home())):
+        summary = boards.project_summary(found)
+        print(f"{found.id}\t{summary['title']}\t{summary['workspaces']} 个工作区"
+              f"\t跑着 {summary['running']}\t{found.root}")
+    return EXIT_OK
+
+
+def cmd_project(args: argparse.Namespace) -> int:
+    """当前项目的全貌——助理的全局视角：每个工作区一行（需求状态、每条流程走到哪、在等谁、跑着的作业）。"""
+    found = current_project()
+    if isinstance(found, int):
+        return found
+    detail = boards.project_detail(found, _catalog(), _skills())
+    if args.json:
+        print(json.dumps(boards.jsonable(detail), ensure_ascii=False, indent=2))
+        return EXIT_OK
+    print(f"project\t{found.id}\t{detail['title']}")
+    for ws in detail["workspaces"]:
+        req = ws["requirement"]
+        state = (f"v{req['version']}" + ("（有改动未确认）" if req["dirty"] else "")
+                 if req["confirmed"] else "未确认")
+        counts = " ".join(f"{slug}={n}" for slug, n in ws["counts"].items() if n)
+        print(f"workspace\t{ws['id']}\t{ws['title']}\t需求 {state}\t{counts or '-'}")
+        for flow in ws["flows"]:
+            if flow["problems"]:
+                print(f"  flow\t{flow['name']}\t坏了：{flow['problems'][0]}", file=sys.stderr)
+                continue
+            print(f"  flow\t{flow['name']}\tstep={flow['step'] + 1}/{flow['total']}"
+                  f"\twaiting={flow['waiting']}")
+        for job in ws["jobs"]:
+            print(f"  job\t{job['job_id']}\t{job['effective_status']}\t{job['cap']}"
+                  f"\t{job['output'] or '-'}")
+    if not detail["workspaces"]:
+        print("（还没有工作区：ai4sci workspace new <名字>）")
     return EXIT_OK
 
 
 def cmd_workspace(args: argparse.Namespace) -> int:
-    """当前工作区的全貌：需求状态、每个阶段有几次产出、每条流程走到哪、在等谁、跑着的作业。"""
-    ws = current_workspace()
+    """一个工作区的全貌：需求状态、每个阶段有几次产出、每条流程走到哪、在等谁、跑着的作业。"""
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     detail = boards.workspace_detail(ws, _catalog(), _skills())
@@ -71,7 +110,7 @@ def cmd_workspace(args: argparse.Namespace) -> int:
 
 def cmd_outputs(args: argparse.Namespace) -> int:
     """当前工作区的产出清单，可按阶段筛。"""
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     if args.stage and args.stage not in STAGE_SLUGS:
@@ -86,7 +125,7 @@ def cmd_outputs(args: argparse.Namespace) -> int:
 
 def cmd_output(args: argparse.Namespace) -> int:
     """一次产出：meta、签字、目录里有什么。"""
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     try:
@@ -133,7 +172,7 @@ def _signed_word(signed) -> str:
 
 def cmd_jobs(args: argparse.Namespace) -> int:
     """作业清单：每个 `--detach` 起的进程一条；状态探过 pid（running / done / failed / lost）。"""
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     for job in jobs.list_jobs(ws.jobs):
@@ -142,7 +181,7 @@ def cmd_jobs(args: argparse.Namespace) -> int:
 
 
 def cmd_job(args: argparse.Namespace) -> int:
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     try:
@@ -210,7 +249,7 @@ def cmd_workflows(args: argparse.Namespace) -> int:
 
 def cmd_flows(args: argparse.Namespace) -> int:
     """当前工作区里的流程实例：从库里取来、改过参数的那几条，同一套形状检查。"""
-    ws = current_workspace()
+    ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
     return _print_flows(ws.flows, args.json)
@@ -259,29 +298,40 @@ def cmd_template(args: argparse.Namespace) -> int:
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
-    show = groups.add_parser("show", help="只读查询：工作区、产出、作业、流程、能力清单、需求模板")
+    show = groups.add_parser("show",
+                             help="只读查询：项目、工作区、产出、作业、流程、能力清单、需求模板")
     what = show.add_subparsers(dest="what", required=True)
-    spaces = what.add_parser("workspaces", help="列出全部工作区：id、标题、需求状态、在哪")
-    spaces.set_defaults(func=cmd_workspaces)
+    projects = what.add_parser("projects", help="列出全部项目：id、标题、几个工作区、在哪")
+    projects.set_defaults(func=cmd_projects)
+    proj = what.add_parser("project",
+                           help="当前项目的全貌：每个工作区一行（需求、每条流程走到哪、在等谁、作业）")
+    proj.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
+    proj.set_defaults(func=cmd_project)
     space = what.add_parser("workspace",
-                            help="当前工作区的全貌：需求、每个阶段的产出、每条流程走到哪、作业")
+                            help="一个工作区的全貌：需求、每个阶段的产出、每条流程走到哪、作业")
     space.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
+    add_ws_option(space)
     space.set_defaults(func=cmd_workspace)
-    outs = what.add_parser("outputs", help="当前工作区的产出清单，可按阶段筛")
+    outs = what.add_parser("outputs", help="一个工作区的产出清单，可按阶段筛")
     outs.add_argument("stage", nargs="?", default="", help=f"阶段目录：{' / '.join(STAGE_SLUGS)}")
+    add_ws_option(outs)
     outs.set_defaults(func=cmd_outputs)
     one = what.add_parser("output", help="一次产出：记录、签字、目录里有什么")
     one.add_argument("output", metavar="STAGE/N")
     one.add_argument("--json", action="store_true", help="打 JSON")
+    add_ws_option(one)
     one.set_defaults(func=cmd_output)
-    listing = what.add_parser("jobs", help="当前工作区的作业清单：每个后台作业的状态与结论")
+    listing = what.add_parser("jobs", help="一个工作区的作业清单：每个后台作业的状态与结论")
+    add_ws_option(listing)
     listing.set_defaults(func=cmd_jobs)
     job = what.add_parser("job", help="一个作业：状态、命令、结论行、日志在哪")
     job.add_argument("job_id")
+    add_ws_option(job)
     job.set_defaults(func=cmd_job)
     flows = what.add_parser("flows",
-                            help="当前工作区的流程实例（flows/*.yaml）：经过哪些阶段、有无问题")
+                            help="一个工作区的流程实例（flows/*.yaml）：经过哪些阶段、有无问题")
     flows.add_argument("--json", action="store_true", help="打 JSON（给页面）")
+    add_ws_option(flows)
     flows.set_defaults(func=cmd_flows)
     caps = what.add_parser("caps",
                            help="能力清单：七个研究阶段各有什么能力、每个五栏说明，带用在哪几条流程")
