@@ -26,6 +26,7 @@ import sys
 import time
 from pathlib import Path
 
+from compute import ComputeError
 from framework import agents
 from framework.capabilities import discover
 from framework.chat import notify
@@ -80,16 +81,19 @@ def cmd_cap(args: argparse.Namespace) -> int:
     setup_logging()
     try:
         code, line = _run(args, ws, descriptor, ports, job_id)
+    except ComputeError as exc:
+        # 要的机器连不上（关机了、端口变了、没配好）不是平台的 bug，是研究者要处理的事：作业与产出
+        # 记失败、原因写成人话、叫醒助理（Codex 演练：清单缺省是关了机的 AutoDL，助理拿到「平台内部
+        # 错误」还得自己猜；纲领 P-23：要的机器不可用就报错，绝不静默退回本机）
+        line = (f"算力不可用：{exc}\n换一台：--compute <名字>（ai4sci show computes 看清单）；"
+                "或先 ai4sci compute check <名字> 看看那台机器")
+        _close_failed_job(ws, job_id, line)
+        print(line, file=sys.stderr)
+        return EXIT_INVALID
     except Exception as exc:
         # 平台自己炸了（不是能力说的失败）：作业与产出都记上再抛，不让作业停在 running 变 lost、
         # 让人对着「丢了」猜（真跑时 Popen 吃到 NUL 字节就是这样丢的）；栈照样打到日志
-        if job_id:
-            job = jobs.finish(ws.jobs, job_id, exit_code=EXIT_INVALID,
-                              result=f"平台内部错误：{exc!r}（栈在作业日志里，这是平台的 bug）")
-            _fail_open_output(ws, job.output, job.result)
-            os.environ.pop(jobs.JOB_ID_ENV, None)
-            if job.chat_id:
-                jobs.mark_wake(ws.jobs, job_id, notify.wake(ws, job))
+        _close_failed_job(ws, job_id, f"平台内部错误：{exc!r}（栈在作业日志里，这是平台的 bug）")
         raise
     print(line, file=sys.stdout if code == EXIT_OK else sys.stderr)
     if job_id:
@@ -100,6 +104,17 @@ def cmd_cap(args: argparse.Namespace) -> int:
             # 作业是某段对话里起的：跑完以框架的身份叫醒那段对话，结果记回作业
             jobs.mark_wake(ws.jobs, job_id, notify.wake(ws, job))
     return code
+
+
+def _close_failed_job(ws: Workspace, job_id: str | None, result: str) -> None:
+    """在作业里：作业记失败、它开的产出记失败、属于某段对话的去叫醒；不在作业里什么都不做。"""
+    if not job_id:
+        return
+    job = jobs.finish(ws.jobs, job_id, exit_code=EXIT_INVALID, result=result)
+    _fail_open_output(ws, job.output, job.result)
+    os.environ.pop(jobs.JOB_ID_ENV, None)
+    if job.chat_id:
+        jobs.mark_wake(ws.jobs, job_id, notify.wake(ws, job))
 
 
 def _fail_open_output(ws: Workspace, oid: str | None, line: str) -> None:

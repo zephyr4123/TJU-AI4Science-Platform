@@ -831,3 +831,33 @@ def test_platform_crash_inside_a_job_is_recorded_not_lost(tmp_path, monkeypatch,
     record = jobs.load(ws.jobs, "job-c")
     assert record.status == "failed" and "平台内部错误" in record.result
     assert "null byte" in record.result
+
+
+def test_unreachable_compute_is_reported_as_the_researchers_problem_not_a_bug(tmp_path, monkeypatch,
+                                                                            capsys):
+    """P-23：要的机器连不上不是平台的 bug（Codex 演练：清单缺省是关了机的 AutoDL，助理拿到「平台内部
+    错误」还得自己猜）：作业与产出记失败，原因用人话写，说清换哪条命令；不抛栈。"""
+    from compute.ssh import SshError
+    from framework.cli import cap as cap_cli
+    from framework.cli import main
+    from framework.workspace import jobs
+
+    pack = pf.make_pack(tmp_path, confirmed=True)
+    ws = pack.workspace
+    monkeypatch.setenv("AI4SCI_WORKSPACE", str(ws.root))
+    monkeypatch.setenv("AI4SCI_DOMAINS_ROOT", str(pack.domains_root))
+    job = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=1, started_at="t")
+    ws.jobs.mkdir(parents=True, exist_ok=True)
+    (ws.jobs / "job-s.json").write_text(json.dumps(job.__dict__), encoding="utf-8")
+    monkeypatch.setenv(jobs.JOB_ID_ENV, "job-s")
+
+    def down(*args, **kwargs):
+        raise SshError("远端命令失败（退出码 255）：Connection timed out")
+
+    monkeypatch.setattr(cap_cli, "_run", down)
+    assert main(["cap", "verify", "--from", "analysis/1"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("算力不可用：远端命令失败") and "--compute <名字>" in err
+    record = jobs.load(ws.jobs, "job-s")
+    assert record.status == "failed" and record.result.startswith("算力不可用")
+    assert "平台内部错误" not in record.result

@@ -23,6 +23,7 @@
 - `ai4sci compute add` 的「写清单 + 就地探测 + 记回」抽成 `cli/compute.add_and_check`，页面「设置 → 算力 → 添加」走同一段。
 
 ### 修复
+- `cap` 里要的机器连不上（关机、端口变了）不再报「平台内部错误…这是平台的 bug」：算力不可用是研究者要处理的事，作业与产出记失败、原因用人话写、说清换 `--compute <名字>` 或先 `compute check`（Codex 演练：清单缺省是关了机的 AutoDL）（[#135](https://github.com/zephyr4123/TJU-AI4Science/issues/135)）。
 - 需求确认只看格子里的「待填」：模板引言那句「把每一格的「待填」换成实话」本身带这个词，助理照抄了引言整份就被拒（Codex 演练第一次确认撞上）；没有一个二级标题的也不能签，报错列出没填的格（[#135](https://github.com/zephyr4123/TJU-AI4Science/issues/135)）。
 - 指南：喂回执行层的意见文件放 `materials/` 或 `.ai4sci/`，不写进产出目录（演练里助理把意见写进了 `analysis/3/executor/`，那是被引用后冻住的产出）（[#123](https://github.com/zephyr4123/TJU-AI4Science/issues/123)）。
 - 复现性分析第二版把训练超参（`lr=1e-3`、`betas=(0.9, 0.999)`）写在正文里，数字核对当它是编的数拦下；第三版不知道第二版错在哪（[#123](https://github.com/zephyr4123/TJU-AI4Science/issues/123)）：提示里「写反引号」的规则扩到凡不是从结果清单抄的数（版本、commit、超参、轮数），并加一句「文字事实照材料来源抄，不凭记忆补论文里没有的名字」（第一版编了个 Allen-Cahn）；`reproducibility` 加 `--feedback`（重写仍是新开一份，上一版的问题进提示）。指南同步。
