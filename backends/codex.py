@@ -4,9 +4,9 @@
 官方文档（learn.chatgpt.com/docs/*，developers.openai.com/codex/* 308 跳过去）与源码
 （github.com/openai/codex 的 rust-v0.147.0：exec/src/cli.rs、exec/src/exec_events.rs）；外层 #131。
 
-- **隔离的承重位是私有 `CODEX_HOME`**（`~/.config/ai4sci/codex-home/<层>/`，
-`AI4SCI_CODEX_HOME` 可指向
-  别的根；协调层与执行层各一个，因为 execpolicy 规则是按 home 放的、两层放行的命令不同）：本机的
+- **隔离的承重位是私有 `CODEX_HOME`**（`~/.config/ai4sci/codex-home/`，`AI4SCI_CODEX_HOME` 可指向
+  别的根；协调层用根、执行层用 `executor/` 子目录，因为 execpolicy 规则是按 home 放的、两层放行的
+  命令不同；协调层留在根上是为了老对话的 rollout 还在原处、续得上）：本机的
   config.toml、plugins、MCP、hooks、memories、用户 skills 都不进；`auth.json` 软链到真的
   `~/.codex/auth.json`（登录共用、凭据不复制；token 刷新写穿软链），真的不在就是「没登录」。协调层
   的会话 rollout 也落在私有 home 下，续接靠它。`--ignore-user-config` 照带（自动化的官方开关）。
@@ -161,16 +161,17 @@ def toml_str(text: str) -> str:
 
 def codex_home(layer: str) -> Path:
     """这一层的私有 CODEX_HOME：建目录、把真的 auth.json 软链进来（不复制凭据）。真的没登录就是
-    悬空软链，`codex login status` 会说 Not logged in，自检把这句原样给人。文件头写了为什么环境里的
+    悬空软链，`codex login status` 会说 Not logged in，自检把这句原样给人。协调层就是根（老对话的
+    rollout 在那儿，挪了就 no rollout found），执行层是根下的 `executor/`。文件头写了为什么环境里的
     `CODEX_HOME` 指到私有根下面时不算。"""
     assert layer in LAYERS, f"层只有 {LAYERS}，得到 {layer!r}"
     root = Path(os.environ.get(HOME_ENV) or DEFAULT_ROOT).expanduser()
-    home = root / layer
+    home = root if layer == "chat" else root / layer
     home.mkdir(parents=True, exist_ok=True)
     raw = os.environ.get(REAL_HOME_ENV)
     candidate = Path(raw).expanduser() if raw else Path.home() / ".codex"
     if candidate.resolve().is_relative_to(root.resolve()):
-        candidate = Path.home() / ".codex"
+        candidate = Path.home() / ".codex"  # 私有根自己、或它下面的执行层 home：都不是「真的」
     real = candidate / AUTH_NAME
     link = home / AUTH_NAME
     if link.is_symlink() and link.readlink() != real:

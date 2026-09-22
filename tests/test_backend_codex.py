@@ -59,7 +59,9 @@ def test_codex_home_symlinks_the_real_auth_and_never_copies_it(home: Path, tmp_p
     link = home / cx.AUTH_NAME
     assert link.is_symlink() and link.readlink() == tmp_path / "real-codex" / cx.AUTH_NAME
     assert cx.codex_home("executor") == home  # 幂等
-    assert cx.codex_home("chat") == tmp_path / "private-home" / "chat"
+    # 协调层就是根：老对话的 rollout 在那儿
+    assert cx.codex_home("chat") == tmp_path / "private-home"
+    assert (tmp_path / "private-home" / cx.AUTH_NAME).is_symlink()
     with pytest.raises(AssertionError, match="层只有"):
         cx.codex_home("probe")
     # 真 home 换了地方：软链跟着改
@@ -178,7 +180,7 @@ def test_codex_home_ignores_an_inherited_codex_home_that_is_itself(home: Path, t
     环境里的 CODEX_HOME 是我们给那一层的私有 home：
     照它算「真的」就把 auth.json 软链指向自己（实测 401）。指到自己的不算数，退回 ~/.codex；已经指向
     自己的死链也要重连。"""
-    chat_home = tmp_path / "private-home" / "chat"
+    chat_home = tmp_path / "private-home"
     monkeypatch.setenv(cx.REAL_HOME_ENV, str(chat_home))  # 上一层（协调层）留下的
     fake_home = tmp_path / "fake-user-home"
     (fake_home / ".codex").mkdir(parents=True)
