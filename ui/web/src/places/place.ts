@@ -16,6 +16,10 @@ export interface PlacesProps {
   onNew: () => void
   /** 切世界：回主页面是回上次那个工作区（一个都没有就是门口），去编辑台就是去编辑台 */
   onWorld: (world: World) => void
+  /** 设置（P-25）：归人、全局一份，与两个世界的开关同一层；那个点在有一项自检没过时才亮 */
+  settingsOpen: boolean
+  settingsDot: boolean
+  onSettings: () => void
 }
 
 /** 地方栏与窄屏清单同一顺序：后端按目录名给，照抄 */

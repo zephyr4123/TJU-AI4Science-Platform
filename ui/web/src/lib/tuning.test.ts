@@ -27,9 +27,8 @@ describe('thinkingWord', () => {
 })
 
 describe('shownValue', () => {
-  it('记着的 > 后端缺省 > 默认', () => {
+  it('记着的，或这家新对话用的值（P-25：只有具体值）', () => {
     expect(shownValue('opus', 'sonnet')).toBe('opus')
     expect(shownValue(null, 'sonnet')).toBe('sonnet')
-    expect(shownValue(null, null)).toBe('')
   })
 })

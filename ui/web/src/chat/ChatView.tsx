@@ -34,10 +34,10 @@ interface Props {
   /** 还没有对话时在输入框里打的第一句：对话一建好就发出去 */
   autoSend: string | null
   onAutoSent: () => void
-  /** 没有对话时按下回车：开一段（带上门里选的模型与思考深度），第一句话由 autoSend 带回来 */
-  onStart: (text: string, tuning: Tuning) => void
-  /** 后端的两个旋钮清单；还没拿到就先不摆 */
-  knobs: Backend | null
+  /** 没有对话时按下回车：开一段（带上门里选的哪家、模型与思考深度），第一句话由 autoSend 带回来 */
+  onStart: (text: string, tuning: Tuning, backend: string | null) => void
+  /** 每家 agent 的旋钮清单与新对话用的值；这段对话用哪家的就摆哪家的，还没开对话时摆门里选的那家 */
+  backends: Backend[] | null
   /** 一轮结束：助理可能运行了命令、改了需求或 run，看板要重读 */
   onTurnDone: () => void
   drawer: ReactNode
@@ -55,15 +55,19 @@ interface LiveTurn {
 }
 
 export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onClose, autoSend, onAutoSent, onStart, onTurnDone,
-                           knobs, drawer, intro, welcome }: Props) {
+                           backends, drawer, intro, welcome }: Props) {
   const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId])
   const [live, setLive] = useState<LiveTurn | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
+  // 还没开对话时选的哪家：缺省照设置里「对话用」的（P-25）；开了对话就是对话记着的那家，旋钮清单跟它走
+  const [who, setWho] = useState<string | null>(null)
+  const backendName = current?.backend ?? who ?? backends?.find((b) => b.default)?.name ?? null
+  const knobs = backends?.find((b) => b.name === backendName) ?? null
   // 输入框上这次改过的旋钮；没碰过就沿用对话上记的，随每条消息发出去（外层 #86）
   const [pick, setPick] = useState<Pick>({})
   const tuning = storedTuning(pick, current)
-  // 助理想着时那个词：按实际用的深度（记着的，或后端缺省）在清单里的位置
-  const thinking = thinkingWord(shownValue(tuning.effort, knobs?.effort ?? null), knobs?.efforts ?? [])
+  // 助理想着时那个词：按实际用的深度（记着的，或这家新对话用的）在清单里的位置
+  const thinking = thinkingWord(shownValue(tuning.effort, knobs?.effort ?? ''), knobs?.efforts ?? [])
   const bottom = useRef<HTMLDivElement>(null)
 
   const turns = useMemo<Turn[]>(() => {
@@ -157,7 +161,9 @@ export function ChatView({ scope, chatId, current, boardOpen, onToggleBoard, onC
 
       <Composer busy={live !== null || autoSend !== null} thinking={thinking} knobs={knobs} tuning={tuning}
                 onTune={(next) => setPick(next)}
-                onSend={(text) => (chatId ? void send(text) : onStart(text, tuning))} />
+                who={chatId || !backends ? undefined
+                  : { options: backends, value: backendName ?? '', onChange: (name) => { setWho(name); setPick({}) } }}
+                onSend={(text) => (chatId ? void send(text) : onStart(text, tuning, backendName))} />
     </div>
   )
 }

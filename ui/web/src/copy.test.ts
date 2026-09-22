@@ -10,7 +10,8 @@ import { describe, expect, it } from 'vitest'
 
 const SRC = new URL('.', import.meta.url).pathname
 const BANNED = ['签了', '没成', '在跑', '续命', '这包', '越界', '干什么', '收尸', '按钮', '房间', '裁判',
-                '一颗', '几颗', '每颗', '那颗', '哪颗', '工作流']
+                '一颗', '几颗', '每颗', '那颗', '哪颗', '工作流',
+                '默认（']  // P-25：旋钮上只有具体值，没有「默认（Sonnet）」这种写法
 /** 等宽字只许在这几处：文件镜头（路径与代码是内容）、对话里的工具调用（命令原样）、需求的行级 diff、产出目录的文件清单 */
 const MONO_ALLOWED = new Set(['files/Files.tsx', 'chat/TurnView.tsx', 'board/Requirement.tsx', 'board/OutputSheet.tsx'])
 

@@ -1,9 +1,10 @@
 // 地方栏：先选世界，再选世界里的东西（外层 #79 #80）。底下两块是双向开关——主页面 / 编辑台，两个平行的世界（纲领 P-15 P-16；主人：放顶上抢视觉）：
 // 主页面里是很多个工作区、各有自己的对话与看板；编辑台是全局一个库、有自己的对话。开关上面那段只属于当前世界：主页面世界里是一块块封面
 // （按名字稳定地挑，assets.coverOf），点即切换，末尾「新建」；编辑台世界里这段收掉——那里没有可切的东西，从结构上就切不了工作区。
-// 每段都带字（外层 #82，主人：没字用户不知道是啥）：列表顶上「工作区」，块底下「新建」「主页面」「编辑台」。
+// 每段都带字（外层 #82，主人：没字用户不知道是啥）：列表顶上「工作区」，块底下「新建」「主页面」「编辑台」「设置」。
+// 最底下是「设置」（P-25，外层 #134）：归人、全局一份，所以在这一层不在页眉；旁边一个点，有一项自检没过才亮。
 // 宽屏常驻最左一列（reactbits Dock 改成竖排，靠近放大）；窄屏收进页眉的玻璃标记里，点开是一张清单（PlacesSheet）。
-import { Blueprint, Flask, Folders, Plus } from '@phosphor-icons/react'
+import { Blueprint, Flask, Folders, GearSix, Plus } from '@phosphor-icons/react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import type { ReactNode } from 'react'
 
@@ -24,7 +25,7 @@ function Caption({ active = false, children }: { active?: boolean; children: Rea
   return <span className={cn('text-[0.6875rem] leading-none', active ? 'text-foreground' : 'text-muted-foreground')}>{children}</span>
 }
 
-export function Rail({ workspaces, place, onPick, onNew, onWorld }: PlacesProps) {
+export function Rail({ workspaces, place, onPick, onNew, onWorld, settingsOpen, settingsDot, onSettings }: PlacesProps) {
   const world = worldOf(place)
   const still = useReducedMotion() === true
   return (
@@ -76,6 +77,16 @@ export function Rail({ workspaces, place, onPick, onNew, onWorld }: PlacesProps)
               <Blueprint weight={world === 'studio' ? 'fill' : 'regular'} className="size-[50%]" />
             </DockItem>
             <Caption active={world === 'studio'}>编辑台</Caption>
+          </div>
+          <div className="flex flex-col items-center gap-1.5 pt-1">
+            {/* 开着时描边不填实：设置是压在当前地方上的板，不是第三个地方，两块填实的会让人分不清在哪 */}
+            <DockItem label={settingsDot ? '设置：有一项没过检查' : '设置'} active={settingsOpen} onClick={onSettings}
+                      className={cn(SWITCH, 'relative overflow-visible',
+                                    settingsOpen ? 'border-primary bg-card text-primary' : OFF)}>
+              <GearSix weight={settingsOpen ? 'fill' : 'regular'} className="size-[50%]" />
+              {settingsDot && <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-wait ring-2 ring-sidebar" />}
+            </DockItem>
+            <Caption active={settingsOpen}>设置</Caption>
           </div>
         </div>
       </Dock>

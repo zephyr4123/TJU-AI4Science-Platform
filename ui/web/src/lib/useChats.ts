@@ -22,11 +22,11 @@ export function useChats(scope: Scope) {
   const chatId = picked ?? latest
   const current = chats.data?.find((c) => c.chat_id === chatId) ?? null
 
-  // 开一段；`tuning` 是门里选好的模型与思考深度，新对话一开始就记着
-  const newChat = useCallback(async (tuning?: Tuning) => {
+  // 开一段；`tuning` 与 `backend` 是门里选好的模型、思考深度与哪家，没选的服务从按人的设置抄（P-25）
+  const newChat = useCallback(async (tuning?: Tuning, backend?: string | null) => {
     setCreating(true)
     try {
-      const meta = await api.newChat(scope, tuning)
+      const meta = await api.newChat(scope, tuning, backend ?? undefined)
       await chats.reload()
       setPicked(meta.chat_id)
     } finally {
@@ -34,9 +34,9 @@ export function useChats(scope: Scope) {
     }
   }, [chats, scope])
 
-  const start = useCallback(async (text: string, tuning: Tuning) => {
+  const start = useCallback(async (text: string, tuning: Tuning, backend: string | null) => {
     setOpening(text)
-    await newChat(tuning)
+    await newChat(tuning, backend)
   }, [newChat])
 
   const opened = useCallback(() => setOpening(null), [])

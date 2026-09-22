@@ -1,6 +1,6 @@
 // 窄屏的地方栏：页眉左端的玻璃标记就是入口，点开一张从左边拉出来的清单。和宽屏的 Rail 同一个结构——先「工作区 / 编辑台」两个世界，
 // 再列当前世界的内容：主页面世界是逐条浮现的工作区（reactbits AnimatedList 改装）与末行「新建」，编辑台世界里没有可切的东西，这段就空着。
-import { Blueprint, Flask, FolderSimplePlus, Folders } from '@phosphor-icons/react'
+import { Blueprint, Flask, FolderSimplePlus, Folders, GearSix } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import { coverOf } from '@/assets'
@@ -15,7 +15,7 @@ import { newestFirst, type PlacesProps, type World, worldOf } from './place'
 const ROW = 'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring'
 const TAB = 'flex h-9 items-center justify-center gap-1.5 rounded-full border text-[0.875rem] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring'
 
-export function PlacesSheet({ workspaces, place, onPick, onNew, onWorld }: PlacesProps) {
+export function PlacesSheet({ workspaces, place, onPick, onNew, onWorld, settingsOpen, settingsDot, onSettings }: PlacesProps) {
   const [open, setOpen] = useState(false)
   const world = worldOf(place)
   const go = (action: () => void) => () => { action(); setOpen(false) }
@@ -68,6 +68,16 @@ export function PlacesSheet({ workspaces, place, onPick, onNew, onWorld }: Place
             </div>
           </>
         ) : null}
+        {world === 'studio' && <span className="flex-1" />}
+        <div className="border-t px-3 py-2">
+          <button type="button" onClick={go(onSettings)} className={cn(ROW, settingsOpen && 'bg-accent')}>
+            <span className="relative">
+              <GearSix className="size-5" weight={settingsOpen ? 'fill' : 'regular'} />
+              {settingsDot && <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-wait" />}
+            </span>
+            设置
+          </button>
+        </div>
       </SheetContent>
     </Sheet>
   )

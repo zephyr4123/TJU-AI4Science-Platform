@@ -4,8 +4,8 @@
 // 对话四个端点在两个域下共用，`Scope` 决定前缀。
 
 import type {
-  Backend, Capability, ChatDoc, ChatMeta, DirListing, FileContent, OutputDetail, RequirementDetail,
-  StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
+  Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, OutputDetail, RequirementDetail,
+  SettingsDoc, StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
   Job,
 } from './types'
 
@@ -55,8 +55,19 @@ const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.strin
 const ws = (id: string) => scopePath(inWorkspace(id))
 
 export const api = {
-  health: () => request<{ ok: boolean }>('/health'),
+  /** checks_ok：在用的两家 agent 与每台算力上次自检都过（没检查过也算过）；地方栏「设置」旁的点靠它 */
+  health: () => request<{ ok: boolean; checks_ok: boolean }>('/health'),
   backends: () => request<Backend[]>('/backends'),
+  /** 设置那块板（P-25）：读一整份、改用哪家与缺省、真探并记回、接一台机器、删一台 */
+  settings: () => request<SettingsDoc>('/settings'),
+  updateAgents: (body: { chat?: string; executor?: string; agents?: Record<string, { model?: string; effort?: string }> }) =>
+    request<SettingsDoc>('/settings/agents', post(body)),
+  runCheck: (what: 'all' | 'agents' | 'computes' | 'storage', name?: string) =>
+    request<CheckReport>('/settings/check', post(name ? { what, name } : { what })),
+  addCompute: (body: { name: string; ssh: string; key: string; root?: string }) =>
+    request<SettingsDoc>('/settings/computes', post(body)),
+  removeCompute: (name: string) =>
+    request<SettingsDoc>(`/settings/computes/${encodeURIComponent(name)}/remove`, post({})),
   stages: () => request<StageInfo[]>('/stages'),
   templates: () => request<Template[]>('/templates'),
   capabilities: () => request<Capability[]>('/cap'),
@@ -86,6 +97,7 @@ export const api = {
   chats: (scope: Scope) => request<ChatMeta[]>(`${scopePath(scope)}/chats`),
   chat: (scope: Scope, chatId: string) =>
     request<ChatDoc>(`${scopePath(scope)}/chats/${encodeURIComponent(chatId)}`),
-  newChat: (scope: Scope, tuning?: Tuning) =>
-    request<ChatMeta>(`${scopePath(scope)}/chats`, post(tuning ?? {})),
+  /** 开一段：哪家、模型、深度都可以不给——服务从按人的设置抄（P-25） */
+  newChat: (scope: Scope, tuning?: Tuning, backend?: string) =>
+    request<ChatMeta>(`${scopePath(scope)}/chats`, post({ ...(tuning ?? {}), ...(backend ? { backend } : {}) })),
 }

@@ -1,4 +1,4 @@
-// 深浅色（外层 #91）：没选过就跟系统；页眉上的开关选了就记在本机（localStorage），写到 `<html data-theme>`——
+// 深浅色（外层 #91 #134）：没选过就跟系统；设置 → 外观里选了就记在本机（localStorage），写到 `<html data-theme>`——
 // index.css 的规则与 useDark 都认这个属性。改了广播一个 `themechange`，读 tokens 的画布组件（ShinyText 之类）据此重读颜色。
 import { useCallback, useSyncExternalStore } from 'react'
 
@@ -46,17 +46,24 @@ export function onThemeChange(callback: () => void): () => void {
   }
 }
 
-/** 页眉开关用：此刻深不深，以及拨过去 */
-export function useTheme(): { dark: boolean; setDark: (dark: boolean) => void } {
-  const dark = useSyncExternalStore(onThemeChange, isDark)
-  const setDark = useCallback((next: boolean) => {
-    const theme: Theme = next ? 'dark' : 'light'
+/** 设置 → 外观的三档：浅、深、跟随系统（没记过就是跟随系统） */
+export type ThemeChoice = Theme | 'system'
+
+export function themeChoice(): ThemeChoice {
+  return storedTheme() ?? 'system'
+}
+
+/** 设置 → 外观用：此刻选的是哪档，以及换一档（跟随系统 = 清掉记的，交回给系统） */
+export function useThemeChoice(): { choice: ThemeChoice; setChoice: (next: ThemeChoice) => void } {
+  const choice = useSyncExternalStore(onThemeChange, themeChoice)
+  const setChoice = useCallback((next: ThemeChoice) => {
     try {
-      localStorage.setItem(KEY, theme)
+      if (next === 'system') localStorage.removeItem(KEY)
+      else localStorage.setItem(KEY, next)
     } catch {
       // 记不住（隐私窗口）也照样切，只是下次打开跟系统
     }
-    applyTheme(theme)
+    applyTheme(next === 'system' ? null : next)
   }, [])
-  return { dark, setDark }
+  return { choice, setChoice }
 }

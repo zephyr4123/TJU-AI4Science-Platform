@@ -2,7 +2,8 @@
 // 页面先认工作区（一个工作区一份需求，P-15）：主页面是这个工作区的两个镜头——看板（需求没确认就是需求文档，确认了是一条流程
 // 一张表）与文件（盘上的目录树与文件内容，只读），页眉上切换，对话在右边两个镜头都在。编辑台是全局一个流程库，也是两个镜头——
 // 流程（画布）与能力（陈列与详情，外层 #112）——加流程助理的悬浮对话窗（外层 #100）；和工作区是两个平行的世界：地方栏上是一个
-// 开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。页面只是 `ai4sci serve` 的客户端。
+// 开关，进了编辑台工作区块整段收掉，页眉也不跟着工作区换（P-16）。设置（P-25，外层 #134）是压在当前地方上的一块悬浮板，
+// 入口在地方栏的脚，主题开关也在里面。页面只是 `ai4sci serve` 的客户端。
 import { ChatsCircle } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useState } from 'react'
@@ -14,7 +15,6 @@ import { Board } from '@/board/Board'
 import { ChatView } from '@/chat/ChatView'
 import { Band } from '@/components/Band'
 import { Scene } from '@/components/Scene'
-import { ThemeToggle } from '@/components/ThemeToggle'
 import SpecularButton from '@/components/reactbits/SpecularButton'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils'
 import type { Place, World } from '@/places/place'
 import { PlacesSheet } from '@/places/PlacesSheet'
 import { Rail } from '@/places/Rail'
+import { SettingsBoard } from '@/settings/SettingsBoard'
 import { ChatDrawer } from '@/sidebar/ChatDrawer'
 import { Studio, type StudioView } from '@/studio/Studio'
 import { NewWorkspace } from '@/workspace/NewWorkspace'
@@ -45,9 +46,10 @@ const POLL_MS = 10_000
 export default function App() {
   const workspaces = useResource(api.workspaces, [])
   const health = useResource(api.health, [])
-  // 输入框上两枚旋钮的清单：缺省那家后端有哪些模型、哪几档思考深度（外层 #86）
+  // 每家 agent 的旋钮清单与新对话用的值（外层 #86，P-25）：对话用哪家就摆哪家的；设置里改了缺省要重拉
   const backends = useResource(api.backends, [])
-  const knobs = backends.data?.find((b) => b.default) ?? backends.data?.[0] ?? null
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsDot = health.data ? health.data.checks_ok === false : false
   // 上次看的哪个工作区记在浏览器里；没记过就是清单里第一个
   const [picked, setPickedState] = useState<string | null>(() => {
     try { return window.localStorage.getItem(PICKED_KEY) } catch { return null }
@@ -85,10 +87,16 @@ export default function App() {
   const places = {
     workspaces: workspaces.data,
     place: place ?? { kind: 'door' as const },
-    onPick: (id: string) => { setPicked(id); setCreating(false); setStudio(false); setFocus(null); setOpened(null) },
-    onNew: () => { setCreating(true); setStudio(false) },
-    onWorld: (world: World) => setStudio(world === 'studio'),
+    // 挑了地方就是要看那个地方：设置板跟着收
+    onPick: (id: string) => { setPicked(id); setCreating(false); setStudio(false); setFocus(null); setOpened(null); setSettingsOpen(false) },
+    onNew: () => { setCreating(true); setStudio(false); setSettingsOpen(false) },
+    onWorld: (world: World) => { setStudio(world === 'studio'); setSettingsOpen(false) },
+    settingsOpen,
+    settingsDot,
+    onSettings: () => setSettingsOpen((open) => !open),
   }
+  // 设置里检查过、改过：/health 的那一位与每家新对话用的值都可能变了
+  const settingsChanged = () => { void health.reload(); void backends.reload() }
 
   return (
     <TooltipProvider>
@@ -107,24 +115,28 @@ export default function App() {
                          onChange: (v) => { setStudioView(v as StudioView); setCapFocus(null) } }
                      : null} />
           )}
-          {place?.kind === 'studio'
-            ? <StudioPlace healthy={healthy} knobs={knobs} view={studioView} focus={capFocus}
-                           onFocus={(name) => { setCapFocus(name); if (name) setStudioView('caps') }} />
-            : place?.kind === 'door'
-              ? <NewWorkspace existing={workspaces.data ?? []} onCreated={(id) => void created(id)}
-                              onCancel={wsId ? () => setCreating(false) : undefined} />
-              : place
-                ? (
-                  // 雾景挂在这一层：换工作区只重建里面的 MainView，底图不重贴（主人：切换那一瞬闪屏）
-                  <div className="relative flex min-h-0 flex-1">
-                    <Scene picture={ASSETS.board} veil="mist" />
-                    <MainView key={place.id} wsId={place.id} healthy={healthy} knobs={knobs} title={current?.title ?? place.id}
-                              view={view} focus={focus} opened={opened} onOpen={setOpened}
-                              onOpenFiles={(path) => { setFocus(path); setView('files') }}
-                              onOpenBoard={(oid) => { setOpened(oid); setView('board') }} />
-                  </div>
-                )
-                : <div className="flex-1" />}
+          {/* 设置板压在这一层上：底图照旧铺满，板四周留边 */}
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            {place?.kind === 'studio'
+              ? <StudioPlace healthy={healthy} backends={backends.data} view={studioView} focus={capFocus}
+                             onFocus={(name) => { setCapFocus(name); if (name) setStudioView('caps') }} />
+              : place?.kind === 'door'
+                ? <NewWorkspace existing={workspaces.data ?? []} onCreated={(id) => void created(id)}
+                                onCancel={wsId ? () => setCreating(false) : undefined} />
+                : place
+                  ? (
+                    // 雾景挂在这一层：换工作区只重建里面的 MainView，底图不重贴（主人：切换那一瞬闪屏）
+                    <div className="relative flex min-h-0 flex-1">
+                      <Scene picture={ASSETS.board} veil="mist" />
+                      <MainView key={place.id} wsId={place.id} healthy={healthy} backends={backends.data} title={current?.title ?? place.id}
+                                view={view} focus={focus} opened={opened} onOpen={setOpened}
+                                onOpenFiles={(path) => { setFocus(path); setView('files') }}
+                                onOpenBoard={(oid) => { setOpened(oid); setView('board') }} />
+                    </div>
+                  )
+                  : <div className="flex-1" />}
+            {settingsOpen && <SettingsBoard onClose={() => setSettingsOpen(false)} onChanged={settingsChanged} />}
+          </div>
         </div>
       </div>
     </TooltipProvider>
@@ -132,7 +144,7 @@ export default function App() {
 }
 
 /** 页眉只属于当前地方：标题 + 走到哪 + 两个镜头的开关（工作区是看板 / 文件，编辑台是流程 / 能力），底下封面糊成一抹颜色
- *  （换工作区就换色）；门口宽屏不要页眉（画面铺满），窄屏留一条放入口。 */
+ *  （换工作区就换色）；门口宽屏不要页眉（画面铺满），窄屏留一条放入口。主题开关搬进了设置（P-25）。 */
 function Top({ place, title, note, menu, lens }: {
   place: Place; title: string; note: string | null; menu: ReactNode; lens: Lens | null
 }) {
@@ -150,7 +162,6 @@ function Top({ place, title, note, menu, lens }: {
           </TabsList>
         </Tabs>
       )}
-      <ThemeToggle className={cn(!lens && 'ml-auto')} />
     </header>
   )
   if (!picture) return <div className="shrink-0 border-b bg-card">{row}</div>
@@ -159,8 +170,8 @@ function Top({ place, title, note, menu, lens }: {
 
 /** 主页面：这个工作区的看板或文件铺满，对话在右边一列（宽屏常开、可收；窄屏是从右边拉出来的抽屉）。
  *  换工作区时父组件用 key 重建，状态天然按工作区隔离。 */
-function MainView({ wsId, title, healthy, knobs, view, focus, opened, onOpen, onOpenFiles, onOpenBoard }: {
-  wsId: string; title: string; healthy: boolean | null; knobs: Backend | null
+function MainView({ wsId, title, healthy, backends, view, focus, opened, onOpen, onOpenFiles, onOpenBoard }: {
+  wsId: string; title: string; healthy: boolean | null; backends: Backend[] | null
   view: View; focus: string | null; opened: string | null; onOpen: (oid: string | null) => void
   onOpenFiles: (path: string) => void; onOpenBoard: (oid: string) => void
 }) {
@@ -173,8 +184,9 @@ function MainView({ wsId, title, healthy, knobs, view, focus, opened, onOpen, on
     <ChatView
       key={c.chatId ?? 'none'} scope={scope} chatId={c.chatId} current={c.current}
       onClose={() => setChatOpen(false)}
-      autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
-      knobs={knobs}
+      autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning, backend) => void c.start(text, tuning, backend)}
+      onTurnDone={c.turnDone}
+      backends={backends}
       intro={{ lede: '课题', body: '问题、材料、评价标准。' }}
       welcome={{ headline: '课题', body: '问题、材料、评价标准。' }}
       drawer={
@@ -248,8 +260,8 @@ export function ChatEntry({ onOpen }: { onOpen: () => void }) {
 }
 
 /** 编辑台：两个镜头铺满，流程助理的对话是右下角的悬浮窗（对话的状态在这儿，窗口在画布上）。 */
-function StudioPlace({ healthy, knobs, view, focus, onFocus }: {
-  healthy: boolean | null; knobs: Backend | null; view: StudioView; focus: string | null; onFocus: (name: string | null) => void
+function StudioPlace({ healthy, backends, view, focus, onFocus }: {
+  healthy: boolean | null; backends: Backend[] | null; view: StudioView; focus: string | null; onFocus: (name: string | null) => void
 }) {
   const c = useChats(STUDIO)
   return (
@@ -257,8 +269,9 @@ function StudioPlace({ healthy, knobs, view, focus, onFocus }: {
       <Studio epoch={c.epoch} view={view} focus={focus} onFocus={onFocus} chat={(close) => (
         <ChatView
           key={c.chatId ?? 'none'} scope={STUDIO} chatId={c.chatId} current={c.current} onClose={close}
-          autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning) => void c.start(text, tuning)} onTurnDone={c.turnDone}
-          knobs={knobs}
+          autoSend={c.opening} onAutoSent={c.opened} onStart={(text, tuning, backend) => void c.start(text, tuning, backend)}
+          onTurnDone={c.turnDone}
+          backends={backends}
           intro={{ lede: '流程', body: '阶段、能力、断点。' }}
           welcome={{ headline: '流程', body: '阶段、能力、断点。' }}
           drawer={

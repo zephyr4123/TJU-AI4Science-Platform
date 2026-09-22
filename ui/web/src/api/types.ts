@@ -204,14 +204,73 @@ export interface Choice {
   note: string
 }
 
-/** 一家 agent 后端的两个旋钮（`GET /backends`）：清单是后端自报的；`model` / `effort` 是不选时实际会用的，null 是 CLI 自己定（页面写「默认」） */
+/** 一家 agent（`GET /backends`）：产品名、两枚旋钮的清单（后端自报）、新对话用的模型与深度（按人的设置，具体值，P-25）；
+ *  `default` 是设置里「对话用」的那家 */
 export interface Backend {
   name: string
+  title: string
   default: boolean
   models: Choice[]
   efforts: Choice[]
-  model: string | null
-  effort: string | null
+  model: string
+  effort: string
+}
+
+/** 一家 agent 上次自检（`agents.yaml` 的 last_check）：四句人话一项一行，过没过、一句给人看的话 */
+export interface AgentCheck {
+  ok: boolean
+  installed?: boolean
+  version?: string
+  logged_in?: boolean
+  spoke_s?: number | null
+  cost_usd?: number | null
+  items: { name: string; ok: boolean; note: string }[]
+  at: string
+}
+
+/** 设置 → AI 里的一家：Backend 那几样 + 上次自检 */
+export interface AgentEntry {
+  name: string
+  title: string
+  model: string
+  effort: string
+  models: Choice[]
+  efforts: Choice[]
+  last_check: AgentCheck | null
+}
+
+/** 一项自检：名字、过没过、一句给人看的话。算力那边（`compute.Probe.to_dict`）记的是三元组，底座记的是对象 */
+export type CheckItem = { name: string; ok: boolean; note: string } | [string, boolean, string]
+
+/** 一台算力上次探测（`computes.yaml` 的 last_check）：一项一行，外加主机名与 GPU */
+export interface ComputeCheck {
+  ok: boolean
+  hostname?: string
+  gpu?: string
+  items?: CheckItem[]
+  at: string
+}
+
+export interface ComputeRow {
+  name: string
+  kind: 'local' | 'ssh'
+  /** 本机，或 user@host:port */
+  where: string
+  default: boolean
+  last_check: ComputeCheck | null
+}
+
+/** `GET /settings`：底座、算力、存放三段（P-25） */
+export interface SettingsDoc {
+  agents: { chat: string; executor: string; entries: AgentEntry[] }
+  computes: ComputeRow[]
+  storage: { home: string; config: string; uv_cache: string; writable: boolean; free_gb: number; workspaces: number }
+}
+
+/** `POST /settings/check` 回来的：整份 + 过没过 + 没过的项 */
+export interface CheckReport extends SettingsDoc {
+  ok: boolean
+  failed: string[]
 }
 
 export interface TurnRecord {
