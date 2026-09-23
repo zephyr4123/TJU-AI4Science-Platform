@@ -38,6 +38,61 @@
 ## 3. 代码约定
 
 - **目录按页面与地方分**（`src/`）：`home/` 首页与门口、`project/` 项目页、`workspace/` 工作区页、`board/` 看板、`files/` 文件镜头、`chat/` 对话、`studio/` 编辑台、`keys/` 两处人的确认、`settings/` 设置、`places/` 地方栏与状态机、`components/` 零件（`ui/` shadcn 生成、`reactbits/` 改装件、`markdown/`）、`lib/` 纯逻辑与 hooks、`api/` 契约、`assets.ts` 素材 URL。每个目录的职责写在各文件的头注释里，文件清单以代码为准。
+页面此刻在哪是 `places/place.ts` 的状态机（设置是压在任何地方上的悬浮板，不是一个地方）：
+
+```mermaid
+stateDiagram-v2
+  [*] --> home: 每次打开从首页进
+  home --> door: 新建项目
+  door --> project: 一句话回车即建
+  home --> project: 点一格
+  project --> workspace: 点一行工作区
+  workspace --> project: ‹ 项目名
+  workspace --> workspace: 页眉换兄弟工作区
+  home --> studio
+  project --> studio
+  studio --> home
+  project --> home
+```
+
+目录之间谁引谁（箭头 = import 方向；目录级没有环）：
+
+```mermaid
+flowchart TB
+  APP["App.tsx"]
+  subgraph PAGES["页面与地方（每个目录一个页面或镜头）"]
+    direction LR
+    PLACES["places/<br/>地方栏、状态机"]
+    HOME["home/<br/>项目墙、门口"]
+    PROJ["project/<br/>项目页"]
+    WSP["workspace/<br/>工作区页"]
+    BOARD["board/<br/>看板"]
+    FILES["files/<br/>文件镜头"]
+    CHAT["chat/<br/>对话"]
+    STUDIO["studio/<br/>编辑台"]
+    SET["settings/"]
+    KEYS["keys/<br/>两处人的确认"]
+    PROJ --> WSP
+    WSP --> BOARD
+    WSP --> FILES
+    WSP --> CHAT
+    STUDIO --> CHAT
+    BOARD --> KEYS
+    FILES -. "用 board/OutputSheet 的正文" .-> BOARD
+  end
+  COMP["components/<br/>零件、shadcn、reactbits 改装件"]
+  LIB["lib/<br/>纯函数与 hooks"]
+  API["api/<br/>types · client · sse（全站仅有的两处 fetch）"]
+  SRV["ai4sci serve 端点"]
+  APP --> PAGES
+  PAGES --> COMP
+  PAGES --> LIB
+  PAGES --> API
+  COMP --> LIB
+  LIB --> API
+  API --> SRV
+```
+
 - **依赖方向**（目录级没有环）：`App → home / project / studio / places / settings`；`project → workspace → board / files / chat`；`board → keys`；`studio → chat`；`files` 用 `board/OutputSheet` 的正文（横向）；`components` 只引 `lib` 与 `assets`，从不引 `api`；`lib` 可以引 `api`（`useChats`）。组件不直接 `fetch`。
 - **计算下沉到纯函数模块**，组件只拼装：`board/derive.ts`、`project/derive.ts`、`files/derive.ts`、`studio/model.ts`、`chat/trace.ts`、`chat/turns.ts`、`settings/status.ts`、`lib/humanize.ts`、`lib/diff.ts`、`lib/slug.ts`、`lib/format.ts`。新逻辑先问能不能写成纯函数。
 - **取数**：`lib/useResource` + `lastSeen`（模块级 Map，换地方不闪）+ `epoch`（每轮对话结束加一，看板重读）+ 只在有作业时每 10 秒轮询。

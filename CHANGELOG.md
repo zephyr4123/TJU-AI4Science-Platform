@@ -9,6 +9,7 @@
 ## [Unreleased]
 
 ### 新增
+- README 改成代码侧的地图：系统一眼看（Mermaid：谁在调、Python 包、端口、外面的东西）+ 文档索引（你要什么读哪份）；`framework/README.md` 加分层与依赖方向图、一条能力调用从门到收尾的时序图、一轮对话的时序图；`ui/README.md` 加页面状态机与目录间的依赖图；`CLAUDE.md` 路由表指向 README（外层 [#141](https://github.com/zephyr4123/TJU-AI4Science/issues/141)）
 - 文档全面对齐代码（外层 [#140](https://github.com/zephyr4123/TJU-AI4Science/issues/140)；主人 2026-09-23：结构好就只改内容、按模块目录分层放、以代码为准做减法、盘出来的 bug 一并修）。**纲领固化进 `CLAUDE.md`**：协作方式（issue driven、spec coding、标签三轴、分支与合并前确认、commit 写法、不加 AI 署名、做完必关）、编码标准、质量纪律、红线各带机器判据、「改哪层先读哪份」路由；子包大表迁出。**规矩按模块目录分层**：新 `framework/README.md`（分层与依赖方向、技术栈、在用的模式与约定、异常与退出码、环境变量总表、已知盲点）、新 `tests/README.md`（怎么写、夹具、门控、门禁）、`ui/README.md` 重写成前端的技术栈 / 约定 / 测试政策 / 浏览器闭环（端点表删掉，唯一出处是 `server.py` 文件头）；新 `docs/add-a-domain.md`（从外层 `domains.md` 搬来并只留有读取点的字段）；`README.md`、五份 `docs/`、两份助理指南、`skills/*/SKILL.md`、领域包 profile、样例数据的注释按代码逐条改（退役词「主页面 / 任务包 / 叫醒 / 协调层上屏」清掉，能力两个 tag、`--ws`、收件箱、σ 由框架算、`cap verify` 样例补 `--from experiment/1`）。两仓加 `AGENTS.md → CLAUDE.md` 符号链接（Codex 的入口）
 - 产出的 `meta.yaml` 记执行层用的哪家 coding agent、模型与思考深度（`agent`，P-25 的出处；不起执行层的能力是 null）；`ai4sci skill run … --ws <名字>`（写在 skill 名前后都认、不递给脚本）在那个工作区里起脚本，`download` / `pdf` 写的相对路径落在它的 `materials/`——之前助理站在项目里，材料落到项目根、`reproduction --code` 在工作区里找不到
 

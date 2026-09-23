@@ -12,7 +12,7 @@
 
 | 要做的事 | 先读 |
 |---|---|
-| 任何改动 | 本文件；外层 `docs/architecture/README.md`（产品边界与 25 条原则） |
+| 任何改动 | 本文件；`README.md`（代码侧的地图：系统一眼看、文档索引）；外层 `docs/architecture/README.md`（产品边界与 25 条原则） |
 | 改后端（`framework/` `backends/` `compute/`） | `framework/README.md`：分层与依赖方向、技术栈、模式与约定、异常与退出码、环境变量 |
 | 写或改测试 | `tests/README.md`：怎么写、夹具、live 门控、门禁各跑什么 |
 | 改页面（`ui/web/`） | `ui/README.md`：技术栈、约定、测试政策、浏览器闭环；`docs/DESIGN.md` 视觉与布局；`docs/PRODUCT.md` 给谁用 |

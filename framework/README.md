@@ -10,6 +10,32 @@ Python 包 `ai4sci`，入口 `framework.cli:main`。`framework/` 内八层，依
 cli → capabilities → chat → experiment → executor → workspace → skills → contracts
 ```
 
+```mermaid
+flowchart TB
+  subgraph FW["framework/：分层包，箭头方向 = 允许的 import 方向（可以跳层往下）"]
+    CLI["cli/<br/>命令行，一类一个模块"] --> CAP["capabilities/<br/>步骤子包，互不 import"]
+    CAP --> CHAT["chat/<br/>对话、看板、HTTP + SSE"]
+    CHAT --> EXP["experiment/<br/>实验族的约定"]
+    EXP --> EXEC["executor/<br/>起执行层会话"]
+    EXEC --> WS["workspace/<br/>项目、工作区、产出、作业、删"]
+    WS --> SK["skills/<br/>skill 库读取点"]
+    SK --> CON["contracts/<br/>框架认的形状"]
+  end
+  subgraph TOP["顶层唯一读取点（分层包可以 import，它们不 import 分层包）"]
+    PATHS["paths.py"]
+    COMP["computes.py"]
+    AG["agents.py"]
+  end
+  subgraph PORTS["端口（不 import framework，相互也不）"]
+    BK["backends/<br/>Runner、Chat；claude_code.py codex.py"]
+    CM["compute/<br/>Compute；local.py ssh.py"]
+  end
+  FW --> TOP
+  FW --> PORTS
+  CLI -. "注入：能力清单、流程检查、描述符表" .-> CHAT
+  CHAT -. "回调：删会话与镜像" .-> WS
+```
+
 | 子包 | 放什么 | 出处 |
 |---|---|---|
 | `contracts/` | 框架认的东西的形状，只有这几样：七个研究阶段（`stages`）、需求与确认（`requirement`）、产出目录与签字（`output`：`meta.yaml`、`signed.json`、tree hash）、流程文件（`workflows`）、能力描述符与入口形状（`capability`：`Capability` / `Inputs` / `Param` / `Ports`，文案的字数与禁用词断言） | 谁都不 import |
@@ -46,6 +72,54 @@ cli → capabilities → chat → experiment → executor → workspace → skil
 | 测试 | pytest，剧本后端代替 mock（见 `tests/README.md`） | |
 | 外部命令 | git、ssh / rsync、ruff（查执行层写的 harness）、pgrep | |
 | agent CLI | Claude Code ≥ 2.1.276（隔离参数 `--setting-sources "" --strict-mcp-config --disable-slash-commands`）、Codex 按 0.147.0 实测（私有 `CODEX_HOME` 隔离）；实测清单只记在各自适配器的文件头 | |
+
+## 2b. 两条主路径
+
+一条能力调用（`ai4sci cap …`，`cli/cap.py`）从门到收尾：
+
+```mermaid
+sequenceDiagram
+  participant A as 助理 / 人
+  participant C as cli/cap.py
+  participant W as workspace/ + contracts/
+  participant X as capabilities/name
+  participant E as executor/ + backends.Runner
+  participant M as compute.Compute
+  A->>C: ai4sci cap design --ws w --detach
+  C->>C: 助理会话里的确认与签字一律拒（refuse_if_assistant 只管 sign / confirm）
+  C->>W: require_confirmed：需求确认了没
+  C->>W: resolve_inputs：--from 在不在、冻结 hash 对不对
+  C->>W: _place_in_flow：挂哪条流程第几项，断点签没签
+  C->>W: open_output → design/1/meta.yaml（running，记 compute 与 agent）
+  C->>X: run(output_dir, inputs, ports, **params)
+  X->>E: 起执行层会话（模板 + 领域约定 + skill 清单；Bash 只放行 ai4sci skill）
+  E-->>X: RunResult（changed_files 来自前后快照 diff）
+  X->>M: sync / submit / wait / get：在所选算力上跑基线
+  X-->>C: 一行结论，或 raise CapabilityFailed
+  C->>W: close_output → meta ok / failed，result 那一行
+  C-->>A: stdout 一行 + output=design/1（作业跑完排进那段对话的收件箱）
+```
+
+一轮对话（页面或终端 → 助理 → 它调用的命令）：
+
+```mermaid
+sequenceDiagram
+  participant P as 页面 / ai4sci chat
+  participant S as chat/server + chat/scope
+  participant V as chat/conversation
+  participant B as backends.Chat 适配器
+  participant CLI as ai4sci（助理起的子进程）
+  P->>S: POST …/chats/cid/messages（SSE）
+  S->>V: send(text, system_prompt=指南 + 前言, allowed_paths, bash_rules 按域)
+  V->>V: 忙锁 inflight.json（同一段对话同一时刻只跑一轮）
+  V->>B: turn(...)：--resume 续接 session，逐字 delta
+  B->>CLI: 助理照指南跑 ai4sci …（环境里带 AI4SCI_CHAT_ID）
+  CLI-->>B: stdout 一行结论
+  B-->>V: ChatEvent 流：delta / text / tool_use / tool_result / done
+  V-->>S: 事件（落盘 turn-N/events.jsonl、trace.jsonl）
+  S-->>P: SSE
+  Note over V: 人这一轮结束后，收件箱里排着的作业结果以「框架」身份接着念（notify.follow_up）
+```
 
 ## 3. 在用的模式与约定
 

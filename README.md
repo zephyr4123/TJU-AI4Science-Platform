@@ -6,7 +6,66 @@
 
 科研全自动化平台的生产代码：一个研究者在页面上跟助理说清课题、确认需求，助理照流程调用框架的能力做设计、实验、分析、验证，人只在断点上确认。四层：协调层（人 + 助理）做科研判断；框架是零模型的诚实执行基底（开门、开产出目录、封评分脚本、跑打分、记账、判冻结与签字）；执行层 coding agent 是唯一写代码的；skill 脚本是确定性工具。
 
-产品纲领（P-1 到 P-25）、流程细则、未决问题与案例卡在外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 的 `docs/`；本仓由它的 `./repos clone all` 拉到 `platform/` 目录下。改代码前先读本仓 `CLAUDE.md`（规矩与「改哪层先读哪份」）。
+产品纲领（P-1 到 P-25）、流程细则、未决问题与案例卡在外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 的 `docs/`（那边的 README 是产品侧的地图）；本仓由它的 `./repos clone all` 拉到 `platform/` 目录下。这份是代码侧的地图。
+
+## 系统一眼看
+
+```mermaid
+flowchart TB
+  subgraph CLIENTS["谁在调"]
+    direction LR
+    UI["页面 ui/web<br/>（ai4sci serve 端出）"]
+    TERM["人在终端"]
+    AST["助理会话<br/>（claude / codex，多轮）"]
+    EXE["执行层会话<br/>（claude / codex，一次）"]
+  end
+  subgraph PKG["Python 包 ai4sci"]
+    direction LR
+    SRV["framework/chat<br/>HTTP + SSE、对话、看板读盘"]
+    CLI["framework/cli<br/>每个动作一条子命令"]
+    CORE["framework/<br/>capabilities · experiment · executor<br/>workspace · skills · contracts"]
+    PORTS["端口<br/>backends/（Runner、Chat）<br/>compute/（Compute）"]
+  end
+  subgraph OUT["外面"]
+    direction LR
+    CC["coding agent CLI<br/>claude、codex"]
+    MACH["算力<br/>本机 / 一台能 ssh 的 Linux"]
+    DATA["数据根<br/>projects/… studio/"]
+    CFG["按人的清单<br/>~/.config/ai4sci/<br/>agents.yaml computes.yaml"]
+    SHIP["出厂件<br/>workflows/ templates/ domains/<br/>skills/ coordinator/"]
+  end
+  UI --> SRV
+  TERM --> CLI
+  AST -- "ai4sci …（带 AI4SCI_CHAT_ID）" --> CLI
+  EXE -- "ai4sci skill …" --> CLI
+  SRV --> CORE
+  CLI --> CORE
+  CORE --> PORTS
+  PORTS -- "起助理会话与执行层会话" --> CC
+  PORTS -- "put / submit / wait / get" --> MACH
+  CORE --> DATA
+  CORE --> CFG
+  CORE --> SHIP
+```
+
+后端的分层与依赖方向、模式、异常、环境变量在 `framework/README.md`；前端在 `ui/README.md`；测试在 `tests/README.md`。
+
+## 文档地图
+
+| 你要 | 读 | 讲什么 |
+|---|---|---|
+| 改任何代码前 | [`CLAUDE.md`](CLAUDE.md) | 协作方式、编码标准、质量纪律、红线（各带机器判据）、「改哪层先读哪份」 |
+| 改后端（`framework/` `backends/` `compute/`） | [`framework/README.md`](framework/README.md) | 分层与依赖方向、技术栈、在用的模式与约定、异常与退出码、环境变量总表、已知盲点 |
+| 写或改测试 | [`tests/README.md`](tests/README.md) | 目录与命名、夹具、三种写法、live 门控、门禁 |
+| 改页面（`ui/web/`） | [`ui/README.md`](ui/README.md) | 契约、技术栈、代码约定、测试政策、浏览器闭环 |
+| 页面给谁用、长什么样 | [`docs/PRODUCT.md`](docs/PRODUCT.md)、[`docs/DESIGN.md`](docs/DESIGN.md) | 用户与原则；视觉、布局、组件、动效、素材 |
+| 加一个步骤 / skill / 领域包 | [`docs/add-a-capability.md`](docs/add-a-capability.md)、[`docs/add-a-skill.md`](docs/add-a-skill.md)、[`docs/add-a-domain.md`](docs/add-a-domain.md) | 照做就能接进来的手册，各有验收标准 |
+| 在终端里接一个课题 | [`docs/start-a-workspace.md`](docs/start-a-workspace.md) | 目录、需求、原件、设计、跑起来、常见报错 |
+| 改助理的行为 | [`coordinator/README.md`](coordinator/README.md)、[`coordinator/studio.md`](coordinator/studio.md) | **线上 prompt**：研究助理、流程助理的指南；执行层的 prompt 在各能力子包的 `prompt.md` |
+| 端点与响应体 | `framework/chat/server.py` 文件头、`framework/chat/boards.py` | 唯一出处，文档不抄 |
+| 命令清单 | `ai4sci --help` | 唯一出处 |
+| 产品为什么这样 | 外层 `docs/architecture/README.md`、`workflow.md` | 纲领与细则 |
+| 变更 | [`CHANGELOG.md`](CHANGELOG.md) | 每个改动合并时写进 Unreleased |
 
 ## 目录
 
@@ -25,6 +84,7 @@ platform/
 ├── docs/          手册：start-a-workspace / add-a-capability / add-a-skill / add-a-domain；PRODUCT.md、DESIGN.md
 ├── tests/         框架测试（怎么写见 tests/README.md）
 ├── Makefile       up / check / venv / lock / lint / skills / test / ui / ui-check / package / release / clean / purge
+├── CLAUDE.md      规矩；AGENTS.md 是它的符号链接（Codex 的入口）
 └── CHANGELOG.md
 ```
 
