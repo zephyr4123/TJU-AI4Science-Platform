@@ -82,12 +82,12 @@
         "min_delta": {
           "type": "number",
           "minimum": 0,
-          "description": "统计门的兜底最小改进量：门取 max(accept_sigma×σ, min_delta)。baseline/ 的重复跑完全一致时 σ=0，统计门会退化成 0（任何差值都算改进），那时必须显式给它；不写按 0（读取点：framework/runstate.py::load_context，判据在 loop.py::_gate）"
+          "description": "统计门的兜底最小改进量：门取 max(accept_sigma×σ, min_delta)。baseline/ 的重复跑完全一致时 σ=0，统计门会退化成 0（任何差值都算改进），那时必须显式给它；不写按 0（读取点：experiment/context.py::load_context，判据在 auto_research/gate.py）"
         },
         "patience": {
           "type": "integer",
           "minimum": 1,
-          "description": "连续多少轮不改进就停；不写按 5（读取点：framework/runstate.py::load_context）"
+          "description": "连续多少轮不改进就停；不写按 5（读取点：experiment/context.py::load_context）"
         },
         "max_cost_usd": {
           "type": "number",
@@ -97,7 +97,7 @@
         "inner_k": {
           "type": "integer",
           "minimum": 1,
-          "description": "评分脚本内部把 code/ 跑几次取均值当一次成绩（信噪比的旋钮，也决定 wall_clock_s 要覆盖几次固定开销）；不写按 1。读取点：run/context.py::load_context，框架跑 harness 时以 AI4SCI_INNER_K 传给 launcher（capabilities/experiment/judge.py、ai4sci task baseline）"
+          "description": "评分脚本内部把 code/ 跑几次取均值当一次成绩（信噪比的旋钮，也决定 wall_clock_s 要覆盖几次固定开销）；不写按 1。读取点：experiment/context.py::load_context，框架跑 harness 时以 AI4SCI_INNER_K 传给 launcher（auto_research/judge.py、experiment/baseline.py）"
         }
       }
     },

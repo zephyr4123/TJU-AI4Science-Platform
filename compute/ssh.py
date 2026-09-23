@@ -9,8 +9,9 @@ cancel=远端杀进程组，get=rsync 回来，check=探一遍（连接、Python
 脚本整段 shlex.quote 成一个参数（不走 stdin：脚本里任何读 stdin 的命令都会把后半段脚本吃掉，
 实测 uv 的安装脚本就这样卡死）。远端路径映射：本地绝对路径去掉开头的 `/`
 接在远端根目录后面（`/root/ai4sci/Users/…/experiment/1/iters/iter_3`），长但一眼能对上、两边可逆。
-远端 venv 由 framework 按 `env/` 用这台机器上的 uv 建（`uv` 属性），镜像里预装的 Python / torch
-一概不用——版本才可追溯。
+远端环境两条路（纲领 P-23 的两问）：隔离新建——framework 按 `env/` 用这台机器上的 uv 建 venv（`uv`
+属性）；用现成的——`env use` 记下机器上某个解释器的路径与它装了什么（`env/interpreter`），租来的机器
+（AutoDL 这类）一律走这条，镜像自带的 torch + CUDA 才是能跑的。两条路都把用了什么冻成清单当出处。
 """
 
 from __future__ import annotations
@@ -125,7 +126,8 @@ class SshCompute:
         probe = self._sh(f"test -e {q} && echo EXISTS || mkdir -p {q}", check=False)
         if "EXISTS" in probe.stdout:
             raise FileExistsError(
-                f"快照目录已存在，可能是被杀的一轮，请跑 ai4sci loop resume 收尾：{remote_dir}")
+                f"快照目录已存在，可能是被杀的一轮，先续跑对账收尾："
+                f"ai4sci cap auto-research --continue <实验产出> --resume（{remote_dir}）")
         self._rsync(f"{Path(local_dir).resolve()}/", f"{self._target()}:{remote_dir}/")
 
     def sync(self, local_dir: Path, remote_dir: str) -> None:

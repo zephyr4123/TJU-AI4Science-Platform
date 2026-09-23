@@ -2,7 +2,7 @@
 
 在 cli 层。签字不是能力：不产出科研产物，只落一条记录——产出目录里的 `signed.json`
 （`contracts.output.sign`）。流程里哪一项后面有断点，那一项的产出就得签了下游才能读；页面上的「签」
-写的是同一份记录。协调 agent 的指南写明它不替人签。
+写的是同一份记录。只有人能签：助理的会话里调它一律拒（`refuse_if_assistant`），不靠指南里的一句「你不替人签」。
 """
 
 from __future__ import annotations
@@ -17,12 +17,16 @@ from framework.cli._common import (
     EXIT_USAGE,
     add_ws_option,
     current_workspace,
+    refuse_if_assistant,
 )
 from framework.contracts import output
 from framework.workspace import outputs
 
 
 def cmd_sign(args: argparse.Namespace) -> int:
+    refused = refuse_if_assistant("给产出签字")
+    if refused is not None:
+        return refused
     ws = current_workspace(args)
     if isinstance(ws, int):
         return ws

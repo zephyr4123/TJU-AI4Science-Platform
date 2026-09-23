@@ -104,6 +104,8 @@ class Meta:
     error: str = ""
     # 在哪台机器上跑的（名字、种类、主机名、GPU；P-23 的出处）；不用算力的能力是 None
     compute: dict[str, Any] | None = None
+    # 执行层用的哪家 coding agent、什么模型与思考深度（P-25 的出处）；不起执行层的能力是 None
+    agent: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         doc = asdict(self)

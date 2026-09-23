@@ -6,7 +6,7 @@
 
     experiment/<n>/  meta.yaml（框架的）  scoring.yaml（设计那包的快照）  checkpoint.json
                      journal.md
-                     prompts/{requirement.md, experiment-domain.md, skills/}
+                     prompts/{requirement.md, experiment-domain.md}（领域 skill 不快照）
                      .venv/（按 work/env/ 建的任务环境）
                      work/（设计那包的拷贝，自己的 git 仓：分支 tip = best）
                      ledger.tsv  notebook.md  inflight.json  stop.json
@@ -27,6 +27,7 @@ from framework.experiment.pack import BASELINE_DIRNAME, SCORING_NAME
 REQUIREMENT_NAME = "requirement.md"
 CHECKPOINT_NAME = "checkpoint.json"
 JOURNAL_NAME = "journal.md"
+PLATFORM_DIRNAME = ".ai4sci"  # 与工作区、项目下的 .ai4sci/ 同一个名字：平台记录，不进产出 hash
 WORK_DIRNAME = "work"
 LEDGER_NAME = "ledger.tsv"
 NOTEBOOK_NAME = "notebook.md"
@@ -56,8 +57,10 @@ def checkpoint(run_dir: Path) -> Path:
 
 
 def journal(run_dir: Path) -> Path:
-    """协调层自己的本子：框架只建空文件、加预算时追一行。"""
-    return Path(run_dir) / JOURNAL_NAME
+    """助理自己的本子：框架只建空文件、加预算时追一行。放在产出目录的 `.ai4sci/` 下——它是平台
+    记录不是研究产物，不算进产出的 hash（contracts.output.HASH_IGNORED），实验被下游读过、签过
+    之后助理照样能记。"""
+    return Path(run_dir) / PLATFORM_DIRNAME / JOURNAL_NAME
 
 
 def work(run_dir: Path) -> Path:

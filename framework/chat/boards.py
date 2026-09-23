@@ -81,7 +81,7 @@ def workspace_summary(workspace: Workspace) -> dict[str, Any]:
 
 def workspace_detail(workspace: Workspace, catalog: dict[str, Capability],
                      skills: Collection[str] = ()) -> dict[str, Any]:
-    """主页面要的一整份：需求 + 七个阶段各自的产出 + 每条流程实例的进度 + 作业。"""
+    """工作区页要的一整份：需求 + 七个阶段各自的产出 + 每条流程实例的进度 + 作业。"""
     found = outputs.list_outputs(workspace)
     briefs = {meta.id: output_brief(directory, meta) for directory, meta in found}
     stages = [{"name": s.name, "slug": s.slug,

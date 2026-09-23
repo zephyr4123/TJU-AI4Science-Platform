@@ -28,6 +28,8 @@ LOGGER = logging.getLogger("ai4sci.drafting")
 WRITABLE_DIRS = ("harness", "code")
 WRITABLE_FILES = (packs.SCORING_NAME,)
 # lint 规则与 pyproject [tool.ruff] 一致；同一组常数渲染进提示第 7 条，执行层被告知的就是被检查的
+# 实验族对 harness 的约定（results.json、保证变量、退出码），随包带走（pyproject 的 package-data）
+HARNESS_CONTRACT = Path(__file__).resolve().parent / "harness_contract.md"
 LINT_SELECT = "E,F,W,B,I,BLE,UP"
 LINT_LINE_LENGTH = 100
 # 第二个会话把现状文件贴回去；单个文件超过这个长度就截断（草稿都很短，超了本身就是问题）
@@ -67,9 +69,11 @@ def draft(
     """组提示 → 起会话（只放行 scoring.yaml、harness/、code/）→ 判越界 → 补 domain → 封 harness →
     ruff → validate。
 
-    `template` 与 `values` 是能力自己的（要求什么、给什么材料）；这里只补四个所有草稿都有的占位：
+    `template` 与 `values` 是能力自己的（要求什么、给什么材料）；这里只补五个所有草稿都有的占位：
     `current`（磁盘现状，能力自己贴，空串表示从零写）、`feedback`（修改意见）、`lint_select`、
-    `lint_line_length`。validate 这一步不查 baseline/：草稿刚写完，基线还没跑。
+    `lint_line_length`、`harness_contract`（results.json 的形状、保证给出的环境变量、退出码——
+    实验族对 harness 的约定，`harness_contract.md` 一份，两个设计能力的提示词共用，不各抄一遍）。
+    validate 这一步不查 baseline/：草稿刚写完，基线还没跑。
     `pack` 下按 `executor/session-N/` 留档：提示原文、事件流、stderr。
     """
     pack = Path(pack).resolve()
@@ -82,6 +86,7 @@ def draft(
         "current": current or "scoring.yaml、harness/ 与 code/ 还是空的，从零写。",
         "feedback": f"## 这次要改什么\n\n{feedback.strip()}" if feedback.strip() else "",
         "lint_select": LINT_SELECT, "lint_line_length": LINT_LINE_LENGTH,
+        "harness_contract": HARNESS_CONTRACT.read_text(encoding="utf-8").strip(),
     }
     prompt = prompting.build_prompt(
         Path(template), values, skills=skills.for_executor(domain, domains_root=domains_root))

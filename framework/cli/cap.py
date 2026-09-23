@@ -24,6 +24,7 @@ import argparse
 import os
 import sys
 import time
+from dataclasses import asdict
 from pathlib import Path
 
 from compute import ComputeError
@@ -74,6 +75,9 @@ def cmd_cap(args: argparse.Namespace) -> int:
     ports = resolve_ports(backend, getattr(args, "compute", None))
     if isinstance(ports, int):
         return ports
+    # 执行层用的哪家、什么模型与深度记进产出的 meta（P-25 的出处）；不起执行层的能力没有这一项
+    agent = (None if ports.runner is None
+             else {"backend": backend, **asdict(agents.tuning_for(backend))})
     job_id = os.environ.get(jobs.JOB_ID_ENV)
     if args.detach:
         if job_id:
@@ -82,7 +86,7 @@ def cmd_cap(args: argparse.Namespace) -> int:
         return _detach(args, ws, descriptor)
     setup_logging()
     try:
-        code, line = _run(args, ws, descriptor, ports, job_id)
+        code, line = _run(args, ws, descriptor, ports, job_id, agent)
     except ComputeError as exc:
         # 要的机器连不上（关机了、端口变了、没配好）不是平台的 bug，是研究者要处理的事：作业与产出
         # 记失败、原因写成人话、叫醒助理（Codex 演练：清单缺省是关了机的 AutoDL，助理拿到「平台内部
@@ -129,7 +133,7 @@ def _fail_open_output(ws: Workspace, oid: str | None, line: str) -> None:
 
 
 def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports: Ports,
-         job_id: str | None) -> tuple[int, str]:
+         job_id: str | None, agent: dict | None) -> tuple[int, str]:
     """门 → 输入 → 断点 → 开产出 → 跑 → 记账。返回退出码与那一行话（成功是结论行，
     失败是能力自己说的那一句）。"""
     try:
@@ -150,14 +154,15 @@ def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports:
     try:
         if continuing:
             directory, meta = _reopen(ws, descriptor, continuing, inputs,
-                                      compute=ports.compute_label)
+                                      compute=ports.compute_label, agent=agent)
         else:
             directory, meta = outputs.open_output(
                 ws, descriptor.stage_slug, title=descriptor.title, by=descriptor.name,
                 inputs=list(inputs.ids),
                 params={k: v for k, v in params.items() if v not in (None, "", False)},
                 flow=flow, step=step, requirement=version,
-                chat_id=os.environ.get(jobs.CHAT_ID_ENV), compute=ports.compute_label)
+                chat_id=os.environ.get(jobs.CHAT_ID_ENV), compute=ports.compute_label,
+                agent=agent)
     except (ValueError, output.OutputNotFound) as exc:
         return EXIT_INVALID, str(exc)
     if job_id:
@@ -172,7 +177,7 @@ def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports:
 
 
 def _reopen(ws: Workspace, descriptor: Capability, oid: str, inputs: Inputs, *,
-            compute: dict | None) -> tuple[Path, Meta]:
+            compute: dict | None, agent: dict | None) -> tuple[Path, Meta]:
     """`--continue`：产出得是这个能力自己产的、这个阶段的；成了没成都能接着干（草稿改第二版）。"""
     directory, meta = outputs.find_output(ws, oid)
     if meta.stage != descriptor.stage_slug or meta.by != descriptor.name:
@@ -181,7 +186,7 @@ def _reopen(ws: Workspace, descriptor: Capability, oid: str, inputs: Inputs, *,
         raise ValueError(f"{oid} 已经被引用或签过，冻住了：要改就新开一次产出（去掉 --continue）")
     if inputs.ids and list(inputs.ids) != meta.input_ids:
         raise ValueError(f"{oid} 当初读的是 {meta.input_ids}，接着干不能换输入 {list(inputs.ids)}")
-    outputs.reopen_output(directory, meta, compute=compute)
+    outputs.reopen_output(directory, meta, compute=compute, agent=agent)
     return directory, meta
 
 

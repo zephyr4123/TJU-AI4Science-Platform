@@ -48,8 +48,11 @@ TITLE_MAX = 8
 BRIEF_MAX = 30
 LABEL_MAX = 8
 # 页面与描述符里都不许出现的词：口语、问句式标签、借来的量词与比喻。页面那份在 ui/web 的 copy 测试里
+# 与页面那份（ui/web/src/copy.test.ts 的 BANNED）同一张表，tests/test_contracts_capability.py 对账；
+# 后半是退役的旧词（换代后不许再上屏）与内部层名（研究者面前只有「助理」）
 BANNED_WORDS = ("签了", "没成", "在跑", "续命", "这包", "越界", "干什么", "收尸", "按钮", "房间",
-                "裁判", "一颗", "几颗", "每颗", "那颗", "哪颗")
+                "裁判", "一颗", "几颗", "每颗", "那颗", "哪颗",
+                "工作流", "主页面", "拼流台", "任务包", "协调层")
 
 
 def check_copy(where: str, text: str) -> None:

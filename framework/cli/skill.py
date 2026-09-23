@@ -15,7 +15,13 @@ import argparse
 import sys
 
 from framework import skills
-from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE
+from framework.cli._common import (
+    EXIT_INVALID,
+    EXIT_OK,
+    EXIT_USAGE,
+    add_ws_option,
+    current_workspace,
+)
 from framework.skills import run as runner
 
 
@@ -60,11 +66,37 @@ def cmd_run(args: argparse.Namespace) -> int:
     except skills.SkillInvalid as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
+    split = _split_ws(list(args.script_args), args.ws)
+    if split is None:
+        return EXIT_USAGE
+    script_args, ws_name = split
+    cwd = None
+    if ws_name:
+        # 助理站在项目里（纲领 P-15），脚本写的相对路径（materials/…）要落到那个工作区，不是项目：
+        # 带 --ws 就在那个工作区里起脚本；不带照当前目录（人在终端 cd 进了工作区、执行层在产出
+        # 目录里）
+        ws = current_workspace(argparse.Namespace(ws=ws_name))
+        if isinstance(ws, int):
+            return ws
+        cwd = ws.root
     try:
-        return runner.run_script(script, list(args.script_args))
+        return runner.run_script(script, script_args, cwd=cwd)
     except runner.UvMissing as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
+
+
+def _split_ws(script_args: list[str], ws: str) -> tuple[list[str], str] | None:
+    """`--ws <名字>` 写在 skill 名后面也认（argparse 把名字后面的全当脚本参数）：从脚本参数里
+    摘出来，不递给脚本。写在名字前面的由 argparse 收进 args.ws。名字没给返回 None（用法错误）。"""
+    if "--ws" in script_args:
+        at = script_args.index("--ws")
+        if at + 1 >= len(script_args):
+            print("--ws 后面要跟工作区的名字", file=sys.stderr)
+            return None
+        ws = script_args[at + 1]
+        script_args = script_args[:at] + script_args[at + 2:]
+    return script_args, ws
 
 
 def _find(name: str):
@@ -93,4 +125,5 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
                          help="skill 有几个脚本时点名哪一个（文件名）；只有一个时不用给")
     running.add_argument("script_args", nargs=argparse.REMAINDER,
                          help="递给脚本的参数，如 --input x.pdf --out dir")
+    add_ws_option(running)  # 在哪个工作区里起脚本（相对路径落在那儿）；写在名字前后都认
     running.set_defaults(func=cmd_run)

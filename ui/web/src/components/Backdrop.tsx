@@ -1,4 +1,4 @@
-// 全铺的动态背景，只给「新建工作区」那一屏（docs/DESIGN.md「素材」）：浅色 / 深色各一段无缝循环、无声。
+// 全铺的动态背景，只给门口那一屏（起项目；docs/DESIGN.md「素材」）：浅色 / 深色各一段无缝循环、无声。
 // 系统要求减少动效或省流量时不拉视频，只给首帧海报；视频加载失败也停在海报上。上面压一层纱幕，字才压得住。
 import { useReducedMotion } from 'motion/react'
 import { useState } from 'react'

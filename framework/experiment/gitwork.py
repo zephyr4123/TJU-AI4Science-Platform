@@ -47,7 +47,7 @@ def _env() -> dict[str, str]:
 
 
 def init_repo(work: Path, message: str) -> str:
-    """初始化 work/ 并把任务包基线提交成第一个 commit，返回它的 sha。"""
+    """初始化 work/ 并把设计那包的基线提交成第一个 commit，返回它的 sha。"""
     git(work, "init", "-q", "-b", "main")
     git(work, "add", "-A")
     git(work, "commit", "-q", "-m", message)
@@ -74,7 +74,7 @@ def commit_paths(work: Path, paths: list[str], message: str) -> str | None:
 def revert_to(work: Path, sha: str) -> None:
     """revert-to-best：工作区丢弃、未跟踪清掉、HEAD 拉回 sha。下一轮的起点永远是 best。
 
-    `clean` 带 `-x` 连被忽略的文件一起清：work/ 是一次性仓，任务包 `.gitignore` 挡住的
+    `clean` 带 `-x` 连被忽略的文件一起清：work/ 是一次性仓，那包 `.gitignore` 挡住的
     产物（预测文件、缓存、执行层日志）留到下一轮只会污染下一轮的起点，而这里本来就
     没有"人手里正在改的东西"要保护。
     """
@@ -105,7 +105,7 @@ def keep_attempt(work: Path, iter_n: int, sha: str) -> str:
 
 
 def root_commit(work: Path) -> str | None:
-    """当前分支的第一个 commit（任务包基线）。账本对账拿它当第一条 keep 行的 parent。"""
+    """当前分支的第一个 commit（设计那包的基线）。账本对账拿它当第一条 keep 行的 parent。"""
     shas = git(work, "rev-list", "--max-parents=0", "HEAD", check=False).stdout.split()
     return shas[-1] if shas else None
 

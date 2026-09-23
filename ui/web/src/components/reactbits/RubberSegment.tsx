@@ -228,7 +228,9 @@ export default function RubberSegment({
     box.current = trackRef.current?.getBoundingClientRect() ?? null;
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {}
+    } catch {
+      // 指针已经释放或元素已卸载时 setPointerCapture 会抛；没抓住也照常拖，不用处理
+    }
     const x = localX(e);
     const onThumb = draggable && x >= edgeL.get() && x <= edgeR.get();
     drag.current = { id: e.pointerId, x0: x, slot: i, onThumb, live: false, offset: 0, w: 0, hist: [[e.timeStamp, x]] };

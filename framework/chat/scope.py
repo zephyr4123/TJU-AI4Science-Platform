@@ -32,7 +32,7 @@ class Scope:
 
     def system_prompt(self, chat: Chat | None = None) -> str:
         """这个域的指南；给了适配器就带上它自己的「工具怎么用」那段。"""
-        tool = chat.tool_guide(guide.BASH_RULES) if chat is not None else ""
+        tool = chat.tool_guide(guide.bash_rules(self.kind)) if chat is not None else ""
         return guide.system_prompt(self.kind, tool_guide=tool)
 
 

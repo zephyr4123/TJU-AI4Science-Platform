@@ -71,7 +71,7 @@ DESCRIPTOR = Capability(
         "experiment/<n>/：scoring.yaml 与 requirement.md 快照、work/（独立 git 仓，"
         "分支 tip 是 best，被弃的尝试留档在仓里）、checkpoint.json（last_iter、best_iter、"
         "best_metric、best_commit、stop_reason）、ledger.tsv、notebook.md、"
-        "iters/iter_N/（每轮的代码快照与 results.json）、journal.md（协调层的记录）。"
+        "iters/iter_N/（每轮的代码快照与 results.json）、.ai4sci/journal.md（助理的记录）。"
     ),
     stops=(
         "到了 budget.max_iterations，或连续 patience 轮没改进，或累计花费过了 max_cost_usd，"
@@ -90,7 +90,8 @@ DESCRIPTOR = Capability(
               "耐心轮数"),
         Param("max_iterations", "int", None, "加预算：总轮数上限", "总轮数上限"),
         Param("max_cost_usd", "float", None, "加预算：总花费上限（美元）", "花费上限"),
-        Param("reason", "str", "", "加预算的原因，记进 journal.md", "加预算的原因", in_flow=False),
+        Param("reason", "str", "", "加预算的原因，记进 .ai4sci/journal.md", "加预算的原因",
+              in_flow=False),
     ),
     needs_executor=True,
     needs_compute=True,

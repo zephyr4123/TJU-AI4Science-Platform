@@ -67,7 +67,8 @@ def open_experiment(
     shutil.copy2(requirement, layout.requirement(run_dir))
     work = layout.work(run_dir)
     shutil.copytree(pack, work, ignore=shutil.ignore_patterns(*IGNORED))
-    layout.journal(run_dir).touch()  # 协调层写的东西，框架只建空文件
+    layout.journal(run_dir).parent.mkdir(exist_ok=True)
+    layout.journal(run_dir).touch()  # 助理写的东西，框架只建空文件
 
     scoring = load_scoring(run_dir)
     _snapshot_domain(domains_root / scoring.get("domain", packs.DEFAULT_DOMAIN), run_dir)
@@ -138,6 +139,7 @@ def extend_experiment(
     line = (f"- {datetime.now(UTC).isoformat(timespec='seconds')} 加预算："
             f"清掉 stop_reason={cleared}"
             f"；{'；'.join(changes) or '预算未改'}；原因：{reason or '未说明'}\n")
+    layout.journal(run_dir).parent.mkdir(exist_ok=True)
     with layout.journal(run_dir).open("a", encoding="utf-8") as fh:
         fh.write(line)
     LOGGER.info("experiment_extend run_dir=%s cleared=%s changes=%s", run_dir, cleared, changes)

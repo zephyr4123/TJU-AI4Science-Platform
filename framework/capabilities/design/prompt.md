@@ -25,7 +25,7 @@
   ```yaml
   format_version: 1
   metrics:
-    - {name: <指标名>, direction: minimize|maximize, primary: true}   # 恰好一个 primary
+    - {name: <指标名>, direction: minimize|maximize, primary: true, attainable: <尽头值，可省>}   # 恰好一个 primary；attainable 是文献或研究者给的尽头，预检算「离尽头几个门」
     - {name: <另一个指标>, direction: minimize}                        # 可以多个，只记录
   budget:
     wall_clock_s: <一次跑的墙钟预算，秒>
@@ -38,20 +38,10 @@
     - {id: R1, type: numeric, must_pass: true, description: <一句话>}
   ```
 
-- `results.json` 写在目录根，形状固定，`metrics` 必须包含 scoring.yaml 声明的**每一个**指标：
-
-  ```json
-  {"metrics": {"<指标名>": <有限数>}, "elapsed_s": <float>, "seed": <int>, "status": "ok"}
-  ```
-
-- 框架起 launcher 时**保证**给出四个环境变量，harness 拿不到就必须停，**不许写默认值**（`os.environ.get(名字, 默认)`、`$${名字:-默认}` 一律不许；框架校验会抓）：
-  - `AI4SCI_PYTHON`：解释器。
-  - `AI4SCI_BUDGET_S`：一次跑的墙钟预算，等于 scoring.yaml 的 `wall_clock_s`。评分内部重复 K 次时，launcher 用它除以 K 得到每次的份额再传给 `code/`；`code/` 只花份额的 80%，按墙钟自截断，不按常数反推工作量。
-  - `AI4SCI_INNER_K`：评分内部重复次数，等于 scoring.yaml 的 `budget.inner_k`（不写就是 1）。launcher 照它循环，并原样传给 evaluate.py；**不要在脚本里写死这个数**。
-  - `AI4SCI_START_EPOCH`：launcher 起跑时自己设，evaluate.py 用它算 `elapsed_s`。
+$harness_contract
+- 预算与重复：评分内部重复 K 次时，launcher 用 `AI4SCI_BUDGET_S` 除以 K 得到每次的份额再传给 `code/`；`code/` 只花份额的 80%，按墙钟自截断，不按常数反推工作量。
 - `AI4SCI_SEED` 是唯一允许缺省的：缺省 42，同一 seed 必须复现同一结果。
 - `make_run0.sh`：基线一次（seed 42）+ scoring `budget.repeat_k` 次重复（seed 42、43、44 …），每次的 `results.json` 拷到 `baseline/results.json` 与 `baseline/repeats/results-<seed>.json`。**σ 不用你算**：框架从 repeats/ 算样本标准差写 `baseline/sigma.json`（脚本算了也会被覆盖）。
-- evaluate.py 退出码：0 正常；2 产物缺失或读不出；3 形状 / 长度对不上；4 NaN / Inf / 越界；5 计时缺失。
 
 ## 研究需求（研究者与助理对齐并确认过的，照它做：要优化什么、数据在哪、怎么算好、花多少）
 
@@ -71,7 +61,7 @@ $hypothesis
 #!/usr/bin/env bash
 # 唯一执行入口：先清干净上一轮的产物，再跑基线、再评分——"results.json 存在"永远等于"这一轮真跑出了成绩"。
 set -euo pipefail
-# 三个保证变量拿不到就停在这里，不兜底（框架与 ai4sci cap design 都会给）
+# 保证变量拿不到就停在这里，不兜底（框架与 ai4sci cap design 都会给；START_EPOCH 由本脚本自己设）
 : "$${AI4SCI_PYTHON:?未设 AI4SCI_PYTHON}"
 : "$${AI4SCI_BUDGET_S:?未设 AI4SCI_BUDGET_S}"
 : "$${AI4SCI_INNER_K:?未设 AI4SCI_INNER_K}"

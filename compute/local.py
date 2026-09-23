@@ -56,7 +56,8 @@ class LocalCompute:
             # 快照目录一轮一个，已经在那儿只有一种解释：那一轮被杀了、没走完。
             # 往里叠一层新快照会把上一轮的产物和这一轮的混在一起，成绩就说不清了。
             raise FileExistsError(
-                f"快照目录已存在，可能是被杀的一轮，请跑 ai4sci loop resume 收尾：{remote_dir}"
+                f"快照目录已存在，可能是被杀的一轮，先续跑对账收尾："
+                f"ai4sci cap auto-research --continue <实验产出> --resume（{remote_dir}）"
             )
         shutil.copytree(local_dir, remote_dir, ignore=shutil.ignore_patterns(*IGNORED))
 

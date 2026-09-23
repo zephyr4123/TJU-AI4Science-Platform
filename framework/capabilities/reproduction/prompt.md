@@ -46,20 +46,10 @@
 
   `attainable` 是论文值，框架把它和跑出来的数并排给研究者看；对没对上由研究者判，你不用写判定逻辑。
 
-- `results.json` 写在目录根，形状固定，`metrics` 必须包含 scoring.yaml 声明的**每一个**指标：
-
-  ```json
-  {"metrics": {"<指标名>": <有限数>}, "elapsed_s": <float>, "seed": <int>, "status": "ok"}
-  ```
-
-- 框架起 launcher 时**保证**给出四个环境变量，harness 拿不到就必须停，**不许写默认值**（`os.environ.get(名字, 默认)`、`$${名字:-默认}` 一律不许；框架校验会抓）：
-  - `AI4SCI_PYTHON`：解释器。
-  - `AI4SCI_BUDGET_S`：一次跑的墙钟预算，等于 scoring.yaml 的 `wall_clock_s`。上游代码不认预算就只用它当超时（`timeout` 命令）。
-  - `AI4SCI_INNER_K`：评分内部重复次数，等于 `budget.inner_k`；复现写 1，launcher 照它循环即可。
-  - `AI4SCI_START_EPOCH`：launcher 起跑时自己设，evaluate.py 用它算 `elapsed_s`。
+$harness_contract
+- 预算：上游代码不认预算就只用 `AI4SCI_BUDGET_S` 当超时（`timeout` 命令）；复现的 `budget.inner_k` 写 1。
 - **种子照论文。** 论文（或它的 README / 需求）报了哪几个种子就跑哪几个：`AI4SCI_SEED` 是唯一允许缺省的，缺省是**论文的第一个种子**（论文没写种子才用 42）；上游代码认种子就把它传进去（命令行参数或环境变量，按它的写法）；不认就照原样跑，重复之间的差异就是它自己的随机性。
 - `make_run0.sh`：基线一次（论文的第一个种子）+ `budget.repeat_k` 次重复（论文其余的种子，`repeat_k` = 论文种子数 − 1；论文没写种子才 42、43 … 往上数），每次的 `results.json` 拷到 `baseline/results.json` 与 `baseline/repeats/results-<seed>.json`。**σ 不用你算**：框架从 repeats/ 算样本标准差写 `baseline/sigma.json`（脚本算了也会被覆盖）。**不许把论文的种子换成平台的**——换了就不是原样重跑，对不上时也说不清是种子还是别的。
-- evaluate.py 退出码：0 正常；2 产物缺失或读不出；3 形状 / 长度对不上；4 NaN / Inf / 越界；5 计时缺失。
 
 ## 研究需求（研究者与助理对齐并确认过的：哪篇论文、哪几个数、复现到第几级、对上的标准）
 
@@ -86,7 +76,7 @@ set -euo pipefail
 : "$${AI4SCI_INNER_K:?未设 AI4SCI_INNER_K}"
 TASK_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$$TASK_DIR"
-SEED="$${AI4SCI_SEED:-42}"
+SEED="$${AI4SCI_SEED:-<论文的第一个种子>}"
 rm -rf outputs results.json          # 上游代码的输出目录按它的写法改
 AI4SCI_START_EPOCH="$$("$$AI4SCI_PYTHON" -c 'import time; print(time.time())')"
 export AI4SCI_START_EPOCH
@@ -110,10 +100,10 @@ if [ ! -x "$$AI4SCI_PYTHON" ]; then
   echo "make_run0: 任务环境不存在：$$AI4SCI_PYTHON" >&2
   exit 1
 fi
-SEEDS=(43 44)   # 与 scoring.budget.repeat_k 对应；改一处就要改另一处
+SEEDS=(<论文其余的种子>)   # 与 scoring.budget.repeat_k 对应；改一处就要改另一处
 rm -rf baseline
 mkdir -p baseline/repeats
-AI4SCI_SEED=42 harness/launcher.sh
+AI4SCI_SEED=<论文的第一个种子> harness/launcher.sh
 cp results.json baseline/results.json
 for seed in "$${SEEDS[@]}"; do
   AI4SCI_SEED="$$seed" harness/launcher.sh
@@ -135,7 +125,7 @@ import time
 from pathlib import Path
 
 TASK_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_SEED = 42
+DEFAULT_SEED = <论文的第一个种子>
 
 
 def _fail(code: int, message: str) -> None:

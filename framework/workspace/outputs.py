@@ -43,15 +43,17 @@ def next_id(workspace: Workspace, slug: str) -> OutputId:
 
 def open_output(workspace: Workspace, slug: str, *, title: str, by: str, inputs: list[str],
                 params: dict, flow: str | None, step: int | None, requirement: int | None,
-                chat_id: str | None, compute: dict | None = None) -> tuple[Path, Meta]:
-    """新开一次产出：建目录、记输入此刻的 hash、写 running 的 meta（在哪台机器上跑也记上）。"""
+                chat_id: str | None, compute: dict | None = None,
+                agent: dict | None = None) -> tuple[Path, Meta]:
+    """新开一次产出：建目录、记输入此刻的 hash、写 running 的 meta（在哪台机器上跑、执行层用的哪家
+    也记上）。"""
     oid = next_id(workspace, slug)
     directory = oid.path(workspace.root)
     directory.mkdir(parents=True)
     recorded = [output.Input(i, output.tree_hash(find_output(workspace, i)[0])) for i in inputs]
     meta = Meta(id=str(oid), stage=slug, title=title, by=by, created_at=output.now(),
                 inputs=recorded, params=dict(params), flow=flow, step=step,
-                requirement=requirement, chat_id=chat_id, compute=compute)
+                requirement=requirement, chat_id=chat_id, compute=compute, agent=agent)
     output.write_meta(directory, meta)
     LOGGER.info("output_open id=%s by=%s from=%s flow=%s step=%s", oid, by, inputs, flow, step)
     return directory, meta
@@ -70,23 +72,16 @@ def close_output(directory: Path, meta: Meta, *, ok: bool, line: str) -> Meta:
     return meta
 
 
-def reopen_output(directory: Path, meta: Meta, *, compute: dict | None) -> Meta:
-    """`--continue` 接着干：上一次的结论、错误、结束时间都作废，机器按这次的记，
+def reopen_output(directory: Path, meta: Meta, *, compute: dict | None,
+                  agent: dict | None = None) -> Meta:
+    """`--continue` 接着干：上一次的结论、错误、结束时间都作废，机器与执行层按这次的记，
     看板与 show output 才不会在跑着的时候还挂着上一次的错和上一次的机器。"""
     meta.status = "running"
     meta.finished_at = None
     meta.result = ""
     meta.error = ""
     meta.compute = compute
-    output.write_meta(directory, meta)
-    return meta
-
-
-def touch_output(directory: Path, meta: Meta, *, line: str) -> Meta:
-    """接着上一次干（continuable 的能力）：产出还是那一个，只更新结论行与时间。"""
-    meta.status = "ok"
-    meta.finished_at = output.now()
-    meta.result = line
+    meta.agent = agent
     output.write_meta(directory, meta)
     return meta
 

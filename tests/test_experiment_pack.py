@@ -323,12 +323,16 @@ def test_fake_success_is_caught_by_harness(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# 仓里的真实设计产出：在就校验，不在就跳过（P-5：删掉 workspaces/ 测试照过）
+# 仓里的真实设计产出：在就校验，不在就跳过（P-5：删掉 projects/ 测试照过）
 # --------------------------------------------------------------------------
+SAMPLE_PACK = (REPO_ROOT / "projects" / "mlp-regression" / "workspaces" / "mlp-regression"
+               / "design" / "1")
+
+
 def test_real_pack_if_present():
-    pack = REPO_ROOT / "workspaces" / "mlp-regression" / "design" / "1"
+    pack = SAMPLE_PACK
     if not pack.is_dir():
-        pytest.skip("仓里没有 workspaces/mlp-regression，框架测试不依赖它")
+        pytest.skip("仓里没有 projects/mlp-regression 的设计产出，框架测试不依赖它")
     assert packs.validate_pack(pack, REPO_ROOT / "domains") == []
 
 
@@ -338,9 +342,9 @@ def test_real_pack_runs_end_to_end_if_present(tmp_path):
     先整包拷到 tmp_path 再跑：产物（predictions.json / results.json / timing.json）不许
     落在仓里，否则跑一次测试就脏一次工作区。
     """
-    source = REPO_ROOT / "workspaces" / "mlp-regression" / "design" / "1"
+    source = SAMPLE_PACK
     if not source.is_dir():
-        pytest.skip("仓里没有 workspaces/mlp-regression，框架测试不依赖它")
+        pytest.skip("仓里没有 projects/mlp-regression 的设计产出，框架测试不依赖它")
     task_dir = tmp_path / "mlp-regression"
     shutil.copytree(source, task_dir, ignore=shutil.ignore_patterns(env.VENV_DIRNAME))
     # 任务自带环境：按它的 env/ 建一个 venv，launcher 只经 $AI4SCI_PYTHON 起解释器

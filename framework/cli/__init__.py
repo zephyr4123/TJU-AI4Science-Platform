@@ -1,11 +1,11 @@
 """`ai4sci` 命令行：协调层驱动框架的唯一入口（workflow.md §5）。
 
-平台在命令行上就六类东西：`cap` 能力（agent 调用，读产出、产出目录）、`requirement confirm` /
-`sign` 人的确认（确认需求、给产出签字）、`show` 查询（只读）、`flow take` 取流程、`output new`
-建产出、`job stop` 停作业与 `env resolve` 算环境清单、`compute` 接机器（P-23）、`skill` 工具包
-（清单、读一个、起它的脚本；两层 agent 都能用，P-22）、`project` / `workspace` / `chat` / `serve`
-入口。
-每类一个模块，本文件只做两件事：把它们的 parser 装配起来、导出 `main`。
+命令行上的东西按类分模块（清单以 `ai4sci --help` 为准）：`cap` 能力（agent 调用，读产出、
+产出目录）、`requirement confirm` / `sign` 人的确认、`show` 查询（只读）、`flow` 取流程与删实例、
+`output` 建产出与删、`job stop` 停作业、`env` 环境清单（resolve / use / add）、`compute` 接机器
+（P-23）、`agent` 与 `check` 底座与自检（P-25）、`skill` 工具包（两层 agent 都能用，P-22）、
+`project` / `workspace` / `chat` / `serve` 入口。每类一个模块，本文件只做两件事：把它们的 parser
+装配起来、导出 `main`。
 四层里的最上面一层，可以 import 下面任何一层；反过来没有任何一层认识 CLI。
 
 每条子命令只干一件事、跑完就退，用退出码表态，不常驻、不等人（P-10）；

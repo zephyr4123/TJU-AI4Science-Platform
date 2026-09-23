@@ -22,7 +22,7 @@
 
 断点是开放的：几个、放哪由流程定——端到端全自动的流程一个没有，步步确认的流程每步一个。含义只有一个：
 前一个阶段的产出要人签（产出目录里的 signed.json）了，下游能力才能 `--from` 它。
-一格上挂的名字有两种（`framework/abilities.py`）：步骤（描述符，得属于那个阶段、参数按描述符核对）
+一格上挂的名字有两种（`framework/capabilities/abilities.py`）：步骤（描述符，得属于那个阶段、参数按描述符核对）
 与 skill（任何阶段都能挂、不带参数——它的参数在调用时给）；`describe` 给每个名字标 `kind`，页面与
 `show flows` 照着分开画。
 阶段之间没有显式的输入输出接口：检查只看阶段名对不对、点名的能力在不在那个阶段、参数名与类型对不对、断点位置合不合法
@@ -383,7 +383,7 @@ def describe_dir(root: Path, catalog: dict[str, Capability],
                  skills: Collection[str] = ()) -> list[dict[str, Any]]:
     """目录里每个文件一条：读得出来的带 covers / remarks / problems；读不出来的（形状不对、YAML 坏）
     也占一条，名字是文件名，problems 里是那句原因。一个坏文件不能让整张清单打不开——研究助理
-    在工作区 flows/ 里随手写个只有一行的文件，主页面就整个「Failed to fetch」，实测撞过。"""
+    在工作区 flows/ 里随手写个只有一行的文件，工作区页就整个「Failed to fetch」，实测撞过。"""
     out: list[dict[str, Any]] = []
     for path in sorted(Path(root).glob("*.yaml")) if Path(root).is_dir() else []:
         try:

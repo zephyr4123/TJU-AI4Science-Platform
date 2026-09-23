@@ -87,7 +87,7 @@ def follow_up(where: scope.Scope, conv: conversation.Conversation, chat: Chat,
         seen = False
         for event in conversation.send_inbox(
             conv, chat, system_prompt=system_prompt, allowed_paths=list(where.allowed_paths),
-            bash_rules=guide.BASH_RULES, readable_paths=list(where.readable_paths),
+            bash_rules=guide.bash_rules(where.kind), readable_paths=list(where.readable_paths),
         ):
             seen = True
             yield event

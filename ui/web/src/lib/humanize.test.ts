@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { conclusionOf, denialSentence, outputWord, requirementWord, stageSentence, stopSentence, wakeSentence } from './humanize'
+import { denialSentence, outputWord, requirementWord, stageSentence, wakeSentence } from './humanize'
 
 describe('需求与产出的句子', () => {
   it('需求状态', () => {
@@ -23,20 +23,6 @@ describe('需求与产出的句子', () => {
     expect(outputWord({ status: 'ok', signed: null })).toBe('完成')
     expect(outputWord({ status: 'ok', signed })).toBe('已确认')
     expect(outputWord({ status: 'ok', signed: { ...signed, stale: true } })).toBe('已确认 · 之后有改动')
-  })
-})
-
-describe('实验的句子', () => {
-  it('停止原因', () => {
-    expect(stopSentence('patience', false)).toBe('多轮无进步，已停止')
-    expect(stopSentence(null, true)).toBe('运行中')
-    expect(stopSentence(null, false)).toBe('可继续')
-    expect(stopSentence('weird', false)).toBe('已停止：weird')
-  })
-  it('抽结论一节', () => {
-    const doc = '# 分析\n\n## 结论\n\nbest 是第 6 轮。\n\n## 数据\n\n| a |\n'
-    expect(conclusionOf(doc)).toBe('best 是第 6 轮。')
-    expect(conclusionOf('没有小节')).toBe('没有小节')
   })
 })
 

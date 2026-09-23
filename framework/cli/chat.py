@@ -128,7 +128,7 @@ def _turns(where: scope.Scope, conv: conversation.Conversation, chat, text: str,
     """人这一轮，然后把收件箱里排着的念完（服务端 `_stream` 同一个顺序）。"""
     yield from conversation.send(
         conv, chat, text, system_prompt=system_prompt,
-        allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
+        allowed_paths=list(where.allowed_paths), bash_rules=guide.bash_rules(where.kind),
         readable_paths=list(where.readable_paths), tuning=tuning)
     yield from notify.follow_up(where, conv, chat, system_prompt)
 

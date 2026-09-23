@@ -127,11 +127,11 @@ def test_registry_has_local_by_default_and_round_trips(registry_file):
     again = computes.load()
     assert list(again.entries) == ["local", "box"] and again.get("box").params["host"] == "h"
     computes.set_default("box")
-    assert computes.default_name() == "box"
+    assert computes.load().default == "box"
     assert computes.add("box", "ssh", {"host": "h2", "user": "u", "key": "k", "root": "/r"}) \
         .params["port"] == computes.DEFAULT_SSH_PORT  # 同名覆盖：AutoDL 关机重开端口会变
     computes.remove("box")
-    assert computes.default_name() == "local" and "box" not in computes.load().entries
+    assert computes.load().default == "local" and "box" not in computes.load().entries
     with pytest.raises(ComputeNotFound, match="有：local"):
         computes.load().get("nope")
     with pytest.raises(computes.ComputesInvalid, match="删不掉"):
@@ -172,7 +172,7 @@ def test_cli_list_remove_default_and_add_rejects_missing_key(registry_file, caps
     assert "密钥文件不存在" in capsys.readouterr().err
     assert main(["compute", "add", "box", "--ssh", "u@h:99999x", "--key", "~/.ssh"]) == 2
     computes.add("box", "ssh", {"host": "h", "user": "u", "key": "k", "root": "/r"})
-    assert main(["compute", "default", "box"]) == 0 and computes.default_name() == "box"
+    assert main(["compute", "default", "box"]) == 0 and computes.load().default == "box"
     assert main(["show", "computes"]) == 0
     out = capsys.readouterr().out
     assert "box\tssh\tu@h:22\t无 GPU\t未探测\t(缺省)" in out

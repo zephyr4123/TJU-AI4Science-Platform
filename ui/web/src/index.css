@@ -252,14 +252,8 @@
     background: color-mix(in oklab, var(--background) 70%, transparent);
   }
 
-  .t-lede {
-    @apply font-serif text-[1.25rem] leading-[1.45] font-semibold text-balance;
-  }
   .t-step {
     @apply font-serif text-[1rem] leading-[1.4] font-semibold;
-  }
-  .t-big {
-    @apply font-sans text-[1.75rem] leading-none font-medium tracking-[-0.01em] tabular-nums;
   }
   .t-body {
     @apply text-[0.9375rem] leading-[1.65] max-w-[68ch];

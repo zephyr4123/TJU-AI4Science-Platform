@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 
 from backends import BackendNotFound, get_backend
 from compute import ComputeNotFound
 from framework import computes
 from framework.contracts.capability import Ports
-from framework.workspace import project, root
+from framework.workspace import jobs, project, root
 from framework.workspace.project import Project
 from framework.workspace.root import Workspace
 
@@ -34,6 +35,17 @@ def setup_logging() -> None:
     """内环每轮一条结构化 info 走 stderr；stdout 只留给给协调层读的结论。"""
     logging.basicConfig(level=logging.INFO, stream=sys.stderr,
                         format="%(asctime)s %(name)s %(message)s")
+
+
+def refuse_if_assistant(what: str) -> int | None:
+    """人的动作（确认需求、给产出签字）在助理的会话里一律拒：适配器起会话时给每条命令带上
+    `AI4SCI_CHAT_ID`，带着它就是助理在调。这是「只有人能确认」的机器判据（纲领 P-19），指南里的
+    「你不替人签」只是提醒。人在终端里跑没有这个变量，照常。"""
+    if not os.environ.get(jobs.CHAT_ID_ENV):
+        return None
+    print(f"{what}是人的动作，助理不替人做：请研究者在页面上确认，或在自己的终端里跑这条命令",
+          file=sys.stderr)
+    return EXIT_INVALID
 
 
 def add_ws_option(parser: argparse.ArgumentParser) -> None:

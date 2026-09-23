@@ -25,7 +25,6 @@ import importlib.util
 import logging
 import os
 import re
-import subprocess
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -47,7 +46,7 @@ VENV_DIRNAME = ".venv"
 # harness 经这个环境变量拿到任务 venv 的解释器：框架提交 harness 时设，
 # make_run0.sh 缺省指到任务目录的 .venv
 PYTHON_ENV = "AI4SCI_PYTHON"
-# 框架起 harness 时**保证**给出的另外几个变量（packs.md §2）：一次跑的墙钟预算、评分内部重复
+# 框架起 harness 时**保证**给出的另外几个变量（纲领 workflow.md §2）：一次跑的墙钟预算、评分内部重复
 # 次数；起跑时刻由 launcher 自己设给 evaluate.py。保证给出就意味着 harness 拿不到时必须停，
 # 不许写默认值——rahman-nll 第一版评分脚本缺 INNER_K 时默认按 5 份算，算出一份看着合法的
 # 假成绩，签字的人没看出来（外层 #44）。种子不在此列：AI4SCI_SEED 缺省 42 是契约的一部分。
@@ -99,7 +98,7 @@ def read_env(task_dir: Path) -> tuple[EnvSpec | None, list[str]]:
     edir = env_dir(task_dir)
     label = f"{ENV_DIRNAME}/"
     if not edir.is_dir():
-        return None, [f"{label}: 目录缺失，任务包必须自带环境（期望 {edir}）"]
+        return None, [f"{label}: 目录缺失，设计那包必须自带环境（期望 {edir}）"]
     problems: list[str] = []
 
     version_path = edir / PYTHON_VERSION_NAME
@@ -380,15 +379,3 @@ def add_packages(target_env: Path, compute: Compute, packages: list[str]) -> Pat
                     + lock.read_text(encoding="utf-8"), encoding="utf-8")
     LOGGER.info("env_add compute=%s python=%s packages=%d", name, python, len(packages))
     return target_env
-
-
-def _run(argv: list[str], *, what: str) -> subprocess.CompletedProcess[str]:
-    try:
-        proc = subprocess.run(argv, capture_output=True, text=True, check=False)
-    except OSError as exc:
-        raise EnvBuildError(f"{what} 起不来：{exc}") from exc
-    if proc.returncode != 0:
-        raise EnvBuildError(
-            f"{what} 失败（退出码 {proc.returncode}）：{proc.stderr.strip()[-_STDERR_TAIL:]}"
-        )
-    return proc

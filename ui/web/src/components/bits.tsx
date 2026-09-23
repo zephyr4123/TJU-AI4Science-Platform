@@ -15,16 +15,6 @@ export function Dot({ tone, pulse = false, className }: { tone: Tone; pulse?: bo
   return <span className={cn('inline-block size-2 shrink-0 rounded-full', DOT[tone], pulse && 'animate-pulse', className)} />
 }
 
-export function Empty({ title, hint, action }: { title: string; hint?: string; action?: ReactNode }) {
-  return (
-    <div className="space-y-2 py-6">
-      <p className="t-lede">{title}</p>
-      {hint && <p className="t-body text-muted-foreground">{hint}</p>}
-      {action}
-    </div>
-  )
-}
-
 export function ErrorNote({ text, className }: { text: string; className?: string }) {
   return (
     <div role="alert" className={cn('flex items-start gap-2 rounded-md bg-bad-soft px-3 py-2 text-sm text-bad', className)}>

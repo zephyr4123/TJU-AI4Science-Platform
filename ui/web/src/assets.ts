@@ -8,14 +8,14 @@ export interface Clip { video: string; poster: string }
 /** 一张图：src 必有，srcSet 给宽窄两档；alt 给清单与文档看，页面上作装饰时不念 */
 export interface Picture { src: string; srcSet?: string; alt: string }
 
-/** 工作区封面：大图给抽屉与横幅，小图给顶栏与切换清单 */
+/** 项目封面：大图给项目墙与页眉底，小图给切换清单 */
 export interface Cover extends Picture { key: string; thumb: string }
 
 const cover = (key: string, alt: string): Cover => ({
   key, alt, src: `${CDN}/image/cover-${key}-800.jpg`, thumb: `${CDN}/image/cover-${key}-240.jpg`,
 })
 
-/** 六张封面：风景，按色调分开好认（主人：别用玻璃瓶、实验室味的图）；一个工作区按名字稳定地挑一张，地方栏、清单、抽屉认同一张 */
+/** 六张封面：风景，按色调分开好认（主人：别用玻璃瓶、实验室味的图）；一个项目按 id 稳定地挑一张，首页、项目页、工作区页认同一张 */
 export const COVERS: readonly Cover[] = [
   cover('ridge', '雾里的山脊'),
   cover('forest', '雾中的松林'),
@@ -33,7 +33,7 @@ export function coverOf(id: string): Cover {
 }
 
 export const ASSETS = {
-  /** 「新建工作区」那一屏的背景：浅色一段云雾，深色一段光线汇聚 */
+  /** 门口那一屏（起项目）的背景：浅色一段云雾，深色一段光线汇聚 */
   door: {
     light: { video: `${CDN}/video/door-light.mp4`, poster: `${CDN}/image/door-light.jpg` },
     dark: { video: `${CDN}/video/door-dark.mp4`, poster: `${CDN}/image/door-dark.jpg` },

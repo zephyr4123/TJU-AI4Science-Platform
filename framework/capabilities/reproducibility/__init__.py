@@ -56,7 +56,7 @@ DESCRIPTOR = Capability(
     leaves="analysis.md；执行层会话的日志在 executor/。",
     stops=(
         "一次成稿就退出。会话写了别的文件、三节缺一、数据表一行都解析不出：判失败、报告原因，"
-        "协调层看了决定重写（新开一次产出，带上上一版的问题）还是找人。"
+        "助理看了决定重写（新开一次产出，带上上一版的问题）还是找人。"
     ),
     params=(
         Param("feedback", "str", "",

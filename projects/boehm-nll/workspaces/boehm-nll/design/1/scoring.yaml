@@ -19,7 +19,7 @@ requirements:
 - id: R1
   type: numeric
   must_pass: true
-  description: 主指标 nll 优于 run_0 基线，且差值超过 accept_sigma 倍的重复跑标准差（或 min_delta）
+  description: 主指标 nll 优于基线，且差值超过 accept_sigma 倍的重复跑标准差（或 min_delta）
 - id: R2
   type: artifact
   must_pass: true

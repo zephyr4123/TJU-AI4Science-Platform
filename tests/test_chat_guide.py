@@ -84,7 +84,15 @@ def test_bash_rules_only_allow_bare_ai4sci():
     assert "平台还没有这个功能" in guide.PREAMBLES[guide.PROJECT]
     assert "去编辑台拼一条" in guide.PREAMBLES[guide.PROJECT]
     assert "不拼 `find`" in guide.PREAMBLES[guide.PROJECT]
-    assert "去主页面找研究助理" in guide.PREAMBLES[guide.STUDIO]
+    assert "去项目里找研究助理" in guide.PREAMBLES[guide.STUDIO]
+    # 分权的机器判据之二（P-16）：流程助理连 cap / sign / requirement confirm 的前缀都不放行
+    assert guide.bash_rules(guide.PROJECT) == guide.BASH_RULES
+    assert guide.bash_rules(guide.STUDIO) == ("ai4sci show", "ai4sci workflow",
+                                             ".venv/bin/ai4sci show")
+    assert not any(p in ("ai4sci", ".venv/bin/ai4sci") for p in guide.bash_rules(guide.STUDIO))
+    assert "`ai4sci show …`" in guide.PREAMBLES[guide.STUDIO]
+    with pytest.raises(AssertionError, match="指南只有"):
+        guide.bash_rules("nope")
 
 
 @pytest.mark.parametrize("kind", guide.KINDS)

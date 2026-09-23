@@ -35,7 +35,7 @@ from framework.capabilities.auto_research.open import (
     extend_experiment,
     open_experiment,
 )
-from framework.experiment import gitwork, ledger
+from framework.experiment import gitwork, layout, ledger
 from framework.experiment.checkpoint import read_checkpoint, write_checkpoint
 from framework.experiment.context import load_context
 from framework.workspace import outputs
@@ -613,7 +613,7 @@ def test_open_experiment_lays_out_the_disk_and_rejects_broken_packs(tmp_path):
     run_dir, pack = start_run(tmp_path)
     assert (run_dir / "scoring.yaml").is_file()
     assert (run_dir / "prompts" / "requirement.md").is_file()
-    assert (run_dir / "journal.md").read_text(encoding="utf-8") == ""
+    assert layout.journal(run_dir).read_text(encoding="utf-8") == ""
     assert (run_dir / "iters").is_dir() and (run_dir / "meta.yaml").is_file()
     assert not (run_dir / "work" / "meta.yaml").exists(), "框架的账不该跟着拷进 work/"
     assert gitwork.is_clean(run_dir / "work")
@@ -708,7 +708,7 @@ def test_extend_experiment_clears_stop_and_lets_the_loop_continue(tmp_path):
     assert done["cleared"] == "patience" and done["changes"] == ["patience: 1 → 5"]
     assert read_checkpoint(run_dir)["stop_reason"] is None
     assert not (run_dir / "stop.json").exists()
-    assert "加预算" in (run_dir / "journal.md").read_text(encoding="utf-8")
+    assert "加预算" in layout.journal(run_dir).read_text(encoding="utf-8")
     stop = run_loop(run_dir, ScriptedRunner([train_for_mse(0.018)]), LocalCompute(),
                          max_iters=1)
     assert stop.reason == "batch_exhausted" and rows_of(run_dir)[-1].status == "keep"

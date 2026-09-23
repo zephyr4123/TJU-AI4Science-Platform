@@ -1,7 +1,6 @@
 # ── 本机会话产物 / agent 注入（本机路径，不进版本库）──
 .claude/
 CLAUDE.local.md
-AGENTS.md
 
 # ── 构建与打包产物 ──
 dist/

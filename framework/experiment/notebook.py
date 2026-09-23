@@ -44,5 +44,5 @@ def append(
 def read(path: Path) -> str:
     """整本读回；没有就明说，不留空白让模型脑补。"""
     if not path.is_file():
-        return "（本 run 还没有笔记：这是第一轮，起点是任务包的基线）"
+        return "（这次实验还没有笔记：这是第一轮，起点是设计那包的基线）"
     return path.read_text(encoding="utf-8").strip()

@@ -13,4 +13,4 @@ requirements:
 - id: R1
   type: numeric
   must_pass: true
-  description: 主指标 val_mse 优于 run_0 基线，且差值超过 accept_sigma 倍的重复跑标准差
+  description: 主指标 val_mse 优于基线，且差值超过 accept_sigma 倍的重复跑标准差

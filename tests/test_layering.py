@@ -21,11 +21,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LAYERS = ("contracts", "skills", "workspace", "executor", "experiment", "chat", "capabilities",
           "cli")
 # 端口：framework 任何一层都可以 import 它们，它们不许 import framework。
-PORTS = ("backends", "compute", "tools")
+PORTS = ("backends", "compute")
 
 
 def _imported_modules(path: Path, root: Path) -> list[str]:
-    """一个文件里 import 到的模块全名；相对 import 按它在 root 下所处的包补全。"""
+    """一个文件里 import 到的模块全名；相对 import 按它在 root 下所处的包补全。
+
+    `from framework import cli` 这种写法里被 import 的是 `framework.cli` 这个包，光看 `module`
+    字段只见 `framework`，层名就漏了；所以 module 自己认不出层时，把每个别名接在它后面也算
+    一个名字。"""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     package = list(path.relative_to(root).parent.parts)
     names: list[str] = []
@@ -35,9 +39,14 @@ def _imported_modules(path: Path, root: Path) -> list[str]:
         elif isinstance(node, ast.ImportFrom):
             if node.level:  # 相对 import：往上退 level-1 级再接 module
                 base = package[: len(package) - node.level + 1]
-                names.append(".".join([*base, node.module] if node.module else base))
-            elif node.module:
-                names.append(node.module)
+                module = ".".join([*base, node.module] if node.module else base)
+            else:
+                module = node.module or ""
+            if module:
+                names.append(module)
+            if _layer_of(module) is None:  # module 本身认不出层（`framework`）：别名才是那个包
+                names += [f"{module}.{alias.name}" if module else alias.name
+                          for alias in node.names]
     return names
 
 
@@ -141,3 +150,11 @@ def test_checker_resolves_relative_imports(tmp_path):
     root = _fake_repo(tmp_path, {"framework/run/bad.py": "from ..cli import main\n"})
     assert _imported_modules(root / "framework/run/bad.py", root) == ["framework.cli"]
     assert len(violations(root)) == 1
+
+
+def test_checker_sees_a_package_imported_by_name(tmp_path):
+    """`from framework import cli` 也是在 import cli 层：只看 ImportFrom 的 module 字段会漏掉它
+    （文档盘点时复现过这个盲点）。"""
+    root = _fake_repo(tmp_path, {"framework/contracts/bad.py": "from framework import cli\n"})
+    problems = violations(root)
+    assert len(problems) == 1 and "framework.cli" in problems[0]

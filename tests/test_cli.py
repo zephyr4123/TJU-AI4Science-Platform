@@ -17,7 +17,8 @@ import pytest
 
 from compute.local import LocalCompute
 from framework.contracts import output, requirement
-from framework.workspace import outputs
+from framework.experiment import layout
+from framework.workspace import jobs, outputs
 from framework.workspace import project as project_mod
 from tests.fixtures import packs_factory as pf
 from tests.fixtures import runs_factory as rf
@@ -164,6 +165,23 @@ def test_requirement_confirm_writes_the_lock_and_refuses_placeholders(tmp_path):
     assert proc.returncode == EXIT_OK, proc.stderr
     assert proc.stdout.startswith("ok w\tv1\tby=张三\t") and "flow take" in proc.stdout
     assert requirement.status(ws.root)["version"] == 1
+
+
+def test_confirm_and_sign_refuse_to_run_inside_an_assistant_session(tmp_path):
+    """「只有人能确认」要有机器保证：助理的会话里每条命令都带着 AI4SCI_CHAT_ID（适配器 build_env
+    设的），带着它调 requirement confirm / sign 一律拒；之前只靠指南里的一句「你不替人签」。"""
+    ws = pf.make_workspace(tmp_path, "w", confirmed=False)
+    ws.requirement.write_text(pf.REQUIREMENT, encoding="utf-8")
+    proc = run_cli("requirement", "confirm", "--by", "助理", cwd=ws.root,
+                   env={jobs.CHAT_ID_ENV: "chat-1"})
+    assert proc.returncode == EXIT_INVALID and "人的动作" in proc.stderr
+    assert not requirement.lock_path(ws.root).exists()
+    pack = pf.make_pack(tmp_path)
+    where = in_pack(pack)
+    proc = run_cli("sign", "design/1", "--by", "助理", cwd=where["cwd"],
+                   env={**where["env"], jobs.CHAT_ID_ENV: "chat-1"})
+    assert proc.returncode == EXIT_INVALID and "人的动作" in proc.stderr
+    assert not (pack.pack / output.SIGNED_NAME).exists()
 
 
 def test_sign_writes_the_signature_and_refuses_bad_targets(tmp_path):
@@ -415,7 +433,7 @@ def test_auto_research_extends_the_budget_before_looping(tmp_path, monkeypatch, 
     code = main(["cap", "auto-research", "--continue", "experiment/1", "--patience", "9",
                  "--reason", "测试"])
     assert code == EXIT_OK and seen["stop_reason"] is None
-    assert "patience: 99 → 9" in (run_dir / "journal.md").read_text(encoding="utf-8")
+    assert "patience: 99 → 9" in layout.journal(run_dir).read_text(encoding="utf-8")
     assert capsys.readouterr().out.startswith("stop batch_exhausted")
     code = main(["cap", "auto-research", "--continue", "experiment/1", "--reason", "没配预算"])
     assert code == EXIT_INVALID and "只在加预算时" in capsys.readouterr().err
@@ -561,6 +579,10 @@ def test_cap_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch
     assert (pack / "executor" / "session-1" / "prompt.md").is_file()
     assert (pack / "baseline" / "results.json").is_file() and (pack / "data" / "val.json").is_file()
     assert output.read_meta(pack).params == {"domain": "generic"}
+    # 执行层用的哪家、什么模型与深度记进 meta（P-25 的出处；测试里两层都是 claude_code 的起点）
+    agent = output.read_meta(pack).agent
+    assert agent is not None and agent["backend"] == "claude_code"
+    assert isinstance(agent["model"], str) and isinstance(agent["effort"], str)
 
     code = main(["cap", "design", "--continue", "design/1", "--feedback", "改坏它"])
     captured = capsys.readouterr()

@@ -1,12 +1,13 @@
 """网页的后端：HTTP 端点包住 conversation.py 与 boards.py，事件用 SSE 推，页面本身也从这里端出去。
 
-标准库 ThreadingHTTPServer：二十个端点不值得引一个 web 框架。零模型：模型在适配器的子进程里。
+标准库 ThreadingHTTPServer：四十来个端点、单人本机服务，不值得引一个 web 框架。
+零模型：模型在适配器的子进程里。
 能力清单（`/cap`）、流程库（`/workflows`）、拼流程检查（`/workflows/check`）与描述符表（流程实例的进度要核对
 点名的能力）由调用方以函数传入——这一层不认识 capabilities，依赖方向不能反过来。
 页面是这些端点的客户端，换一种 UI 也是同一套（`ui/README.md`）。
 
 端点按域分前缀（纲领 P-16）：项目 `/projects/<p>/…` 是研究助理的域（一个项目一位助理，外层 #136），
-`/studio/…` 是流程助理的域，对话四个端点在两个前缀下共用一套实现；主页面的对话物理上到不了库。
+`/studio/…` 是流程助理的域，对话五个端点在两个前缀下共用一套实现；项目里的对话物理上到不了库。
 工作区在项目之下：`/projects/<p>/workspaces/<id>/…`。
 
     GET  /health                            {"ok": true, "checks_ok":
@@ -28,6 +29,7 @@
     GET  /workflows                         库：`workflows/*.yaml`，covers / remarks / problems
     POST /workflows                         {name, title, summary, stages[, overwrite]} → 存进库
     POST /workflows/check                   同一个 body，只查不存：covers / remarks / problems
+    POST /workflows/<name>/remove           删库里一条流程（出厂的 research / reproduce 拒 403）
     GET  /templates                         需求模板的库：名字、标题、一句说明、原文
     GET  /projects                          项目清单：标题、几个工作区、有没有作业在跑
     POST /projects                          {"id", "title"?, "goal"?} → 新项目（写 project.md）
@@ -158,7 +160,7 @@ class ChatServer(ThreadingHTTPServer):
         """这个域的指南 + 这家 CLI 的「工具怎么用」。真指南由 guide 拼（那段插在前言之后）；
         测试注入的
         指南直接接在后面。"""
-        tool = chat.tool_guide(guide.BASH_RULES)
+        tool = chat.tool_guide(guide.bash_rules(kind))
         if self._injected_prompts:
             base = self.system_prompts[kind]
             return base + ("\n\n" + tool.strip() + "\n" if tool.strip() else "")
@@ -501,7 +503,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             events = conversation.send(
                 conv, chat, text, system_prompt=system_prompt,
-                allowed_paths=list(where.allowed_paths), bash_rules=guide.BASH_RULES,
+                allowed_paths=list(where.allowed_paths), bash_rules=guide.bash_rules(where.kind),
                 readable_paths=list(where.readable_paths), tuning=tuning)
             first = next(events)  # 忙、空消息这类错误在头响应之前就要报出来
         except conversation.ConversationBusy as exc:
@@ -644,7 +646,7 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def _detail(self, ws):
-        """主页面那一整份：流程实例的格子上步骤与 skill 都要认。"""
+        """工作区页那一整份：流程实例的格子上步骤与 skill 都要认。"""
         return boards.workspace_detail(ws, self.server.descriptors(), self.server.skill_names())
 
     def _json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:

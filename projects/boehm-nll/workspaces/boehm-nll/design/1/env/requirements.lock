@@ -1,5 +1,5 @@
 # pyPESTO + petab + libroadrunner 的完整 pip freeze（2026-09-16，macOS arm64 探针环境；uv pip sync 要求列全，含传递依赖）。
-# 直接依赖：pypesto、petab、libroadrunner；其余是它们拉进来的。改动后跑 ai4sci task env build 重建。
+# 直接依赖：pypesto、petab、libroadrunner；其余是它们拉进来的。改动后重开一次设计（ai4sci cap design），环境按它重建。
 annotated-types==0.8.0
 antlr4-python3-runtime==4.13.1
 attrs==26.1.0

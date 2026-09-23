@@ -37,18 +37,6 @@ export function day(iso: string | null | undefined, today = new Date()): string 
   return date.toLocaleDateString('zh-CN', { year: sameYear ? undefined : 'numeric', month: 'long', day: 'numeric' })
 }
 
-export function shortHash(value: string | null | undefined): string {
-  return value ? value.slice(0, 8) : '—'
-}
-
-/** 改进量：按方向取正，正数就是变好了。 */
-export function improvement(
-  baseline: number | null, best: number, direction: 'minimize' | 'maximize',
-): number | null {
-  if (baseline === null) return null
-  return direction === 'minimize' ? baseline - best : best - baseline
-}
-
 /** 对话列表里的名字：第一句话；还没说话就按开始时间叫它。 */
 export function chatTitle(chat: { title: string | null; created_at: string }): string {
   return chat.title ?? `${when(chat.created_at)} 开始的对话`

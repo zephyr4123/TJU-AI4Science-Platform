@@ -19,6 +19,8 @@ from framework.chat import guide
 from framework.cli import main
 from framework.executor import prompting
 from framework.skills import library, run
+from framework.workspace import project as project_mod
+from tests.fixtures import spaces
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PEP723 = '# /// script\n# requires-python = ">=3.12"\n# dependencies = []\n# ///\n'
@@ -267,6 +269,33 @@ def test_cli_list_show_run(libraries, capfd, tmp_path):
     assert json.loads(capfd.readouterr().out.strip()) == {"args": ["--input", "a", "--flag"]}
     assert main(["skill", "run", "petab"]) == 2  # 没有脚本
     assert "没有脚本" in capfd.readouterr().err
+
+
+CWD_PY = PEP723 + (
+    '"""夹具脚本：回显自己在哪跑、拿到了哪些参数。"""\nimport json\nimport os\nimport sys\n\n'
+    'print(json.dumps({"cwd": os.getcwd(), "args": sys.argv[1:]}))\n'
+)
+
+
+def test_cli_run_with_ws_starts_the_script_inside_that_workspace(libraries, capfd, tmp_path,
+                                                                   monkeypatch):
+    """助理站在项目里，skill 写的相对路径（materials/…）得落到点名的工作区，不是项目根（复现那条流程
+    里 download 拉到了项目 materials/，reproduction --code 却只找工作区的 materials/，两边对不上）。
+    `--ws` 写在 skill 名前后都认，且不递给脚本。"""
+    generic, _ = libraries
+    write_skill(generic, "where", "# where\n\n运行：`ai4sci skill run where`\n",
+                scripts={"go.py": CWD_PY})
+    ws = spaces.make_workspace(tmp_path, "w1")
+    monkeypatch.chdir(project_mod.of(ws).root)
+    assert main(["skill", "run", "where", "--out", "materials/x", "--ws", "w1"]) == 0
+    doc = json.loads(capfd.readouterr().out.strip())
+    assert Path(doc["cwd"]).resolve() == ws.root.resolve()
+    assert doc["args"] == ["--out", "materials/x"]
+    assert main(["skill", "run", "--ws", "w1", "where", "--out", "materials/x"]) == 0
+    again = json.loads(capfd.readouterr().out.strip())
+    assert Path(again["cwd"]).resolve() == ws.root.resolve()
+    assert main(["skill", "run", "where", "--ws", "nope"]) == 2  # 项目里没有这个工作区
+    assert main(["skill", "run", "where", "--ws"]) == 2  # 名字没给
 
 
 def test_make_skills_entry_warms_every_script_and_probes_system_tools(libraries, capsys,

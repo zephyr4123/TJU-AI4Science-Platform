@@ -5,8 +5,8 @@ runner 对算力的全部需求只有五个动作：快照过去（`put`，目�
 （`remote_dir_for`）、同步一个允许已在的目录（`sync`，设计那包）、同步跑一条短命令拿输出
 （`run`，建 venv、算清单）、在那台机器上怎么起 uv（`uv`，远端按 `env/` 建自己的 venv）、
 探一遍机器（`check`，接机器时与之后随时）。执行层 agent 永远在本机，远端只跑 harness。
-`submit` / `wait` 分开而不是一个阻塞的 `run`：句柄要能落盘（`run_N/job.json`），
-`loop resume` 重启后才接得回还在跑的任务、或给已经死掉的任务收尸——A-5 续跑的前提。
+`submit` / `wait` 分开而不是一个阻塞的 `run`：句柄要能落盘（`iters/iter_N/job.json`），
+`cap auto-research --continue … --resume` 重启后才接得回还在跑的任务、或给已经死掉的任务收尸。
 
 与 `backends/` 同一标准：没有抽象基类、没有注册表，加一个后端就是 `_COMPUTES` 里加一行。
 一台机器的连接参数（主机、端口、用户、密钥路径、远端根）由 framework 从按人的

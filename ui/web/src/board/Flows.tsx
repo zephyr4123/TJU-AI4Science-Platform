@@ -1,4 +1,4 @@
-// 需求确认之后的主页面：一条流程一张表。横向是流程经过的阶段（有什么阶段就几列），纵向是每一列跑过的每一次产出；
+// 需求确认之后的工作区页：一条流程一张表。横向是流程经过的阶段（有什么阶段就几列），纵向是每一列跑过的每一次产出；
 // 断点是两列之间的一道线。右上角一句话说在等谁。流程没经过的阶段不出现；不在任何流程里的产出只在最底下一行「其它」。
 import { CheckCircle, Signature, Trash } from '@phosphor-icons/react'
 import { createElement, useState } from 'react'

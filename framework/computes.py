@@ -166,10 +166,6 @@ def instance(name: str, registry: Registry | None = None) -> Compute:
     return compute
 
 
-def default_name() -> str:
-    return load().default
-
-
 def add(name: str, kind: str, params: dict[str, Any]) -> Entry:
     """加（同名覆盖——AutoDL 关机重开端口会变）；不探测，探测由调用方做完再 `record_check`。"""
     if name == LOCAL:

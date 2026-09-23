@@ -77,15 +77,6 @@ def test_a_signature_also_freezes(tmp_path):
         outputs.resolve_inputs(ws, ["design/1"])
 
 
-def test_touch_output_keeps_the_same_directory(tmp_path):
-    ws = _ws(tmp_path)
-    d1, m1 = _open(ws, "experiment")
-    outputs.close_output(d1, m1, ok=True, line="stop batch")
-    outputs.touch_output(d1, m1, line="stop again")
-    assert output.read_meta(d1).result == "stop again" and output.read_meta(d1).status == "ok"
-    assert [m.id for _, m in outputs.list_outputs(ws)] == ["experiment/1"]
-
-
 def test_reopen_clears_last_attempt_and_records_this_machine(tmp_path):
     """--continue 接着干：上一次的错、结论、结束时间作废，机器按这次的记（演练里第五次续跑
     还挂着「autodl」与上一次的 make_run0.sh 报错）。"""
