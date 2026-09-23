@@ -17,6 +17,7 @@ import { ASSETS } from '@/assets'
 import { ErrorNote, Problems, Skeleton } from '@/components/bits'
 import GlassSurface from '@/components/reactbits/GlassSurface'
 
+import { useChatInset } from '@/chat/ChatPanel'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -85,6 +86,7 @@ function Editor({ stages, workflows, catalog, skills, onSaved, onOpenCap }: {
   stages: StageInfo[]; workflows: Workflow[]; catalog: Capability[]; skills: SkillEntry[]; onSaved: () => void; onOpenCap: (name: string) => void
 }) {
   const wide = useMediaQuery(WIDE)
+  const inset = useChatInset()  // 对话窗浮在右边时占掉的宽度：右上角那几块与底下的判词往左让
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [selected, setSelected] = useState<number | null>(null)
   const setItems: SetItems = useCallback((change) => setDraft((d) => ({ ...d, items: change(d.items) })), [])
@@ -123,7 +125,7 @@ function Editor({ stages, workflows, catalog, skills, onSaved, onOpenCap }: {
           <div className="pointer-events-auto"><Ladder stages={stages.map((s) => s.name)} onAdd={(seed) => add(seed)} /></div>
           <div className="pointer-events-auto"><Heading draft={draft} setDraft={setDraft} /></div>
         </Panel>
-        <Panel position="top-right" className="pointer-events-none !m-4 flex flex-col items-end gap-3">
+        <Panel position="top-right" className="pointer-events-none !m-4 flex flex-col items-end gap-3" style={{ right: inset }}>
           <div className="pointer-events-auto flex items-center gap-2">
             {arranged(draft.items) && (
               <Button variant="outline" size="sm" className="rounded-full bg-card/85 backdrop-blur-sm" title="回到自动排列"
@@ -139,7 +141,7 @@ function Editor({ stages, workflows, catalog, skills, onSaved, onOpenCap }: {
             <div className="pointer-events-auto max-h-[calc(100dvh-13rem)] w-[19rem] overflow-y-auto rounded-2xl border bg-card/90 p-4 shadow-sm backdrop-blur-sm">{inspector}</div>
           )}
         </Panel>
-        <Panel position="bottom-center" className="!mb-4 max-w-[28rem]">
+        <Panel position="bottom-center" className="!mb-4 max-w-[28rem]" style={{ left: `calc(50% - ${inset / 2}px)` }}>
           <Verdict items={draft.items} check={check.data} error={check.error} />
         </Panel>
       </Canvas>
@@ -228,6 +230,8 @@ function Canvas({ items, chips, perItem, selected, onSelect, setItems, onOpenCap
   children: ReactNode
 }) {
   const { screenToFlowPosition, fitView } = useReactFlow()
+  const inset = useChatInset()
+  const padding = useMemo(() => ({ ...FIT, right: `${parseFloat(FIT.right) + inset}px` as const }), [inset])  // 取景避开浮着的对话窗
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNode>([])
   const arrow = useToken('--muted-foreground')
 
@@ -248,9 +252,9 @@ function Canvas({ items, chips, perItem, selected, onSelect, setItems, onOpenCap
     })
   }, [items, perItem, chips, setNodes, setItems, onOpenCap])
   useEffect(() => {
-    const id = requestAnimationFrame(() => void fitView({ padding: FIT, maxZoom: 1, duration: 200 }))
+    const id = requestAnimationFrame(() => void fitView({ padding, maxZoom: 1, duration: 200 }))
     return () => cancelAnimationFrame(id)
-  }, [items.length, fitView])
+  }, [items.length, fitView, padding])
 
   // 下一项在右边就左进右出；在下面（换行、或人摆到下面去了）就从上一项底下出、下一项顶上进
   const edges = useMemo<Edge[]>(() => {
@@ -287,12 +291,12 @@ function Canvas({ items, chips, perItem, selected, onSelect, setItems, onOpenCap
         setItems((all) => dropAt(all, seed, at.x, at.y))
       }}
       nodesConnectable={false} edgesFocusable={false} panOnScroll zoomOnScroll={false} minZoom={0.3} maxZoom={1.5} proOptions={{ hideAttribution: true }}
-      deleteKeyCode={['Backspace', 'Delete']} fitView fitViewOptions={{ padding: FIT, maxZoom: 1 }}
+      deleteKeyCode={['Backspace', 'Delete']} fitView fitViewOptions={{ padding, maxZoom: 1 }}
       className="!bg-transparent"
     >
       <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} />
       {items.length === 0 && (
-        <Panel position="top-center" className="pointer-events-none !mt-[28%]">
+        <Panel position="top-center" className="pointer-events-none !mt-[28%]" style={{ left: `calc(50% - ${inset / 2}px)` }}>
           <div className="grid h-[4.5rem] w-[15rem] place-items-center rounded-2xl border-2 border-dashed border-muted-foreground/40 font-serif text-[0.9375rem] text-muted-foreground">从左栏拖入阶段</div>
         </Panel>
       )}

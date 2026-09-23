@@ -10,6 +10,12 @@ import { cn } from '@/lib/utils'
 
 export interface WelcomeCopy { headline: string; body: string }
 
+/** 两位助理还没开口时说的话（主人 2026-09-23：别只放一个词，说成一句「你想做什么，我来帮你」）：研究助理在项目里，流程助理在编辑台 */
+export const WELCOME = {
+  research: { headline: '想研究什么？我来帮你。', body: '说说问题、手里的材料、怎么算做得好。' },
+  studio: { headline: '想做一条什么流程？我来帮你。', body: '说说要经过哪些阶段、用哪些能力、哪里要人确认。' },
+} as const satisfies Record<string, WelcomeCopy>
+
 const TITLE = 'font-serif text-[1.75rem] leading-[1.25] font-semibold tracking-tight text-balance'
 
 export function Welcome({ copy, error, className }: { copy: WelcomeCopy; error?: string | null; className?: string }) {

@@ -7,6 +7,7 @@ import type { Backend, ProjectSummary } from '@/api/types'
 import { coverOf } from '@/assets'
 import { ChatDrawer } from '@/chat/ChatDrawer'
 import { ChatView } from '@/chat/ChatView'
+import { WELCOME } from '@/chat/Welcome'
 import { ErrorNote, Skeleton } from '@/components/bits'
 import { Scene } from '@/components/Scene'
 import { useChats } from '@/lib/useChats'
@@ -57,7 +58,7 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
                      chat={(close) => (
                        <ChatView scope={scope} chatId={c.chatId} current={c.current} create={c.newChat} backends={backends}
                                  onTurnDone={c.turnDone} onClose={close}
-                                 welcome={{ headline: '课题', body: '问题、材料、评价标准。' }}
+                                 welcome={WELCOME.research}
                                  drawer={
                                    <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                                                creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}

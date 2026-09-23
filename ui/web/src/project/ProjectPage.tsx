@@ -14,7 +14,7 @@ import { ChatDrawer } from '@/chat/ChatDrawer'
 import { Composer } from '@/chat/Composer'
 import { Transcript } from '@/chat/Transcript'
 import { useConversation } from '@/chat/useConversation'
-import type { WelcomeCopy } from '@/chat/Welcome'
+import { WELCOME } from '@/chat/Welcome'
 import { ErrorNote, type Tone } from '@/components/bits'
 import { Logo } from '@/components/Logo'
 import HoldButton from '@/components/reactbits/HoldButton'
@@ -33,7 +33,6 @@ import { NewWorkspace } from './NewWorkspace'
 const TONE: Record<Tone, string> = {
   neutral: 'text-muted-foreground', ok: 'text-ok', warn: 'text-wait', bad: 'text-bad', primary: 'text-primary',
 }
-const WELCOME: WelcomeCopy = { headline: '课题', body: '问题、材料、评价标准。' }
 
 export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorkspace, onCreatedWorkspace, onRemove, menu }: {
   project: ProjectDetail
@@ -95,7 +94,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
           <>
             <motion.div initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
                         className="relative flex min-h-0 flex-1 flex-col">
-              <Transcript doc={conv.doc} turns={conv.turns} thinking={t.thinking} welcome={WELCOME} error={conv.error} />
+              <Transcript doc={conv.doc} turns={conv.turns} thinking={t.thinking} welcome={WELCOME.research} error={conv.error} />
             </motion.div>
             <div className="relative z-10 px-6 pt-3 pb-6">{composer('mx-auto')}</div>
           </>
