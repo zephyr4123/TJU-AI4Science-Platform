@@ -48,7 +48,7 @@
 2. 不吞异常：ruff 的 BLE 规则开着，裸 `except` 与不 raise 的 `except Exception` 过不了 lint（P-7）。
 3. 每个抽象带真实调用点，每个配置项有读取点与断言，集成点必须有测试（P-8）。
 4. 密钥与敏感配置只进环境变量或 `.env`（已 gitignore），绝不进代码；ssh 主机与密钥路径同理。
-5. Python 一律走 `.venv`（`make venv`），依赖钉在 `requirements.lock`，改依赖走 `make lock`。课题的依赖不进平台 venv：原件 `materials/env/` 两个文件跟着设计那包走，框架用 uv 给每次实验建自己的 venv，harness 只经 `$AI4SCI_PYTHON` 起解释器（裸 `python3` 过不了 `experiment/pack.py` 的校验）。
+5. Python 一律走 `.venv`，uv 管一切（`make venv` = `uv sync --locked`），依赖钉在 `uv.lock`，改依赖走 `make lock`；uv 是唯一要先装的工具。起服务 `make up` 一行；两种人两条路见 README「怎么跑」（外层 #138）。课题的依赖不进平台 venv：原件 `materials/env/` 两个文件跟着设计那包走，框架用 uv 给每次实验建自己的 venv，harness 只经 `$AI4SCI_PYTHON` 起解释器（裸 `python3` 过不了 `experiment/pack.py` 的校验）。
 6. 每个改动合并时写进 `CHANGELOG.md` 的 Unreleased；发版只走 `make release VERSION=x.y.z`。
 7. `make check` 是提交前门禁，与 CI 完全相同：changelog + ruff + pytest + 页面的 `ui-check`（tsc + oxlint + vitest + 构建）。真 CLI 冒烟测试默认 skip，`AI4SCI_LIVE=1` 才跑；连真机器的 ssh 算力测试 `AI4SCI_LIVE_SSH=<清单里的名字>` 才跑；CI 都不跑。
 8. 跨仓变更以外层仓的 GitHub issue 为锚，commit message 引用它。
