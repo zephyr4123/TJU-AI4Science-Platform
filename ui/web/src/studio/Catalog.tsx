@@ -2,11 +2,13 @@
 // 空着的阶段老实写「暂无」；第八列是 skill（能力的另一个 tag，主人 2026-09-22）：哪个阶段都能挂，所以不归在某一列下；每个名字是一张小卡（SpotlightCard，与画布上的节点同一种材料，一看就是个东西），hover 是一行，
 // 点了原地切成详情页：顶上一枚常驻的「能力」返回键，宋体大名与一行，底下参数与五栏，一列到底（主人：不要侧边目录）。
 // 流程镜头里节点上的小片与配置板里的名字点了也跳到这里，一个详情两处入口。
-// 层次与文件镜头同一做法：陈列印在雾景上不加框；详情才是一块抬起的面。
+// 层次与文件镜头同一做法：陈列印在雾景上不加框；详情才是一块抬起的面。对话窗浮在右边时（主人 2026-09-23：层级不能互相盖），
+// 这一面按 useChatInset() 在右边留出板的宽度，列自动折到下面、详情居中在剩下的地方；关了板又铺满。
 import { ArrowLeft, Toolbox } from '@phosphor-icons/react'
 import { createElement, type ReactNode } from 'react'
 
 import type { Capability, SkillEntry, StageInfo } from '@/api/types'
+import { useChatInset } from '@/chat/ChatPanel'
 import { Markdown } from '@/components/Markdown'
 import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
 import { groupByStage, stageIcon } from '@/lib/stages'
@@ -21,8 +23,9 @@ export function Catalog({ stages, catalog, skills, focus, onFocus }: {
 }) {
   const cap = focus ? catalog.find((c) => c.name === focus) ?? null : null
   const skill = focus && !cap ? skills.find((s) => s.name === focus) ?? null : null
+  const inset = useChatInset()
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto transition-[padding] duration-200 ease-out motion-reduce:transition-none" style={{ paddingRight: inset }}>
       {cap
         ? <Detail key={cap.name} cap={cap} stage={stages.find((s) => s.name === cap.stage) ?? null} onBack={() => onFocus(null)} />
         : skill
