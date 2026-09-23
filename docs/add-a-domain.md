@@ -52,4 +52,4 @@ display_name: PEtab 参数估计   # 给人看的名字
 4. 在一份需求里用：`scoring.yaml` 写 `domain: <id>`（设计阶段 `cap design --domain <id>` 会写进去）。
 5. CHANGELOG 的 Unreleased 加一行，commit message 引外层 issue。
 
-不改 `framework/`。删掉整个 `domains/` 框架测试照过（P-5，夹具自带领域包）。
+不改 `framework/`。测试不依赖仓里的领域包（P-5，夹具自带）；`domains/` 目录本身要在，`paths.py` 指不到会当场炸。
