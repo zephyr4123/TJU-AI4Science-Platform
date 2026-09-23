@@ -851,7 +851,7 @@ def test_env_resolve_writes_a_complete_lock_into_materials(tmp_path, monkeypatch
 
 
 def test_env_use_records_the_existing_interpreter(tmp_path, monkeypatch, capsys):
-    """P-23 的两问：研究者选「用现成的」→ materials/env/ 记解释器与它的 pip freeze。"""
+    """P-23 的两问：研究者选「用现成的」→ materials/env/ 记解释器与它的 uv pip freeze。"""
     from framework.cli import main
 
     ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")

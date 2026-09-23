@@ -5,7 +5,7 @@
 
 两条路是 P-23 的两问：隔离新建（版本锁死、换机器可复现；第一次要在那台机器上下几 GB）还是用机器上
 现成的（几秒起跑；版本以那台机器为准，换机器要重选）。`resolve` 按几个包名算完整清单；`use` 探那个
-解释器的版本、`pip freeze` 当清单（出处留档）、写 `materials/env/interpreter`，之后设计与实验在那台
+解释器的版本、`uv pip freeze` 当清单（出处留档）、写 `materials/env/interpreter`，之后设计与实验在那台
 机器上直接用它。
 
 在 cli 层。非工程师的常态是「我没有环境」，助理只能手写一份清单——手写的三行让基线一 import 就炸。
@@ -138,7 +138,7 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
         "env", help="研究者的环境：隔离新建（resolve）、用现成的（use）、往现成的里补包（add）")
     actions = group.add_subparsers(dest="action", required=True)
     adding = actions.add_parser(
-        "add", help="往机器上现成的环境里补几个包（pip install 进 env use 登记的那个解释器，"
+        "add", help="往机器上现成的环境里补几个包（uv pip install 进 env use 登记的那个解释器，"
                     "重新登记清单）")
     adding.add_argument("packages", nargs="*", help="要补的包，如 scipy torchjd==0.13.0")
     adding.add_argument("--from", dest="from_file", default="",
@@ -148,7 +148,7 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     add_ws_option(adding)
     adding.set_defaults(func=cmd_add)
     using = actions.add_parser(
-        "use", help="用某台机器上现成的解释器：探版本、pip freeze 当清单、写 env/interpreter")
+        "use", help="用某台机器上现成的解释器：探版本、uv pip freeze 当清单、写 env/interpreter")
     using.add_argument("python", help="那台机器上解释器的绝对路径（compute check「已有环境」列的）")
     using.add_argument("--compute", required=True, help="哪台机器（ai4sci show computes 里的名字）")
     add_ws_option(using)

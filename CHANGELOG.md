@@ -35,6 +35,7 @@
 - 旧的散装工作区搬成项目：外层 `scripts/oneoff/migrate-workspaces-to-projects.py`，只搬不删（#136）
 
 ### 修复
+- `env use` / `env add` 改走 `uv pip freeze / install --python`，uv 建的没有 pip 的环境（平台自己的 venv 就是）也能登记、能补包；内仓 CI 从 7a4638b 起一直红的两条测试随之绿（#144）
 - σ 由框架从 `baseline/repeats/` 算，执行层不再自己写 `sigma.json`；复现的种子照论文，不用平台的 42–46（#137）
 - `compute check` 与 `env use` 带解释器路径；Codex 工具行显示命令、web_search 配对（#137）
 - 分层检查看见 `from framework import cli` 这种写法；两条找旧路径永远跳过的测试改指到 `projects/`（#140）

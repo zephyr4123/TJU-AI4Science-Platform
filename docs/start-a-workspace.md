@@ -59,7 +59,7 @@ ai4sci requirement confirm --by <你>     # 写 requirement.lock，存档 .ai4sc
 代码与数据整棵放进去，`env/` 说清环境。两条路（纲领 P-23）：
 
 - **隔离新建**：`ai4sci env resolve --python 3.12 numpy scipy`（可 `--from <requirements.txt>`、`--compute <名字>` 到那台机器上算）按包名算出钉死传递依赖的完整清单，写成 `python-version` + `requirements.lock`；平台用 [uv](https://docs.astral.sh/uv/) 按它建 venv，你的依赖不会装进平台的环境，平台的也不会混进你的。**不要手写清单**：手写的只有顶层包，建环境会报「不完整」；版本必须钉死（`==`），`>=`、URL、`-e` 一律不收。
-- **用机器上现成的**（租来的 GPU 机器一律走这条）：`ai4sci env use --compute <名字> <解释器绝对路径>` 探版本、`pip freeze` 当清单、写 `env/interpreter`；缺几个包 `ai4sci env add --compute <名字> <包名>…`（或 `--from …/requirements.txt`）补进去并重新登记。只在那一台机器上认，换机器重来。
+- **用机器上现成的**（租来的 GPU 机器一律走这条）：`ai4sci env use --compute <名字> <解释器绝对路径>` 探版本、`uv pip freeze` 当清单、写 `env/interpreter`；缺几个包 `ai4sci env add --compute <名字> <包名>…`（或 `--from …/requirements.txt`）补进去并重新登记。只在那一台机器上认，换机器重来。
 
 ## 3. 设计：评分脚本与基线
 
