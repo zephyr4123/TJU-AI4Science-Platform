@@ -89,7 +89,7 @@ cli → capabilities → chat → experiment → executor → workspace → skil
 | `AI4SCI_WORKFLOWS_ROOT` `AI4SCI_DOMAINS_ROOT` `AI4SCI_TEMPLATES_ROOT` `AI4SCI_SKILLS_ROOT` | `paths.py` | 四种出厂件库的位置；指向的不是目录当场炸 |
 | `AI4SCI_PROJECT` | `workspace/project.py` | 当前项目（不设从 cwd 往上找 `project.md`） |
 | `AI4SCI_COMPUTES` `AI4SCI_AGENTS` | `computes.py` `agents.py` | 两份按人的清单的位置（缺省 `~/.config/ai4sci/`） |
-| `AI4SCI_CHAT_ID` | `workspace/jobs.py`、`cli/_common.py`；适配器 `build_env` 设 | 调命令的那段对话：作业记下来跑完叫醒；人的动作据此拒助理 |
+| `AI4SCI_CHAT_ID` | `workspace/jobs.py`、`cli/_common.py`；适配器 `build_env` 设 | 调命令的那段对话：作业记下来，跑完把结果排进它的收件箱；人的动作据此拒助理 |
 | `AI4SCI_JOB_ID` | `workspace/jobs.py` | 子进程凭它知道自己是哪个作业 |
 | `AI4SCI_COORDINATOR_TIMEOUT_S` `_MAX_TURNS` `_MAX_BUDGET_USD` | `chat/conversation.py` | 协调层一轮的上限 |
 | `AI4SCI_EXECUTOR_TIMEOUT_S` `_MAX_TURNS` `_MAX_BUDGET_USD` | `executor/session.py` | 执行层一次会话的上限 |
