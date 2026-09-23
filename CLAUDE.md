@@ -23,11 +23,13 @@
 
 ## 2. 协作方式：issue driven、spec coding
 
+流程（分支模型、PR、review、发版、CHANGELOG 写法）只有一份，在外层仓的 `CONTRIBUTING.md`；本仓 `CONTRIBUTING.md` 是合并前的清单。下面是纪律。
+
 - **每个工作单元一条 issue**，开在外层仓 [zephyr4123/TJU-AI4Science](https://github.com/zephyr4123/TJU-AI4Science/issues)。做之前先有 issue，做的过程中发现、证据、决策随做随写进 issue 评论（贴 commit、贴数字、贴 `文件:行`），不攒总结。会话会压缩、聊天记录会丢，issue 和文档才是可靠的上下文。
 - **先对齐再动手**：需求、边界、验收标准先写清（issue 正文或外层 `docs/specs/`），照它干活，做完回来改文档。纲领（外层 `docs/architecture/`）改得慢、要双方认可；spec 和 issue 改得快。现实与文档不一致时先改文档再改代码。
 - **issue 的写法**：标题一句人话；标签三根轴——`kind:*`（什么类型，可多选）、`area:*`（哪一层）、`P0/P1/P2`；大活开一条 `kind:umbrella` 母 issue 挂 milestone，叶子用 GitHub sub-issue 挂在它下面，不把几十条平铺在 milestone 上；要人拍板的加 `needs-decision`。
-- **commit**：feature 分支上做，一个逻辑单元一个 commit，随做随提；message 用中文、技术名词保留英文、说改了什么和为什么、末尾带 `（#n）` 引用 issue。**不加 `Co-Authored-By`、不加「Generated with」尾注、不加机器人 emoji**。
-- **合并与推送**：合到 `main`、push 远端、改写历史之前要项目负责人确认，每次都问；分支内随做随提不用问。`./repos` 的 pull 只 ff-only、push 永不 force。
+- **commit**：从当前的 `release/X.Y` 切 `feat/<issue 号>-<slug>`，一个逻辑单元一个 commit，随做随提；message 用中文、技术名词保留英文、说改了什么和为什么、末尾带 `（#n）` 引用 issue。**不加 `Co-Authored-By`、不加「Generated with」尾注、不加机器人 emoji**。
+- **回主干走 PR**：PR 进 `release/X.Y`，门禁绿 + 一人 review 才合；`main` 只接 release 分支与热修，由发版人合并打 tag。agent 不直接 push 受保护分支，改写历史要项目负责人确认。`./repos` 的 pull 只 ff-only、push 永不 force。
 - **交活**：`make check` 绿才提交；改动写进 `CHANGELOG.md` 的 Unreleased；merge+push 之后把这批 commit 引到的 issue 关掉，评论写做了什么、在哪个 commit。做完不关的 issue 等于没做完的 issue。
 - 涉及外层与内仓两边的改动，以外层的一条 issue 为锚，两边 commit 都引它；问「某功能改了哪些仓」查 issue 不查 git log。
 
@@ -87,5 +89,5 @@
 
 ## 6. 版本与发布
 
-- 从 0.1.0 起步，0.x 不承诺兼容；正式发布才进入 1.0.0。tag 形如 `vX.Y.Z`。
-- 推送 tag 触发 `release.yml`：对账 CHANGELOG → `make check` → `make package` → 建 Release 并附 wheel，0.x 自动标 pre-release。
+- 从 1.0.0 起承诺兼容：冻结的契约（CLI、框架认的文件、目录布局、端点、SKILL 格式、两份清单、三个端口）与 MAJOR / MINOR / PATCH 的判据在外层 `CONTRIBUTING.md`「版本与发布」；不兼容的改动走弃用周期。
+- tag 形如 `vX.Y.Z`；预发布 `vX.Y.Z-rc.N` 在 `release/X.Y` 上打（`make release VERSION=X.Y.Z-rc.N`，不轮转 CHANGELOG）。推送 tag 触发 `release.yml`：对账 CHANGELOG → `make check` → `make package` → 建 Release 并附 wheel，rc 自动标 pre-release。
