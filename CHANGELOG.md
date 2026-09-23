@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-23
+
 ### 新增
 - 项目层：一个项目一位助理，工作区是项目里一份需求；`projects/<p>/` 目录、`project new / remove`、`show projects / project`、工作区级命令带 `--ws`，跨工作区 `--from <ws>:<stage>/<n>` 只限同项目（#136）
 - 页面改项目口径：首页项目墙、门口一句话起项目、项目页正中的对话入口 + 工作区清单、工作区页页眉「‹ 项目名 工作区 ▾」（#136）
@@ -105,6 +107,7 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/releases/tag/v0.1.0
