@@ -32,7 +32,8 @@ export const stopItem = (note = '', pos?: XY): StopItem => ({ uid: mint(), kind:
 export const fromSeed = (seed: Seed, pos?: XY): Item => (seed.kind === 'stage' ? stageItem(seed.stage, [], pos) : stopItem(seed.note, pos))
 
 // ── 位置 ───────────────────────────────────────────────────────────────────
-export const WIDTH = { stage: 208, stop: 136 } as const
+/** 节点在画布上占的宽：阶段是一张卡，断点是一枚 56px 的圆点（主人 2026-09-23：和阶段一样大只靠颜色分不出来） */
+export const WIDTH = { stage: 208, stop: 56 } as const
 export const GAP = 56
 /** 自动排时一行最宽多少；超了换行。出厂那条 8 项分两行 */
 export const ROW_WIDTH = 1100

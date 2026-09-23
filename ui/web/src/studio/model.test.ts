@@ -47,7 +47,7 @@ describe('位置与顺序', () => {
     expect(at[1].x).toBe(WIDTH.stage + 56)
     const research = [stageItem('假设'), stopItem('发布'), stageItem('设计'), stopItem('核对'), stageItem('实验'), stageItem('分析'), stageItem('验证'), stopItem('验收')]
     const rows = autoLayout(research).map((p) => p.y / ROW_PITCH)
-    expect(rows).toEqual([0, 0, 0, 0, 1, 1, 1, 1])
+    expect(rows).toEqual([0, 0, 0, 0, 0, 1, 1, 1])  // 断点只有 56px 宽，第一行放得下五项
     expect(Math.max(...autoLayout(research).map((p, i) => p.x + WIDTH[research[i].kind]))).toBeLessThanOrEqual(ROW_WIDTH)
   })
   it('摆过的按摆的，其余仍自动排；整理后全部回到自动排', () => {

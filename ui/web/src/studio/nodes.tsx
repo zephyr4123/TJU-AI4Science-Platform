@@ -1,7 +1,8 @@
 // 画布上的两种节点：研究阶段（装能力）与断点。位置由 model.layout 排，节点自己只管长相与四个把手
 // （左右接同一行的边，上下接跨行的边）。序号是真序列（文件里的第几项），所以敢放大写成宋体数字。
 // 阶段节点是 reactbits 的 SpotlightCard 改装件（鼠标经过时一抹淡光），点名的能力是一枚枚小片（名字、hover 一行、点了跳详情，P-21）；
-// 断点是琥珀色的一块，直接写确认事项（上游产出经人确认后下游方可读取）。
+// 断点是一枚琥珀色的小圆点（主人 2026-09-23：和阶段卡一样大、只靠颜色分不出是断点），圆里一支签名的笔，确认事项写在圆点底下
+// （上游产出经人确认后下游方可读取）；把手在圆上，边指着圆心；圆往下压几px，和阶段卡的中线大致齐。
 import { Handle, type Node, type NodeProps, Position } from '@xyflow/react'
 import { Signature, X } from '@phosphor-icons/react'
 import { createElement } from 'react'
@@ -105,21 +106,27 @@ export function StageNode({ data, selected }: NodeProps<StageNodeType>) {
   )
 }
 
+/** 圆点往下压这么多 px，圆心和阶段卡（约 68px 高）的中线对齐 */
+const STOP_LIFT = 6
+
 export function StopNode({ data, selected }: NodeProps<StopNodeType>) {
   const bad = data.problems.length > 0
   return (
-    <div className="group relative" style={{ width: WIDTH.stop }}>
-      <Handles />
-      <div className={cn('relative rounded-2xl border bg-wait-soft px-3.5 pt-3 pb-3 text-wait transition-[border-color,box-shadow]',
-                         selected ? 'border-wait shadow-[0_0_0_3px_color-mix(in_oklab,var(--wait)_25%,transparent)]' : bad ? 'border-bad/60' : 'border-wait/50 shadow-sm')}>
-        <div className="flex items-center gap-2 pr-5">
-          <Signature weight="duotone" aria-hidden className="size-[1.375rem] shrink-0" />
-          <ProblemDot problems={data.problems} />
-        </div>
-        <p className={cn('mt-2 line-clamp-2 min-h-5 pr-6 text-[0.875rem] leading-snug font-semibold', !data.note && 'font-normal text-wait/60')}>{data.note || '确认事项'}</p>
-        <Numeral n={data.n} className="text-wait/35" />
-        <RemoveButton label={`删除第 ${data.n} 项`} onClick={data.onRemove} className="text-wait/70 hover:bg-wait/15 hover:text-wait" />
+    <div className="group relative" style={{ width: WIDTH.stop, paddingTop: STOP_LIFT }}>
+      <div className={cn('relative grid place-items-center rounded-full border bg-wait-soft text-wait transition-[border-color,box-shadow]',
+                         selected ? 'border-wait shadow-[0_0_0_3px_color-mix(in_oklab,var(--wait)_25%,transparent)]' : bad ? 'border-bad/60' : 'border-wait/50 shadow-sm')}
+           style={{ width: WIDTH.stop, height: WIDTH.stop }}>
+        <Handles />
+        <Signature weight="duotone" aria-hidden className="size-6" />
+        {bad && <span className="absolute top-0 left-0"><ProblemDot problems={data.problems} /></span>}
+        <span aria-hidden className="absolute -right-1 -bottom-0.5 rounded-full bg-background px-1 font-serif text-[0.875rem] leading-none font-semibold text-wait/70 tabular">{data.n}</span>
+        <RemoveButton label={`删除第 ${data.n} 项`} onClick={data.onRemove}
+                      className="!-top-2 !-right-2 !size-5 rounded-full bg-background text-wait/70 ring-1 ring-wait/40 hover:bg-wait/15 hover:text-wait" />
       </div>
+      <p className={cn('absolute top-full left-1/2 mt-1.5 w-[9rem] -translate-x-1/2 text-center text-[0.8125rem] leading-snug font-semibold text-wait line-clamp-2',
+                       !data.note && 'font-normal text-wait/60')}>
+        {data.note || '确认事项'}
+      </p>
     </div>
   )
 }
