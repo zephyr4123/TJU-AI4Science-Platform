@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-23
+
 ### 修复
 - 编辑台存的流程落进出厂的 `workflows/`（源码模式进 git、装包后升级会丢）：库分两层，人存的进数据根 `studio/workflows/`，`show workflows` / `flow take` / 页面两层都读，出厂的只读、重名拒（#149）
 
@@ -110,7 +112,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/releases/tag/v0.1.0
