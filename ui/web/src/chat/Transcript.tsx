@@ -8,13 +8,14 @@ import type { Resource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 
 import { type Turn, TurnView } from './TurnView'
+import { Welcome, type WelcomeCopy } from './Welcome'
 
-export function Transcript({ doc, turns, thinking, intro, error, className }: {
+export function Transcript({ doc, turns, thinking, welcome, error, className }: {
   doc: Resource<ChatDoc | null>
   turns: Turn[]
   thinking: string
-  /** 对话还没开口时的两句引导 */
-  intro: { lede: string; body: string }
+  /** 开了一段还没说话：标在中、字在下，和欢迎屏同一块 */
+  welcome: WelcomeCopy
   error: string | null
   className?: string
 }) {
@@ -26,15 +27,10 @@ export function Transcript({ doc, turns, thinking, intro, error, className }: {
   }, [turns.length, traceLength])
   return (
     <div className={cn('relative min-h-0 flex-1 overflow-y-auto', className)}>
-      <div className="mx-auto max-w-[44rem] px-6 pt-8">
+      <div className="mx-auto flex min-h-full max-w-[44rem] flex-col px-6 pt-8">
         {doc.loading && !doc.data && turns.length === 0 && <Skeleton lines={4} />}
         {doc.error && <ErrorNote text={doc.error} />}
-        {doc.data && turns.length === 0 && (
-          <div className="space-y-3 py-6">
-            <p className="t-lede">{intro.lede}</p>
-            <p className="t-body text-muted-foreground">{intro.body}</p>
-          </div>
-        )}
+        {doc.data && turns.length === 0 && <Welcome copy={welcome} className="my-auto pb-10" />}
         <div className="space-y-10">
           {turns.map((turn) => <TurnView key={turn.n} turn={turn} thinking={thinking} />)}
         </div>

@@ -29,7 +29,6 @@ export function StudioPlace({ healthy, backends, menu }: { healthy: boolean | nu
             scope={STUDIO} chatId={c.chatId} current={c.current} onClose={close} create={c.newChat}
             onTurnDone={c.turnDone}
             backends={backends}
-            intro={{ lede: '流程', body: '阶段、能力、断点。' }}
             welcome={{ headline: '流程', body: '阶段、能力、断点。' }}
             drawer={
               <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}

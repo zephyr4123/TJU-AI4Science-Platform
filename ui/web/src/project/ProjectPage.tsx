@@ -1,5 +1,5 @@
 // 项目页（主人 2026-09-22）：正中间一只对话输入框——一个项目只有一位助理，对话入口就这一个，放在正中间（像 Claude 的首页：
-// 上面一句话，下面输入框）。输入框里打的第一句话就开始对话：输入框动画下沉到底，正文接在上面，这一轮从按下回车起就在屏上
+// 平台的标、上面一句话，下面输入框）。输入框里打的第一句话就开始对话：输入框动画下沉到底，正文接在上面，这一轮从按下回车起就在屏上
 // （主人：不要闪一下再切过去）；「‹ 项目名」回来。输入框底下是这个项目的工作区，一行一个：名字、现在到哪一步（一个词，颜色照
 // 三态）、走到第几步与产出几次；点一行进工作区页。「新建」在清单那一行，点了才展开表单（project/NewWorkspace）。过去的对话
 // 在「对话 · N」的抽屉里，挑一段也切成整屏的对话。右上角「…」里是删除项目。
@@ -14,7 +14,9 @@ import { ChatDrawer } from '@/chat/ChatDrawer'
 import { Composer } from '@/chat/Composer'
 import { Transcript } from '@/chat/Transcript'
 import { useConversation } from '@/chat/useConversation'
+import type { WelcomeCopy } from '@/chat/Welcome'
 import { ErrorNote, type Tone } from '@/components/bits'
+import { Logo } from '@/components/Logo'
 import HoldButton from '@/components/reactbits/HoldButton'
 import { StatusMark } from '@/components/reactbits/StatusMark'
 import { Scene } from '@/components/Scene'
@@ -31,7 +33,7 @@ import { NewWorkspace } from './NewWorkspace'
 const TONE: Record<Tone, string> = {
   neutral: 'text-muted-foreground', ok: 'text-ok', warn: 'text-wait', bad: 'text-bad', primary: 'text-primary',
 }
-const INTRO = { lede: '课题', body: '问题、材料、评价标准。' }
+const WELCOME: WelcomeCopy = { headline: '课题', body: '问题、材料、评价标准。' }
 
 export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorkspace, onCreatedWorkspace, onRemove, menu }: {
   project: ProjectDetail
@@ -93,7 +95,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
           <>
             <motion.div initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
                         className="relative flex min-h-0 flex-1 flex-col">
-              <Transcript doc={conv.doc} turns={conv.turns} thinking={t.thinking} intro={INTRO} error={conv.error} />
+              <Transcript doc={conv.doc} turns={conv.turns} thinking={t.thinking} welcome={WELCOME} error={conv.error} />
             </motion.div>
             <div className="relative z-10 px-6 pt-3 pb-6">{composer('mx-auto')}</div>
           </>
@@ -101,8 +103,10 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
           <div className="relative min-h-0 flex-1 overflow-y-auto">
             <div className="absolute top-3 right-4 z-10"><ProjectMenu title={project.title} onRemove={onRemove} /></div>
             {menu && <div className="absolute top-3 left-4 z-10">{menu}</div>}
-            <div className="relative mx-auto flex min-h-full w-full max-w-[47rem] flex-col px-6 pt-[12vh] pb-16">
-              <h1 className="text-center font-serif text-[2rem] leading-[1.25] font-semibold tracking-tight text-balance">{project.title}</h1>
+            <div className="relative mx-auto flex min-h-full w-full max-w-[47rem] flex-col px-6 pt-[10vh] pb-16">
+              {/* 平台的标在正中、项目名在下（外层 #139）：像 Claude 的首页，标先于字 */}
+              <Logo className="mx-auto size-12 text-primary" />
+              <h1 className="mt-5 text-center font-serif text-[2rem] leading-[1.25] font-semibold tracking-tight text-balance">{project.title}</h1>
               {project.goal && <p className="t-body mx-auto mt-3 text-center text-muted-foreground">{project.goal}</p>}
               {composer('mt-8')}
               <section className="mt-12">

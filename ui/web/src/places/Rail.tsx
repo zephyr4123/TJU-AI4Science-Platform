@@ -2,8 +2,9 @@
 // 首页就是项目墙，进了项目再往下走。首页 / 编辑台是两个平行的世界（纲领 P-15 P-16），设置是全局的一块（P-25），归人，
 // 沉在最底下，旁边一个点，有一项自检没过才亮。每个键都带字（主人：没字用户不知道是啥）。
 // 宽屏常驻最左一列；窄屏收进页眉的玻璃标记里，点开是一张清单（PlacesSheet）。
-import { Blueprint, Flask, GearSix, House, type Icon } from '@phosphor-icons/react'
+import { Blueprint, GearSix, House, type Icon } from '@phosphor-icons/react'
 
+import { Logo } from '@/components/Logo'
 import { GlassIcon } from '@/components/reactbits/GlassIcon'
 import { cn } from '@/lib/utils'
 
@@ -14,7 +15,7 @@ export function Rail({ place, onHome, onStudio, settingsOpen, settingsDot, onSet
   return (
     <nav aria-label="地方" className="flex w-[4.5rem] shrink-0 flex-col items-center border-r bg-sidebar">
       <div className="flex h-14 shrink-0 items-center">
-        <GlassIcon icon={<Flask weight="fill" className="size-[1.05em]" />} label="AI4Science" />
+        <GlassIcon icon={<Logo className="size-[1.15em]" />} label="AI4Science" />
       </div>
       <div className="flex flex-col items-center gap-3 pt-1">
         <Key label="首页" icon={House} active={world === 'projects'} onClick={onHome} />

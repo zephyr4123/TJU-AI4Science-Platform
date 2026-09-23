@@ -236,11 +236,13 @@
       color-mix(in oklab, var(--background) 40%, transparent) 50%, color-mix(in oklab, var(--background) 94%, transparent) 100%);
   }
 
-  /* 画面上的纱幕：左边压成纸色让字能读，右边留给画面；上下各压一点，顶栏与输入框才不飘 */
-  .veil {
+  /* 欢迎屏的纱幕（外层 #139）：正中压成纸色，标和字站在中间；往四边渐渐露出画面；上下各压一点，顶栏与输入框才不飘 */
+  .veil-stage {
     background:
-      linear-gradient(90deg, var(--background) 0%, color-mix(in oklab, var(--background) 78%, transparent) 48%,
-        color-mix(in oklab, var(--background) 30%, transparent) 100%),
+      radial-gradient(ellipse 80% 72% at 50% 44%, var(--background) 0%,
+        color-mix(in oklab, var(--background) 92%, transparent) 30%,
+        color-mix(in oklab, var(--background) 70%, transparent) 65%,
+        color-mix(in oklab, var(--background) 42%, transparent) 100%),
       linear-gradient(180deg, color-mix(in oklab, var(--background) 55%, transparent) 0%, transparent 28%,
         transparent 72%, color-mix(in oklab, var(--background) 55%, transparent) 100%);
   }

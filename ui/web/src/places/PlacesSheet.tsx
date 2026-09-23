@@ -1,7 +1,8 @@
 // 窄屏的地方栏：页眉左端的玻璃标记就是入口，点开一张从左边拉出来的清单，和宽屏的 Rail 同一份东西——首页、编辑台、设置。
-import { Blueprint, Flask, GearSix, House, type Icon } from '@phosphor-icons/react'
+import { Blueprint, GearSix, House, type Icon } from '@phosphor-icons/react'
 import { useState } from 'react'
 
+import { Logo } from '@/components/Logo'
 import { GlassIcon } from '@/components/reactbits/GlassIcon'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
@@ -31,7 +32,7 @@ export function PlacesSheet({ place, onHome, onStudio, settingsOpen, settingsDot
       <SheetTrigger asChild>
         <button type="button" aria-label="换个地方"
                 className="rounded-[28%] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-          <GlassIcon icon={<Flask weight="fill" className="size-[1.05em]" />} label="AI4Science" />
+          <GlassIcon icon={<Logo className="size-[1.15em]" />} label="AI4Science" />
         </button>
       </SheetTrigger>
       <SheetContent side="left" className="w-[18rem] gap-0 p-0" aria-describedby={undefined}>

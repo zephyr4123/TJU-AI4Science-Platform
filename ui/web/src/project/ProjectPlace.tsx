@@ -56,7 +56,7 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
                      onBack={onBack} onSwitch={onOpenWorkspace} onRemoved={onWorkspaceRemoved}
                      chat={(close) => (
                        <ChatView scope={scope} chatId={c.chatId} current={c.current} create={c.newChat} backends={backends}
-                                 onTurnDone={c.turnDone} onClose={close} intro={{ lede: '课题', body: '问题、材料、评价标准。' }}
+                                 onTurnDone={c.turnDone} onClose={close}
                                  welcome={{ headline: '课题', body: '问题、材料、评价标准。' }}
                                  drawer={
                                    <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
