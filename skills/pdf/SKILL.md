@@ -14,15 +14,15 @@ metadata:
 
 - 研究者给了一篇论文（文件放在 `materials/`，或者只给了链接）——先解析，再照 `paper.md` 起草需求。
 - 需求或分析里要引用论文报的数——从 `structured.json` 的 `tables` 里抄，不凭记忆写。
-- 文献阶段的能力要读论文——同一条命令，`--out` 指向自己的产出目录。
+- 执行层会话要读论文——同一条命令，`--out` 指向自己的产出目录。
 
 不是这些情况就别调：它只解析，不总结、不判断。
 
 ## 怎么运行
 
 ```bash
-ai4sci skill run pdf --input materials/<论文>.pdf --out materials/<论文>/
-ai4sci skill run pdf --input https://arxiv.org/pdf/<id> --out materials/<论文>/
+ai4sci skill run pdf --input materials/<论文>.pdf --out materials/<论文>/ --ws <工作区>
+ai4sci skill run pdf --input https://arxiv.org/pdf/<id> --out materials/<论文>/ --ws <工作区>
 ```
 
 - `--input`：本地路径或 http(s) 链接。链接时原件会存成 `--out/source.pdf`（原件也是材料，留一份）。

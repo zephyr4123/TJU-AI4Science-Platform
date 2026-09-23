@@ -1,21 +1,24 @@
 # 接一个 skill
 
-给要往平台里加一个 skill（agent 的工具包）的人。读完照做，不用问人。验收标准：**换一个人写的 skill，`make skills` 放行、两位助理的 prompt 里出现它、`ai4sci skill run` 跑得起来。** 卡在哪一步，就是这份文档的 bug，请开 issue。
+给要往平台里加一个 skill（agent 的工具包）的人。读完照做，不用问人。验收标准：**换一个人写的 skill，`make skills` 放行、研究助理与执行层的 `<available_skills>` 清单里出现它、`ai4sci skill run` 跑得起来。** 卡在哪一步，就是这份文档的 bug，请开 issue。
 
 为什么是这套规矩，见外层纲领 P-22（`docs/architecture/README.md`）与 `workflow.md` §1「skill」。这里只讲怎么做。
 
 ## skill 是什么、不是什么
 
-skill 是 agent 随时能拿起来用的一套东西：一份说明（什么时候用、怎么运行、留下哪几个文件、常见失败）加几个脚本。协调层的研究助理与执行层的会话都能用。
+skill 是 agent 随时能拿起来用的一套东西：一份说明（什么时候用、怎么运行、留下哪几个文件、常见失败）加几个脚本。研究助理与执行层的会话都能用（流程助理不跑东西，不给清单）。
 
-| | 能力 | skill |
+能力一个词、两种 tag（纲领 P-22，`framework/capabilities/abilities.py` 是出处）：
+
+| | 步骤 | skill |
 |---|---|---|
-| 是什么 | 流程里的一格 | agent 的工具 |
-| 谁调 | 协调层，照流程 | 协调层或执行层，随时 |
-| 写到哪 | 自己的 `<stage>/<n>/` | 调用方 `--out` 给的地方 |
+| 是什么 | 描述符 + `run`，框架开产出目录、起执行层 | 说明 + 脚本，agent 的工具 |
+| 谁调 | 研究助理，`ai4sci cap <name>` | 研究助理或执行层，`ai4sci skill run <name>`，随时 |
+| 写到哪 | 自己的 `<stage>/<n>/` | 调用方 `--out` 给的地方（助理带 `--ws` 落在那个工作区） |
+| 挂到流程格子上 | 得属于那个阶段，参数按描述符核对 | 哪个阶段都能挂、不带参数，意思是「这一步推荐用它」 |
 | 怎么进 prompt | 描述符五栏（`ai4sci show caps`） | `<available_skills>` 清单里一行，全文按需 `show` |
 
-想让一个 skill 变成流程里的一格，把它包成能力（`add-a-capability.md`），能力的 `run` 里调它、把产物留在自己的产出目录。
+要产出目录、要被下游 `--from` 的做成步骤（`add-a-capability.md`）；只是读个文件、拉个仓库的做 skill 就够。
 
 ## 目录
 
@@ -58,7 +61,7 @@ metadata:                                   # 可选：字符串到字符串；�
   .venv/bin/python -m uv lock --script skills/<name>/scripts/<x>.py      # 出 <x>.py.lock，进仓
   ```
 
-  `requires-python` 由脚本自己定，与框架的 3.14、课题的 venv 都无关。
+  `requires-python` 由脚本自己定，与框架的 Python（≥ 3.12）、课题的 venv 都无关。
 - 运行一律 `uv run --locked --offline`（`ai4sci skill run` 就是这么起的）：环境在 uv 的全机缓存里，所有工作区共享一份；锁对不上就报错。**不建工作区级 venv。**
 - 一个 skill 一个脚本时 `ai4sci skill run <name> …` 直接起它；几个脚本时调用方要 `--script <文件名>` 点名，SKILL.md 里写清。
 - 脚本要过仓库的 ruff（`make lint` 扫 `skills/`）。
@@ -83,4 +86,5 @@ metadata:                                   # 可选：字符串到字符串；�
 | skill | 库 | 做什么 |
 |---|---|---|
 | `pdf` | 通用 | 论文 PDF → `paper.md` + `images/` + `structured.json`；后端 pymupdf4llm 版面模式，两家后端的实测在 `skills/pdf/references/backends.md` |
+| `download` | 通用 | 把材料拉到工作区 `materials/`：git 仓库（可指定 commit）、单个文件（可校验 sha256）、Hugging Face 仓库；留收据 |
 | `petab` | `domains/petab` | PEtab 参数估计工具链的 API 约定，只有说明没有脚本 |

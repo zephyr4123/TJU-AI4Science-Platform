@@ -25,7 +25,7 @@ projects/<p>/
 ├── requirement.md       需求：课题的根。按模板起草，人和助理对话后由助理写
 ├── requirement.lock     确认记录：人确认后才有；是框架唯一内置的门
 ├── materials/           原件：你给的数据、代码；只追加
-│   └── env/             python-version + requirements.lock（你环境的 pip freeze）
+│   └── env/             python-version + requirements.lock（+ 可选 interpreter：用机器上现成的环境）
 ├── flows/               流程实例：从库里取来的走法，改参数在这儿改
 ├── literature/          七个阶段各一个目录，每次执行一个编号子目录 <stage>/<n>/
 ├── hypothesis/
@@ -52,21 +52,14 @@ cd projects/<p>/workspaces/<id>
 ai4sci requirement confirm --by <你>     # 写 requirement.lock，存档 .ai4sci/requirement/v1.md
 ```
 
-确认之后再改文件，页面显示改了几行、未确认；确认下一版就是再跑一次这条命令。没确认，任何能力都不开。
+确认之后再改文件，页面显示「N 行改动 · 待确认」；确认下一版就是再跑一次这条命令。没确认，任何能力都不开。助理的会话里跑不了这条命令（框架按 `AI4SCI_CHAT_ID` 拒），只有人能确认。
 
 ## 2. materials/
 
-代码与数据整棵放进去，`env/` 两个文件：
+代码与数据整棵放进去，`env/` 说清环境。两条路（纲领 P-23）：
 
-```
-materials/env/python-version      3.14
-materials/env/requirements.lock   numpy==2.5.3
-                                  scipy==1.18.1
-```
-
-- 版本必须钉死（`==`），`>=`、URL、`-e` 一律不收。
-- 平台用 [uv](https://docs.astral.sh/uv/) 找或拉这个版本的解释器、按 lock 建 venv；你的依赖不会装进平台的环境，平台的也不会混进你的。
-- 拿到精确版本最省事的办法：先在任何地方装好，`pip freeze` 抄过来。
+- **隔离新建**：`ai4sci env resolve --python 3.12 numpy scipy`（可 `--from <requirements.txt>`、`--compute <名字>` 到那台机器上算）按包名算出钉死传递依赖的完整清单，写成 `python-version` + `requirements.lock`；平台用 [uv](https://docs.astral.sh/uv/) 按它建 venv，你的依赖不会装进平台的环境，平台的也不会混进你的。**不要手写清单**：手写的只有顶层包，建环境会报「不完整」；版本必须钉死（`==`），`>=`、URL、`-e` 一律不收。
+- **用机器上现成的**（租来的 GPU 机器一律走这条）：`ai4sci env use --compute <名字> <解释器绝对路径>` 探版本、`pip freeze` 当清单、写 `env/interpreter`；缺几个包 `ai4sci env add --compute <名字> <包名>…`（或 `--from …/requirements.txt`）补进去并重新登记。只在那一台机器上认，换机器重来。
 
 ## 3. 设计：评分脚本与基线
 
@@ -80,14 +73,14 @@ ai4sci show output design/1       # 记录、文件清单
 | 文件 | 是什么 |
 |---|---|
 | `scoring.yaml` | 评分契约：指标名与方向、预算（一次跑多久、最多几轮、重复几次、统计门）、可选 `attainable` 尽头值 |
-| `harness/` | 评分脚本，封好后 hash 锁定：`launcher.sh` 唯一入口（清产物 → 跑 code/ → 跑 evaluate.py）、`evaluate.py` 读产物写 results.json、`make_run0.sh` 跑出基线 + 重复 + σ、`SHA256SUMS` |
+| `harness/` | 评分脚本，封好后 hash 锁定：`launcher.sh` 唯一入口（清产物 → 跑 code/ → 跑 evaluate.py）、`evaluate.py` 读产物写 results.json、`make_run0.sh` 跑出基线 + 重复（σ 由框架算）、`SHA256SUMS` |
 | `code/` | 基线代码：AI 唯一能改的地方 |
 | `data/` `env/` | 从 materials/ 搬来的 |
 | `baseline/` | 基线成绩 + 重复 + `sigma.json`：改进率的分母、统计门的基线 |
 
 harness 三条硬规矩，`experiment/pack.py` 都会查：
 
-1. **Python 只经 `"$AI4SCI_PYTHON"` 起。** 框架跑 harness 时把这次实验 venv 的解释器放进这个变量；脚本里出现裸 `python` / `python3` 直接判不合法。框架同时保证给 `AI4SCI_BUDGET_S`（一次跑的墙钟预算，等于 `wall_clock_s`）和 `AI4SCI_INNER_K`（评分内部重复次数，等于 `budget.inner_k`）：脚本用 `"${AI4SCI_INNER_K:?}"` 这种写法拿，拿不到就停；**给这几个变量写默认值判不合法**（`os.environ.get("AI4SCI_INNER_K", 5)` 会算出一份看着合法的假成绩）。`AI4SCI_SEED` 缺省 42 是唯一允许的默认值。
+1. **Python 只经 `"$AI4SCI_PYTHON"` 起。** 框架跑 harness 时把这次实验 venv 的解释器放进这个变量；脚本里出现裸 `python` / `python3` 直接判不合法。框架同时保证给 `AI4SCI_BUDGET_S`（一次跑的墙钟预算，等于 `wall_clock_s`）、`AI4SCI_INNER_K`（评分内部重复次数，等于 `budget.inner_k`）与 `AI4SCI_START_EPOCH`（起跑时刻，launcher 自己设给 evaluate.py）：脚本用 `"${AI4SCI_INNER_K:?}"` 这种写法拿，拿不到就停；**给这几个变量写默认值判不合法**（`os.environ.get("AI4SCI_INNER_K", 5)` 会算出一份看着合法的假成绩）。`AI4SCI_SEED` 缺省 42 是唯一允许的默认值。
 2. **`evaluate.py` 只读产物文件**，算完写 `results.json`，形状固定：
    ```json
    {"metrics": {"val_mse": 0.0231}, "elapsed_s": 0.27, "seed": 42, "status": "ok"}
@@ -108,10 +101,10 @@ ai4sci sign design/1 --by <你> --note "评分脚本算的是我要的数"
 ```bash
 ai4sci flow take research                                          # 库里的流程取成实例 flows/research.yaml（只有一条流程时命令上不用写 --flow）
 ai4sci cap auto-research --from design/1 --max-iters 5 --detach    # 开 experiment/1，一轮一轮改；后台作业
-ai4sci show job <id>                                               # 进度；跑完框架叫醒对话
+ai4sci show job <id>                                               # 进度；跑完结果排进那段对话的收件箱，助理接着念
 ai4sci cap auto-research --continue experiment/1 --max-iters 10    # 接着同一次实验再跑
 ai4sci cap analysis --from experiment/1                            # analysis/1/analysis.md
-ai4sci cap verify --from analysis/1                                # verification/1/report.json，退出码就是 PASS / FAIL
+ai4sci cap verify --from analysis/1 --from experiment/1            # verification/1/report.json，退出码就是 PASS / FAIL
 ai4sci sign verification/1 --by <你>                               # 断点：验收
 ```
 

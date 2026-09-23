@@ -1,6 +1,6 @@
 # 接一个能力
 
-给要往平台里加一个能力（或想把一个 skill 变成流程里一格）的人。读完照做，不用问人。验收标准：**换一个人、换一个阶段，照这份文档写出来的能力，`discover()` 放行、下游能读、页面能显示。** 卡在哪一步，就是这份文档的 bug，请开 issue。
+给要往平台里加一个**步骤**（能力的一种 tag，另一种是 skill，见文末）的人。读完照做，不用问人。验收标准：**换一个人、换一个阶段，照这份文档写出来的能力，`discover()` 放行、下游能读、页面能显示。** 卡在哪一步，就是这份文档的 bug，请开 issue。
 
 为什么是这套规矩，见外层纲领 P-18、P-19、P-20（`docs/architecture/README.md`）。这里只讲怎么做。
 
@@ -22,7 +22,7 @@
    （只认标量）   （runner / compute）             失败 raise CapabilityFailed
 ```
 
-对所有能力一样的只有这个形状。要哪几个文件、留哪几个文件，是你这个能力自己的事，写在描述符里。
+对所有能力一样的只有这个形状（`ports` 里还有 `compute_label`：那台算力的出处，框架记进 meta，能力不用管）。要哪几个文件、留哪几个文件，是你这个能力自己的事，写在描述符里。
 
 ## 先回答四个问题
 
@@ -83,17 +83,9 @@ writing/2/draft.md     meta: by: report-draft   from: [analysis/2]
 | 一行 | `brief` | hover | 一句，三十字内，说拿什么做出什么；不带路径、参数名 | 自动迭代代码，逐轮记账 |
 | 详情 | 五栏 `does` `does_not` `brings` `leaves` `stops` | 点击跳详情页，栏名 职责 / 边界 / 输入 / 产出 / 终止条件 | 工程语言陈述句；文件名可以写（它们在工作区里真实存在）；CLI 参数不写（`--from design/<n>` 写成「设计阶段的一次产出」）；框架内部机制不写（目录 hash 校验、`refs/attempts`）；口语不写（「这包」「越界」「续命」「签了」） | 见下 |
 
-参数的 `label` 是页面上的名字（`max_iters` → 最多轮数），`help` 是 hover 的一句。协调层读的就是这份详情，不另写用户版；执行者的种类（`needs_executor`、能不能续跑）是机器读的，不上屏。字数、禁用词、CLI 参数这些规矩都在 `Capability.__post_init__` 与 `Param.__post_init__` 里断言（`framework/contracts/capability.py`），写错了 `discover()` 当场炸、信息说到哪一栏撞了哪个词。
+参数的 `label` 是页面上的名字（`max_iters` → 本次轮数），`help` 是 hover 的一句。协调层读的就是这份详情，不另写用户版；执行者的种类（`needs_executor`、能不能续跑）是机器读的，不上屏。字数、禁用词、CLI 参数这些规矩都在 `Capability.__post_init__` 与 `Param.__post_init__` 里断言（`framework/contracts/capability.py`），写错了 `discover()` 当场炸、信息说到哪一栏撞了哪个词。
 
-AutoResearch 的详情写出来是这样：
-
-| 栏 | 文字 |
-|---|---|
-| 职责 | 首次调用建立实验：复制设计阶段的产出至 work/，按 lock 建独立环境并初始化 git 仓，基线成绩写入 checkpoint.json；随后逐轮修改代码、运行评分脚本、记账。再次调用可续跑。 |
-| 边界 | 不修改评分脚本，不改指标与预算（续跑参数除外），不写分析，不判断结果可信度。 |
-| 输入 | 设计阶段的一次产出：scoring.yaml、harness/、code/、baseline/。 |
-| 产出 | ledger.tsv 每轮一行；results.json 最佳一轮；work/ 代码历史；checkpoint.json 进度。 |
-| 终止条件 | 达到轮数上限、连续若干轮无改进、花费超限，或执行层连续失败；原因写入 checkpoint.json。 |
+写成什么样，看出厂的：`ai4sci show caps` 把六个步骤的五栏原样打出来（出处是各子包 `__init__.py` 的 `DESCRIPTOR`），照 `auto_research/__init__.py` 那份的口吻写。
 
 ## 写代码
 
@@ -139,7 +131,7 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, sections: int = 4) ->
 
 ## skill 呢
 
-skill 不是一格。它是 agent 的工具包（纲领 P-22）：一份说明加几个脚本，协调层与执行层随时能用，不开产出目录，写哪里由调用它的人定。想让一个 skill 变成流程里的一格，把它包成能力：描述符 + `run` 里调 `ai4sci skill run <name> --out <output_dir>`（或直接起执行层）+ 留下本阶段主文件。接一个 skill 看 `docs/add-a-skill.md`。
+能力有两种 tag（纲领 P-22，`framework/capabilities/abilities.py` 是出处）：**步骤**是这份文档讲的——框架开产出目录、起执行层、按描述符核对参数；**skill** 是 agent 的工具包——一份说明加几个脚本，随手用、不开编号产出、写哪里由调用者定。两种都能挂到流程的格子上（`- 文献: [pdf, download]`），skill 哪个阶段都能挂、不带参数，意思是「这一步推荐用它」。一件活要不要做成步骤，看它要不要产出目录、要不要被下游 `--from`；只是读个文件、拉个仓库的做 skill 就够。接一个 skill 看 `docs/add-a-skill.md`。
 
 ## 测试
 
@@ -160,6 +152,6 @@ skill 不是一格。它是 agent 的工具包（纲领 P-22）：一份说明�
 
 ## 交付前
 
-- `make check` 绿（changelog + ruff + pytest + 页面）。
+- `make check` 绿（changelog + ruff + skills + pytest + 页面）。
 - `CHANGELOG.md` Unreleased 一条，外层 issue 为锚。
 - 描述符的名、一行、详情照上面「文案」那张表：研究者、助理、工程师读同一份；工程语言，不写 CLI 参数与框架内部机制，不用「按钮」「键」这类比喻。

@@ -1,66 +1,91 @@
 # TJU AI for Science · platform（生产代码仓）
 
-给 agent 与新成员的约定。本仓是内仓：外层协作仓 `tju-ai4science` 把它 clone 到 `platform/` 目录下，外层对它的 git 完全不知情。架构纲领与 spec 在外层 `docs/`，这里只写规矩。
+给 agent 与人的约定。读完这份就知道这个仓有哪些规矩、动手前该先读哪份文档。规矩分四层：**协作方式**（怎么领活、怎么交活）、**编码标准**（代码写成什么样）、**质量纪律**（怎么证明做对了）、**红线**（能用命令查的硬规则）。细则按模块放在各自目录的 README 里，这里只放纲领与入口。
 
-## 目录（按纲领四层）
+## 0. 这是什么、在哪
 
-| 目录 | 放什么 |
+- 科研全自动化平台的生产代码，Python 包 `ai4sci`（入口 `framework.cli:main`），页面在 `ui/web/`。四层：协调层（人 + 助理）做科研判断，框架是零模型的诚实执行基底，执行层 coding agent 是唯一写代码的，skill 脚本是确定性工具。
+- 本仓是**内仓**：外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 把它 clone 到 `platform/`，外层对它的 git 不知情。产品纲领（P-1 到 P-25）、流程细则、未决问题、案例卡都在外层 `docs/`；issue 也开在外层。只 clone 了本仓的人先去外层读 `docs/architecture/README.md`。
+- 两种跑法：源码（clone + `make up`）出厂件在仓根、数据根缺省仓根；包（`uv tool install` wheel）出厂件在 `framework/shipped/`、数据根 `~/ai4sci`。分辨只在 `framework/paths.py` 一处。
+
+## 1. 开工前先读哪份
+
+| 要做的事 | 先读 |
 |---|---|
-| `coordinator/` | 两位助理的指南（纲领 P-16）：`README.md` 主页面的研究助理——怎么当科研助理、怎么驱动框架、怎么从库里取一条流程改参数照着跑，不造流程；`studio.md` 编辑台的流程助理——怎么把能力拼成流程存进 `workflows/`，不跑实验。人在终端当协调层时由 CLI 读进来；服务起的会话由 `framework/chat/guide.py` 按域塞进 system prompt；执行层会话不许加载 |
-| `framework/` | 框架：契约、工作区、能力、`ai4sci` CLI、页面后端。零模型调用，不随课题改 |
-| `backends/` | agent 适配器：一个 coding agent CLI 一个文件（`claude_code.py`、`codex.py`），三样东西都在同一个文件里：`Runner`（执行层，一次会话）、`Chat`（协调层，多轮续接、事件流）、模块级 `probe()`（自检四句人话：装了没 / 版本 / 登录 / 说一句话，纲领 P-25）；端口定义在 `backends/__init__.py`。共同的规矩：起会话时把本 venv 的 bin 追加进 PATH、`AI4SCI_CHAT_ID` 告诉它调用的命令自己属于哪段对话；端口的 `bash_rules` 是与 CLI 无关的命令前缀，各家自己翻（Claude Code `Bash(ai4sci *)`；Codex 没有按命令的白名单，沙箱是门、前缀进 `tool_guide`）；有沙箱的 CLI（Codex）没有按工具名的白名单，`bash_rules` 翻成 execpolicy 规则、命中的命令在沙箱外跑（平台自己的目录由此写得进去）；`tool_guide()` 是「工具怎么用」那段，执行层接在提示末尾、协调层插在指南前言之后，各家自己写（Claude Code 有 Read / Glob / Grep，Codex 看文件就是 shell 的只读命令）；`guide_channel` 说清指南每轮整份送（Claude Code `--append-system-prompt`，`turn`）还是只在开线程那次送（Codex `developer_instructions`，`thread`——中途变了框架把全文塞进话里）；`knobs()` 自报有哪些模型、哪几档思考深度与**起点**（具体值，没有「默认」），每轮的 `tuning` 翻成各家的模型 / 深度参数；`cost_reporting` 说清 `done.cost_usd` 是这一轮的还是会话累计的（Claude Code `--resume` 报累计，框架减；Codex 订阅报不出美元，一律 NaN）。Codex 的隔离承重位是私有 `CODEX_HOME`（`~/.config/ai4sci/codex-home`，auth.json 软链到真的、不复制凭据），skills 要按 SKILL.md 逐个关，`exec --json` 没有逐字事件、一段一条 text——每条实测都记在文件头。换一家 CLI 就是加一个文件，主人红线：涉及 agent 的一律可替换 |
-| `compute/` | 算力适配器：一个后端一个文件；端口 `Compute` 定义在 `compute/__init__.py`（put / sync / submit / wait / cancel / cancel_under / get / run / check，`remote_dir_for` 本地目录在那台机器上对应哪个目录，`uv` 那台机器上怎么起 uv）。`local.py` 本机；`ssh.py` 一台能 ssh 上去的 Linux（只认密钥、`bash -lc` 登录 shell、那台机器 pip 配的镜像给 uv 当额外索引、rsync 过去回来、`nohup setsid` 起任务、退出码写文件、`run` 也走这条路不在长连接里干等、`check` 探连接 / Python / uv 缺就 pip 装 / GPU / 磁盘 / rsync / 盘点已有的 Python 环境）；`procs.py` 杀进程树。连接参数由 framework 从按人的清单读出来传给 `make_compute(**params)`；这里不读文件。远端只跑 harness，执行层 agent 在本机（纲领 P-23） |
-| `tools/` | 确定性脚本：文献 API、引用校验、出图、harness 基类 |
-| `~/.config/ai4sci/computes.yaml` | 按人的算力清单（纲领 P-23，`AI4SCI_COMPUTES` 可指向别处；读写点只在 `framework/computes.py`）：不进 git、不进工作区、不进数据根；一条记录 = kind + 连接参数（ssh：host / port / user / key 密钥**路径** / root 远端根），没有 password 字段（读取点断言）；`last_check` 记上次探测（主机名、GPU）给产出 meta 当出处；`default:` 是 `--compute` 不给时用的。出厂自带 `local`。`ai4sci compute add | check | list | remove | default` 维护，助理能跑（人只给 ssh 那一行与密钥路径） |
-| `~/.config/ai4sci/agents.yaml` | 按人的底座清单（纲领 P-25，`AI4SCI_AGENTS` 可指向别处；读写点只在 `framework/agents.py`），与算力清单并列：`chat` / `executor` 各用哪家（可以不同），每家新对话用的 `model` / `effort`（具体值，没填用适配器的起点；值要在那家清单上，不在整份报错不回落），`last_check` 记上次自检。有哪几家是 `backends._BACKENDS` 定的，没有 `agent add`。`ai4sci agent list | check | use` 维护；`ai4sci check` 把底座、算力、存放一起查一遍（`chat/settings.py`），页面「设置」是同一份。测试里两份清单都指到 tmp（`conftest.py`），Codex 的私有 home 也是 |
-| `domains/` | 领域包，按工具链命名，一个领域一个目录；`generic/` 兜底、`petab/` 参数估计；`prompts/<族>.md`（实验族一份 `experiment.md`）由 `cap auto-research` 开实验时快照进产出目录、随执行层提示的「领域约定」段注入；`skills/<name>/` 是领域 skill（格式同 `skills/`），只进执行层的 `<available_skills>` 清单，不快照、不注入正文（执行层 `ai4sci skill show` 按需读）。纲领 P-18 里领域包只是打包单位 |
-| `skills/` | 平台通用的 skill 库（纲领 P-22，`AI4SCI_SKILLS_ROOT` 可指定）：一个目录一个，agentskills.io 格式——`SKILL.md`（frontmatter 只用 name / description / license / compatibility / metadata，自定义键加 `ai4sci-` 前缀）+ `scripts/`（PEP 723 自带依赖，`uv lock --script` 的锁文件进仓，`uv run --locked --offline` 起）+ `references/` + `assets/`。两处库（这里与 `domains/*/skills/`）合起来名字唯一。框架起会话时扫库拼清单进 prompt：协调层拿通用的，执行层拿通用 + 所选领域包的；agent 用 `ai4sci skill list / show / run`。`make skills` 校验并预热（唯一联网的一步，在 `make check` 里）。出厂：`pdf/` 解析论文、`download/` 拉材料（git / file / hf，落 `materials/` 留收据，密钥只读环境变量）。接一个看 `docs/add-a-skill.md` |
-| `projects/` | 一个项目一位助理（纲领 P-15 改，外层 [#136](https://github.com/zephyr4123/TJU-AI4Science/issues/136)）：`projects/<p>/project.md` 是标记（目标一段，一级标题是项目名），`materials/` 几个工作区共用的原件，`.ai4sci/chats/` 助理的对话（归项目，每段一个收件箱 `inbox/`），`workspaces/<id>/` 一个工作区一份需求（P-19）：`requirement.md` 是标记也是根（需求，人和助理对话后由助理写，按 `templates/` 里的模板起草），`requirement.lock` 是确认记录（`ai4sci requirement confirm` / 页面上人确认；签 sha256，之后再改就 dirty，要确认下一版，历次原文存 `.ai4sci/requirement/v<n>.md`）；**它是框架唯一内置的门**：没确认任何能力都不开。`materials/` 原件（研究者给的数据、代码、`env/` 两个文件：python-version + requirements.lock），只追加。`flows/` 流程实例。七个阶段各一个目录（`literature/ hypothesis/ design/ experiment/ analysis/ writing/ verification/`），每次执行一个编号子目录 `<stage>/<n>/`：`meta.yaml` 记 id（就是路径）、标题、谁、状态、`from`（读了哪几次产出，带 sha256）、params、挂在哪条流程第几步、需求第几版；`signed.json` 是人签字的记录（签 tree hash；目录改了记录就 stale）。产出被下游 `from` 引用或签过字就冻结（hash 不对拒开工）。`.ai4sci/` 平台记录：`jobs/` `logs/` `requirement/`（对话不在这儿）。产出的 `from` 可以指兄弟工作区的：`<工作区>:<stage>/<n>`，只限同一项目，被兄弟读过的也冻住。三个样例各自成单工作区项目（mlp-regression 玩具、boehm-nll、rahman-nll 两个真课题）进 git 的只有 project.md、需求、materials/、flows/、design/；实验及之后的产出与 `.ai4sci/`（除 requirement/）不进。数据根 `AI4SCI_HOME` 缺省仓根 |
-| `workflows/` | 流程**库**：通用的走法，不依附课题，一个一个 YAML（`name` / `title` / `summary` / `stages`；一项是阶段名、`阶段: [能力]`、`阶段: {能力: 参数}`、`断点` 或 `断点: 一句话`——断点 = 上一项的产出要人签字下游才能读，几个断点、放哪由拼流程的人定，零个就是全自动；可选 `layout` 是画布上每一项的坐标，人摆过才有，框架只原样存取；纲领 P-18 P-19）。编辑台的流程助理与页面的画布（`POST /workflows`）改它；主页面的研究助理只读，`ai4sci flow take <name>` 复制成工作区 `flows/` 里的实例再改参数。`ai4sci show workflows` / `show flows` / `GET /workflows` / `GET /workspaces/<id>/flows` 读它们，只查阶段名、点名的能力在不在那个阶段、参数、断点位置（阶段之间没有显式的输入输出接口、不做数据流校验）；`covers` `remarks` `used_by` 与每条实例的进度都是从磁盘算出来的，文件里不写。出厂两条：`research`（改进）与 `reproduce`（论文复现，纲领 P-24） |
-| `templates/` | 需求模板的库：`generic.md` 通用一份，`ai.md` `cs.md` `materials.md` 按学科加，`reproduce.md` 论文复现（哪篇、哪几个数、几级、对上的标准），再加一个学科就是再放一个文件（`AI4SCI_TEMPLATES_ROOT` 可指定）。格式开放：一级标题是课题名，二级标题是节，节里「待填」页面显示成空格；框架不规定必须有哪些节。`ai4sci show templates` / `show template <name>` / `GET /templates` 读，`workspace new --template` 与页面新建时按它起草 |
-| `ui/` | 界面层，一种界面一个目录，全是 `ai4sci serve` 端点的客户端（`ui/README.md` 写契约）：`web/` 网页（React 19 + Tailwind v4 + shadcn，Vite 构建到 `web/dist`，`serve` 缺省端它；依赖只进 `web/node_modules`，`make ui` 构建、`make ui-check` 门禁），`tui/` 留位置。需求的**确认**与产出的**签字**两处在页面上，是"只有人能确认"的唯一保证 |
-| `docs/` | 指南：`start-a-workspace.md` 接一个课题、`add-a-capability.md` 接一个能力、`add-a-skill.md` 接一个 skill |
-| `studio/` | 编辑台的对话（流程助理），不进 git；在数据根下 |
-| `tests/` | 框架测试；单测跟着模块走 |
+| 任何改动 | 本文件；外层 `docs/architecture/README.md`（产品边界与 25 条原则） |
+| 改后端（`framework/` `backends/` `compute/`） | `framework/README.md`：分层与依赖方向、技术栈、模式与约定、异常与退出码、环境变量 |
+| 写或改测试 | `tests/README.md`：怎么写、夹具、live 门控、门禁各跑什么 |
+| 改页面（`ui/web/`） | `ui/README.md`：技术栈、约定、测试政策、浏览器闭环；`docs/DESIGN.md` 视觉与布局；`docs/PRODUCT.md` 给谁用 |
+| 加一个能力 / skill / 领域包 | `docs/add-a-capability.md` / `docs/add-a-skill.md` / `docs/add-a-domain.md` |
+| 在终端里接一个课题 | `docs/start-a-workspace.md` |
+| 改助理的行为 | `coordinator/README.md`（研究助理）、`coordinator/studio.md`（流程助理）与 `framework/chat/guide.py` 的前言**是线上 prompt**，改它们等于改助理的行为；`framework/capabilities/*/prompt.md` 是执行层的 prompt |
+| 流程 / 能力 / 断点这些概念 | 外层 `docs/architecture/workflow.md`（细则与词表） |
 
-依赖只指向一个方向：`framework/` → `backends/`、`compute/`、`tools/`；适配器只 import 自己包根的端口定义，不 import `framework/`。任何目录都不依赖外层仓的路径。仓根与几个根目录（数据根 `AI4SCI_HOME`、流程库 `AI4SCI_WORKFLOWS_ROOT`、领域包 `AI4SCI_DOMAINS_ROOT`、需求模板库 `AI4SCI_TEMPLATES_ROOT`、skill 库 `AI4SCI_SKILLS_ROOT`）的读取点只在 `framework/paths.py`，各层从它拿，不各自算 `parents[n]`；按人的算力清单（`AI4SCI_COMPUTES`）的读写点只在 `framework/computes.py`。
+## 2. 协作方式：issue driven、spec coding
 
-### `framework/` 的子包
+- **每个工作单元一条 issue**，开在外层仓 [zephyr4123/TJU-AI4Science](https://github.com/zephyr4123/TJU-AI4Science/issues)。做之前先有 issue，做的过程中发现、证据、决策随做随写进 issue 评论（贴 commit、贴数字、贴 `文件:行`），不攒总结。会话会压缩、聊天记录会丢，issue 和文档才是可靠的上下文。
+- **先对齐再动手**：需求、边界、验收标准先写清（issue 正文或外层 `docs/specs/`），照它干活，做完回来改文档。纲领（外层 `docs/architecture/`）改得慢、要双方认可；spec 和 issue 改得快。现实与文档不一致时先改文档再改代码。
+- **issue 的写法**：标题一句人话；标签三根轴——`kind:*`（什么类型，可多选）、`area:*`（哪一层）、`P0/P1/P2`；大活开一条 `kind:umbrella` 母 issue 挂 milestone，叶子用 GitHub sub-issue 挂在它下面，不把几十条平铺在 milestone 上；要人拍板的加 `needs-decision`。
+- **commit**：feature 分支上做，一个逻辑单元一个 commit，随做随提；message 用中文、技术名词保留英文、说改了什么和为什么、末尾带 `（#n）` 引用 issue。**不加 `Co-Authored-By`、不加「Generated with」尾注、不加机器人 emoji**。
+- **合并与推送**：合到 `main`、push 远端、改写历史之前要项目负责人确认，每次都问；分支内随做随提不用问。`./repos` 的 pull 只 ff-only、push 永不 force。
+- **交活**：`make check` 绿才提交；改动写进 `CHANGELOG.md` 的 Unreleased；merge+push 之后把这批 commit 引到的 issue 关掉，评论写做了什么、在哪个 commit。做完不关的 issue 等于没做完的 issue。
+- 涉及外层与内仓两边的改动，以外层的一条 issue 为锚，两边 commit 都引它；问「某功能改了哪些仓」查 issue 不查 git log。
 
-按概念分包，依赖**只许自上而下**（`cli → capabilities → chat → experiment → executor → workspace → skills → contracts`），同层与包内随意：
+## 3. 编码标准
 
-| 子包 | 放什么 | 可以 import |
-|---|---|---|
-| `cli/` | 命令行上的东西一类一个模块：`cap` 能力（agent 调用的 tool；子命令从描述符生成，每个都是纯函数——`--from STAGE/N` 点名读哪几次产出（可多次），没有「缺省读最新」；`--flow` 挂到哪条流程（工作区里只有一条时不用写；断点后的产出没签字或签了又改了就拒开工）；continuable 的能力有 `--continue STAGE/N` 接着同一次产出干；`--backend` / `--compute <名字>` 按需要（`--compute` 查按人的清单，不给用清单缺省，机器的出处记进 meta 的 `compute`），每个 Param 一个选项，bool 是开关；`--detach` 把同一条命令起成独立进程当作业，等它过门、开了产出再返回（作业号旁带产出 id；当场没开起来的直接退 1 报原因），跑完回写、属于某段对话的去叫醒；驱动顺序：查需求确认 → 解析输入（在不在、成没成、冻结的 hash 对不对）→ 定流程与步 → 开产出目录 → 跑 → 收尾写 meta）、`requirement confirm` 确认需求、`sign STAGE/N` 给一次产出签字、`output new <stage>` 不经能力开一次产出目录（助理自己写的东西也是产出）、`show` 查询（`projects` / `project`（当前项目全貌：每个工作区一行，助理的全局视角）/ `workspace` / `outputs` / `output` / `jobs` / `job` / `flows` / `caps` / `workflows` / `templates` / `template`，只读，与 serve 的 GET 同一批函数）、`flow take` 取流程、`job stop <id>` 停作业（杀进程树、作业记 stopped、产出记 failed；页面同一个动作走 `POST …/jobs/<jid>/stop`）、`env resolve [--python X.Y] [--compute <名字>] <包名>…` 隔离新建：按包名算完整清单进 `materials/env/`（`uv pip compile`，会联网；`--compute` 到那台机器上算）、`env use --compute <名字> <解释器绝对路径>` 用机器上现成的环境：探版本、`pip freeze` 当清单、写 `materials/env/interpreter`（P-23 的两问：接上机器先盘点「已有环境」、问研究者隔离新建还是用现成的、用哪个）、`env add --compute <名字> [--from <requirements.txt>] <包名>…` 往现成的环境里补几个包（pip 进那个解释器、重新 freeze、头部记补了什么；P-24）、`compute add <名字> --ssh user@host:port --key <路径> [--root] [--default] | check | list | remove | default` 接机器（P-23：写清单、就地探测、一行一项报告；探测不过记录照留退 1）、`show computes`、`skill list | show <name> | run <name> [--script <文件>] [参数…]` 工具包（两层 agent 都能用；`run` 起 `uv run --locked --offline`，参数原样递给脚本，stdout 与退出码原样透出）、`project new / remove`、`workspace new / remove`（`--template`；在当前项目里）/ `chat`（`--studio` 选编辑台的流程助理，不给就是当前项目的研究助理；人一轮说完接着念收件箱）/ `serve` 入口；工作区级的命令都带 `--ws <名字>`（`_common.add_ws_option`），`_common.current_workspace(args)` 按 `--ws` 在当前项目（`project.find`：cwd 往上找 `project.md`，`AI4SCI_PROJECT` 可指定）里取，不带就从 cwd 往上找 `requirement.md`（人在终端、执行层在产出目录里），找不到退 2 说清怎么办（站在项目里就列出有哪些）；`__init__` 装配 parser 并导出 `main` | 下面全部 |
-| `capabilities/` | 能力库的「步骤」那一半：一个步骤一个子包，互不 import，每个导出 `DESCRIPTOR`（属于哪个阶段 + 五栏：职责 / 边界 / 输入 / 产出 / 终止条件，讲机制、带专业术语；`continuable` 标它能不能接着同一次产出干；纲领 P-18）与 `run(output_dir, inputs, ports, **params)`（`inputs` 是 `--from` 解析出来的产出，按阶段取），`discover()` 扫目录并断言签名；子包名下划线对命令名连字符。能力之间没有显式的输入输出接口：描述符里没有路径表，要的东西不在自己开始执行时报错。六个：`design/` 写评分脚本、跑基线（设计阶段：`drafting` 组提示、起执行层、判越界、`ruff --fix-only --select I` 先修 import 顺序再封 harness、ruff、校验，`--continue` 时 `materials/env/` 与包里 `env/` 对不上就拒、要重开，`baseline` 在所选算力上——那包 `sync` 过去、那边按 env/ 建 venv、起 make_run0.sh、`get` 回来——出 baseline/、预检；`--continue design/<n> --feedback` 让执行层改第二版）、`auto_research/` auto-research（实验阶段：`--from design/<n>`，`open` 把那包搬进 `work/`、在所选算力上按 lock 建 venv（解释器路径与机器出处记进 checkpoint）、起 git、快照 scoring.yaml 与需求；内环每轮 `put` 快照到那台机器、`submit` / `wait`、`get` 回来；内环 `loop` / `judge` / `gate` / `failures` / `prompt.md`；`--continue experiment/<n>` 续跑与续命）、`reproduction/` 原码复现基线（设计阶段第二颗，纲领 P-24：`--code <materials 里的目录名>` 把论文的代码搬进 code/、其余原件进 data/、记 `upstream.json`；执行层只写 launcher / evaluate / scoring，允许改 code/，改动写进 `upstream.diff`；跑基线不判「无解」，结论行论文值与我们的值并排；与 `design` 共用族包的 `experiment/drafting.py` 与 `experiment/baseline.py`）、`analysis/` 写分析初稿（`--from experiment/<n>` 可多个，`analyze` + `prompt.md`）、`reproducibility/` 复现性分析（分析阶段第二颗：`--from design/<n>`，读论文值、baseline/、σ、upstream.diff、env/，执行层写 analysis.md，来源写成 `design/<n>/scoring | baseline | repeat_<seed> | sigma`）、`verify/` 核对数字（`--from analysis/<n>` + 它读的实验或设计，`checks` 零模型，写 report.json） | experiment、executor、workspace、skills、contracts。`abilities.py` 是能力库的出处：一个词「能力」、两个 tag——步骤（这里的描述符）与 skill（`skills/` 的 SKILL.md），两种不许重名，都能挂到流程的格子上（`- 文献: [pdf, download]`），流程校验、`GET /cap` `GET /skills`、看板都按它分（纲领 P-22，2026-09-22 改） |
-| `chat/` | 两位助理的对话与页面后端：`scope` 定域（项目：cwd 是项目、可写整个项目（全部工作区）、库 `workflows/` 与 `templates/` 可读不可写（端口 `readable_paths`，适配器 `--add-dir`）、对话在项目的 `.ai4sci/chats/`；编辑台：cwd 是库的上级、只可写 `workflows/`、对话在 `studio/chats/`），`guide` 按域把 `coordinator/README.md` 或 `studio.md` 加前言塞进 system prompt（Bash 放行 `ai4sci`，带路径的老写法也放行，指南只教裸写法，红线 10 11；研究助理的前言后面接通用 skill 的 `<available_skills>` 清单，前言里写了什么时候联网、只用自带的联网工具）、`conversation` 建对话 / 发一轮 / 落盘 `<域>/chats/<id>/`（meta、每轮 message、原生事件流 events.jsonl 与不分后端的框架事件 trace.jsonl、transcript、忙锁、`read_turns` 读回结构含每轮 events、`title`；一轮有 `origin`：人，或框架来叫醒）、`notify` 作业跑完把结果排进那段对话（在项目里）的收件箱，空闲就当场以「框架」身份发一轮念完，忙就 queued 留给正跑的那一轮结束后 `follow_up` 接着念（服务与终端都在人那一轮之后调），一条不丢；`conversation.send_inbox` 在同一把原子锁下读收件箱、`boards` 看板读盘（项目一行与一整份（每个工作区一行）、工作区一行与一整份、需求的原文 / 分节 / 确认状态 / 上一版原文、七个阶段的产出、一次产出的记录 / 签字 / 文件清单（小文本带正文）、每条流程的进度、模板清单；NaN 出门前换 None）、`server` 标准库 HTTP + SSE（端点清单在文件头，按 `/projects/<p>/…`（工作区在它下面 `/projects/<p>/workspaces/<id>/…`）与 `/studio/…` 分域；`/stages` `/templates` 直接读契约与库，`…/workspaces/<id>/files|file|raw?path=` 是文件镜头的三个只读端点（`boards.resolve_path` 拒一切出工作区的路径），`POST …/jobs/<jid>/stop` 人叫停作业；`/cap` `/workflows` `/workflows/check` 与描述符表由 cli 以函数传入；不是接口前缀的 GET 路径端 `ui_dir` 的静态文件，单页应用回 index.html） | experiment、executor、workspace、skills、contracts |
-| `experiment/` | 实验这一族能力（design / auto-research / analysis / verify）私下的约定，框架的契约层不认识它（纲领 P-19）：`pack` 设计那包合不合约（`scoring.yaml`、harness/、code/、env/、baseline/；`schemas/` 三份 JSON Schema：scoring / results / report；复现的 `upstream.json` / `upstream.diff` 读写）、`drafting` 起执行层写草稿、封 harness、ruff、validate（设计阶段两颗能力共用）、`baseline` 跑基线与预检（`check_headroom` 复现时关）、`env`（读 env/——`python-version` + `requirements.lock` + 可选 `interpreter`（`<算力名字>:<解释器>`，用那台机器上现成的环境，只在那一台上认、换机器拒）、`build_venv_on(compute, …)` 在一台算力上用它的 uv 建 venv 后 `uv pip check` 查清单完整（有 `interpreter` 就不建、直接用）、`resolve_lock` 按包名 `uv pip compile` 出完整清单（可到某台算力上算）、`use_interpreter` 探现成解释器的版本与 `pip freeze` 写成 env/、起 harness 时保证给 `AI4SCI_PYTHON` `AI4SCI_BUDGET_S` `AI4SCI_INNER_K`，harness 给它们写默认值过不了校验）、`headroom` 预检（门高的唯一定义）、`layout` 一次实验目录里的路径（`work/`、`ledger.tsv`、`notebook.md`、`iters/iter_N/`、`executor/iter-N/`、`checkpoint.json`、`.venv/`）、`checkpoint`、`context` 只读上下文（含 `domain`：scoring 快照里设计时盖的领域包名，执行层的 skill 清单按它拼；`python` 与 `compute_name` 从 checkpoint 读：harness 的解释器在跑实验的那台机器上）、`gitwork`、`ledger` 账本、`notebook` 实验笔记、`artifacts` 结果索引、`results` 成绩读取、`analysis` 数据表契约（来源可以是实验的一轮或设计那包的基线 / 重复 / 论文值 / σ）与会话产物的事后判定、`report` 验证报告、`prompting` 账本摘要 | executor、workspace、skills、contracts |
-| `executor/` | 起执行层会话：组 prompt（`prompting`：模板 + 通用段——领域约定、skill 清单 `<available_skills>`、联网规矩）、起会话并留档日志（`session`；Bash 只放行 `ai4sci skill *`，`skills.EXECUTOR_BASH_RULES`） | workspace、skills、contracts |
-| `workspace/` | 项目与工作区的磁盘：`project`（标记 project.md、从 cwd 往上找、起、列、按名字取工作区、`of` 从工作区找回项目）、`root`（标记 requirement.md、从 cwd 往上找、按模板起、列；对话不在工作区里）、`outputs`（`<stage>/<n>/` 的开与收：编号、meta、冻结判断；兄弟工作区的产出写 `<工作区>:<stage>/<n>`，被谁引用扫整个项目）、`removal`（删产出 / 流程实例 / 工作区 / 项目，拒的条件在文件头）、`progress`（每条流程实例走到哪、在等谁——作业 / 签字 / 助理 / 完了——从产出的 meta 与签字现算，没有进度文件）、`jobs` 后台作业（`.ai4sci/jobs/`：记录 + 日志，独立会话起 `framework.cli`，pid 探活判 lost，`attach_output` 挂上产出 id，`stop` 人叫停——`compute.procs.kill_tree` 杀整棵树、记 stopped、产出记 failed） | skills、contracts |
-| `skills/` | skill 库的读取点（纲领 P-22）：`library` 扫两处库（`skills/`、`domains/*/skills/`）、校验 SKILL.md（规范字段、name 等于目录名、正文五百行以内）与脚本（PEP 723 头、锁文件）、按名字找、两层各自的清单（`for_coordinator` 通用，`for_executor(domain)` 通用 + 领域）；`catalog` 拼 `<available_skills>` 块（没有 skill 就空串）；`run` 起脚本（`uv run --locked --offline --script`，去掉 `VIRTUAL_ENV`）、`warm_script` 给 `make skills`（`uv lock --check` + `uv sync`）；`__main__` 是 `make skills` 的入口 | contracts |
-| `contracts/` | 框架认的东西，只有这几样：`stages` 七个研究阶段的名字与目录名、`requirement`（requirement.md / requirement.lock：标题、分节、状态、确认、`require_confirmed` 那道门）、`output`（产出 id、`meta.yaml`（含 `compute`：在哪台机器上跑的）、`tree_hash`、`signed.json` 与签字状态）、`workflows` 流程文件（阶段 + 断点的解析与检查、`stop_after` / `matching_step`）、`capability` 能力描述符与入口形状（`Capability` / `Inputs` / `Param` / `Ports`；`title` `brief` 五栏 `COLUMNS` 与参数 `label` 是给人读的三层文案，界面不另抄，`BANNED_WORDS` 与字数守着） | 谁都不 import（framework 内） |
+心法：**每一行代码都要有存在的理由，可删的代码就是该删的代码**。按高级工程师的水准写，与语言无关。
 
-`backends/` 与 `compute/` 是端口：framework 任何子包都可以 import 它们，它们不许 import framework。这条与上表都由 `tests/test_layering.py` 用 ast 逐条查，不是靠人 review。
+- **融入现有代码**：跟随仓里的命名、结构、注释风格；判据是新代码混在旧代码里看不出是后加的。
+- **三个清晰**：目录清晰——打开仓库能猜到东西在哪；结构清晰——分层明确，依赖只指向一个方向，画依赖图不出现环（`tests/test_layering.py` 查）；模块清晰——单一职责，每个模块能独立理解、独立测试、独立替换，「独立替换」是最严的一条。
+- **设计的张力**：善用设计模式解决对口的问题，不为用而用；不过度设计，只为当前需求实现、为可预见的变化留缝。**有真实的第二个用例才抽象，只有一个用例先写死。**
+- **涉及 agent 的一律可替换**：起 agent、连算力的地方先定端口（Protocol）再写第一个适配器，框架只 import 端口；框架里不出现某家 CLI 的名字或参数；换一家就是加一个文件、显式字典里加一行。
+- **文件即接口**：能力之间的接口是文件名，不是 schema；一个文件只有一个生产者，格式由生产者定；schema 只在产物要给机器读时才补。
+- **一个概念一处读取点**：根目录只在 `framework/paths.py`，按人的两份清单只在 `framework/computes.py` / `framework/agents.py`，环境变量各自只读一次、断言一次。
+- **可读性优先**：命名讲人话，函数和文件一眼能读完；注释与 docstring 用中文，写「为什么」不复述「做什么」，引用纲领条目 P-n 与 issue 号。
+- **错误处理显式**：失败路径要么处理要么向上抛；空值、越界、并发、超时想在前面；未知的值写 NaN 或空，绝不写 0 冒充；配置非法当场断言或抛，不静默回落。
+- **为排查留日志**：关键路径写带上下文的结构化日志（`ai4sci.<模块>`，消息是「事件名 键=值」），错误日志能让三个月后的人定位。
+- **性能靠测量**：先正确后优化，优化要有数据。
+- **依赖**：成熟库优先，精力留给业务独有逻辑；选型四看——维护活跃度、社区规模、许可证、安全记录；锁文件钉版本（`uv.lock`、`package-lock.json`）；能复用现有 skill、脚本、模式的不重新发明。运行时依赖极少（见 `framework/README.md`），加一个要说清为什么标准库不够。
+- **重构要彻底**：不光加不删、不打补丁；旧入口（旧命令、旧参数、旧环境变量、没读取点的字段）逐个删干净并同步文档与测试；旧数据用一次性脚本搬（外层 `scripts/oneoff/`）。内测期没有兼容包袱。
+- **破坏性变更可回滚**：数据 schema、对外 API 的不兼容变更要有迁移方案与回滚路径。
+- **文档随代码同步**：过期的文档比没有更糟；改了行为的地方文档同步改，改了产品说法的回写外层纲领。
+- 反模式：为「以后可能」先造三层抽象；另起一套命名结构与旧代码并存；catch 完什么都不做或只打一行没上下文的日志；凭感觉调性能；手写成熟库已解决的东西；改代码不动文档。
 
-## 红线
+交付前自检：风格与仓一致；依赖方向单一无环；新模块可独立测试；失败路径与边界都写了；关键路径有可定位日志；新依赖过了四看且锁了版本；改了行为的文档同步改了；可删的代码删干净了。
 
-1. 框架零模型调用：`framework/` 下 grep 不到 anthropic / openai / claude_sdk（纲领 P-1）。
-2. 不吞异常：ruff 的 BLE 规则开着，裸 `except` 与不 raise 的 `except Exception` 过不了 lint（P-7）。
-3. 每个抽象带真实调用点，每个配置项有读取点与断言，集成点必须有测试（P-8）。
-4. 密钥与敏感配置只进环境变量或 `.env`（已 gitignore），绝不进代码；ssh 主机与密钥路径同理。
-5. Python 一律走 `.venv`，uv 管一切（`make venv` = `uv sync --locked`），依赖钉在 `uv.lock`，改依赖走 `make lock`；uv 是唯一要先装的工具。起服务 `make up` 一行；两种人两条路见 README「怎么跑」（外层 #138）。课题的依赖不进平台 venv：原件 `materials/env/` 两个文件跟着设计那包走，框架用 uv 给每次实验建自己的 venv，harness 只经 `$AI4SCI_PYTHON` 起解释器（裸 `python3` 过不了 `experiment/pack.py` 的校验）。
-6. 每个改动合并时写进 `CHANGELOG.md` 的 Unreleased；发版只走 `make release VERSION=x.y.z`。
-7. `make check` 是提交前门禁，与 CI 完全相同：changelog + ruff + pytest + 页面的 `ui-check`（tsc + oxlint + vitest + 构建）。真 CLI 冒烟测试默认 skip，`AI4SCI_LIVE=1` 才跑；连真机器的 ssh 算力测试 `AI4SCI_LIVE_SSH=<清单里的名字>` 才跑；CI 都不跑。
-8. 跨仓变更以外层仓的 GitHub issue 为锚，commit message 引用它。
-9. `.claude/` 是本机会话产物，已 gitignore；不要读取或依赖其中内容。
-10. 助理面前只有 `ai4sci` 一个入口（纲领 P-14 CLI 主导封装）：协调层放行的命令前缀是 `ai4sci`（带 `.venv/bin/` 的老写法也放行，前期别设坎），执行层只有 `ai4sci skill`（`guide.BASH_RULES` / `skills.EXECUTOR_BASH_RULES`，与 CLI 无关，各家适配器翻成自己的白名单；Codex 没有按命令的白名单，沙箱是门）；两层都放行 CLI **自带**的联网搜索与网页读取工具（Claude Code 是 WebSearch / WebFetch——实测 dontAsk 下不在白名单就被拒，agent 会拿 curl 硬凑；Codex 是 `web_search`），prompt 里写了什么时候该查、只用自带工具、查到的带来源；哪家、模型、深度归按人的设置（P-25），预算、超时、目录归起服务的人的环境变量，命令上都不带，命令也不带路径（P-15：助理的 cwd 是项目，工作区靠 `--ws <名字>`）；两份指南里每条命令以 `ai4sci ` 开头、不带路径不挂前缀不接管道（`test_chat_guide` 守着）。agent 需要而没有的动作是平台缺口：加能力，不放行裸命令。给研究者看的话（指南、页面、agent 的回话）不用「能力单元」这类内部词，每条命令翻成一句直白话；文档与指南用直白的工程语言：命令就是 agent 调用的 tool，「人按」就是人确认，不写「按钮」「键」这种比喻（主人 2026-09-18）。
-11. 造流程与用流程分权（纲领 P-16）：主页面的研究助理只能用流程（`flow take` 取、改实例、照着跑），不造流程、不造能力；编辑台的流程助理只写 `workflows/`，不跑实验、不碰工作区。分权靠 `chat/scope.py` 的可写目录与按域分前缀的端点，不靠指南里的一句「请不要」；研究助理的指南里没有 `workflows/<name>.yaml` 的写法（`test_chat_guide` 守着）。
-12. 素材不进仓（纲领 P-17）：页面里的图片 / 视频只写自己 CDN 的 URL，且只在 `ui/web/src/assets.ts` 一处；`git ls-files ui/` 里没有 png / jpg / mp4（`make ui-check` 守着）；图标全站一套 Phosphor 内联。素材从来源站下到本机、处理好再推桶，不直接引第三方源；清单与许可记在 `docs/DESIGN.md`「素材」。
-13. 框架只管文件夹怎么摆，不管里面装什么（纲领 P-19）：框架认的文件只有 `requirement.md` / `requirement.lock` / `meta.yaml` / `signed.json` / 流程文件 / 描述符；`scoring.yaml` 这类是某一族能力私下的约定，放那族自己的包里（`framework/experiment/`），不进 `contracts/`。需求确认是唯一内置的门；断点几个、放哪由拼流程的人定。能力是纯函数：读什么用 `--from` 点名，没有「缺省读最新」——哪次产出该喂给谁，是助理看着磁盘做的判断。**文件名按阶段定，不按能力定**（P-20）：每个阶段一个主文件（`capabilities.MAIN_FILES`），进这个阶段的能力都得留下它、下游只认它，`discover()` 查「产出」栏写到了；族文件归族包，能力另留的文件是私有的；谁产的记在 meta 的 `by` / `from`，不写进文件名。skill 不是一格（P-22）：它是 agent 的工具包，不开产出目录、不进流程，写哪里由调用者定（助理 → `materials/`，能力 → 自己的产出目录）；要当一格就包成能力。接一个能力看 `docs/add-a-capability.md`，接一个 skill 看 `docs/add-a-skill.md`。
-14. 页面与文案照词表（纲领 P-21，词表在外层 workflow §5 界面适配）：一个概念一个词（workflow 叫「流程」，量词「个 / 次 / 项」），标签名词、按钮动词、句子只进解释层；机器的名字（流程文件名、能力名、产出 id、参数名、CLI 参数）不上屏，翻译在源头——描述符给 `title` `brief`、参数给 `label`，前端不拼不猜，文件镜头是唯一例外；能力文案三层：名直接显示、一行 hover、详情（职责 / 边界 / 输入 / 产出 / 终止条件）点击跳转，执行者种类不上屏。机器判据：`Capability` / `Param` 的 `__post_init__` 断言字数、禁用词与 CLI 参数（`contracts/capability.py`），`ui/web/src/copy.test.ts` 扫页面源码的禁用词与 `font-mono`，`tests/test_chat_server.py` 查页面读的响应体里凡 id / name / slug 必带 title / label（[#112](https://github.com/zephyr4123/TJU-AI4Science/issues/112)）。
+## 4. 质量纪律
 
-## 版本与发布
+心法：**代码好不好由测试说明、由门禁说明、由实际数据说明**；作者自己说「应该没问题」等于什么都没说。
 
-- 从 0.1.0 起步，0.x 不承诺兼容；正式发布才进入 1.0.0。tag 形如 `vX.Y.Z`，内测 `-rc.N`。
-- 推送 tag 触发 `release.yml`：对账 CHANGELOG → `make check` → `make package` → 建 Release 并附包，0.x 自动标 pre-release。
-- commit message 用中文，技术名词保留英文；一个逻辑单元一个 commit。
+- **测试驱动**：改行为先写一条会失败的测试，亲眼看它红，再实现让它绿。没见过红的测试不知道它测没测到东西。文档、配置、单行修复这类低风险改动按爆炸半径从轻。
+- **机器能查的不留给人查**：能被脚本判定的规矩进门禁（ruff、tsc、oxlint、vitest、pytest 里的检查器测试），人的注意力留给意图、抽象、边界。一条规矩没法用一条命令查它有没有被违反，它就只是标语。
+- **不用 mock 模型**：框架的正确性不由模型的发挥证明；用剧本后端（`tests/fixtures/scripted_backend.py`）把执行层「这一轮干了什么」变成可枚举的输入。真 CLI、真机器的测试用 `AI4SCI_LIVE=1` / `AI4SCI_LIVE_SSH=<名字>` 门控，CI 不跑。
+- **审查产出不是事实**：任何 agent 或工具报出的 finding 都是待验证输出，逐条到代码里核实才能采信、才能动手。
+- **排查三条**：未取证不下结论（查代码、查 git log、查日志）；假设必须带验证动作并立刻取证，验不了就标「未验证」；证据穷尽仍不确定就带证据与置信度如实说。
+- **什么算验过了**：可复现的命令 + 真实输出；计数型硬数字（「535 过 7 跳」）；正 / 负 / 边界样本各多少；引用带 `文件:行` 与 commit；没触发的场景点名说未触发及原因。「已验证」「应该没问题」不是证据。
+- **页面改动必须过浏览器**：改了看得见的东西，用 playwright 在真服务上点一遍、截图看一眼再交，证据存在外层仓根 `.playwright-mcp/`（gitignore）。
+
+## 5. 红线（能用命令查的都进了 `make check`）
+
+1. **框架零模型调用**：`framework/` 下 grep 不到 anthropic / openai / claude_sdk（纲领 P-1）。模型只在 `backends/` 适配器起的子进程里。
+2. **不吞异常**：ruff 的 BLE 规则开着，裸 `except` 与不 raise 的 `except Exception` 过不了 lint（P-7）。
+3. **依赖方向单向**：`framework/` 内 `cli → capabilities → chat → experiment → executor → workspace → skills → contracts`，`backends/` `compute/` 是端口、不许 import framework，能力子包互不 import（`tests/test_layering.py`）。
+4. **密钥与敏感配置只进环境变量**，绝不进代码、不进 argv；ssh 只认密钥，清单里没有 password 字段（`framework/computes.py` 断言）。
+5. **环境隔离**：平台一律 `.venv`、uv 管一切（`make venv` = `uv sync --locked`，改依赖 `make lock`）；课题的依赖不进平台 venv，每次实验按 `materials/env/` 自建 venv，harness 只经 `$AI4SCI_PYTHON` 起解释器；skill 脚本 PEP 723 自带依赖；页面依赖只进 `ui/web/node_modules`。
+6. **每个改动写 `CHANGELOG.md` 的 Unreleased**；发版只走 `make release VERSION=x.y.z`，不手工打 tag（`make changelog`）。
+7. **`make check` 是提交前门禁，与 CI 完全相同**：changelog → ruff → skills（校验 + 预热，唯一联网的一步）→ pytest → `ui-check`（素材不进仓 + tsc + oxlint + vitest + 构建）。门禁命令别接 `| tail`，管道会吞退出码。
+8. **跨仓变更以外层 issue 为锚**，commit message 引用它。
+9. **`.claude/` 是本机会话产物**，已 gitignore；不读取、不依赖。
+10. **素材不进仓**（P-17）：图片 / 视频只写 CDN URL，只在 `ui/web/src/assets.ts`；`git ls-files ui/` 里没有二进制（`make ui-check`）；图标全站一套 Phosphor 内联，品牌标是唯一自绘的 SVG。
+11. **页面与文案照词表**（P-21）：一个概念一个词，机器的名字（文件名、能力名、产出 id、参数名）不上屏，翻译在源头（描述符的 `title` `brief`、参数的 `label`）；禁用词与 `font-mono` 由 `ui/web/src/copy.test.ts` 与 `framework/contracts/capability.py` 的 `BANNED_WORDS` 守着。文档、指南、文案用直白的工程语言：命令就是 agent 调用的 tool，「人按」就是人确认，不写「按钮」「裁判」「房间」这类比喻，不造量词。
+
+下面三条是**产品运行时的规矩**，约束的是助理与框架的行为，改相关代码时要守：
+
+12. **助理面前只有 `ai4sci`**（P-14）：协调层放行的命令前缀是 `ai4sci`，执行层只有 `ai4sci skill`（`chat/guide.py::BASH_RULES`、`skills.EXECUTOR_BASH_RULES`）；配置归环境变量与按人的两份清单，命令上不带路径、不挂前缀、不接管道（`tests/test_chat_guide.py` 守着）。agent 需要而没有的动作是平台缺口：加能力，不放行裸命令。
+13. **造流程与用流程分权**（P-16）：项目里的研究助理只用流程（`flow take` 取实例、改参数、照着走），编辑台的流程助理只写 `workflows/`；分权靠 `chat/scope.py` 的可写目录与按域分前缀的端点，不靠指南里的「请不要」。
+14. **框架只管文件夹怎么摆，不管里面装什么**（P-19 / P-20）：框架认的文件只有 `requirement.md` / `requirement.lock` / `meta.yaml` / `signed.json` / 流程文件 / 描述符；族内约定（`scoring.yaml` 这类）放族包 `framework/experiment/`，不进 `contracts/`。需求确认是唯一内置的门，断点几个、放哪由拼流程的人定。能力是纯函数：`--from` 点名输入，没有「缺省读最新」。阶段主文件按阶段定名（`capabilities.MAIN_FILES`），不按能力定。
+
+## 6. 版本与发布
+
+- 从 0.1.0 起步，0.x 不承诺兼容；正式发布才进入 1.0.0。tag 形如 `vX.Y.Z`。
+- 推送 tag 触发 `release.yml`：对账 CHANGELOG → `make check` → `make package` → 建 Release 并附 wheel，0.x 自动标 pre-release。
