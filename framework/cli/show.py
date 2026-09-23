@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from framework import computes, paths
 from framework.capabilities import abilities, discover
@@ -26,6 +25,7 @@ from framework.cli._common import (
     add_ws_option,
     current_project,
     current_workspace,
+    library,
 )
 from framework.cli.workspace import read_template
 from framework.contracts import output, workflows
@@ -206,8 +206,8 @@ def cmd_caps(args: argparse.Namespace) -> int:
     要带什么进来 / 留下什么 / 什么时候停）与"用在哪几条流程"——后者是从库里的流程文件反查的，
     能力自己不知道。"""
     descriptors = [module.DESCRIPTOR for module in discover().values()]
-    # 坏掉的流程文件不算进反查；坏在哪由 show workflows 报
-    uses = workflows.used_by(workflows.load_valid(paths.workflows_root()))
+    # 坏掉的流程文件不算进反查；坏在哪由 show workflows 报。两层库都算：人存的流程也是用处
+    uses = workflows.used_by(library().load_valid())
     if args.json:
         rows = [{**d.to_dict(), "kind": abilities.KIND_STEP, "used_by": uses.get(d.name, [])}
                 for d in descriptors]
@@ -243,8 +243,9 @@ def _skills() -> frozenset[str]:
 
 
 def cmd_workflows(args: argparse.Namespace) -> int:
-    """库里的流程：每条一行带走过的阶段，点名的能力不在那个阶段、参数不对的退 1；提醒只打不退。"""
-    return _print_flows(paths.workflows_root(), args.json)
+    """库里的流程（出厂的 + 人在编辑台存的）：每条一行带来源与走过的阶段，点名的能力不在那个阶段、
+    参数不对、与出厂重名的退 1；提醒只打不退。"""
+    return _print_flows(library().describe(_catalog(), _skills()), args.json, source=True)
 
 
 def cmd_flows(args: argparse.Namespace) -> int:
@@ -252,18 +253,18 @@ def cmd_flows(args: argparse.Namespace) -> int:
     ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
-    return _print_flows(ws.flows, args.json)
+    return _print_flows(workflows.describe_dir(ws.flows, _catalog(), _skills()), args.json)
 
 
-def _print_flows(root_dir: Path, as_json: bool) -> int:
-    # 坏文件也是一条，problems 里说原因
-    found = workflows.describe_dir(root_dir, _catalog(), _skills())
+def _print_flows(found: list[dict], as_json: bool, *, source: bool = False) -> int:
+    # 坏文件也是一条，problems 里说原因；库的清单多一列来源（出厂 / 自定义），实例没有
     if as_json:
         print(json.dumps(found, ensure_ascii=False, indent=2))
     else:
         for wf in found:
             stages = " → ".join(_stage_word(item) for item in wf["stages"])
-            print(f"{wf['name']}\t{wf['title']}\t{stages or '-'}")
+            where = ("\t出厂" if wf["shipped"] else "\t自定义") if source else ""
+            print(f"{wf['name']}\t{wf['title']}{where}\t{stages or '-'}")
             for remark in wf["remarks"]:
                 print(f"  · {remark}")
             for problem in wf["problems"]:
@@ -338,7 +339,8 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     caps.set_defaults(func=cmd_caps)
     wfs = what.add_parser("workflows",
-                          help="库里的流程（workflows/*.yaml）：经过哪些阶段、有无问题")
+                          help="库里的流程（出厂的 workflows/ 与人存的 studio/workflows/）："
+                               "来源、经过哪些阶段、有无问题")
     wfs.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     wfs.set_defaults(func=cmd_workflows)
     tpls = what.add_parser("templates", help="库里的需求模板：通用一份、按学科加")

@@ -52,25 +52,30 @@ def test_missing_or_empty_guide_is_an_error(tmp_path):
 
 
 def test_the_two_scopes_write_to_disjoint_places(tmp_path, monkeypatch):
-    """分权靠白名单：研究助理只写自己的项目（全部工作区），流程助理只写库；两组没有交集。"""
+    """分权靠白名单：研究助理只写自己的项目（全部工作区），流程助理只写人存的那层库
+    （数据根 studio/workflows/，外层 #149）；出厂的库谁都不写。两组可写目录没有交集。"""
     ws = spaces.make_workspace(tmp_path, "w1")
     project = project_mod.of(ws)
-    library = tmp_path / "lib" / "workflows"
-    library.mkdir(parents=True)
+    shipped = tmp_path / "lib" / "workflows"
+    shipped.mkdir(parents=True)
     templates = tmp_path / "lib" / "templates"
     templates.mkdir()
-    monkeypatch.setenv(paths.WORKFLOWS_ROOT_ENV, str(library))
+    monkeypatch.setenv(paths.WORKFLOWS_ROOT_ENV, str(shipped))
     monkeypatch.setenv(paths.TEMPLATES_ROOT_ENV, str(templates))
+    monkeypatch.setenv(paths.HOME_ENV, str(tmp_path))
+    mine = tmp_path / "studio" / "workflows"
     research = scope.for_project(project)
     studio = scope.studio(tmp_path)
     assert research.kind == "project" and research.cwd == project.root
     assert research.allowed_paths == (project.root,) and research.chats == project.chats
     assert ws.root.is_relative_to(research.allowed_paths[0])  # 工作区在项目里，跟着可写
-    assert studio.kind == "studio" and studio.cwd == library.parent
-    assert studio.allowed_paths == (library,) and studio.chats == tmp_path / "studio" / "chats"
+    assert studio.kind == "studio" and studio.cwd == tmp_path / "studio"
+    assert studio.allowed_paths == (mine,) and studio.chats == tmp_path / "studio" / "chats"
+    assert mine.is_dir()  # 可写目录先建好：适配器把它交给 agent 时得在
     assert not set(research.allowed_paths) & set(studio.allowed_paths)
-    # 两个库对研究助理是只读的：在可读清单里、不在可写清单里；流程助理反过来
-    assert research.readable_paths == (library, templates) and studio.readable_paths == ()
+    # 两层库与模板对研究助理都只读：在可读清单里、不在可写清单里；出厂的库对流程助理也只读
+    assert research.readable_paths == (shipped, mine, templates)
+    assert studio.readable_paths == (shipped,)
 
 
 def test_bash_rules_only_allow_bare_ai4sci():
@@ -116,7 +121,9 @@ def test_research_guide_takes_flows_and_never_builds_them():
     只教取流程、改实例；命令里不带路径，工作区靠 `--ws`（P-15）。"""
     text = guide.system_prompt(guide.PROJECT)
     assert "## 取一条流程，按需求改" in text and "ai4sci flow take" in text
-    assert f"库在 `{paths.workflows_root()}`：你能读不能写" in text  # 路径写实，agent 不用去找
+    # 两层库的路径都写实，agent 不用去找
+    assert (f"库在 `{paths.workflows_root()}`（出厂的）与 `{paths.user_workflows_root()}`"
+            "（课题组在编辑台存的）：你能读不能写") in text
     assert "## 拼一条自己的流程" not in text and "workflows/<name>.yaml" not in text
     assert "不要造流程" in text and "去编辑台" in text
     assert "不要自己把 `ai4sci cap` 放后台" in text
@@ -128,6 +135,9 @@ def test_research_guide_takes_flows_and_never_builds_them():
 def test_studio_guide_builds_flows_and_never_runs_experiments():
     text = guide.system_prompt(guide.STUDIO)
     assert "workflows/<name>.yaml" in text and "ai4sci show workflows" in text
+    # 前言里两层库都写实路径：只能写人存的那层，出厂的只读
+    assert (f"（`{paths.user_workflows_root()}`）。出厂的流程在 `{paths.workflows_root()}`，只读"
+            in text)
     assert "断点" in text and "不做数据流校验" in text
     assert "不跑实验" in text and "不碰任何工作区" in text
     assert "ai4sci cap " not in "\n".join(_commands(text))

@@ -19,8 +19,9 @@ import sys
 
 from backends import BackendNotFound, get_backend
 from compute import ComputeNotFound
-from framework import computes
+from framework import computes, paths
 from framework.contracts.capability import Ports
+from framework.contracts.workflows import Library
 from framework.workspace import jobs, project, root
 from framework.workspace.project import Project
 from framework.workspace.root import Workspace
@@ -29,6 +30,12 @@ EXIT_OK = 0
 EXIT_INVALID = 1
 EXIT_USAGE = 2
 WS_HELP = "哪个工作区（项目里的名字，ai4sci show project 列出）；不给就按当前目录"
+
+
+def library() -> Library:
+    """流程库：出厂的（只读）+ 人在编辑台存的（数据根 studio/workflows/），纲领 P-15 / P-16。
+    show / flow / serve 读库都从这里拿，两层不会漏一层。"""
+    return Library(paths.workflows_root(), paths.user_workflows_root())
 
 
 def setup_logging() -> None:

@@ -1,7 +1,8 @@
 """`ai4sci flow take <name> [--as <新名>]`：把库里的一条流程取到当前工作区当实例（纲领 P-15）。
 
-在 cli 层。流程分两层：库（`workflows/`，流程助理改）→ 实例（工作区 `flows/`，研究助理按这份需求
-改参数、增删阶段与断点）。取流程就是把库里那份复制成实例，过一遍同样的检查再落盘；之后
+在 cli 层。流程分两层：库（出厂的 `workflows/` + 人在编辑台存的 `studio/workflows/`，流程助理只改
+后者）→ 实例（工作区 `flows/`，研究助理按这份需求改参数、增删阶段与断点）。取流程就是把库里那份
+复制成实例（两层都能取，名字全库唯一），过一遍同样的检查再落盘；之后
 研究助理直接改 `flows/<name>.yaml`，`show flows` 校验，每个能力 `--flow <name>` 照它跑
 （只有一条流程时可省）。
 同名实例已在就拒绝：改实例直接改文件，不重取。
@@ -14,7 +15,6 @@ import sys
 
 import yaml
 
-from framework import paths
 from framework.capabilities import abilities
 from framework.cli._common import (
     EXIT_INVALID,
@@ -22,6 +22,7 @@ from framework.cli._common import (
     EXIT_USAGE,
     add_ws_option,
     current_workspace,
+    library,
 )
 from framework.cli.project import report
 from framework.contracts import workflows
@@ -32,11 +33,11 @@ def cmd_take(args: argparse.Namespace) -> int:
     ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
-    library = paths.workflows_root()
-    source = library / f"{args.name}.yaml"
-    if not source.is_file():
-        available = ", ".join(sorted(p.stem for p in library.glob("*.yaml"))) or "-"
-        print(f"库里没有叫 {args.name!r} 的流程（有：{available}）", file=sys.stderr)
+    lib = library()
+    source = lib.find(args.name)
+    if source is None:
+        print(f"库里没有叫 {args.name!r} 的流程（有：{', '.join(lib.names()) or '-'}）",
+              file=sys.stderr)
         return EXIT_USAGE
     raw = yaml.safe_load(source.read_text(encoding="utf-8"))
     name = args.as_name or args.name
@@ -70,9 +71,9 @@ def cmd_remove(args: argparse.Namespace) -> int:
 
 
 def cmd_remove_workflow(args: argparse.Namespace) -> int:
-    """删库里人自己存的一条流程；出厂的拒。"""
+    """删库里人自己存的一条流程（数据根 studio/workflows/）；出厂的拒。"""
     try:
-        workflows.remove_workflow(paths.workflows_root(), args.name)
+        library().remove(args.name)
     except FileNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
@@ -97,8 +98,9 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     add_ws_option(removing)
     removing.set_defaults(func=cmd_remove)
 
-    library = groups.add_parser("workflow", help="流程库：库里的流程文件（workflows/*.yaml）")
-    library_actions = library.add_subparsers(dest="action", required=True)
-    dropping = library_actions.add_parser("remove", help="删库里人自己存的一条流程；出厂的不能删")
+    lib = groups.add_parser(
+        "workflow", help="流程库：人存的流程文件（数据根 studio/workflows/*.yaml）；出厂的只读")
+    lib_actions = lib.add_subparsers(dest="action", required=True)
+    dropping = lib_actions.add_parser("remove", help="删库里人自己存的一条流程；出厂的不能删")
     dropping.add_argument("name", help="流程名（文件名去掉 .yaml）")
     dropping.set_defaults(func=cmd_remove_workflow)

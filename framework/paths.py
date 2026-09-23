@@ -1,8 +1,9 @@
 """仓根与几个根目录的读取点，全框架只此一处（纲领 P-15：读数据根的只有这里）。
 
-两类目录分开想：随代码走的**出厂件**——流程库 `workflows/`、需求模板 `templates/`、领域包
+两类目录分开想：随代码走的**出厂件**——出厂的流程 `workflows/`、需求模板 `templates/`、领域包
 `domains/`、skill 库 `skills/`、两位助理的指南 `coordinator/`、页面构建 `ui/web/dist`；随使用长出
-来的**数据**——项目 `projects/`、编辑台的对话 `studio/`——根是 `AI4SCI_HOME`。
+来的**数据**——项目 `projects/`、编辑台的对话 `studio/chats/`、人在编辑台存的流程 `studio/workflows/`
+——根是 `AI4SCI_HOME`。流程库是两层合起来看：出厂的只读，人存的在数据根（外层 #149）。
 
 平台有两种活法（外层 #138）：
 - **源码**：clone 了仓库、`make up` 起，出厂件就在仓根下，数据根不设也落在仓根（样例项目在那）。
@@ -35,6 +36,7 @@ TEMPLATES_DIRNAME = "templates"
 SKILLS_DIRNAME = "skills"
 GUIDES_DIRNAME = "coordinator"
 UI_DIRNAME = "ui"
+STUDIO_DIRNAME = "studio"  # 数据根下编辑台的家：chats/ 对话、workflows/ 人存的流程
 # 出厂件里每一样在仓根下的位置（页面在 ui/web/dist，包里搬平成 ui/）
 SHIPPED = {WORKFLOWS_DIRNAME: Path(WORKFLOWS_DIRNAME), DOMAINS_DIRNAME: Path(DOMAINS_DIRNAME),
            TEMPLATES_DIRNAME: Path(TEMPLATES_DIRNAME), SKILLS_DIRNAME: Path(SKILLS_DIRNAME),
@@ -51,8 +53,8 @@ def from_source() -> bool:
 
 
 def home() -> Path:
-    """数据根：项目与编辑台的对话都长在它下面。不设：仓库里就是仓根（样例项目在那），装的包是
-    ~/ai4sci。"""
+    """数据根：项目、编辑台的对话与人存的流程都长在它下面。不设：仓库里就是仓根（样例项目在那），
+    装的包是 ~/ai4sci。"""
     raw = os.environ.get(HOME_ENV)
     if raw:
         return _existing(HOME_ENV, Path(raw).resolve())
@@ -63,8 +65,17 @@ def home() -> Path:
 
 
 def workflows_root() -> Path:
-    """流程库：通用的流程，编辑台改它；工作区里的是它的实例（workflow.md §1）。"""
+    """出厂的流程：随代码走、只读；与 `user_workflows_root()` 合起来才是库（workflow.md §1）。"""
     return _library(WORKFLOWS_ROOT_ENV, WORKFLOWS_DIRNAME)
+
+
+def user_workflows_root(home_dir: Path | None = None) -> Path:
+    """人在编辑台存的流程：数据根的 `studio/workflows/`，编辑台的对话在旁边的 `studio/chats/`。
+    第一次用时建（与 `DEFAULT_HOME` 同理）：适配器把它作为可写目录交给 agent，目录得先在。
+    给了 `home_dir` 就按它算（服务端持有自己的数据根，测试也从这里换）。"""
+    root = (home() if home_dir is None else Path(home_dir)) / STUDIO_DIRNAME / WORKFLOWS_DIRNAME
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def domains_root() -> Path:

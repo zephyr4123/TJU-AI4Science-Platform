@@ -26,10 +26,13 @@
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
     GET  /cap                               能力描述符清单：每个带 stage、五栏与 used_by
     GET  /skills                            能力库里 tag 为 skill 的：名字、一行、正文、脚本名
-    GET  /workflows                         库：`workflows/*.yaml`，covers / remarks / problems
-    POST /workflows                         {name, title, summary, stages[, overwrite]} → 存进库
+    GET  /workflows                         库：出厂的 `workflows/*.yaml` + 人存的
+                                            `studio/workflows/*.yaml`，每条带 shipped 与
+                                            covers / remarks / problems
+    POST /workflows                         {name, title, summary, stages[, overwrite]}
+                                            → 存进人存的那层（与出厂重名拒 409）
     POST /workflows/check                   同一个 body，只查不存：covers / remarks / problems
-    POST /workflows/<name>/remove           删库里一条流程（出厂的 research / reproduce 拒 403）
+    POST /workflows/<name>/remove           删人存的一条流程（出厂的拒 403）
     GET  /templates                         需求模板的库：名字、标题、一句说明、原文
     GET  /projects                          项目清单：标题、几个工作区、有没有作业在跑
     POST /projects                          {"id", "title"?, "goal"?} → 新项目（写 project.md）
@@ -322,7 +325,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_settings(parts[1:], body)
         if len(parts) == 3 and parts[0] == "workflows" and parts[2] == "remove":
             try:
-                workflows.remove_workflow(paths.workflows_root(), parts[1])
+                workflows.Library(paths.workflows_root(),
+                                  paths.user_workflows_root(self.server.home)).remove(parts[1])
             except FileNotFoundError as exc:
                 return self._error(HTTPStatus.NOT_FOUND, str(exc))
             except workflows.WorkflowInvalid as exc:  # 出厂的

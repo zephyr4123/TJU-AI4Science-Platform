@@ -78,7 +78,7 @@ platform/
 ├── coordinator/   两位助理的指南（线上 prompt）：README.md 项目里的研究助理、studio.md 编辑台的流程助理
 ├── domains/       领域包：generic/ 兜底、petab/ 参数估计（docs/add-a-domain.md）
 ├── skills/        skill 库：pdf/ 解析论文、download/ 拉材料（docs/add-a-skill.md）
-├── workflows/     流程库：research（改进）、reproduce（论文复现）；编辑台改它，工作区取实例
+├── workflows/     出厂的流程：research（改进）、reproduce（论文复现），只读；人在编辑台存的在数据根 studio/workflows/，两层合起来是库，工作区取实例
 ├── templates/     需求模板库：generic / ai / cs / materials / reproduce
 ├── projects/      数据根（源码模式）：一个项目一位助理，样例三个单工作区项目 mlp-regression、boehm-nll、rahman-nll
 ├── ui/            界面层：web/ 网页（React + Tailwind + shadcn；规矩见 ui/README.md），tui/ 留位置
