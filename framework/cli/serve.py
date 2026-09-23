@@ -22,7 +22,7 @@ from framework.cli import compute as compute_cli
 from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, setup_logging
 from framework.contracts import workflows
 
-DEFAULT_UI_DIR = paths.REPO_ROOT / "ui" / "web" / "dist"
+DEFAULT_UI_DIR = paths.ui_dir()
 
 
 def _add_compute(body: dict) -> dict:

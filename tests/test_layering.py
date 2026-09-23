@@ -62,6 +62,8 @@ def violations(root: Path) -> list[str]:
     problems: list[str] = []
     for path in sorted((root / "framework").rglob("*.py")):
         rel = path.relative_to(root)
+        if rel.parts[:2] == ("framework", "shipped"):
+            continue  # 打包暂存的出厂件（skill 脚本等），不是框架代码
         own_layer = _layer_of(".".join(rel.with_suffix("").parts))
         own_capability = _capability_of(".".join(rel.with_suffix("").parts))
         for module in _imported_modules(path, root):

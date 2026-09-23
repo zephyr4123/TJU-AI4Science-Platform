@@ -6,6 +6,7 @@ AGENTS.md
 # ── 构建与打包产物 ──
 dist/
 build/
+framework/shipped/    # make package 把出厂件拷进包时的暂存，随包走不进 git
 
 # ── 密钥与本地配置：只进环境变量或本地文件，绝不进代码 ──
 .env

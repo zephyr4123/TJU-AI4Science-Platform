@@ -31,7 +31,7 @@ platform/
 ├── studio/        编辑台的对话，不进 git
 ├── docs/          start-a-workspace.md：接一个课题；add-a-capability.md：接一个能力；add-a-skill.md：接一个 skill
 ├── tests/         框架测试
-├── Makefile       check / venv / lock / skills / package / release
+├── Makefile       up / check / venv / lock / skills / package / release / clean
 └── CHANGELOG.md
 ```
 
@@ -41,14 +41,33 @@ platform/
 
 ## 怎么跑
 
+两种人两条路（外层 [#138](https://github.com/zephyr4123/TJU-AI4Science/issues/138)）。
+
+**只用**：装 Release 里的 wheel，不 clone、不装 node、不设环境变量。前提只有 uv 和你要用的那家 coding agent CLI（claude 或 codex，登录好）。
+
 ```bash
-make venv                                   # 建 .venv，按 requirements.lock 装依赖（含 uv）
-make skills                                 # skill 门禁与预热：每个脚本按锁文件建好环境（唯一联网的一步，make check 也会跑）
-make check                                  # 门禁：CHANGELOG 校验 + ruff + skills + pytest + 页面
-cd projects/mlp-regression && ../../.venv/bin/ai4sci show project     # 这个项目：每个工作区一行——需求状态、流程走到哪、在等谁
+curl -LsSf https://astral.sh/uv/install.sh | sh                   # 装 uv（一次）
+uv tool install https://github.com/zephyr4123/TJU-AI4Science-Platform/releases/download/vX.Y.Z/ai4sci-X.Y.Z-py3-none-any.whl
+ai4sci check                                # 底座（哪家 CLI 装了、登录了）、算力、存放，一行一项
+ai4sci serve                                # 起服务，浏览器开 http://127.0.0.1:8765
+```
+
+包里自带页面、流程、模板、skill、指南；数据落在 `~/ai4sci`（要放别处设 `AI4SCI_HOME`）；接机器、换底座都在页面「设置」里或对话里跟助理说。
+
+**改代码**：clone 仓库，前提是 uv + node 22 + git。
+
+```bash
+make up                                     # 一行起：.venv（uv.lock）→ 页面 → skill 预热 → ai4sci check → ai4sci serve
+make check                                  # 门禁：CHANGELOG 校验 + ruff + skills + pytest + 页面，与 CI 完全相同
+make lock                                   # 改了 pyproject 的依赖后重钉 uv.lock
+make clean                                  # 删仓里装出来的：.venv、node_modules、页面构建；不碰配置、登录、数据
+cd projects/mlp-regression && ../../.venv/bin/ai4sci show project     # 样例项目：每个工作区一行——需求状态、流程走到哪、在等谁
 AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会花钱，CI 不跑
 AI4SCI_LIVE_SSH=<名字> make test             # 连清单里那台真机器的算力测试（探测、起任务、远端建 venv 跑基线与一轮），CI 不跑
+make package VERSION=X.Y.Z                  # 出 wheel（含页面与出厂件）+ sdist + sha256 到 dist/；Release 流水线跑的就是它
 ```
+
+仓库里跑，出厂件在仓根、数据根不设就是仓根（样例项目在 `projects/`）；装的包跑，出厂件在包里 `framework/shipped/`、数据根 `~/ai4sci`——分辨在 `framework/paths.py` 一处。
 
 科研分七个阶段（文献、假设、设计、实验、分析、写作、验证，纲领 P-18）：每个阶段里几个能力，一条流程是经过几个阶段、每个阶段挂哪些能力、阶段之间哪儿要停下来等人签字（断点）。出厂的 `research` 流程：设计 → 断点 → 实验 → 分析 → 验证 → 断点。样例工作区已确认需求、已有 `design/1`，由协调层手工串（框架不连跑，见 `coordinator/README.md`；下面省略 `.venv/bin/` 前缀）：
 

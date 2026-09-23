@@ -14,6 +14,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 版本号从 tag 来（setuptools-scm）
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/web/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
 
       - name: tag 与 CHANGELOG 对账，并提取 Release Notes
         run: |

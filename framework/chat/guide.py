@@ -17,8 +17,8 @@ from framework import paths, skills
 PROJECT = "project"
 STUDIO = "studio"
 KINDS = (PROJECT, STUDIO)
-GUIDE_PATHS = {PROJECT: paths.REPO_ROOT / paths.GUIDES_DIRNAME / "README.md",
-               STUDIO: paths.REPO_ROOT / paths.GUIDES_DIRNAME / "studio.md"}
+GUIDE_PATHS = {PROJECT: paths.guides_root() / "README.md",
+               STUDIO: paths.guides_root() / "studio.md"}
 # 两位助理能运行的命令都只有 `ai4sci`（纲领 P-14 CLI 主导封装）。指南只教裸写法（服务把自己 venv 的
 # bin 放进了 agent 的 PATH，适配器的 `build_env`）；带 `.venv/bin/` 路径的写法也放行——老会话里
 # 模型会照自己以前几轮的写法来，主人 2026-09-17：前期别设坎，真出问题再收（外层 #69）。这里写的是

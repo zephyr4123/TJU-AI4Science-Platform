@@ -44,6 +44,11 @@ def cmd_check(args: argparse.Namespace) -> int:
         storage = report["storage"]
         print(f"存放\t{storage['home']}\t{'可写' if storage['writable'] else '不可写'}"
               f"\t剩 {storage['free_gb']} GB\t{storage['workspaces']} 个工作区")
+        mode = "仓库" if storage["mode"] == "source" else "装的包"
+        built = "已构建" if storage["ui_built"] else "没构建，serve 只开接口"
+        print(f"出厂件\t{storage['shipped']}\t{mode}")
+        print(f"页面\t{storage['ui']}\t{built}")
+        print(f"配置\t{storage['config']}\nuv 缓存\t{storage['uv_cache']}")
     print(f"ok\t{'全部通过' if report['ok'] else '没过：' + '、'.join(report['failed'])}")
     return EXIT_OK if report["ok"] else EXIT_INVALID
 

@@ -74,6 +74,10 @@ def storage_table(home: Path | None = None) -> dict[str, Any]:
     usage = shutil.disk_usage(home)
     return {"home": str(home), "config": str(paths.config_dir()),
             "uv_cache": str(paths.uv_cache_dir()),
+            # 在仓库里跑还是装的包在跑、出厂件从哪读、页面有没有构建（外层 #138）
+            "mode": "source" if paths.from_source() else "package",
+            "shipped": str(paths.shipped_home()),
+            "ui": str(paths.ui_dir()), "ui_built": (paths.ui_dir() / "index.html").is_file(),
             "writable": _writable(home), "free_gb": round(usage.free / 1e9, 1),
             "projects": sum(1 for _ in (home / "projects").glob("*/project.md"))
             if (home / "projects").is_dir() else 0,
