@@ -313,9 +313,10 @@ def resolve_lock(target_env: Path, python_version: str, packages: list[str],
 
 
 def use_interpreter(target_env: Path, compute: Compute, python: str) -> Path:
-    """研究者选了机器上现成的环境：探它的版本、`uv pip freeze` 当清单（出处留档）、写 `interpreter`。
-    返回 env 目录。解释器起不来、列不出包都抛 EnvBuildError。用 uv 而不是 `python -m pip`：
-    uv 建的 venv 里没有 pip（平台自己的 venv 就是），uv 对任何解释器都能列、能装。"""
+    """研究者选了机器上现成的环境：探它的版本、`uv pip freeze` 当清单（出处留档）、写
+    `interpreter`。返回 env 目录。解释器起不来、列不出包都抛 EnvBuildError。用 uv 而不是
+    `python -m pip`：uv 建的 venv 里没有 pip（平台自己的 venv 就是），uv 对任何解释器都能列、
+    能装。"""
     name = compute_name(compute)
     version_probe = "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
     probe = compute.run(compute.scratch, [python, "-c", version_probe], {}, 60)
@@ -369,7 +370,8 @@ def add_packages(target_env: Path, compute: Compute, packages: list[str]) -> Pat
     name = compute_name(compute)
     if owner != name:
         raise EnvBuildError(f"这份环境是算力 {owner!r} 上的，不能往 {name!r} 上补")
-    _run_on(compute, compute.scratch, [*compute.uv, "pip", "install", "--python", python, *packages],
+    _run_on(compute, compute.scratch,
+            [*compute.uv, "pip", "install", "--python", python, *packages],
             what=f"uv pip install（{' '.join(packages)}）", timeout_s=ADD_TIMEOUT_S)
     use_interpreter(target_env, compute, python)
     stamp = datetime.now(UTC).strftime("%Y-%m-%d")

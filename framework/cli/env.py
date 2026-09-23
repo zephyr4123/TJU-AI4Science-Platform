@@ -5,8 +5,8 @@
 
 两条路是 P-23 的两问：隔离新建（版本锁死、换机器可复现；第一次要在那台机器上下几 GB）还是用机器上
 现成的（几秒起跑；版本以那台机器为准，换机器要重选）。`resolve` 按几个包名算完整清单；`use` 探那个
-解释器的版本、`uv pip freeze` 当清单（出处留档）、写 `materials/env/interpreter`，之后设计与实验在那台
-机器上直接用它。
+解释器的版本、`uv pip freeze` 当清单（出处留档）、写 `materials/env/interpreter`，之后设计与实验在那
+台机器上直接用它。
 
 在 cli 层。非工程师的常态是「我没有环境」，助理只能手写一份清单——手写的三行让基线一 import 就炸。
 `resolve` 把「几个包名 → 钉死传递依赖的完整清单」交给 uv（`experiment.env.resolve_lock`），
