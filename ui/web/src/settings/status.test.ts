@@ -53,7 +53,7 @@ describe('设置：贴进来的 ssh 一行', () => {
     expect(parseSsh('root@host extra')).toBeNull()
   })
   it('机器名从主机名第一段来', () => {
-    expect(suggestComputeName('root@connect.westb.seetacloud.com:29115')).toBe('connect')
+    expect(suggestComputeName('root@gpu.lab.example.edu:29115')).toBe('gpu')
     expect(suggestComputeName('u@GPU_Box.local:22')).toBe('gpubox')
     expect(suggestComputeName('nonsense')).toBe('box')
   })

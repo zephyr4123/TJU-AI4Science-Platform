@@ -39,7 +39,7 @@ PYTHON_VERSION_NAME = "python-version"
 REQUIREMENTS_NAME = "requirements.lock"
 # 第三个文件，可选：`<算力名字>:<那台机器上的解释器>`——研究者选了「用机器上现成的环境」
 # （P-23 的两问）。在时不建 venv，直接拿那个解释器当 AI4SCI_PYTHON；requirements.lock 是那个
-# 环境的 pip freeze（出处留档）。
+# 环境的 uv pip freeze（出处留档）。
 # 换了机器就拒：现成的环境只在那一台上
 INTERPRETER_NAME = "interpreter"
 VENV_DIRNAME = ".venv"
@@ -313,8 +313,10 @@ def resolve_lock(target_env: Path, python_version: str, packages: list[str],
 
 
 def use_interpreter(target_env: Path, compute: Compute, python: str) -> Path:
-    """研究者选了机器上现成的环境：探它的版本、`pip freeze` 当清单（出处留档）、写 `interpreter`。
-    返回 env 目录。解释器起不来、没有 pip 都抛 EnvBuildError。"""
+    """研究者选了机器上现成的环境：探它的版本、`uv pip freeze` 当清单（出处留档）、写
+    `interpreter`。返回 env 目录。解释器起不来、列不出包都抛 EnvBuildError。用 uv 而不是
+    `python -m pip`：uv 建的 venv 里没有 pip（平台自己的 venv 就是），uv 对任何解释器都能列、
+    能装。"""
     name = compute_name(compute)
     version_probe = "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
     probe = compute.run(compute.scratch, [python, "-c", version_probe], {}, 60)
@@ -323,10 +325,8 @@ def use_interpreter(target_env: Path, compute: Compute, python: str) -> Path:
                             f"{probe.stderr.strip()[-500:]}")
     version = probe.stdout.strip().splitlines()[-1]
     assert VERSION_RE.match(version), f"解释器报的版本不是 X.Y：{version!r}"
-    frozen = compute.run(compute.scratch, [python, "-m", "pip", "freeze"], {}, 300)
-    if not frozen.ok:
-        raise EnvBuildError(f"{python} 里没有 pip，列不出它装了什么："
-                            f"{frozen.stderr.strip()[-500:]}")
+    frozen = _run_on(compute, compute.scratch, [*compute.uv, "pip", "freeze", "--python", python],
+                     what=f"列 {python} 装了什么（uv pip freeze）", timeout_s=300)
     pins, odd = [], []
     for line in frozen.stdout.splitlines():
         line = line.strip()
@@ -336,7 +336,7 @@ def use_interpreter(target_env: Path, compute: Compute, python: str) -> Path:
     target_env = Path(target_env)
     target_env.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y-%m-%d")
-    header = (f"# 算力 {name} 上现成的环境 {python} 于 {stamp} 的 pip freeze"
+    header = (f"# 算力 {name} 上现成的环境 {python} 于 {stamp} 的 uv pip freeze"
               "（研究者选的「用现成的」，不隔离、不由平台建；出处留档用）。\n"
               "# 换机器时这份清单不能照装，要重选环境或 ai4sci env resolve 隔离新建。\n")
     if odd:
@@ -354,7 +354,7 @@ ADD_TIMEOUT_S = 1800.0  # 往现成环境里补几个包：小包几十秒，走
 
 def add_packages(target_env: Path, compute: Compute, packages: list[str]) -> Path:
     """往机器上现成的环境里补几个包（纲领 P-24 复现：镜像自带的环境缺论文仓库要的几个小包），
-    `pip install` 进那个解释器，装完重新 freeze，清单头部记下这次补了什么。
+    `uv pip install --python` 进那个解释器，装完重新 freeze，清单头部记下这次补了什么。
 
     只对「用现成的」环境（`interpreter` 在、名字是这台机器）：隔离新建的环境改 requirements.lock
     重建，不走这条。租来的机器就该这么补——不用整套隔离新建，也不用让研究者登录机器。
@@ -370,8 +370,9 @@ def add_packages(target_env: Path, compute: Compute, packages: list[str]) -> Pat
     name = compute_name(compute)
     if owner != name:
         raise EnvBuildError(f"这份环境是算力 {owner!r} 上的，不能往 {name!r} 上补")
-    _run_on(compute, compute.scratch, [python, "-m", "pip", "install", *packages],
-            what=f"pip install（{' '.join(packages)}）", timeout_s=ADD_TIMEOUT_S)
+    _run_on(compute, compute.scratch,
+            [*compute.uv, "pip", "install", "--python", python, *packages],
+            what=f"uv pip install（{' '.join(packages)}）", timeout_s=ADD_TIMEOUT_S)
     use_interpreter(target_env, compute, python)
     stamp = datetime.now(UTC).strftime("%Y-%m-%d")
     lock = target_env / REQUIREMENTS_NAME

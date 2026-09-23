@@ -54,7 +54,8 @@ flowchart TB
 
 | 你要 | 读 | 讲什么 |
 |---|---|---|
-| 改任何代码前 | [`CLAUDE.md`](CLAUDE.md) | 协作方式、编码标准、质量纪律、红线（各带机器判据）、「改哪层先读哪份」 |
+| 改任何代码前 | [`CLAUDE.md`](CLAUDE.md) | 协作纪律、编码标准、质量纪律、红线（各带机器判据）、「改哪层先读哪份」 |
+| 开分支、开 PR、发版 | [`CONTRIBUTING.md`](CONTRIBUTING.md)（清单）→ 外层 `CONTRIBUTING.md`（流程） | 分支模型、PR 合并前清单、1.x 冻结的契约、rc 预发布 |
 | 改后端（`framework/` `backends/` `compute/`） | [`framework/README.md`](framework/README.md) | 分层与依赖方向、技术栈、在用的模式与约定、异常与退出码、环境变量总表、已知盲点 |
 | 写或改测试 | [`tests/README.md`](tests/README.md) | 目录与命名、夹具、三种写法、live 门控、门禁 |
 | 改页面（`ui/web/`） | [`ui/README.md`](ui/README.md) | 契约、技术栈、代码约定、测试政策、浏览器闭环 |
@@ -85,6 +86,7 @@ platform/
 ├── tests/         框架测试（怎么写见 tests/README.md）
 ├── Makefile       up / check / venv / lock / lint / skills / test / ui / ui-check / package / release / clean / purge
 ├── CLAUDE.md      规矩；AGENTS.md 是它的符号链接（Codex 的入口）
+├── CONTRIBUTING.md PR 合并前的清单；流程在外层仓
 └── CHANGELOG.md
 ```
 
@@ -138,6 +140,8 @@ ai4sci show caps                                                 # 七个阶段�
 
 ## 版本与发布
 
-1. 改动合并时把条目写进 `CHANGELOG.md` 的 Unreleased。
-2. `make release VERSION=x.y.z`：轮转 CHANGELOG、提交、打 tag，不 push。
-3. 推 tag 触发 GitHub Release，0.x 自动标 pre-release。
+从 1.0.0 起承诺兼容（冻结的契约与判据在外层 `CONTRIBUTING.md`「版本与发布」）。
+
+1. 每个 PR 在 `CHANGELOG.md` 的 Unreleased 加一行。
+2. 正式版在 `main` 上 `make release VERSION=x.y.z`：轮转 CHANGELOG、提交、打 tag，不 push；预发布在 `release/X.Y` 上 `make release VERSION=x.y.z-rc.N`，只打 tag。
+3. 推 tag 触发 GitHub Release 出 wheel，rc 自动标 pre-release。
