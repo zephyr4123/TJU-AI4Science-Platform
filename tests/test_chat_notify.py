@@ -48,7 +48,8 @@ def test_wake_sends_a_framework_turn_with_the_job_result(tmp_path: Path, scripte
     call = scripted.calls[0]
     assert call["chat_id"] == conv.chat_id and call["system_prompt"] == "指南"
     assert call["allowed_paths"] == [project_mod.of(ws).root]  # 叫醒的一轮也只在项目里写
-    assert call["readable_paths"] == [paths.workflows_root(), paths.templates_root()]
+    assert call["readable_paths"] == [paths.workflows_root(), paths.user_workflows_root(),
+                                      paths.templates_root()]
     head = ("工作区 w1 的作业 job-7（`ai4sci cap auto-research --from design/1 --max-iters 2`）"
             "跑完了")
     assert call["message"].startswith(head)

@@ -159,7 +159,7 @@ sequenceDiagram
 
 | 变量 | 读取点 | 意思 |
 |---|---|---|
-| `AI4SCI_HOME` | `paths.py` | 数据根（项目、编辑台对话）；不设：源码模式仓根、包模式 `~/ai4sci` |
+| `AI4SCI_HOME` | `paths.py` | 数据根（项目、编辑台对话、人存的流程 `studio/workflows/`）；不设：源码模式仓根、包模式 `~/ai4sci` |
 | `AI4SCI_WORKFLOWS_ROOT` `AI4SCI_DOMAINS_ROOT` `AI4SCI_TEMPLATES_ROOT` `AI4SCI_SKILLS_ROOT` | `paths.py` | 四种出厂件库的位置；指向的不是目录当场炸 |
 | `AI4SCI_PROJECT` | `workspace/project.py` | 当前项目（不设从 cwd 往上找 `project.md`） |
 | `AI4SCI_COMPUTES` `AI4SCI_AGENTS` | `computes.py` `agents.py` | 两份按人的清单的位置（缺省 `~/.config/ai4sci/`） |

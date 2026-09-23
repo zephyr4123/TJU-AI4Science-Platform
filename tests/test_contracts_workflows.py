@@ -229,16 +229,56 @@ def test_a_skill_hangs_on_any_stage_without_params_and_is_tagged(tmp_path):
                                 catalog(), skills={"pdf"})
 
 
-def test_shipped_workflows_cannot_be_removed_but_user_ones_can(tmp_path):
-    """主人 2026-09-22：出厂的流程是平台的底不能删，人存进去的能删；describe 里标 shipped。"""
-    (tmp_path / "mine.yaml").write_text(GOOD.replace("name: w", "name: mine"), encoding="utf-8")
+def library(tmp_path) -> workflows.Library:
+    """两层库：出厂的一条 research，用户库还不存在（第一次存时才建）。"""
+    shipped = tmp_path / "shipped"
+    shipped.mkdir()
+    (shipped / "research.yaml").write_text(GOOD.replace("name: w", "name: research"),
+                                           encoding="utf-8")
+    return workflows.Library(shipped, tmp_path / "home" / "studio" / "workflows")
+
+
+def test_library_lists_both_layers_shipped_first_and_flags_the_source(tmp_path):
+    """外层 #149：库 = 出厂的 + 人存的，清单出厂在前、每条标 shipped；用户库不存在就是空。"""
+    lib = library(tmp_path)
+    assert [d["name"] for d in lib.describe(catalog())] == ["research"]
+    assert lib.names() == ["research"] and lib.shipped_names() == {"research"}
+    saved = lib.save({**yaml.safe_load(GOOD), "name": "mine"}, catalog())
+    assert saved.name == "mine" and (lib.user / "mine.yaml").is_file()
+    assert not (lib.shipped / "mine.yaml").exists()  # 出厂目录一个字节都没动
+    flags = {d["name"]: d["shipped"] for d in lib.describe(catalog())}
+    assert flags == {"research": True, "mine": False}
+    assert lib.find("mine") == lib.user / "mine.yaml" and lib.find("nope") is None
+    assert [wf.name for wf in lib.load_valid()] == ["research", "mine"]
+    assert workflows.used_by(lib.load_valid())["auto-research"] == ["research", "mine"]
+
+
+def test_library_refuses_shipped_names_on_save_and_remove_but_removes_user_ones(tmp_path):
+    """主人 2026-09-22：出厂的流程是平台的底，不能改不能删；人存进去的能删。名字全库唯一：
+    存与出厂重名的拒（同名不覆盖那一种拒法），手搬进用户库的重名文件在清单里是一条问题。"""
+    lib = library(tmp_path)
+    with pytest.raises(FileExistsError, match="出厂的流程，不能改"):
+        lib.save({**yaml.safe_load(GOOD), "name": "research"}, catalog(), overwrite=True)
+    assert not lib.user.exists()
+    with pytest.raises(workflows.WorkflowInvalid, match="出厂的流程，不能删"):
+        lib.remove("research")
+    with pytest.raises(FileNotFoundError):
+        lib.remove("mine")
+    lib.save({**yaml.safe_load(GOOD), "name": "mine"}, catalog())
+    assert lib.remove("mine") == lib.user / "mine.yaml" and not (lib.user / "mine.yaml").exists()
+    (lib.user / "research.yaml").write_text(GOOD.replace("name: w", "name: research"),
+                                            encoding="utf-8")
+    shipped_row, user_row = lib.describe(catalog())  # 出厂在前，两条都叫 research
+    assert shipped_row["shipped"] is True and shipped_row["problems"] == []
+    assert user_row["shipped"] is False
+    assert user_row["problems"] == ["与出厂的流程 research 重名：改名或删掉这份"]
+    assert [wf.name for wf in lib.load_valid()] == ["research"]  # 重名的不算进反查
+
+
+def test_describe_dir_marks_nothing_as_shipped_unless_told(tmp_path):
+    """工作区里的实例哪怕叫 research 也不是出厂的：shipped 由目录定，不由名字定。"""
     (tmp_path / "research.yaml").write_text(GOOD.replace("name: w", "name: research"),
                                             encoding="utf-8")
-    flags = {d["name"]: d["shipped"] for d in workflows.describe_dir(tmp_path, catalog())}
-    assert flags == {"mine": False, "research": True}
-    with pytest.raises(workflows.WorkflowInvalid, match="出厂的流程，不能删"):
-        workflows.remove_workflow(tmp_path, "research")
-    assert workflows.remove_workflow(tmp_path, "mine") == tmp_path / "mine.yaml"
-    assert not (tmp_path / "mine.yaml").exists()
-    with pytest.raises(FileNotFoundError):
-        workflows.remove_workflow(tmp_path, "mine")
+    assert [d["shipped"] for d in workflows.describe_dir(tmp_path, catalog())] == [False]
+    rows = workflows.describe_dir(tmp_path, catalog(), shipped=True)
+    assert [d["shipped"] for d in rows] == [True]

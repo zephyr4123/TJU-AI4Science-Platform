@@ -472,14 +472,54 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
     assert "brings" in doc["verify"] and "stops" in doc["verify"]
 
 
-def test_show_workflows_lists_stages_and_stops():
-    proc = run_cli("show", "workflows")
+def test_show_workflows_lists_stages_and_stops(tmp_path):
+    env = {"AI4SCI_HOME": str(tmp_path)}  # 用户库空着：只有出厂的两条
+    proc = run_cli("show", "workflows", env=env)
     assert proc.returncode == EXIT_OK, proc.stderr
-    # 文献格上挂的两个 skill 标 [skill]：助理一眼分得出哪个是 cap、哪个是 skill run
-    assert proc.stdout.startswith("reproduce\t论文复现\t文献(pdf[skill],download[skill]) → "
+    # 文献格上挂的两个 skill 标 [skill]：助理一眼分得出哪个是 cap、哪个是 skill run；第三列是来源
+    assert proc.stdout.startswith("reproduce\t论文复现\t出厂\t文献(pdf[skill],download[skill]) → "
                                   "设计(reproduction) → ◆复现结果核对")
-    assert "\nresearch\t从设计到验证\t设计 → ◆评分指标核对" in proc.stdout
+    assert "\nresearch\t从设计到验证\t出厂\t设计 → ◆评分指标核对" in proc.stdout
     assert proc.stdout.rstrip().endswith("→ 验证 → ◆验收")
+
+
+def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
+    """外层 #149：人在编辑台存的流程在数据根 studio/workflows/，CLI 的三条路都读得到——
+    `show workflows` 列出来带来源、`show caps` 的 used_by 算上它、`flow take` 取得到；
+    `workflow remove` 只删这一层，出厂的拒。仓里的 workflows/ 一个字节不动。"""
+    mine = tmp_path / "studio" / "workflows"
+    mine.mkdir(parents=True)
+    (mine / "quick.yaml").write_text(
+        "name: quick\ntitle: 快看\nsummary: 只跑两轮\nstages:\n"
+        "  - 实验: {auto-research: {max_iters: 2}}\n  - 分析\n", encoding="utf-8")
+    env = {"AI4SCI_HOME": str(tmp_path)}
+    before = sorted(p.name for p in (REPO_ROOT / "workflows").glob("*.yaml"))
+
+    proc = run_cli("show", "workflows", env=env)
+    assert proc.returncode == EXIT_OK, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert lines[0].startswith("reproduce\t论文复现\t出厂\t")
+    assert "quick\t快看\t自定义\t实验(auto-research) → 分析" in lines
+    listed = json.loads(run_cli("show", "workflows", "--json", env=env).stdout)
+    assert {w["name"]: w["shipped"] for w in listed} == {"reproduce": True, "research": True,
+                                                         "quick": False}
+
+    proc = run_cli("show", "caps", "--json", env=env)
+    caps = {c["name"]: c for c in json.loads(proc.stdout)}
+    assert caps["auto-research"]["used_by"] == ["research", "quick"]
+
+    ws = spaces.make_workspace(tmp_path, "w")
+    proc = run_cli("flow", "take", "quick", cwd=ws.root, env=env)
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert (ws.flows / "quick.yaml").is_file()
+    proc = run_cli("flow", "take", "nope", cwd=ws.root, env=env)
+    assert proc.returncode == EXIT_USAGE and "有：quick, reproduce, research" in proc.stderr
+
+    proc = run_cli("workflow", "remove", "research", env=env)
+    assert proc.returncode == EXIT_INVALID and "出厂的流程，不能删" in proc.stderr
+    proc = run_cli("workflow", "remove", "quick", env=env)
+    assert proc.returncode == EXIT_OK and not (mine / "quick.yaml").exists()
+    assert sorted(p.name for p in (REPO_ROOT / "workflows").glob("*.yaml")) == before
 
 
 def test_cap_unknown_capability_is_a_usage_error(tmp_path):
@@ -714,7 +754,8 @@ def test_chat_new_send_list_in_the_workspace_with_a_scripted_backend(tmp_path, m
         "用流程不造流程" in chat.calls[0]["system_prompt"]
     assert chat.calls[0]["cwd"] == project.root  # 助理站在项目里
     assert chat.calls[0]["allowed_paths"] == [project.root]
-    assert chat.calls[0]["readable_paths"] == [paths.workflows_root(), paths.templates_root()]
+    assert chat.calls[0]["readable_paths"] == [paths.workflows_root(), paths.user_workflows_root(),
+                                               paths.templates_root()]
 
     assert main(["chat", "list"]) == EXIT_OK
     assert capsys.readouterr().out.startswith(f"{chat_id}\tturns=1\tcost_usd=0.0100")
@@ -772,10 +813,10 @@ def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_p
     monkeypatch.setattr("framework.cli.chat.get_chat", lambda name: chat)
     monkeypatch.setitem(guide.GUIDE_PATHS, guide.STUDIO, tmp_path / "studio.md")
     (tmp_path / "studio.md").write_text("# 造流程\n只写库。", encoding="utf-8")
-    library = tmp_path / "lib" / "workflows"
-    library.mkdir(parents=True)
+    shipped = tmp_path / "lib" / "workflows"
+    shipped.mkdir(parents=True)
     monkeypatch.setenv("AI4SCI_HOME", str(tmp_path))
-    monkeypatch.setenv(paths.WORKFLOWS_ROOT_ENV, str(library))
+    monkeypatch.setenv(paths.WORKFLOWS_ROOT_ENV, str(shipped))
 
     assert main(["chat", "new", "--studio"]) == EXIT_OK
     chat_id = capsys.readouterr().out.split("\t")[0].split(" ")[1]
@@ -784,8 +825,10 @@ def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_p
     capsys.readouterr()
     prompt = chat.calls[0]["system_prompt"]
     assert "只写库" in prompt and "流程助理" in prompt
-    assert chat.calls[0]["cwd"] == library.parent and chat.calls[0]["allowed_paths"] == [library]
-    assert chat.calls[0]["readable_paths"] == []
+    # 站在数据根的 studio/ 里，只写人存的那层库；出厂的只读（外层 #149）
+    assert chat.calls[0]["cwd"] == tmp_path / "studio"
+    assert chat.calls[0]["allowed_paths"] == [tmp_path / "studio" / "workflows"]
+    assert chat.calls[0]["readable_paths"] == [shipped]
     assert main(["chat", "list", "--studio"]) == EXIT_OK
     assert capsys.readouterr().out.startswith(f"{chat_id}\tturns=1")
     assert main(["chat", "list"]) == EXIT_USAGE  # 没在工作区里：研究助理那边没得列
@@ -803,10 +846,12 @@ def test_chat_send_unknown_id_and_missing_file_exit_two(tmp_path):
 
 
 # ── serve 注入给页面后端的几个函数：真清单、真检查 ────────────────────────
-def test_serve_helpers_check_a_draft_and_list_the_catalog():
+def test_serve_helpers_check_a_draft_and_list_the_catalog(tmp_path, monkeypatch):
     """编辑台边拼边问：名字、标题、说明还没填也只报阶段的问题；清单每个带五栏与 used_by。"""
+    from framework import paths
     from framework.cli import serve
 
+    monkeypatch.setenv(paths.HOME_ENV, str(tmp_path))  # 用户库空着：清单只有出厂的两条
     ok = serve._check_workflow(
         {"stages": ["假设", {"断点": "看一眼"}, {"设计": ["design"]}, "分析"]})
     assert ok["problems"] == [] and ok["covers"] == ["假设", "设计", "分析"]

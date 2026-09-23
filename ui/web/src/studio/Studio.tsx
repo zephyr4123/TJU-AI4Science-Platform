@@ -110,7 +110,8 @@ function Editor({ stages, workflows, catalog, skills, onSaved, onOpenCap }: {
   }, [check.data])
 
   const add = (seed: Seed) => setItems((items) => append(items, seed))
-  const load = (wf: Workflow) => { setDraft(fromWorkflow(wf)); setSelected(null) }
+  // 出厂的两条只读：载入后名字清空，保存就是从标题另起一条自己的（后端对出厂的名字拒 409）
+  const load = (wf: Workflow) => { setDraft({ ...fromWorkflow(wf), name: wf.shipped ? '' : wf.name }); setSelected(null) }
   const current = selected === null ? null : draft.items.find((it) => it.uid === selected) ?? null
   const inspector = current && (
     <Inspector key={current.uid} item={current} catalog={catalog} skills={skills} onOpenCap={onOpenCap}
@@ -176,7 +177,7 @@ function Heading({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) =
 }
 
 
-/** 右上角：保存。从流程库载入的（或存过一次的）就是覆盖它自己；新拼的文件名从标题生成、避开库里已有的，所以没有「同名」这回事 */
+/** 右上角：保存。载入自己存过的（或这次存过一次的）就是覆盖它自己；新拼的与载入出厂的文件名从标题生成、避开库里已有的，所以没有「同名」这回事 */
 function Save({ draft, setDraft, names, ok, onSaved }: {
   draft: Draft; setDraft: (f: (d: Draft) => Draft) => void; names: string[]; ok: boolean; onSaved: () => void
 }) {

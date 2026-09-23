@@ -2,7 +2,8 @@
 
 cli 层里唯一常驻的命令：它不是"跑一个能力"，是给页面一个门。能力清单、流程库、拼流程检查与描述符表
 从 `capabilities.discover` 与 `contracts.workflows` 拿，以函数传给 server
-（chat 层不认识 capabilities）。数据根是 `AI4SCI_HOME`（缺省仓根）：工作区与编辑台的对话都在它下面。
+（chat 层不认识 capabilities）。数据根是 `AI4SCI_HOME`（缺省仓根）：工作区、编辑台的对话与人存的流程
+都在它下面；流程库 = 出厂的 + 人存的（`_common.library`），页面存流程只写后者。
 
 页面是 `ui/web` 构建出来的静态文件（`ui/README.md`）：缺省端 `ui/web/dist`，没构建就只开接口。
 TUI 不走这里——它是终端进程，直接当这些接口的客户端。
@@ -19,7 +20,7 @@ from framework.capabilities import abilities, discover, stage_table
 from framework.chat import guide, settings
 from framework.chat.server import ChatServer
 from framework.cli import compute as compute_cli
-from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, setup_logging
+from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, library, setup_logging
 from framework.contracts import workflows
 
 DEFAULT_UI_DIR = paths.ui_dir()
@@ -50,20 +51,20 @@ def _skill_names() -> frozenset[str]:
 
 def _catalog() -> list[dict]:
     """与 `ai4sci show caps --json` 同一个形状：步骤描述符加 tag 与反查出来的 used_by。"""
-    uses = workflows.used_by(workflows.load_valid(paths.workflows_root()))
+    uses = workflows.used_by(library().load_valid())
     return [{**module.DESCRIPTOR.to_dict(), "kind": abilities.KIND_STEP,
              "used_by": uses.get(name, [])} for name, module in discover().items()]
 
 
 def _skills() -> list[dict]:
     """能力库里 tag 为 skill 的那些：名字、一行、SKILL.md 正文、脚本名，加反查出来的 used_by。"""
-    uses = workflows.used_by(workflows.load_valid(paths.workflows_root()))
+    uses = workflows.used_by(library().load_valid())
     return [{**entry, "used_by": uses.get(entry["name"], [])}
             for entry in abilities.skill_entries()]
 
 
 def _workflows() -> list[dict]:
-    return workflows.describe_dir(paths.workflows_root(), _descriptors(), _skill_names())
+    return library().describe(_descriptors(), _skill_names())
 
 
 def _descriptor_map() -> dict[str, object]:
@@ -71,11 +72,10 @@ def _descriptor_map() -> dict[str, object]:
 
 
 def _save_workflow(doc: dict) -> dict:
-    """编辑台存流程：核对形状与通不通，写进库，回它在清单里的样子。"""
+    """编辑台存流程：核对形状与通不通，写进用户库（出厂的名字拒），回它在清单里的样子。"""
     catalog, skills = _descriptors(), _skill_names()
     overwrite = bool(doc.pop("overwrite", False))
-    saved = workflows.save_workflow(paths.workflows_root(), doc, catalog, skills=skills,
-                                    overwrite=overwrite)
+    saved = library().save(doc, catalog, skills=skills, overwrite=overwrite)
     [described] = workflows.describe([saved], catalog, skills)
     return described
 

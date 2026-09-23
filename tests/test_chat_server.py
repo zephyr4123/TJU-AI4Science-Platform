@@ -265,14 +265,17 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
     assert events[-1]["cost_usd"] == pytest.approx(0.01) and events[-1]["session_id"]
     call_ = chat.calls[-1]
     if prefix == "/studio":
+        # 流程助理站在服务的数据根的 studio/ 里，只写人存的那层库；出厂的只读（外层 #149）
         assert call_["system_prompt"] == "流程助理指南"
-        assert call_["cwd"] == paths.workflows_root().parent
-        assert call_["allowed_paths"] == [paths.workflows_root()] and call_["readable_paths"] == []
+        assert call_["cwd"] == tmp_path / "studio"
+        assert call_["allowed_paths"] == [tmp_path / "studio" / "workflows"]
+        assert call_["readable_paths"] == [paths.workflows_root()]
     else:
         made = spaces.make_project(tmp_path, "p")
         assert call_["system_prompt"] == "研究助理指南" and call_["cwd"] == made.root
         assert call_["allowed_paths"] == [made.root]
-        assert call_["readable_paths"] == [paths.workflows_root(), paths.templates_root()]
+        assert call_["readable_paths"] == [paths.workflows_root(), paths.user_workflows_root(),
+                                           paths.templates_root()]
 
     status, _, body = call(base, f"{prefix}/chats/{chat_id}/messages", {"text": "有几个？"})
     events = sse_events(body)
@@ -666,10 +669,14 @@ def test_remove_endpoints_cascade_and_refuse(served, tmp_path):
     assert call(base, "/projects/p/workspaces/w1/outputs/experiment/1/remove", {})[0] == 200
     assert call(base, "/projects/p/workspaces/w1/flows/research/remove", {})[0] == 200
     assert not d2.exists() and not (ws.flows / "research.yaml").exists()
-    # 库里的流程：出厂的 403，没有的 404
+    # 库里的流程：出厂的 403，没有的 404；人存的在服务的数据根 studio/workflows/ 下，删得掉
     status, _, body = call(base, "/workflows/research/remove", {})
     assert status == 403 and "出厂" in json.loads(body)["error"]
     assert call(base, "/workflows/nope/remove", {})[0] == 404
+    mine = tmp_path / "studio" / "workflows" / "mine.yaml"
+    mine.parent.mkdir(parents=True, exist_ok=True)
+    mine.write_text("name: mine\n", encoding="utf-8")
+    assert call(base, "/workflows/mine/remove", {})[0] == 200 and not mine.exists()
     # 整个工作区：目录没了、清单里没了
     status, _, body = call(base, "/projects/p/workspaces/w1/remove", {})
     assert status == 200 and json.loads(body)["removed"] == "w1"

@@ -84,7 +84,7 @@
 下面三条是**产品运行时的规矩**，约束的是助理与框架的行为，改相关代码时要守：
 
 12. **助理面前只有 `ai4sci`**（P-14）：协调层放行的命令前缀是 `ai4sci`，执行层只有 `ai4sci skill`（`chat/guide.py::BASH_RULES`、`skills.EXECUTOR_BASH_RULES`）；配置归环境变量与按人的两份清单，命令上不带路径、不挂前缀、不接管道（`tests/test_chat_guide.py` 守着）。agent 需要而没有的动作是平台缺口：加能力，不放行裸命令。
-13. **造流程与用流程分权**（P-16）：项目里的研究助理只用流程（`flow take` 取实例、改参数、照着走），编辑台的流程助理只写 `workflows/`；分权靠 `chat/scope.py` 的可写目录与按域分前缀的端点，不靠指南里的「请不要」。
+13. **造流程与用流程分权**（P-16）：项目里的研究助理只用流程（`flow take` 取实例、改参数、照着走），编辑台的流程助理只写数据根的 `studio/workflows/`（出厂的 `workflows/` 谁都不写）；分权靠 `chat/scope.py` 的可写目录与按域分前缀的端点，不靠指南里的「请不要」。
 14. **框架只管文件夹怎么摆，不管里面装什么**（P-19 / P-20）：框架认的文件只有 `requirement.md` / `requirement.lock` / `meta.yaml` / `signed.json` / 流程文件 / 描述符；族内约定（`scoring.yaml` 这类）放族包 `framework/experiment/`，不进 `contracts/`。需求确认是唯一内置的门，断点几个、放哪由拼流程的人定。能力是纯函数：`--from` 点名输入，没有「缺省读最新」。阶段主文件按阶段定名（`capabilities.MAIN_FILES`），不按能力定。
 
 ## 6. 版本与发布

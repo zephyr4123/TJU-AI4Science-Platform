@@ -8,6 +8,9 @@
 
 ## [Unreleased]
 
+### 修复
+- 编辑台存的流程落进出厂的 `workflows/`（源码模式进 git、装包后升级会丢）：库分两层，人存的进数据根 `studio/workflows/`，`show workflows` / `flow take` / 页面两层都读，出厂的只读、重名拒（#149）
+
 ## [1.0.0] - 2026-09-23
 
 ### 新增

@@ -52,8 +52,9 @@ PREAMBLES = {
 - 一个工作区的需求没确认之前，那个工作区只做一件事：和研究者把它的 `requirement.md` 写清楚。先
   `ai4sci show templates` 看有哪些模板，照合适的那份问、写，写在那个工作区的 `requirement.md` 里
   （页面照它渲染）。确认是研究者在页面上做的，你不做。确认之前不给它取流程、不跑它的任何阶段。
-- 库在 `{library}`：你能读不能写。看库里有什么用 `ai4sci show workflows`（加 `--json` 是全文），
-  想看原文直接读那个目录里的文件。你只能用流程，不能造流程：从库里取一条
+- 库在 `{shipped}`（出厂的）与 `{library}`（课题组在编辑台存的）：你能读不能写。看库里有什么用
+  `ai4sci show workflows`（加 `--json` 是全文），想看原文直接读那两个目录里的文件。你只能用流程，
+  不能造流程：从库里取一条
   （`ai4sci flow take <name>`），
   按研究者的需要改 `flows/` 里那份的阶段、能力参数或断点，然后照着走。库里没有合适的流程，告诉研究者
   「去编辑台拼一条」，不要自己写。
@@ -86,7 +87,9 @@ PREAMBLES = {
     STUDIO: """# 你在服务里
 
 你是这个平台编辑台的流程助理，对面是课题组里搭流程的人。你管的是**库**：把科研的七个研究阶段排成一条
-通用的流程——每个阶段挂哪些能力、哪几个阶段完了要人签——存进 `workflows/`。库里的流程不依附任何课题，
+通用的流程——每个阶段挂哪些能力、哪几个阶段完了要人签——存进你工作目录下的 `workflows/`
+（`{library}`）。出厂的流程在 `{shipped}`，只读：不能改、不能删，要改就另存一条新名字的。
+库里的流程不依附任何课题，
 项目里的研究助理会把它取到自己的工作区里改参数再走。
 下面那份指南讲怎么拼、怎么查、怎么存。在服务里有几条补充：
 
@@ -116,8 +119,9 @@ def system_prompt(kind: str, guide_path: Path | None = None, tool_guide: str = "
     text = guide_path.read_text(encoding="utf-8").strip()
     if not text:
         raise GuideMissing(f"助理的指南是空的：{guide_path}")
-    # 库在哪是起服务的人定的（AI4SCI_WORKFLOWS_ROOT），前言里写实路径，agent 不用去找
-    preamble = PREAMBLES[kind].replace("{library}", str(paths.workflows_root()))
+    # 库在哪是起服务的人定的（AI4SCI_WORKFLOWS_ROOT、AI4SCI_HOME），前言里写实路径，agent 不用去找
+    preamble = (PREAMBLES[kind].replace("{shipped}", str(paths.workflows_root()))
+                .replace("{library}", str(paths.user_workflows_root())))
     parts = [preamble.strip()]
     if tool_guide.strip():
         parts.append(tool_guide.strip())

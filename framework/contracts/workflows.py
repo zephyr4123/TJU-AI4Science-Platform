@@ -1,7 +1,8 @@
 """流程：经过几个阶段、按什么顺序，哪几个阶段完了要人签（纲领 P-18、P-19）。
 
-一个流程一个 YAML。库在仓根 `workflows/`（通用，编辑台的流程助理改），工作区 `flows/` 里的是取来
-改过参数的实例（研究助理用），两处同一套检查。它是预装的走法，不是平台本身：平台是七个研究阶段和每个阶段里的能力。
+一个流程一个 YAML。库是两层合起来看（`Library`）：出厂的在 `workflows/`（随代码走、只读），人在
+编辑台存的在数据根 `studio/workflows/`（流程助理与页面只写这里）；工作区 `flows/` 里的是取来改过
+参数的实例（研究助理用），三处同一套检查。它是预装的走法，不是平台本身：平台是七个研究阶段和每个阶段里的能力。
 
     name: research               # 目录里唯一，等于文件名去掉 .yaml
     title: 从课题到验证
@@ -43,8 +44,6 @@ from framework.contracts.capability import PARAM_TYPES, Capability
 from framework.contracts.stages import STAGE_NAMES as STAGES
 
 STOP = "断点"
-# 出厂的流程：平台的底，不能删（主人 2026-09-22：出厂的保留，人存进去的能删）
-SHIPPED = frozenset({"research", "reproduce"})
 # 格子上挂的名字的两种 tag（framework/abilities.py 是出处；这里只是响应体里的两个词）
 KIND_STEP = "步骤"
 KIND_SKILL = "skill"
@@ -266,16 +265,68 @@ def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability
     return workflow
 
 
-def remove_workflow(root: Path, name: str) -> Path:
-    """删库里人自己存的一条流程：出厂的拒（WorkflowInvalid），没有的 FileNotFoundError。
-    取到工作区的实例是拷贝，不受影响。"""
-    if name in SHIPPED:
-        raise WorkflowInvalid(f"{name} 是出厂的流程，不能删（出厂的：{sorted(SHIPPED)}）")
-    path = Path(root) / f"{name}.yaml"
-    if not path.is_file():
-        raise FileNotFoundError(f"库里没有叫 {name!r} 的流程")
-    path.unlink()
-    return path
+@dataclass(frozen=True)
+class Library:
+    """流程库的两层：出厂的（随代码走，只读；平台的底，不能改不能删——主人 2026-09-22）与人自己
+    存的（在数据根，编辑台写它；外层 #149）。名字全库唯一、以出厂的为准：存与出厂重名的拒，手搬进
+    用户库的在清单里标成问题。用户库可以还不存在，读到的就是空。"""
+    shipped: Path
+    user: Path
+
+    def shipped_names(self) -> frozenset[str]:
+        return frozenset(_stems(self.shipped))
+
+    def names(self) -> list[str]:
+        return sorted({*_stems(self.shipped), *_stems(self.user)})
+
+    def find(self, name: str) -> Path | None:
+        """一条流程的文件，出厂的在前；没有就是 None。"""
+        for root in (self.shipped, self.user):
+            path = root / f"{name}.yaml"
+            if path.is_file():
+                return path
+        return None
+
+    def load_valid(self) -> list[Workflow]:
+        """两层里读得出来的流程，出厂在前；用户库里与出厂重名的不算（反查 used_by 用）。"""
+        taken = self.shipped_names()
+        mine = [wf for wf in load_valid(self.user) if wf.name not in taken]
+        return load_valid(self.shipped) + mine
+
+    def describe(self, catalog: dict[str, Capability],
+                 skills: Collection[str] = ()) -> list[dict[str, Any]]:
+        """给页面与 `show workflows` 的清单：出厂在前、每条标 `shipped`；重名的那条带一句问题。"""
+        rows = describe_dir(self.shipped, catalog, skills, shipped=True)
+        taken = self.shipped_names()
+        for row in describe_dir(self.user, catalog, skills):
+            if row["name"] in taken:
+                row["problems"].append(f"与出厂的流程 {row['name']} 重名：改名或删掉这份")
+            rows.append(row)
+        return rows
+
+    def save(self, raw: dict[str, Any], catalog: dict[str, Capability], *,
+             skills: Collection[str] = (), overwrite: bool = False) -> Workflow:
+        """存进用户库；名字是出厂的拒（FileExistsError，与同名不覆盖同一种拒法）。"""
+        name = raw.get("name")
+        if name in self.shipped_names():
+            raise FileExistsError(f"{name} 是出厂的流程，不能改：换个名字另存")
+        return save_workflow(self.user, raw, catalog, skills=skills, overwrite=overwrite)
+
+    def remove(self, name: str) -> Path:
+        """删用户库里的一条：出厂的拒（WorkflowInvalid），没有的 FileNotFoundError。
+        取到工作区的实例是拷贝，不受影响。"""
+        if name in self.shipped_names():
+            raise WorkflowInvalid(
+                f"{name} 是出厂的流程，不能删（出厂的：{sorted(self.shipped_names())}）")
+        path = self.user / f"{name}.yaml"
+        if not path.is_file():
+            raise FileNotFoundError(f"库里没有叫 {name!r} 的流程")
+        path.unlink()
+        return path
+
+
+def _stems(root: Path) -> list[str]:
+    return sorted(p.stem for p in Path(root).glob("*.yaml")) if Path(root).is_dir() else []
 
 
 class _Row(list):
@@ -379,21 +430,21 @@ def matching_step(workflow: Workflow, cap: str, stage: str, after: int = -1,
     return None
 
 
-def describe_dir(root: Path, catalog: dict[str, Capability],
-                 skills: Collection[str] = ()) -> list[dict[str, Any]]:
+def describe_dir(root: Path, catalog: dict[str, Capability], skills: Collection[str] = (), *,
+                 shipped: bool = False) -> list[dict[str, Any]]:
     """目录里每个文件一条：读得出来的带 covers / remarks / problems；读不出来的（形状不对、YAML 坏）
     也占一条，名字是文件名，problems 里是那句原因。一个坏文件不能让整张清单打不开——研究助理
-    在工作区 flows/ 里随手写个只有一行的文件，工作区页就整个「Failed to fetch」，实测撞过。"""
+    在工作区 flows/ 里随手写个只有一行的文件，工作区页就整个「Failed to fetch」，实测撞过。
+    `shipped` 是这个目录是不是出厂库（`Library.describe` 给）；工作区的实例与用户库都是 False。"""
     out: list[dict[str, Any]] = []
     for path in sorted(Path(root).glob("*.yaml")) if Path(root).is_dir() else []:
         try:
             wf = load_workflow(path)
         except WorkflowInvalid as exc:
             out.append({"name": path.stem, "title": path.stem, "summary": "", "stages": [],
-                        "covers": [], "remarks": [], "problems": [str(exc)],
-                        "shipped": path.stem in SHIPPED})
+                        "covers": [], "remarks": [], "problems": [str(exc)], "shipped": shipped})
             continue
-        out += describe([wf], catalog, skills)
+        out += describe([wf], catalog, skills, shipped=shipped)
     return out
 
 
@@ -403,12 +454,12 @@ def kinds_of(catalog: dict[str, Capability], skills: Collection[str]) -> dict[st
 
 
 def describe(workflows: Sequence[Workflow], catalog: dict[str, Capability],
-             skills: Collection[str] = ()) -> list[dict[str, Any]]:
+             skills: Collection[str] = (), *, shipped: bool = False) -> list[dict[str, Any]]:
     """给页面与 `show workflows` 的响应体：每条流程带它走过的阶段（格子上每个名字标 kind）、提醒与
-    问题清单。"""
+    问题清单，以及是不是出厂的（页面据此不给删、`show workflows` 据此标来源）。"""
     kinds = kinds_of(catalog, skills)
     return [{**wf.to_dict(kinds), "covers": wf.covered, "remarks": remarks(wf),
-             "problems": workflow_problems(wf, catalog, skills), "shipped": wf.name in SHIPPED}
+             "problems": workflow_problems(wf, catalog, skills), "shipped": shipped}
             for wf in workflows]
 
 
