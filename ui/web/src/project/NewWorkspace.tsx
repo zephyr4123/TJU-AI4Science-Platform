@@ -28,7 +28,7 @@ export function NewWorkspace({ project, existing, onCreated, onCancel }: {
   const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const templates = useResource(api.templates, [])
+  const templates = useResource(api.templates, [], 'templates')
   const [template, setTemplate] = useState('generic')
   const indigo = useToken('--primary')
   const muted = useToken('--muted-foreground')

@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 
 import type { Picture } from '@/assets'
+import { Photo } from '@/components/Photo'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -16,8 +17,7 @@ interface Props {
 export function Band({ picture, veil, blur = false, className, children }: Props) {
   return (
     <div className={cn('relative overflow-hidden', className)}>
-      <img src={picture.src} srcSet={picture.srcSet} sizes="100vw" alt="" decoding="async" aria-hidden="true"
-           className={cn('pointer-events-none absolute inset-0 size-full object-cover', blur && 'scale-125 blur-2xl')} />
+      <Photo picture={picture} className={cn(blur && 'scale-125 blur-2xl')} />
       <div aria-hidden="true" className={cn('pointer-events-none absolute inset-0', veil === 'wash' ? 'veil-wash' : 'veil-foot')} />
       <div className="relative h-full">{children}</div>
     </div>

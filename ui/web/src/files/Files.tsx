@@ -88,7 +88,7 @@ function DirRows({ workspace, path, depth, epoch, expanded, selected, meaning, o
   meaning: (path: string) => RowMeaning; order?: (entries: DirEntry[]) => DirEntry[]
   onToggle: (path: string) => void; onSelect: (path: string) => void
 }) {
-  const listing = useResource(() => workspace.files(path), [workspace.key, path, epoch])
+  const listing = useResource(() => workspace.files(path), [workspace.key, path, epoch], `files:${workspace.key}:${path}`)
   if (listing.error) return <p className="py-1 pr-2 text-[0.75rem] text-bad" style={{ paddingLeft: `${indent(depth)}rem` }}>{listing.error}</p>
   // 子目录加载不画占位：本地请求几十毫秒就回，骨架闪一下又没了（空目录尤其明显）；折角一转就是反馈。骨架只给根那一层
   if (!listing.data) return depth === 0 ? <div className="px-3 py-1"><Skeleton lines={4} /></div> : null
@@ -215,7 +215,7 @@ function FilePane({ workspace, path, epoch, doc, meaning, onReveal, onOpenBoard 
   workspace: WorkspaceClient; path: string; epoch: number; doc: WorkspaceDetail; meaning: (path: string) => RowMeaning
   onReveal: (path: string, output: boolean) => void; onOpenBoard: (oid: string) => void
 }) {
-  const file = useResource(() => workspace.file(path), [workspace.key, path, epoch])
+  const file = useResource(() => workspace.file(path), [workspace.key, path, epoch], `file:${workspace.key}:${path}`)
   const oid = outputIdOf(path, doc)
   if (file.error) return <div className="p-6"><ErrorNote text={file.error} /></div>
   if (!file.data) return <div className="p-6"><Skeleton lines={8} /></div>

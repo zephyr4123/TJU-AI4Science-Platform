@@ -50,7 +50,7 @@ ai4sci serve       # 起后端并端出页面：http://127.0.0.1:8765
 web/src/
   assets.ts   页面里全部图片 / 视频的 CDN URL，仅此一处（纲领 P-17）；素材清单在 docs/DESIGN.md
   api/        契约：types.ts（响应体的类型）、client.ts（每个端点一个函数，Scope 定域前缀；WorkspaceClient 是绑死在（项目，工作区）上的一组端点，看板 / 文件 / 两处确认拿着它取数）、sse.ts（事件流）
-  places/     Rail（宽屏的地方栏：首页 / 编辑台 / 设置）、PlacesSheet（窄屏的清单）、place.ts（页面此刻在哪：首页 / 门口 / 项目 / 工作区 / 编辑台；上次在哪记在浏览器里，纯函数有单测）
+  places/     Rail（宽屏的地方栏：首页 / 编辑台 / 设置）、PlacesSheet（窄屏的清单）、place.ts（页面此刻在哪：首页 / 门口 / 项目 / 工作区 / 编辑台；每次打开都从首页进，不记上次在哪）
   home/       Home（首页 = 项目墙，一格一个项目，空态一枚「新建项目」）、NewProject（门口那一屏：一句话 + 目标一行起项目）
   project/    ProjectPlace（项目的世界：拿着项目的对话清单与项目清单，项目页与工作区页来回不断线）、ProjectPage（项目页的两个样子：正中间输入框 + 工作区清单 + 对话抽屉 + 删除项目；发第一句输入框竖直下沉、正文接上，layoutId）、NewWorkspace（清单顶上展开的表单：一句话 + 学科）、derive.ts（一行工作区的状态一个词与细节，纯函数、有单测）
   workspace/  WorkspacePage（工作区页：页眉「‹ 项目名  工作区 ▾  看板 / 文件  …」，看板 / 文件两个镜头常驻只切显示，对话板在右）
@@ -60,8 +60,8 @@ web/src/
   studio/     编辑台：StudioPlace（页眉 + 两个镜头 + 流程助理的对话板）、Studio（流程 / 能力常驻只切显示；Editor 是 React Flow 画布、边拼边查、保存——文件名由标题生成不上屏）、model.ts（链的数据：排版、插入、重排、页面形状 ↔ 文件形状，纯函数、有单测）、nodes（阶段 / 断点两种节点，能力小片 hover 一行、点了跳详情）、Palette（阶段梯与流程库的弹层）、Inspector（选中节点：勾能力、填参数——名字是描述符的 label、断点的确认事项）、Catalog（能力镜头：按阶段陈列 SpotlightCard 小卡，详情页是常驻返回键 + 一行 / 参数 / 五栏）
   keys/       确认需求、确认产出两处人的动作（StarBorder 改装）
   settings/   设置那块板（底座、算力、存放、外观）
-  components/ 零件 bits.tsx、Markdown.tsx、Top（页眉：回上一级、标题、镜头开关、封面底）、Backdrop（门口的视频背景）、Band / Scene（图 + 纱幕）、shadcn 生成的 ui/、reactbits 的改装件（MagicBento 项目墙的格子、StatusMark 状态符、GlassSurface、GlideSelect、HoldButton……）
-  lib/        humanize.ts（状态词与谁产的，有单测）、stages.ts（阶段图标、按阶段分组、经过哪几个阶段）、slug.ts（项目 / 工作区 id 与流程文件名从标题生成，有单测）、diff.ts（行级 diff，有单测）、format.ts（数字、钱、时间、只到天的日期，有单测）、useChats（一个域的对话清单）、取数 hook、署名记忆
+  components/ 零件 bits.tsx、Markdown.tsx、Top（页眉：回上一级、标题、镜头开关、封面底）、Backdrop（门口的视频背景）、Band / Scene（图 + 纱幕，图走 Photo：在浏览器里的直接就在、第一次到了淡入）、shadcn 生成的 ui/、reactbits 的改装件（MagicBento 项目墙的格子、StatusMark 状态符、GlassSurface、GlideSelect、HoldButton……）
+  lib/        humanize.ts（状态词与谁产的，有单测）、stages.ts（阶段图标、按阶段分组、经过哪几个阶段）、slug.ts（项目 / 工作区 id 与流程文件名从标题生成，有单测）、diff.ts（行级 diff，有单测）、format.ts（数字、钱、时间、只到天的日期，有单测）、useChats（一个域的对话清单）、useResource（取数 hook，给了名字就把上次那份记在 lastSeen.ts 里、回来先摆上再重拉，有单测）、pictures.ts（全站的图一起来就预热、记哪些已在浏览器里）、署名记忆
 ```
 
 依赖方向：`App → home / project / studio → workspace → board / files / chat → keys / components → api`；`api/` 不 import 任何组件。

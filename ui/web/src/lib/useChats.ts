@@ -9,7 +9,7 @@ import { useResource } from './useResource'
 
 export function useChats(scope: Scope) {
   const key = scopeKey(scope)
-  const chats = useResource(() => api.chats(scope), [key])
+  const chats = useResource(() => api.chats(scope), [key], `chats:${key}`)
   const [picked, setPicked] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   // 每完成一轮对话加一：助理可能运行了什么，看板据此重读

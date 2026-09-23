@@ -47,7 +47,7 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
   title: (o: { title: string }) => ReactNode; onOpen?: (oid: string) => void; onOpenFiles?: (path: string) => void
 }) {
   const [epoch, setEpoch] = useState(0)
-  const record = useResource(() => workspace.output(oid), [workspace.key, oid, epoch])
+  const record = useResource(() => workspace.output(oid), [workspace.key, oid, epoch], `output:${workspace.key}:${oid}`)
   const reload = async () => { setEpoch((n) => n + 1); await onChanged() }
   if (record.error) return <div className="p-6"><ErrorNote text={record.error} /></div>
   if (!record.data) return <div className="p-6"><Skeleton lines={5} /></div>

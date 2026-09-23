@@ -3,7 +3,7 @@
 // 项目页正中间的输入框、板里的对话视图（工作区页、编辑台）共用。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { api, type Scope } from '@/api/client'
+import { api, type Scope, scopeKey } from '@/api/client'
 import { streamTurn } from '@/api/sse'
 import type { Backend, ChatDoc, ChatEvent, ChatMeta, Tuning } from '@/api/types'
 import { type Resource, useResource } from '@/lib/useResource'
@@ -35,7 +35,8 @@ export function useConversation({ scope, chatId, current, backends, create, onTu
   /** 一轮结束：助理可能运行了命令、改了需求，看板要重读 */
   onTurnDone: () => void
 }): Conversation {
-  const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId])
+  const doc = useResource(() => (chatId ? api.chat(scope, chatId) : Promise.resolve(null)), [chatId],
+                          chatId ? `chat:${scopeKey(scope)}:${chatId}` : undefined)
   // 第一句发出去的时候对话还没开，等发完要重读的是新开那段的：拿最新的 reload，不拿闭包里的
   const reload = useRef(doc.reload)
   useEffect(() => { reload.current = doc.reload }, [doc.reload])

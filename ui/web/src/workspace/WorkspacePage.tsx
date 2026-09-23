@@ -46,7 +46,7 @@ export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, on
   const [focus, setFocus] = useState<string | null>(null)
   const [opened, setOpened] = useState<string | null>(null)
   // 这个工作区那一整份（需求、产出、流程的进度、作业）两个镜头共用，拉一次；有作业在跑时轮询；对话每一轮结束重读
-  const doc = useResource(ws.detail, [ws.key, epoch])
+  const doc = useResource(ws.detail, [ws.key, epoch], `workspace:${ws.key}`)
   const busy = (doc.data?.running ?? 0) > 0
   const reload = doc.reload
   useEffect(() => {

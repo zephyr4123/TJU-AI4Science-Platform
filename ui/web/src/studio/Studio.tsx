@@ -54,10 +54,10 @@ export function Studio({ epoch, view, focus, onFocus }: {
   focus: string | null
   onFocus: (name: string | null) => void
 }) {
-  const stages = useResource(api.stages, [])
-  const workflows = useResource(api.workflows, [epoch])
-  const catalog = useResource(api.capabilities, [])
-  const skills = useResource(api.skills, [])
+  const stages = useResource(api.stages, [], 'stages')
+  const workflows = useResource(api.workflows, [epoch], 'workflows')
+  const catalog = useResource(api.capabilities, [], 'caps')
+  const skills = useResource(api.skills, [], 'skills')
   const loading = [stages, workflows, catalog, skills].some((r) => r.loading && !r.data)
   const errors = [stages.error, workflows.error, catalog.error, skills.error].filter((e): e is string => e !== null)
   if (loading) return <div className="flex-1 p-6"><Skeleton lines={6} /></div>

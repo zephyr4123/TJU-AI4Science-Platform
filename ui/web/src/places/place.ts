@@ -1,5 +1,6 @@
 // 页面此刻在哪，与地方栏的形状。两个世界（纲领 P-15 P-16）：项目的世界——首页（项目墙）、门口（起项目那一屏）、
-// 某个项目、项目里的某个工作区——与编辑台；设置是全局的一块，不算地方。上次在哪记在浏览器里，下次打开直接回去。
+// 某个项目、项目里的某个工作区——与编辑台；设置是全局的一块，不算地方。每次打开都从首页进（主人 2026-09-23：
+// 首启该看到项目清单，不该直接落进上次那个项目的对话入口），不记上次在哪。
 export type Place =
   | { kind: 'home' }
   | { kind: 'door' }
@@ -29,31 +30,4 @@ export interface PlacesProps {
   settingsOpen: boolean
   settingsDot: boolean
   onSettings: () => void
-}
-
-const KEY = 'ai4sci.place'
-const ID = /^[a-z][a-z0-9-]*$/
-
-/** 浏览器里记的那条：只认项目与工作区（首页、门口、编辑台不值得记），字段不对就当没记 */
-export function parseStored(raw: string | null): Place | null {
-  if (!raw) return null
-  let doc: unknown
-  try { doc = JSON.parse(raw) } catch { return null }
-  if (!doc || typeof doc !== 'object') return null
-  const { project, workspace } = doc as { project?: unknown; workspace?: unknown }
-  if (typeof project !== 'string' || !ID.test(project)) return null
-  if (workspace === undefined || workspace === null) return { kind: 'project', id: project }
-  if (typeof workspace !== 'string' || !ID.test(workspace)) return null
-  return { kind: 'workspace', project, id: workspace }
-}
-
-export function recallPlace(): Place | null {
-  try { return parseStored(window.localStorage.getItem(KEY)) } catch { return null }
-}
-
-export function rememberPlace(place: Place): void {
-  const project = projectOf(place)
-  if (!project) return
-  const doc = place.kind === 'workspace' ? { project, workspace: place.id } : { project }
-  try { window.localStorage.setItem(KEY, JSON.stringify(doc)) } catch { /* 隐私模式存不了就每次从首页进 */ }
 }
