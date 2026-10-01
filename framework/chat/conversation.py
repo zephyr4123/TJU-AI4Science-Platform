@@ -42,6 +42,7 @@ from pathlib import Path
 from typing import Any
 
 from backends import Chat, ChatEvent, Tuning
+from framework.files import write_atomic
 
 LOGGER = logging.getLogger("ai4sci.chat")
 META_NAME = "meta.json"
@@ -118,8 +119,8 @@ class Conversation:
         return asdict(self)
 
     def save(self) -> None:
-        (self.dir / META_NAME).write_text(
-            json.dumps(self.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_atomic(self.dir / META_NAME,
+                     json.dumps(self.to_dict(), ensure_ascii=False, indent=2) + "\n")
 
 
 def new_conversation(chats_dir: Path, backend: str, cwd: Path,
@@ -326,9 +327,8 @@ def _turn(
     (turn_dir / "message.md").write_text(message + "\n", encoding="utf-8")
     if update:
         (turn_dir / GUIDE_UPDATE_NAME).write_text(update, encoding="utf-8")
-    inflight.write_text(json.dumps({"turn": turn_n, "pid": os.getpid(),
-                                    "started_at": datetime.now(UTC).isoformat(timespec="seconds")}),
-                        encoding="utf-8")
+    started = datetime.now(UTC).isoformat(timespec="seconds")
+    write_atomic(inflight, json.dumps({"turn": turn_n, "pid": os.getpid(), "started_at": started}))
     events_path = turn_dir / EVENTS_NAME
     trace_path = turn_dir / TRACE_NAME
     timeout = coordinator_timeout_s() if timeout_s is None else timeout_s

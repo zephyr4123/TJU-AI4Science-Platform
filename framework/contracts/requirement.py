@@ -22,6 +22,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from framework.files import write_atomic
+
 FILE_NAME = "requirement.md"
 LOCK_NAME = "requirement.lock"
 # 模板里没定的值都写它；确认前看到它就不给签，模板不能被当成需求签走
@@ -139,8 +141,7 @@ def confirm(root: Path, *, by: str) -> dict[str, Any]:
     history = history_dir(root)
     history.mkdir(parents=True, exist_ok=True)
     (history / f"v{version}.md").write_text(text, encoding="utf-8")
-    lock_path(root).write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n",
-                               encoding="utf-8")
+    write_atomic(lock_path(root), json.dumps(record, ensure_ascii=False, indent=2) + "\n")
     return record
 
 
