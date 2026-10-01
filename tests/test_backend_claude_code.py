@@ -458,7 +458,7 @@ def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
 
 
 def test_chat_tool_guide_and_guide_channel():
-    """P-25：协调层的「工具怎么用」是这家的（Read / Glob / Grep）；指南只在开会话时生效（thread）。"""
+    """P-25：协调层的「工具怎么用」是这家的（Read / Glob / Grep）；指南只在开会话时生效。"""
     chat = ClaudeCodeChat()
     assert chat.guide_channel == "thread"
     text = chat.tool_guide(("ai4sci", ".venv/bin/ai4sci"))

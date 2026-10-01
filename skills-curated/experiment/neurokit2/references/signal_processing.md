@@ -147,7 +147,7 @@ Useful QC is multimodal and method-specific:
 The bundled inspector is dependency-free:
 
 ```bash
-python skills/neurokit2/scripts/inspect_signal.py \
+ai4sci skill run neurokit2 --script inspect_signal.py \
   --input signal.csv --root . --deidentified \
   --columns ECG --time-column time_s --units ECG=mV
 ```

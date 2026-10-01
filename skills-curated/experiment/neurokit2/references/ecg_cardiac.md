@@ -174,7 +174,7 @@ with a calibrated respiration sensor for RSA, tidal volume, or respiratory diagn
 ## Bounded pipeline
 
 ```bash
-python skills/neurokit2/scripts/ecg_hrv_pipeline.py \
+ai4sci skill run neurokit2 --script ecg_hrv_pipeline.py \
   --input deidentified.csv --column ECG --root . --deidentified \
   --sampling-rate 250 --method neurokit --domains time \
   --signals-output ecg_processed.csv --output ecg_report.json

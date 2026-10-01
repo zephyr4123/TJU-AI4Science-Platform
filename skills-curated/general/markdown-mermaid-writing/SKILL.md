@@ -237,17 +237,6 @@ radar-beta
 
 ## 🔗 Integration with other skills
 
-### With `scientific-schematics`
-
-`scientific-schematics` generates AI-powered publication-quality images (PNG). Use the Mermaid diagram as the **brief** for the schematic:
-
-```
-Workflow:
-1. Create the concept as Mermaid in .md (this skill — Phase 1)
-2. Describe the same concept to scientific-schematics for a polished PNG (Phase 3)
-3. Commit both — the .md as source, the PNG as a supplementary figure
-```
-
 ### With `scientific-writing`
 
 When `scientific-writing` produces a manuscript, all diagrams and structural figures should use this skill's standards. The writing skill handles prose and citations; this skill handles visual structure.
@@ -257,12 +246,11 @@ Workflow:
 1. Use scientific-writing to draft the manuscript
 2. For every figure that shows a workflow, architecture, or relationship:
    - Replace placeholder with a Mermaid diagram following this skill's guide
-3. Use scientific-schematics only for figures that truly need photorealistic/complex rendering
 ```
 
-### With `literature-review`
+### With a literature review
 
-Literature review produces summaries with lots of relationship data. Use this skill to:
+A literature review produces summaries with lots of relationship data. Use this skill to:
 
 - Create concept maps (Mindmap) of the literature landscape
 - Show publication timelines (Timeline or Gantt)

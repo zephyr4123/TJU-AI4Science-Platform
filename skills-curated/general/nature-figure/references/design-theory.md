@@ -17,8 +17,7 @@
 
 This file is an original synthesis of publication-figure typography, color,
 composition, and export rules. External repositories may be consulted only as
-visual references after their license and reuse terms have been verified; see
-[demos.md](demos.md).
+visual references after their license and reuse terms have been verified.
 
 ---
 

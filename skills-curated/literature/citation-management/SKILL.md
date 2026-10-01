@@ -25,7 +25,7 @@ metadata:
 
 Manage citations systematically throughout the research and writing process. This skill provides tools and strategies for searching academic databases (Google Scholar, PubMed), extracting accurate metadata from multiple sources (CrossRef, PubMed, arXiv), validating citation information, and generating properly formatted BibTeX entries.
 
-Critical for maintaining citation accuracy, avoiding reference errors, and ensuring reproducible research. Integrates seamlessly with the literature-review skill for comprehensive research workflows.
+Critical for maintaining citation accuracy, avoiding reference errors, and ensuring reproducible research.
 
 ## When to Use This Skill
 
@@ -40,9 +40,6 @@ Use this skill when:
 - Building a bibliography for a manuscript or thesis
 - Checking for duplicate citations
 - Ensuring consistent citation formatting
-
-If a document built from these citations needs a diagram, use the
-**scientific-schematics** skill.
 
 ---
 
@@ -151,8 +148,7 @@ Validation rules and venue standards are in
 
 ### Phase 5: Integration with Writing Workflow
 
-Search, extract, format, validate, then cite. End-to-end sequences — including the
-literature-review path — are in
+Search, extract, format, validate, then cite. End-to-end sequences are in
 [references/core_workflow.md](references/core_workflow.md) and
 [references/example_workflows.md](references/example_workflows.md).
 
@@ -200,19 +196,6 @@ literature-review path — are in
     - **Solution**: Always extract from metadata sources using scripts
 
 ## Integration with Other Skills
-
-### Literature Review Skill
-
-**Citation Management** provides the technical infrastructure for **Literature Review**:
-
-- **Literature Review**: Multi-database systematic search and synthesis
-- **Citation Management**: Metadata extraction and validation
-
-**Combined workflow**:
-1. Use literature-review for systematic search methodology
-2. Use citation-management to extract and validate citations
-3. Use literature-review to synthesize findings
-4. Use citation-management to ensure bibliography accuracy
 
 ### Scientific Writing Skill
 

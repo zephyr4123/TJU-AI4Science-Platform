@@ -9,12 +9,14 @@ tmp_path 里的假 skill 验，删掉真库照样过。平台自带的脚本 `uv
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from framework import paths, skills
 from framework.chat import guide
@@ -119,6 +121,57 @@ def test_shipped_skills_with_scripts_say_how_to_run_them():
             f"{skill.dir} 有脚本，正文就得写怎么用 ai4sci skill run 起"
         if skill.library == library.RESIDENT:
             assert len(skill.body.splitlines()) <= library.BODY_MAX_LINES, skill.name
+
+
+def test_shipped_skills_never_start_their_scripts_bare():
+    """执行层的 Bash 只放行 `ai4sci skill`：正文与参考里不许教 `python scripts/x.py`、
+    `uv run x.py` 这类起法（门禁只看 SKILL.md 有没有 `ai4sci skill run` 拦不住参考里的）。"""
+    found = []
+    for skill in skills.everything().skills:
+        if not skill.scripts:
+            continue
+        own = "|".join(re.escape(p.name) for p in skill.scripts)
+        bare = re.compile(rf"\b(?:python3?|uv\s+run(?:\s+--script)?)\s+(?:-\S+\s+)*"
+                          rf"[\w./-]*?(?:{own})\b")
+        for path in sorted(skill.dir.rglob("*.md")):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if bare.search(line):
+                    found.append(f"{skill.name}/{path.relative_to(skill.dir)}:{number}")
+    assert found == [], "改成 ai4sci skill run <name> --script <x.py>：" + "、".join(found)
+
+
+def test_shipped_skill_links_resolve_and_skip_rejected_skills():
+    """正文与参考里的相对链接要能在 skill 目录里找到（`ai4sci skill show` 照着读）；也别再把
+    agent 引到台账里不收的 skill 上（反引号或加粗里带连字符的名字，免得误伤普通词）。代码块与
+    行内代码里的链接是示例，不算；templates/ 是给人抄的样板，不算。"""
+    rejected = {r["path"].rstrip("/").rsplit("/", 1)[-1]
+                for r in yaml.safe_load(provenance.ledger_path().read_text(encoding="utf-8"))
+                ["rejected"]}
+    rejected = {name for name in rejected if "-" in name} - set(library.names())
+    link = re.compile(r"\]\((?!https?:|mailto:|#)([^)\s]+?\.[A-Za-z0-9]{1,5})(?:#[^)]*)?\)")
+    named = re.compile(r"(?:`|\*\*)([a-z0-9]+(?:-[a-z0-9]+)+)(?:`|\*\*)")
+    dead, stray = [], []
+    for skill in skills.everything().skills:
+        for path in sorted(skill.dir.rglob("*.md")):
+            rel = path.relative_to(skill.dir)
+            if rel.parts[0] == "templates":
+                continue
+            fenced = False
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if line.lstrip().startswith(("```", "~~~")):
+                    fenced = not fenced
+                    continue
+                where = f"{skill.name}/{rel}:{number}"
+                stray += [f"{where} {m.group(1)}" for m in named.finditer(line)
+                          if m.group(1) in rejected]
+                if fenced:
+                    continue
+                for m in link.finditer(re.sub(r"`[^`]*`", "", line)):
+                    target = m.group(1)
+                    if not ((path.parent / target).exists() or (skill.dir / target).exists()):
+                        dead.append(f"{where} {target}")
+    assert dead == [], "链接指向的文件不在：" + "、".join(dead)
+    assert stray == [], "指向不收的 skill：" + "、".join(stray)
 
 
 # ── 格式规则（假 skill）────────────────────────────────────────────────────

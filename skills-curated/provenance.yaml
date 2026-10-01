@@ -52,6 +52,8 @@ skills:
   - 正文、references、assets 里 python scripts/x.py 的起法全部改成 ai4sci skill run citation-management --script x.py；删
     google_scholar_search.md 里一行裸 python -c 过滤和 script_reference.md 里接 pbcopy 的管道示例
   - Dependencies 一节改写成「脚本自带 PEP 723 依赖和锁，ai4sci skill run 第一次运行时建环境」
+  - 删掉与不收的 literature-review、scientific-schematics 配合的说法：SKILL.md 三处与「Literature Review Skill」一节、references/core_workflow.md
+    的「Integration with Literature Review Skill」一节
 - name: database-lookup
   shelf: literature
   upstream: k-dense
@@ -164,6 +166,7 @@ skills:
   - SKILL.md 和 references/idea_evaluation.md 的 python scripts/x.py 起法改成 ai4sci skill run scientific-brainstorming
     --script x.py
   - 正文开头加 ai4sci skill show 那句
+  - 「已有证据」交给的 skill 由不收的 literature-review 改成 paper-lookup
 - name: analytical-method-validation
   shelf: design
   upstream: k-dense
@@ -695,6 +698,8 @@ skills:
   changes:
   - frontmatter 的 name 由 mamba-architecture 改为目录名 mamba
   - 正文开头加一句：目录里的其它文件用 ai4sci skill show mamba <相对路径> 读
+  - Advanced topics 里三条链接指向上游就不存在的 references/selective-ssm.md、mamba2-details.md、performance.md，改指现有的
+    architecture-details.md、training-guide.md、benchmarks.md
 - name: matchms
   shelf: experiment
   upstream: k-dense
@@ -1201,6 +1206,7 @@ skills:
     三处；检查清单与 api.md 注释里的 W&B 字样删掉
   - references/api.md 删「Upload to HuggingFace」一节（要 HF token）
   - 正文开头加一句：其它文件用 ai4sci skill show saelens <相对路径> 读
+  - references/README.md 删掉指向不存在的 papers.md 那一行（上游就没有这个文件）
 - name: scanpy
   shelf: experiment
   upstream: k-dense
@@ -1424,6 +1430,7 @@ skills:
   - frontmatter 的 name 从 transformer-lens-interpretability 改成目录名 transformer-lens
   - 删掉门控模型那段（设 HF_TOKEN 再加载 Llama-2），SKILL.md 与 references/api.md 各一处
   - 正文开头加一句：其它文件用 ai4sci skill show transformer-lens <相对路径> 读
+  - references/README.md 删掉指向不存在的 papers.md 那一行（上游就没有这个文件）
 - name: transformers
   shelf: experiment
   upstream: k-dense
@@ -1575,6 +1582,7 @@ skills:
     处）
   - run_enrichment.py 补 PEP 723 头（gseapy、pandas、numpy）并出锁
   - 正文开头加一句用 ai4sci skill show 读目录里其它文件
+  - Integration 一节删掉不收的 depmap、bioservices、literature-review
 - name: pkpd-modeling
   shelf: analysis
   upstream: k-dense
@@ -1980,6 +1988,7 @@ skills:
   - 正文开头加了 ai4sci skill show 的说明（正文要读 references/ 和 templates/）
   - 示例图里两处数据模型的字段名改掉：class.md 的 `#apiKey` 改成 `#credential`，er.md 的 API_KEY 实体改成 SERVICE_CREDENTIAL（说明文字一起改）——零
     key 门禁分不出示意图里的字段与真要的 key
+  - 删掉与不收的 scientific-schematics 配合的一节和工作流里的一步；「With literature-review」改成泛指文献综述
 - name: markitdown
   shelf: general
   upstream: k-dense
@@ -2012,6 +2021,7 @@ skills:
   - plot_template.py、style_configurator.py 在 import pyplot 前加 mpl.use("Agg")，否则结尾的 plt.show() 在 macOS
     上会弹 GUI 窗口卡住
   - 两个脚本补 PEP 723 头（requires-python >=3.10，numpy、matplotlib）并出锁
+  - plot_template.py 的 PEP 723 头补上 scipy（直方图里 from scipy.stats import norm，上游没写进依赖），重新出锁
 - name: nature-figure
   shelf: general
   upstream: nature-skills
@@ -2020,7 +2030,8 @@ skills:
   - 照搬目录，不带 README.md、README_EN.md、agents/、tests/、evals/、.gitignore、requirements.txt
   - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-figure <相对路径> 读
   - assets/ 整个不带：chart-atlas 与 gallery 都是 PNG，figures4papers 是 28 MB、没有许可证的第三方示例；同时删了给它做索引的 references/demos.md，以及
-    SKILL.md、static/core/stance.md、python 片段、manifest 里指向 demos.md 的地方
+    SKILL.md、static/core/stance.md、python 片段、manifest 里指向 demos.md 的地方；references 里 common-patterns.md、design-theory.md、tutorials.md
+    指向 demos.md 的三处也删了
   - 删了 OpenRouter 出示意图那条路（要 OPENROUTER_API_KEY）：scripts/generate_openrouter_schematic.py、references/openrouter-image-generation.md、SKILL.md
     第 0 步那段、manifest 里的路由块与按需条目；description 改成「规划与审查 AI 辅助的图文摘要」
   - 共享包的 core/nature-results-discussion.md 与 NMI 格式文件（连同它引用的 ethics、research-compliance）拷进 references/shared/，并改了路径

@@ -480,19 +480,6 @@ cat validation.json
 # \bibliography{final_references}
 ```
 
-#### Integration with Literature Review Skill
-
-This skill complements the `literature-review` skill:
-
-**Literature Review Skill** → Systematic search and synthesis
-**Citation Management Skill** → Technical citation handling
-
-**Combined Workflow**:
-1. Use `literature-review` for comprehensive multi-database search
-2. Use `citation-management` to extract and validate all citations
-3. Use `literature-review` to synthesize findings thematically
-4. Use `citation-management` to verify final bibliography accuracy
-
 ```bash
 # After completing literature review
 # Verify all citations in the review document

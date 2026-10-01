@@ -176,9 +176,9 @@ These cause most wrong or irreproducible results:
 
 ## Integration with Other Skills
 
-- **Upstream (where genes come from):** `pydeseq2` (DE genes + `stat` for GSEA), `scanpy` (`rank_genes_groups` markers / scores), `depmap`/`pytdc` (screen hits), proteomics skills (`pyopenms`, `matchms`).
-- **Databases / IDs:** `database-lookup` (Reactome, KEGG, STRING, Gene Ontology APIs), `gget` (`gget enrichr` quick path, `gget info` for ID mapping), `bioservices`.
-- **Downstream:** `scientific-visualization` (custom figures), `networkx` (enrichment-map graphs), `scientific-writing` / `literature-review` (interpret and cite), `statistical-analysis` (multiple-testing details).
+- **Upstream (where genes come from):** `pydeseq2` (DE genes + `stat` for GSEA), `scanpy` (`rank_genes_groups` markers / scores), `pytdc` (screen hits), proteomics skills (`pyopenms`, `matchms`).
+- **Databases / IDs:** `database-lookup` (Reactome, KEGG, STRING, Gene Ontology APIs), `gget` (`gget enrichr` quick path, `gget info` for ID mapping).
+- **Downstream:** `scientific-visualization` (custom figures), `networkx` (enrichment-map graphs), `scientific-writing` (interpret and cite), `statistical-analysis` (multiple-testing details).
 
 ## Reference Files
 

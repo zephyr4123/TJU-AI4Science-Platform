@@ -6,7 +6,6 @@ This directory contains comprehensive reference materials for TransformerLens.
 
 - [api.md](api.md) - Complete API reference for HookedTransformer, ActivationCache, and HookPoints
 - [tutorials.md](tutorials.md) - Step-by-step tutorials for common interpretability workflows
-- [papers.md](papers.md) - Key research papers and foundational concepts
 
 ## Quick Links
 

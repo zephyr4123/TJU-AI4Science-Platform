@@ -4,6 +4,7 @@
 # dependencies = [
 #     "matplotlib>=3.10.9",
 #     "numpy>=2.2.6",
+#     "scipy>=1.15.3",
 # ]
 # ///
 """

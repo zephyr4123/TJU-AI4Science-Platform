@@ -11,7 +11,6 @@
 
 End-to-end walkthroughs for the most common publication figure types.
 All examples use helpers from [api.md](api.md) and patterns from [common-patterns.md](common-patterns.md).
-For the retained third-party demo map, copyright boundary, and original reimplementation guidance, open [demos.md](demos.md).
 
 ---
 

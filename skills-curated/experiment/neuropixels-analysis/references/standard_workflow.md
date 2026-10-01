@@ -287,7 +287,7 @@ print(f"Good units: {len(good_unit_ids)}/{len(metrics)}")
 Or run it as a script:
 
 ```bash
-python scripts/neuropixels_pipeline.py /data/experiment/ output/ --sorter kilosort4 --curation allen
+ai4sci skill run neuropixels-analysis --script neuropixels_pipeline.py /data/experiment/ output/ --sorter kilosort4 --curation allen
 ```
 
 ## Tips for Success
