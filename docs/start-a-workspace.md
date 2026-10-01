@@ -63,7 +63,10 @@ ai4sci requirement confirm --by <你>     # 写 requirement.lock，存档 .ai4sc
 
 ## 3. 设计：评分脚本与基线
 
+项目只跑它各工作区流程实例上挂着的能力（纲领 P-26）：先从库里取一条流程，不取任何步骤都会被拒。
+
 ```bash
+ai4sci flow take research         # 库里的流程取成实例 flows/research.yaml（只有一条流程时命令上不用写 --flow）
 ai4sci cap design                 # 执行层照需求写 scoring.yaml、harness/、code/；框架封 harness、跑基线出 baseline/、预检
 ai4sci show output design/1       # 记录、文件清单
 ```
@@ -99,7 +102,6 @@ ai4sci sign design/1 --by <你> --note "评分脚本算的是我要的数"
 ## 4. 跑起来
 
 ```bash
-ai4sci flow take research                                          # 库里的流程取成实例 flows/research.yaml（只有一条流程时命令上不用写 --flow）
 ai4sci cap auto-research --from design/1 --max-iters 5 --detach    # 开 experiment/1，一轮一轮改；后台作业
 ai4sci show job <id>                                               # 进度；跑完结果排进那段对话的收件箱，助理接着念
 ai4sci cap auto-research --continue experiment/1 --max-iters 10    # 接着同一次实验再跑
@@ -118,6 +120,7 @@ ai4sci sign verification/1 --by <你>                               # 断点：�
 | `design/1 被引用或签字之后改过了` | 签过字或被引用的产出目录变了 | 别改它；在它的阶段下新开一次产出，下游 `--from` 新的那个 |
 | `流程 research 在 design/1 之后有断点` | 流程里这儿要人签了下游才能读 | `ai4sci sign design/1` |
 | `工作区有几条流程，说清照哪条` | flows/ 下不止一个实例 | 命令加 `--flow <name>` |
+| `这个项目没有装载步骤 design` | 项目里没有流程实例，或实例里没有这个阶段、那一格点了别的步骤 | `ai4sci flow take <流程>`；或在实例里加上这个阶段，`ai4sci show flows` 校验 |
 | `env/: 目录缺失` | materials/ 没带环境 | 建 `materials/env/` 两个文件，零依赖也要有空的 lock |
 | `harness/launcher.sh:12: 裸调 python` | launcher 用了 PATH 上的 python | 让执行层改：`--continue design/1 --feedback` |
 | `harness/evaluate.py:45: 给 AI4SCI_INNER_K 写了默认值` | 评分脚本拿不到框架保证的变量时自己兜底 | 同上 |

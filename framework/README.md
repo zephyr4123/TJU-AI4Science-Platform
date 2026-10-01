@@ -88,6 +88,7 @@ sequenceDiagram
   A->>C: ai4sci cap design --ws w --detach
   C->>C: 助理会话里的确认与签字一律拒（refuse_if_assistant 只管 sign / confirm）
   C->>W: require_confirmed：需求确认了没
+  C->>W: loadout：本项目的流程实例装载了这个步骤没有（P-26）
   C->>W: resolve_inputs：--from 在不在、冻结 hash 对不对
   C->>W: _place_in_flow：挂哪条流程第几项，断点签没签
   C->>W: open_output → design/1/meta.yaml（running，记 compute 与 agent）

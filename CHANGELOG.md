@@ -12,17 +12,21 @@
 - 收录社区 skill 库 `skills-curated/`：K-Dense、Nature Skills、AI Research SKILLs 按七个阶段加「通用」分拣，台账 `provenance.yaml` 记来源、提交、许可证、改动；`ai4sci show skills` 按词、按阶段查库（#198）
 - 流程命名带血缘：机器名平台起（派生的 `<家族名>-<序号>`）、文件记 `from`、差异现算、库里结构一样的拒；`ai4sci workflow new [--from]`，编辑台流程库按家族分组、能「另存」（#199）
 - `ai4sci skill show <name> <文件>` 读 skill 目录里的参考与模板（#197）
+- 环境变量 `AI4SCI_CURATED_SKILLS_ROOT` 指收录库；`GET /skills/<name>` 取一个 skill 带正文（#197）
 
 ### 变更
 - 能力按项目装载：研究助理与执行层只装平台自带的 skill 加本项目流程实例上挂的能力，装载之外的 `skill show / run` 与 `cap` 拒；领域 skill 不再随领域包自动进执行层，要挂上（#197）
 - skill 宽进：规范外的 frontmatter 字段只提醒，不合格的单个隔离、不拖垮整库；收录与领域包的脚本首次运行时按锁建环境，`make skills` 只预热平台自带的（#197）
+- `show caps` 文本里 skill 按出处计数不逐个列；`show caps --json`、`GET /skills` 不带 SKILL.md 正文；`skill show` 不打库的路径（#197）
+- `ai4sci skill` 与 `show skills` 按 cwd 所在的项目判装载，cwd 不在项目里才看 `AI4SCI_PROJECT`；流程上拼错的名字列为不可用、不再关掉那个阶段（#197）
 
 ### 修复
-- Claude Code 续接对话时沿用开会话那份指南、新送的不生效（实测）：改成与 Codex 一样只在开会话时送，指南中途变了（新挂了 skill、加了命令）由框架把全文塞进那一轮（#200）
+- Claude Code 续接对话时沿用开会话那份指南、新送的不生效（实测）：改成与 Codex 一样只在开会话时送，指南中途变了由框架把变了的几节塞进那一轮，人的原话照原样存（#200）
 - `ai4sci skill run <name> --script <文件>` 里写在名字后面的 `--script` 被当成脚本参数吞掉（#198）
 
 ### 移除
-- 一个第三方 key 都不要：`download` 不再读 Hugging Face 凭据，只拉公开的仓库；门禁查三处库里的凭据字眼（#196）
+- 一个第三方 key 都不要：`download` 不再读 Hugging Face 凭据，只拉公开的仓库；门禁查三处库里要凭据的用法，否定说法不算（#196）
+- 协调层端口的 `guide_channel`（两家都只在开会话时收指南，没有第二种了）；`RunContext.domain`（没有读取方）（#200）
 
 ## [1.0.1] - 2026-09-23
 

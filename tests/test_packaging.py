@@ -20,7 +20,7 @@ def test_every_capability_prompt_is_shipped():
 
 def test_package_script_ships_every_library_paths_knows():
     script = (paths.REPO_ROOT / ".github" / "scripts" / "package.sh").read_text(encoding="utf-8")
-    for dirname in (paths.WORKFLOWS_DIRNAME, paths.TEMPLATES_DIRNAME, paths.DOMAINS_DIRNAME,
-                    paths.SKILLS_DIRNAME, paths.GUIDES_DIRNAME):
+    # 出厂件清单只有 paths.SHIPPED 一份：加了库（skills-curated/）这里自动跟上
+    for dirname in set(paths.SHIPPED) - {paths.UI_DIRNAME}:
         assert dirname in script, f"package.sh 没拷 {dirname}"
     assert "framework/shipped/ui" in script

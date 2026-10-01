@@ -16,7 +16,7 @@ from typing import Any
 
 from framework.experiment import layout
 from framework.experiment.checkpoint import read_checkpoint
-from framework.experiment.pack import DEFAULT_DOMAIN, primary_metric, read_scoring
+from framework.experiment.pack import primary_metric, read_scoring
 
 DEFAULT_PATIENCE = 5  # scoring 不写 budget.patience 时的缺省（读取点在 load_context）
 DEFAULT_MIN_DELTA = 0.0  # scoring 不写 budget.min_delta 时的缺省（读取点同上）
@@ -49,8 +49,7 @@ class RunContext:
     max_cost_usd: float | None
     seed: int
     python: str  # harness 的解释器：在跑实验的那台机器上的路径（checkpoint 记的）
-    domain: str  # 设计时选的领域包：执行层的 skill 清单按它拼（纲领 P-22）
-    domain_extra: str
+    domain_extra: str  # 领域约定：设计时选的领域包的实验追加段（装哪些 skill 与它无关，P-26）
     compute_name: str  # 在哪台机器上跑（checkpoint 记的名字），续跑要接同一台
 
 
@@ -60,18 +59,11 @@ class RunContext:
 def read_domain_extra(run_dir: Path) -> str:
     """执行层提示末尾的「领域约定」：领域包的实验追加段，从产出目录里的快照读。
 
-    没有快照就是空串，调用方（prompting.build_prompt）见空串不追加。领域 skill 不在这里：
-    它们走 `<available_skills>` 清单，执行层按需 `ai4sci skill show`（纲领 P-22）。
+    没有快照就是空串，调用方（prompting.build_prompt）见空串不追加。领域包的 skill 不在这里：
+    挂到流程实例上才装载，走 `<available_skills>` 清单（纲领 P-26）。
     """
     prompt = layout.domain_prompt(run_dir)
     return prompt.read_text(encoding="utf-8").strip() if prompt.is_file() else ""
-
-
-def read_domain(run_dir: Path) -> str:
-    """这次实验按哪个领域包开的：scoring 快照里的 `domain`（设计时 `--domain` 盖的章）。"""
-    domain = load_scoring(run_dir).get("domain", DEFAULT_DOMAIN)
-    assert isinstance(domain, str) and domain, f"scoring.domain 要是领域包名：{domain!r}"
-    return domain
 
 
 def load_scoring(run_dir: Path) -> dict[str, Any]:
@@ -129,7 +121,7 @@ def load_context(run_dir: Path) -> RunContext:
         accept_sigma=float(budget["accept_sigma"]), min_delta=min_delta,
         wall_clock_s=float(budget["wall_clock_s"]), inner_k=inner_k,
         max_iterations=int(budget["max_iterations"]), patience=patience, max_cost_usd=max_cost,
-        seed=int(seed), python=python, domain=read_domain(run_dir),
+        seed=int(seed), python=python,
         compute_name=str(state.get("compute", {}).get("name", "local")),
         domain_extra=read_domain_extra(run_dir),
     )

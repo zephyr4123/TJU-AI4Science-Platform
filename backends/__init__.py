@@ -194,10 +194,9 @@ class Chat(Protocol):
     `cost_reporting` 说清 `done.cost_usd` 是什么：`"turn"` 是这一轮的花费；`"session"` 是续接的
     整段会话到此刻的累计（Claude Code 的 `--resume` 就这样报），框架自己减上一轮的累计得到这一轮的。
     报错了就是页面上一句「你是什么模型」显示 $0.28（实测 2026-09-19：那一轮实际 $0.014）。
-    `guide_channel` 说清指南（system_prompt）怎么送到：`"turn"` 每一轮都整份送、续接时也生效；
-    `"thread"` 只在开会话那次生效（Codex 的 `developer_instructions`、Claude Code 的
-    `--append-system-prompt`，续接时再给都不生效，实测见各自适配器）——后者指南中途变了，框架把
-    新指南全文塞进那一轮的话里，不然助理照旧指南办事。
+    指南（system_prompt）每一轮都给，适配器只在开会话那轮送给 CLI：两家续接时再给都不生效（Codex 的
+    `developer_instructions`、Claude Code 的 `--append-system-prompt`，实测见各自适配器）。中途变了
+    由框架把变了的几节塞进那一轮的话里（`framework/chat/conversation.py`），适配器不用管。
     `tool_guide` 是塞进指南前言之后的「工具怎么用」一段：看文件、列目录用什么、能跑什么命令，
     是这家 CLI
     自己的事（Claude Code 有 Read / Glob / Grep；Codex 只有 shell，看文件得 ls / cat，沙箱管着写）。
@@ -206,7 +205,6 @@ class Chat(Protocol):
 
     name: str
     cost_reporting: str
-    guide_channel: str
 
     def knobs(self) -> Knobs: ...
 
@@ -312,8 +310,6 @@ def get_chat(name: str) -> Chat:
     assert hasattr(chat, "knobs"), \
         f"后端 {name!r} 的协调层适配器没有 knobs()：得报有哪些模型与思考深度"
     assert hasattr(chat, "tool_guide"), f"后端 {name!r} 的协调层适配器没有 tool_guide()"
-    assert getattr(chat, "guide_channel", None) in ("turn", "thread"), \
-        f"后端 {name!r} 的协调层适配器的 guide_channel 只认 turn / thread"
     chat.name = name
     return chat
 

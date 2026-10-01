@@ -267,8 +267,8 @@ class ClaudeCodeChat:
 
     指南只在开会话时生效（外层 #200，实测 2026-10-01，2.1.286 + sonnet，三次一致）：首轮送「口令：
     苹果」，`--resume` 时改送「口令：香蕉」，问它口令答「苹果」——续接时 CLI 沿用开会话那份，再送
-    也不生效。所以与 Codex 一样是 `guide_channel = "thread"`：只在开会话那轮送，中途指南变了（平台
-    加了命令、流程实例上新挂了 skill，纲领 P-26）由框架把新指南全文塞进那一轮的话里。
+    也不生效。所以与 Codex 一样只在开会话那轮送，中途指南变了（平台加了命令、流程实例上新挂了
+    skill，纲领 P-26）由框架把变了的几节塞进那一轮的话里。
 
     实测（2026-09-16，haiku）：第一轮 init 事件给 session_id，第二轮 `--resume` 带上它，
     模型记得第一轮的内容，result 事件的 session_id 与第一轮相同；两轮共 $0.02。
@@ -285,7 +285,6 @@ class ClaudeCodeChat:
 
     name = NAME
     cost_reporting = "session"
-    guide_channel = "thread"  # 只在开会话时生效（见上），指南变了框架塞进话里
 
     def __init__(self, cli: str = "claude") -> None:
         self.cli = cli
