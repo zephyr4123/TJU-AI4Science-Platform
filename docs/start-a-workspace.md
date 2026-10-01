@@ -19,7 +19,7 @@
 ```
 projects/<p>/
 ├── project.md           目标一段；一级标题是项目名
-├── materials/           几个工作区共用的原件
+├── materials/           几个工作区共用的原件（设计、复现时与工作区的一起进 data/）
 ├── .ai4sci/chats/       助理的对话（归项目）
 └── workspaces/<id>/
 ├── requirement.md       需求：课题的根。按模板起草，人和助理对话后由助理写

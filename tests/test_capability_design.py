@@ -20,6 +20,7 @@ from framework.contracts.capability import CapabilityFailed, Inputs, Ports
 from framework.experiment import drafting as design
 from framework.experiment import pack as packs
 from framework.workspace import outputs
+from framework.workspace import project as project_mod
 from tests.fixtures import packs_factory as pf
 from tests.fixtures import spaces
 from tests.fixtures.scripted_backend import ScriptedRunner
@@ -111,6 +112,22 @@ def test_prepare_copies_materials_into_data_and_env_and_refuses_without_env(ws):
                                   params={}, flow=None, step=None, requirement=1, chat_id=None)
     with pytest.raises(CapabilityFailed, match="materials/env/"):
         design_cap._prepare(bare, workspace.root)
+
+
+def test_prepare_brings_the_projects_shared_materials_too(ws):
+    """外层 #201：项目共用的原件（几个工作区都要的那份数据）也进 data/，不然设计无据可依；
+    同名的以工作区自己的为准（更具体的那份）；共用原件里的 env/ 不进 data/。"""
+    workspace, _ = ws
+    shared = project_mod.of(workspace).materials
+    (shared / "env").mkdir(parents=True)
+    (shared / "spring.csv").write_text("x,f\n1,2\n", encoding="utf-8")
+    (shared / "val.json").write_text('{"y": [9.0]}', encoding="utf-8")
+    (shared / "env" / "python-version").write_text("3.9\n", encoding="utf-8")
+    pack = new_pack(workspace)
+    assert (pack / "data" / "spring.csv").read_text(encoding="utf-8") == "x,f\n1,2\n"
+    assert (pack / "data" / "val.json").read_text(encoding="utf-8") == '{"y": [1.0]}'
+    assert not (pack / "data" / "env").exists()
+    assert (pack / "env" / "python-version").read_text(encoding="utf-8") != "3.9\n"
 
 
 def test_good_draft_is_sealed_lint_clean_validates_and_gets_the_domain(ws):

@@ -22,6 +22,7 @@ from framework.contracts.capability import Capability, CapabilityFailed, Inputs,
 from framework.experiment import drafting, env
 from framework.experiment import pack as packs
 from framework.experiment.baseline import run_baseline
+from framework.workspace import project as project_mod
 
 LOGGER = logging.getLogger("ai4sci.design")
 NAME = "design"
@@ -49,8 +50,9 @@ DESCRIPTOR = Capability(
         "不另开目录。"
     ),
     brings=(
-        "已确认的需求 requirement.md（要优化什么、数据在哪、怎么算好、花多少）；原件 materials/"
-        "（评分脚本重算指标要用的数据，搬进 data/）与 materials/env/（python-version 与"
+        "已确认的需求 requirement.md（要优化什么、数据在哪、怎么算好、花多少）；原件——工作区的"
+        " materials/ 与项目共用的 materials/（评分脚本重算指标要用的数据，一起搬进 data/，同名以"
+        "工作区的为准）与工作区的 materials/env/（python-version 与"
         "requirements.lock，研究者环境的 pip freeze）；假设阶段的产出可选。"
         "改第二版时接着上一次产出，带修改意见。"
     ),
@@ -134,7 +136,8 @@ def _drafted(pack: Path) -> bool:
 
 
 def _prepare(pack: Path, workspace: Path) -> None:
-    """第一次进这个目录：原件搬进 data/（env/ 除外），原件里的 env/ 搬成包的 env/。
+    """第一次进这个目录：原件搬进 data/（项目共用的与工作区的，同名以工作区为准；env/ 除外），
+    工作区原件里的 env/ 搬成包的 env/。
     第二次（--continue）什么都不动：草稿在，别覆盖；但 materials/env/ 与包里的 env/ 对不上就
     明说「环境变了，重开一次」——执行层碰不到也不许碰 env/，让它空跑一轮是浪费（外层 #117）。"""
     materials = Path(workspace) / MATERIALS_DIRNAME
@@ -155,10 +158,10 @@ def _prepare(pack: Path, workspace: Path) -> None:
             f"{MATERIALS_DIRNAME}/{env.ENV_DIRNAME}/ 要有 {env.PYTHON_VERSION_NAME}（研究者脚本用的"
             f"Python 版本）"
             f"与 {env.REQUIREMENTS_NAME}（pip freeze）：\n" + "\n".join(problems))
-    shutil.copytree(materials, pack / "data", ignore=shutil.ignore_patterns(*IGNORED))
+    shadowed = project_mod.copy_materials(workspace, pack / "data", *IGNORED)
     shutil.copytree(src_env, pack / env.ENV_DIRNAME)
-    LOGGER.info("design_prepare pack=%s data_files=%d",
-                pack, sum(1 for p in (pack / "data").rglob("*") if p.is_file()))
+    LOGGER.info("design_prepare pack=%s data_files=%d shadowed=%s", pack,
+                sum(1 for p in (pack / "data").rglob("*") if p.is_file()), shadowed or "-")
 
 
 def _env_changed(source: Path, snapshot: Path) -> list[str]:

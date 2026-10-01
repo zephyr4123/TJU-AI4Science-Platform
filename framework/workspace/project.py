@@ -2,7 +2,8 @@
 
     projects/<p>/
     ├── project.md           目标：有它才算项目（标记就是它）；一级标题是项目名
-    ├── materials/           几个工作区共用的原件
+    ├── materials/           几个工作区共用的原件：设计、复现开工时与工作区自己的一起搬进包
+    │                        （`copy_materials`，同名以工作区的为准，外层 #201）
     ├── workspaces/<id>/     一份需求的家（root.py）
     └── .ai4sci/chats/       助理的对话（chat 层管里面）
 
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -176,6 +178,32 @@ def containing(path: Path) -> Project:
         if (directory / MARKER).is_file():
             return Project(directory)
     raise ProjectNotFound(f"{origin} 不在任何项目里")
+
+
+def material_dirs(workspace: Path) -> tuple[Path, ...]:
+    """一个工作区看得到的原件目录，按「后盖前」排：项目共用的 materials/，再是工作区自己的；
+    不在的不列。"""
+    found = (containing(workspace).materials, Path(workspace) / MATERIALS_DIRNAME)
+    return tuple(d for d in found if d.is_dir())
+
+
+def copy_materials(workspace: Path, dest: Path, *ignore: str) -> list[str]:
+    """把工作区看得到的原件拷进 dest（设计、复现的 data/）：项目共用的先拷、工作区的后拷，同名的
+    以工作区为准——更具体的那份（外层 #201：数据放在项目共用原件里，设计不带它就无据可依）。
+    `ignore` 是不拷的名字（`shutil.ignore_patterns` 的写法）。返回被工作区盖掉的共用文件的相对
+    路径，调用方记日志。"""
+    dest.mkdir(parents=True, exist_ok=True)
+    shadowed: list[str] = []
+
+    def copy(src: str, dst: str) -> str:
+        if Path(dst).exists():
+            shadowed.append(Path(dst).relative_to(dest).as_posix())
+        return shutil.copy2(src, dst)
+
+    for source in material_dirs(workspace):
+        shutil.copytree(source, dest, ignore=shutil.ignore_patterns(*ignore),
+                        dirs_exist_ok=True, copy_function=copy)
+    return sorted(shadowed)
 
 
 def of(workspace: Workspace) -> Project:
