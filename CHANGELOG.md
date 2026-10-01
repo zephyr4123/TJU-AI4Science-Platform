@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-01
+
 ### 新增
 - skill 分类表 `framework/skills/shelves.py`：七个阶段加「通用」，每架再分 tag（实验分生物、化学与药物、模型训练等 18 个，共 37 个），202 个 skill 全部归位（#205）
 
@@ -151,7 +153,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.0...v1.0.1
