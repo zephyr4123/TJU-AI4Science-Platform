@@ -17,28 +17,40 @@
         upstream: k-dense
         path: skills/paper-lookup        # 上游仓里的原路径
         changes: [命令改成 ai4sci skill run, …]
+        license_note: …                  # 只在 skill 自己写的许可证认不出时要（见下）
     rejected:
       - upstream: k-dense
         path: skills/research-lookup
         reason: 缺省路径要 Parallel 账号（P-27）
 
-许可证只收能随开源平台再分发、不加使用限制的那几种（`LICENSES`）。对账只读台账与目录，不碰上游仓：
-上游的克隆不在仓里，换机器照样能查。
+许可证只收能随开源平台再分发、不加使用限制的那几种（`LICENSES`）。上游仓的许可证不够：有的包里
+每个 skill 在 frontmatter 的 `license` 里另写自己的（K-Dense 的 README 明说以它为准），所以逐个看——
+认得出是可收的（`MIT license`、`3-clause BSD` 这类写法归一成 SPDX 名）或没写（随上游仓）就过；
+认不出的（链接、库自己的协议名、一段话）台账那行要写 `license_note`，说清查过、为什么能收。
+
+对账只读台账与目录，不碰上游仓：上游的克隆不在仓里，换机器照样能查。
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 from framework import paths
-from framework.skills.library import CURATED_SHELVES, SKILL_FILE
+from framework.skills.library import CURATED_SHELVES, SKILL_FILE, SkillInvalid, split_frontmatter
 
 LEDGER_FILE = "provenance.yaml"
 # 能随开源平台再分发、不附加使用限制的许可证（SPDX 名）。NC、专有、没有许可证的一律不收
 LICENSES = ("MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC")
+# skill frontmatter 里常见的写法 → SPDX 名（去掉结尾的 license、小写之后比）
+ALIASES = {
+    **{name.lower(): name for name in LICENSES},
+    "apache license, version 2.0": "Apache-2.0",
+    "3-clause bsd": "BSD-3-Clause", "3 clause bsd": "BSD-3-Clause",
+}
 
 
 class LedgerInvalid(ValueError):
@@ -52,6 +64,13 @@ class Entry:
     upstream: str
     path: str
     changes: tuple[str, ...]
+    license_note: str = ""
+
+
+def spdx(text: str) -> str | None:
+    """skill 自己写的许可证认得出是哪个可收的就给 SPDX 名，认不出是 None。"""
+    key = re.sub(r"\s+licen[cs]e$", "", text.strip().lower())
+    return ALIASES.get(key)
 
 
 def ledger_path(root: Path | None = None) -> Path:
@@ -92,10 +111,16 @@ def check(root: Path | None = None) -> list[Entry]:
             problems.append(f"{row['name']}: 架 {row['shelf']!r} 不是 {CURATED_SHELVES} 之一")
         changes = row.get("changes") or []
         entries.append(Entry(str(row["name"]), str(row["shelf"]), str(row["upstream"]),
-                             str(row["path"]), tuple(str(c) for c in changes)))
-    for i, row in enumerate(raw.get("rejected") or []):
+                             str(row["path"]), tuple(str(c) for c in changes),
+                             str(row.get("license_note") or "")))
+    rejected = raw.get("rejected") or []
+    for i, row in enumerate(rejected):
         if not isinstance(row, dict) or not all(row.get(k) for k in ("upstream", "path", "reason")):
             problems.append(f"rejected 第 {i + 1} 行要有 upstream / path / reason")
+    used = {str(row.get("upstream")) for row in [*(raw.get("skills") or []), *rejected]
+            if isinstance(row, dict)}
+    for key in sorted(set(upstreams) - used):
+        problems.append(f"upstreams.{key} 声明了却没有一行用到：来源记错了，或删掉这个上游")
     listed: dict[str, Entry] = {}
     for entry in entries:
         if entry.name in listed:
@@ -110,6 +135,20 @@ def check(root: Path | None = None) -> list[Entry]:
     for name in sorted(set(listed) & set(on_disk)):
         if listed[name].shelf != on_disk[name]:
             problems.append(f"{name}: 台账写架 {listed[name].shelf}，目录在 {on_disk[name]}")
+        own = _own_license(root / on_disk[name] / name)
+        if own and spdx(own) is None and not listed[name].license_note:
+            problems.append(f"{name}: skill 自己写的许可证 {own[:80]!r} 认不出是可收的："
+                            "查清后在台账那行写 license_note，说明为什么能收")
     if problems:
         raise LedgerInvalid("\n".join(f"{path}: {p}" for p in problems))
     return entries
+
+
+def _own_license(directory: Path) -> str:
+    """skill frontmatter 里的 license；没写、读不出来都是空（读不出来的门禁另报）。"""
+    try:
+        front, _ = split_frontmatter((directory / SKILL_FILE).read_text(encoding="utf-8"))
+    except SkillInvalid:
+        return ""
+    value = front.get("license")
+    return value.strip() if isinstance(value, str) else ""

@@ -106,7 +106,7 @@ metadata:                                   # 可选：字符串到字符串；�
 
 逐个 skill 看它的 `SKILL.md`、脚本、参考，一条不过就不收（台账 `rejected` 记一行原因）：
 
-1. **许可证**能随开源平台再分发、不加使用限制：MIT、Apache-2.0、BSD、ISC。看整个仓库的许可证，也看 skill 目录里有没有自己的（有的包里个别 skill 是专有条款或非商用）。NC、专有、没有许可证的不收。
+1. **许可证**能随开源平台再分发、不加使用限制：MIT、Apache-2.0、BSD、ISC。看整个仓库的许可证，也看每个 skill 自己的（frontmatter 的 `license`、目录里的许可证文件；有的包里个别 skill 是专有条款或非商用）。NC、专有、没有许可证的不收。skill 自己写的认不出是这几种（一个链接、库自己的协议名、一段话）时，查清楚，在台账那行写 `license_note` 说明为什么能收。
 2. **零 key**：默认的用法就要 key（模型 API、付费检索、需要账号的服务）的不收；key 只是可选的，删掉那几句与对应的代码再收。
 3. **能在平台里用**：两层 agent 面前只有 `ai4sci` 的命令与自带的联网搜索、网页读取，执行层还只有 `ai4sci skill`。核心做法离不开 MCP 服务、子代理、交互式的人回合、本机 GUI、Docker、装系统软件的不收；只是个别步骤这样的，删掉那几步再收。教 agent 写实验代码时怎么用某个库的（知识型），照收：代码片段是给执行层抄进实验代码的，不是让它在命令行里跑。
 
@@ -120,7 +120,7 @@ metadata:                                   # 可选：字符串到字符串；�
 
 ### 台账
 
-`skills-curated/provenance.yaml` 的形状在 `framework/skills/provenance.py` 文件头。收的一行：`name`、`shelf`、`upstream`、`path`（上游原路径）、`changes`（改了什么，一条一句）；不收的一行：`upstream`、`path`、`reason`。上游的提交号、许可证与原文在 `upstreams` 里。`make skills` 对账：目录与台账一一对得上、许可证在可收的里、原文在。
+`skills-curated/provenance.yaml` 的形状在 `framework/skills/provenance.py` 文件头。收的一行：`name`、`shelf`、`upstream`、`path`（上游原路径）、`changes`（改了什么，一条一句）、按需 `license_note`；不收的一行：`upstream`、`path`、`reason`。上游的提交号、许可证与原文在 `upstreams` 里。`make skills` 对账：目录与台账一一对得上、每个上游都有行用到、许可证在可收的里（skill 自己写的认不出就要有 `license_note`）、原文在。
 
 ### 现在收了哪些
 

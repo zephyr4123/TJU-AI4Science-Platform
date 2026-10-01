@@ -255,6 +255,35 @@ def test_key_mentions_catch_credentials_but_not_tokenizer_words(tmp_path):
         assert library.key_mentions(skill) == [f"SKILL.md:8: {text}"], text
 
 
+def test_ledger_wants_every_upstream_used_and_odd_skill_licenses_explained(tmp_path):
+    """上游声明了却一行没用（来源记错了）不过；skill 自己写的许可证认不出是宽松的，台账那行要写
+    license_note 说明为什么能收（同一个包里个别 skill 可能是专有或非商用的，add-a-skill.md）。"""
+    curated = tmp_path / "skills-curated"
+    write_skill(curated / "writing", "plain",
+                front="---\nname: plain\ndescription: x\nlicense: BSD-3-Clause license\n---\n")
+    write_skill(curated / "writing", "odd",
+                front="---\nname: odd\ndescription: x\nlicense: https://example.org/LICENSE\n---\n")
+    (curated / "licenses").mkdir()
+    for key in ("up", "idle"):
+        (curated / "licenses" / f"{key}.txt").write_text("MIT\n", encoding="utf-8")
+    ups = "".join(f"  {k}:\n    title: {k}\n    url: https://x/{k}\n    commit: abc\n"
+                  f"    license: MIT\n    license_file: licenses/{k}.txt\n" for k in ("up", "idle"))
+    rows = ("  - {name: plain, shelf: writing, upstream: up, path: s/plain}\n"
+            "  - {name: odd, shelf: writing, upstream: up, path: s/odd}\n")
+    (curated / "provenance.yaml").write_text(f"upstreams:\n{ups}skills:\n{rows}rejected: []\n",
+                                             encoding="utf-8")
+    with pytest.raises(provenance.LedgerInvalid) as exc:
+        provenance.check(curated)
+    text = str(exc.value)
+    assert "upstreams.idle 声明了却没有一行用到" in text
+    assert "odd: skill 自己写的许可证" in text and "plain" not in text
+    rows = rows.replace("path: s/odd}", "path: s/odd, license_note: 指向库的许可证，库是 MIT}")
+    ups = ups.split("  idle:")[0]
+    (curated / "provenance.yaml").write_text(f"upstreams:\n{ups}skills:\n{rows}rejected: []\n",
+                                             encoding="utf-8")
+    assert [e.name for e in provenance.check(curated)] == ["plain", "odd"]
+
+
 def test_ledger_must_match_the_shelves(tmp_path):
     """收录台账（provenance.yaml）与目录一一对得上、许可证在可收的里、原文在 licenses/。"""
     curated = tmp_path / "skills-curated"
