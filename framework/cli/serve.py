@@ -83,10 +83,11 @@ def _save_workflow(doc: dict) -> dict:
 
 def _check_workflow(doc: dict) -> dict:
     """编辑台拼着的那条流程有没有问题：与存流程同一套检查，只查不写；形状不对也当问题报，页面不该为此
-    拿 500。名字、标题、说明还没填是常态（人先排阶段），这里只查阶段那部分，三样空着的补个占位。"""
+    拿 500。名字、标题、说明还没填是常态（人先排阶段），这里只查阶段那部分，三样空着的补个占位；
+    `from`（载入出厂的再改时带着父流程的名字）是存的时候才落的血缘，不归这里查（P-15）。"""
     catalog = _descriptors()
     name = str(doc.get("name") or "").strip() or "draft"
-    doc = {k: v for k, v in doc.items() if k != "overwrite"}
+    doc = {k: v for k, v in doc.items() if k not in ("overwrite", "from")}
     doc = {**doc, "name": name, "title": str(doc.get("title") or "").strip() or "-",
            "summary": str(doc.get("summary") or "").strip() or "-"}
     try:

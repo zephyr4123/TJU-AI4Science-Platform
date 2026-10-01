@@ -1,6 +1,6 @@
 ---
 name: download
-description: 把论文的材料拉到工作区 materials/ 里：git 仓库（可指定 commit）、单个文件（可校验 sha256）、Hugging Face 上的数据集或权重。复现一篇论文时找到了官方代码、数据、权重就用它拉；它只下载、留收据，不判断该拉什么。
+description: 把论文的材料拉到工作区 materials/ 里：git 仓库（可指定 commit）、单个文件（可校验 sha256）、Hugging Face 上公开的数据集或权重。复现一篇论文时找到了官方代码、数据、权重就用它拉；它只下载、留收据，不判断该拉什么。
 compatibility: Python 3.12 以上（脚本自带，与平台 venv 无关）；系统要有 git；hf 子命令要联网到 huggingface.co，只拉公开的仓库
 metadata:
   ai4sci-system-tools: git

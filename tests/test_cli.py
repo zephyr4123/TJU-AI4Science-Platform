@@ -520,11 +520,21 @@ def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
     taken = yaml.safe_load((ws.flows / "quick.yaml").read_text(encoding="utf-8"))
     assert taken["from"]["name"] == "quick"  # 实例也记取自哪条（P-15）
 
-    # 派生：名字与 from 由平台填；再起一条照抄的就是一模一样，存不进去
-    proc = run_cli("workflow", "new", "--from", "research", env=env)
-    assert proc.returncode == EXIT_INVALID and "库里的 research 和这条一模一样" in proc.stderr
-    proc = run_cli("workflow", "new", "--from", "quick", "--title", "快看二", env=env)
-    assert proc.returncode == EXIT_INVALID and "一模一样" in proc.stderr
+    # 派生：名字与 from 由平台填，先照抄落成草稿（不查重）；没改之前 show workflows 一直标着
+    # 「一模一样」，改出不同就好了（页面存是当场拒，那边草稿在内存里）
+    proc = run_cli("workflow", "new", "--from", "research", "--title", "研究二", env=env)
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert proc.stdout.startswith("ok research-2\tworkflows/research-2.yaml\tfrom=research")
+    draft = yaml.safe_load((mine / "research-2.yaml").read_text(encoding="utf-8"))
+    assert draft["from"]["name"] == "research" and draft["title"] == "研究二"
+    proc = run_cli("show", "workflows", env=env)
+    assert proc.returncode == EXIT_INVALID and "与 research 一模一样" in proc.stderr
+    draft["stages"] = draft["stages"][:-1]
+    (mine / "research-2.yaml").write_text(yaml.safe_dump(draft, allow_unicode=True),
+                                          encoding="utf-8")
+    proc = run_cli("show", "workflows", env=env)
+    assert proc.returncode == EXIT_OK and "← 派生自 research：去掉断点「验收」" in proc.stdout
+    (mine / "research-2.yaml").unlink()
     assert run_cli("workflow", "new", "--from", "nope", env=env).returncode == EXIT_USAGE
     assert run_cli("workflow", "new", "x", "--from", "quick", env=env).returncode == EXIT_USAGE
     proc = run_cli("workflow", "new", "scratch", "--title", "从零", env=env)
@@ -534,8 +544,6 @@ def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
     (mine / "quick.yaml").write_text(
         "name: quick\ntitle: 快看\nsummary: 只看一眼\nstages:\n"
         "  - 实验: {auto-research: {max_iters: 2}}\n  - 分析\n  - 验证\n", encoding="utf-8")
-    proc = run_cli("workflow", "new", "--from", "quick", env=env)
-    assert proc.returncode == EXIT_INVALID  # 照抄 = 一模一样
     child = yaml.safe_load((mine / "quick.yaml").read_text(encoding="utf-8"))
     child |= {"name": "quick-2", "stages": child["stages"][:2],
               "from": {"name": "quick", "hash": "0" * 12}}
@@ -888,6 +896,12 @@ def test_serve_helpers_check_a_draft_and_list_the_catalog(tmp_path, monkeypatch)
     assert bad["problems"] == ["第 2 项与第 3 项都是断点：两个断点挨着等于一个"]
     bad = serve._check_workflow({"stages": [{"设计": ["verify"]}]})
     assert "属于「验证」阶段" in bad["problems"][0]
+    # 载入出厂的再改（派生）：页面带着父流程的名字，查的只是阶段，血缘存的时候才落（P-15）
+    derived = serve._check_workflow({"from": "reproduce", "stages": ["设计", "分析"]})
+    assert derived["problems"] == []
+    kept = serve._check_workflow({"from": {"name": "reproduce", "hash": "abcdef123456"},
+                                  "stages": ["设计"]})
+    assert kept["problems"] == []
     catalog = {c["name"]: c for c in serve._catalog()}
     assert catalog["auto-research"]["used_by"] == ["research"] and catalog["verify"]["does"]
     assert [w["name"] for w in serve._workflows()] == ["reproduce", "research"]

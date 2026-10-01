@@ -159,9 +159,12 @@ class Library:
         return rows
 
     def save(self, raw: dict[str, Any], catalog: dict[str, Capability], *,
-             skills: Collection[str] = (), overwrite: bool = False) -> Workflow:
+             skills: Collection[str] = (), overwrite: bool = False,
+             draft: bool = False) -> Workflow:
         """存进用户库。名字不给就由平台起：带 `from`（父流程的名字）是派生，叫 `<家族名>-<序号>`；
-        都不带按标题起。名字是出厂的拒、结构与库里另一条一样的拒（FileExistsError 一族，409）。"""
+        都不带按标题起。名字是出厂的拒、结构与库里另一条一样的拒（FileExistsError 一族，409）。
+        `draft`：流程助理 `workflow new --from` 先照抄落盘、再改文件——照抄出来的必然一模一样，
+        这一步不查重；没改出不同之前 `describe` 一直把它标成问题（`show workflows` 退 1）。"""
         raw = dict(raw)
         origin = raw.get("from")
         if isinstance(origin, str):  # 页面只给父流程的名字：hash 由平台按它现在的样子填
@@ -175,7 +178,7 @@ class Library:
         name = raw["name"]
         if name in self.shipped_names():
             raise FileExistsError(f"{name} 是出厂的流程，不能改：换个名字另存")
-        twin = self.twin(_shape(raw))
+        twin = None if draft else self.twin(_shape(raw))
         if twin:
             raise DuplicateWorkflow(f"库里的 {twin} 和这条一模一样"
                                     "（阶段、能力、参数、断点都相同）：直接用它，或改一处再存")
