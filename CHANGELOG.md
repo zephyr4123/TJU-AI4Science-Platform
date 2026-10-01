@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-01
+
 ### 修复
 - 作业记录、对话 meta、产出 meta 与签字、需求的锁、流程文件写盘改成原子的：边跑边读的一方会读到空文件（`cap --detach` 偶发报错，发布门禁撞到过）（#204）
 
@@ -141,7 +143,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.2.0...v1.0.0
