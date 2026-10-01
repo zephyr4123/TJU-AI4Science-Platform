@@ -124,12 +124,12 @@ make package VERSION=X.Y.Z                  # 出 wheel（含页面与出厂件�
 
 ## 在终端里走一遍
 
-样例项目已确认需求、已有 `design/1`。人在终端当协调层，框架不连跑，一条命令一步（下面省略 `.venv/bin/` 前缀）：
+样例项目已确认需求、已取流程实例 `flows/research.yaml`、已有 `design/1`。人在终端当协调层，框架不连跑，一条命令一步（下面省略 `.venv/bin/` 前缀）：
 
 ```bash
 cd projects/mlp-regression && ../../.venv/bin/ai4sci show project   # 每个工作区一行：需求状态、流程走到哪、在等谁
 cd workspaces/mlp-regression                                     # cd 进工作区就不用 --ws
-ai4sci flow take research                                        # 库里的流程取成实例 flows/research.yaml
+ai4sci show flows                                                # 取来的流程实例走到哪；项目只跑实例上挂的能力（P-26）
 ai4sci sign design/1 --note "评分脚本算的是我要的数"               # 断点：人签字，下游才能读它
 ai4sci cap auto-research --from design/1 --max-iters 5 --detach  # 开 experiment/1，一轮一轮改；后台作业，show job 看进度
 ai4sci cap analysis --from experiment/1                          # 执行层写 analysis/1/analysis.md
@@ -141,7 +141,7 @@ ai4sci show caps                                                 # 七个阶段�
 
 ## 版本与发布
 
-从 1.0.0 起承诺兼容（冻结的契约与判据在外层 `CONTRIBUTING.md`「版本与发布」）。
+从 1.0.0 起承诺兼容（冻结的契约与判据在外层 `CONTRIBUTING.md`「版本与发布」；内测期不兼容也走 MINOR，迁移办法写进 CHANGELOG，例外的条件也在那里）。
 
 1. 每个 PR 在 `CHANGELOG.md` 的 Unreleased 加一行。
 2. 正式版在 `main` 上 `make release VERSION=x.y.z`：轮转 CHANGELOG、提交、打 tag，不 push；预发布在 `release/X.Y` 上 `make release VERSION=x.y.z-rc.N`，只打 tag。
