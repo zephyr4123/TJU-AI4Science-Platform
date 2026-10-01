@@ -31,7 +31,7 @@ https://physics.nist.gov/cgi-bin/cuu/Value?h
 ```
 Returns HTML page. Parse the value from the page content.
 
-**Open access, no registration. No rate limits documented.**
+**No API key required. No rate limits documented.**
 
 ## 2. NIST Atomic Spectra Database (ASD)
 
@@ -69,7 +69,7 @@ https://physics.nist.gov/cgi-bin/ASD/lines1.pl?spectra=H&low_w=3000&upp_w=7000&u
 https://physics.nist.gov/cgi-bin/ASD/energy1.pl?spectra={element}&units={units}&format={format}
 ```
 
-**Open access, no registration. No formal rate limits but automated bulk queries are discouraged.**
+**No API key required. No formal rate limits but automated bulk queries are discouraged.**
 
 ## 3. NIST Chemistry WebBook
 

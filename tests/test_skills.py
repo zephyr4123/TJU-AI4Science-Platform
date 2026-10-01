@@ -245,14 +245,38 @@ def test_skill_files_are_readable_but_never_outside_the_skill(libraries, tmp_pat
             skill.read(bad)
 
 
-def test_key_mentions_catch_credentials_but_not_tokenizer_words(tmp_path):
-    """零 key（纲领 P-27）：说法与环境变量名都算；分词器里的 pad_token 这类词不算。"""
-    clean = write_skill(tmp_path, "clean", "# x\n\ntokenizer.pad_token = tokenizer.eos_token\n")
-    assert library.key_mentions(library.load_skill(clean)) == []
-    for i, text in enumerate(("Set OPENAI_API_KEY first", "needs an API key", "export HF_TOKEN=x",
-                              "client = Client(api_key=k)", "an access token is required")):
+def test_key_mentions_catch_credential_use_not_words(tmp_path):
+    """零 key（纲领 P-27）：查要凭据的写法——说法、读与设的环境变量、URL 里的 key、登录命令；
+    否定说法、分词器与占位符常量、词法 token、普通代码里的 `*_KEY` 不算（不为过门禁改上游字眼）。"""
+    dirty = ("Set OPENAI_API_KEY first", "needs an API key", "export HF_TOKEN=x",
+             "client = Client(api_key=k)", "an access token is required",
+             "https://aqs.example/api?email=a&key=YOUR_KEY", 'k = os.environ["OPENAI_KEY"]',
+             "x = os.getenv('S2_KEY')", "AWS_SECRET_ACCESS_KEY and AWS_ACCESS_KEY_ID",
+             "DB_PASSWORD", "Get an API token from the site", "client_secret = cfg",
+             "run `huggingface-cli login` first", "run `latch login` first",
+             "login(token=tok)", "--hf_token=YOUR_HF_TOKEN",
+             "fs_options (anon, access_key, secret_key)", "Set `HF_TOKEN` environment variable",
+             "load_dotenv()", "If you have an API key, pass it along")
+    for i, text in enumerate(dirty):
         skill = library.load_skill(write_skill(tmp_path, f"dirty{i}", f"# x\n\n{text}\n"))
         assert library.key_mentions(skill) == [f"SKILL.md:8: {text}"], text
+    wrapped = library.load_skill(write_skill(
+        tmp_path, "wrapped", "# x\n\nDeposit requires a personal access\ntoken first.\n"))
+    assert library.key_mentions(wrapped) == ["SKILL.md:8: Deposit requires a personal access"]
+    clean = ("tokenizer.pad_token = tokenizer.eos_token", "No API key required.",
+             "needs no API key", "Never commit API keys",
+             "BOS_TOKEN and DEFAULT_PAD_TOKEN and MAX_TOKEN",
+             "access_token_count = 3", "# Access tokenizer", "def secret_key_paths(value):",
+             "_SECRET_KEY = re.compile(r'secret')", 'DEFAULT_IMAGE_TOKEN = "<image>"',
+             "FRAME_TOKEN = re.compile(r'x')", "Create a secret key, then pseudonymize",
+             "| 403 | Forbidden — invalid API key (N/A; no key required) |",
+             "It does not use templates, image services, API keys,\nor environment files.",
+             "Never:\n\n- Upload things\n- Read `.env` files, API keys, or credentials",
+             "GET /search?query=x&token={token}", "USER ||--o{ REFRESH_TOKEN : owns",
+             "User->AuthAPI.login(credentials)", "SORT_KEY = 'name'")
+    for i, text in enumerate(clean):
+        skill = library.load_skill(write_skill(tmp_path, f"clean{i}", f"# x\n\n{text}\n"))
+        assert library.key_mentions(skill) == [], text
 
 
 def test_ledger_wants_every_upstream_used_and_odd_skill_licenses_explained(tmp_path):

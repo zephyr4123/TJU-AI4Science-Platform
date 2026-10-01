@@ -21,7 +21,7 @@ try:
         emit_json,
         load_json_object,
         resolve_local_path,
-        credential_field_paths,
+        secret_key_paths,
         validate_sha256,
     )
 except ImportError:  # Direct script execution.
@@ -31,7 +31,7 @@ except ImportError:  # Direct script execution.
         emit_json,
         load_json_object,
         resolve_local_path,
-        credential_field_paths,
+        secret_key_paths,
         validate_sha256,
     )
 
@@ -113,7 +113,7 @@ def _safe_sidecar(
     if metadata_path is None:
         return None, []
     raw = load_json_object(metadata_path, root=root, max_bytes=262_144)
-    secret_paths = credential_field_paths(raw)
+    secret_paths = secret_key_paths(raw)
     if secret_paths:
         raise UserInputError(
             "sidecar contains credential-bearing keys: " + ", ".join(secret_paths)

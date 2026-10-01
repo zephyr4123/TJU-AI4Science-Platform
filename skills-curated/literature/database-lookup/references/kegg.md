@@ -6,7 +6,7 @@ https://rest.kegg.jp
 ```
 
 ## Auth
-Open access, no registration. Free for academic use. Commercial use requires license.
+No API key required. Free for academic use. Commercial use requires license.
 
 ## Important: KEGG returns tab-delimited text and flat-file format, NOT JSON.
 

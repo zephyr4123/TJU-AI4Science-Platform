@@ -116,4 +116,4 @@ recommendation-oriented and live CDS behavior. It produces offline
 research/governance artifacts only; implementation guidance would conflict
 with the hard boundary.
 
-No source requiring credentials, an external model, image generator, or network call is used at runtime.
+No source requiring an API key, external model, image generator, or network call is used at runtime.

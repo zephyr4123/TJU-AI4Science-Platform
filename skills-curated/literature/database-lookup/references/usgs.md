@@ -8,7 +8,7 @@ https://earthquake.usgs.gov/fdsnws/event/1
 ```
 
 ### Authentication
-**None required.** Fully public, no registration needed.
+**None required.** Fully public, no API key needed.
 
 ### Rate Limits
 - No documented per-user rate limit, but USGS asks users to limit automated queries to avoid overloading the service.
@@ -133,7 +133,7 @@ https://waterservices.usgs.gov/nwis
 ```
 
 ### Authentication
-**None required.** Fully public, no registration needed.
+**None required.** Fully public, no API key needed.
 
 ### Rate Limits
 - No strict per-user limit, but USGS recommends limiting automated requests. Large queries may time out.

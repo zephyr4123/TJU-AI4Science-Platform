@@ -2,7 +2,7 @@
 
 Verified against first-party guidance on 2026-07-23. API rules can change:
 recheck the linked terms and limits before automated or high-volume use. The
-bundled scripts do not call these services.
+bundled scripts do not call these services and do not require API keys.
 
 ## Routing by claim
 

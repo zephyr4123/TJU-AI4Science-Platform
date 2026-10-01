@@ -24,9 +24,7 @@ is HTTP 404.
 
 ## Authentication
 
-Optional. Public calls work without a token. For heavier use, request an access
-token from OpenCitations and send `Authorization: <token>`. Do not add a new
-`.env` key for this; proceed without one.
+None. Public calls work without registration; keep request volume polite.
 
 ## Rate Limits
 

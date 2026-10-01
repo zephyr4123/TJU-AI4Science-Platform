@@ -51,7 +51,7 @@ The standard-library scripts read bounded local JSON and produce bounded local J
 - `decision_logic_traceability.py`
 - `deidentification_checklist.py`
 
-They do not use networks, credentials, environment variables, dynamic evaluation, serialization formats that execute code, LLMs, or image services.
+They do not use networks, API keys, environment variables, dynamic evaluation, serialization formats that execute code, LLMs, or image services.
 
 ## Method Selection
 

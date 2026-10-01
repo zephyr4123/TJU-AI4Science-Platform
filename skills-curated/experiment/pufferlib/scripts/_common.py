@@ -29,7 +29,7 @@ LOGGER_BACKENDS = ("none",)
 
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_CREDENTIAL_FIELD = re.compile(
+_SECRET_KEY = re.compile(
     r"(?:^|_)(?:api_?key|token|secret|password|credential|"
     r"private_?key|authorization)(?:$|_)",
     re.IGNORECASE,
@@ -171,19 +171,19 @@ def load_json_object(
     return value
 
 
-def credential_field_paths(value: Any, path: str = "$") -> list[str]:
+def secret_key_paths(value: Any, path: str = "$") -> list[str]:
     """Return key paths that look like credential-bearing configuration."""
     matches: list[str] = []
     if isinstance(value, dict):
         for key, item in value.items():
             normalized = re.sub(r"[^a-z0-9]+", "_", str(key).lower()).strip("_")
             child_path = f"{path}.{key}"
-            if _CREDENTIAL_FIELD.search(normalized):
+            if _SECRET_KEY.search(normalized):
                 matches.append(child_path)
-            matches.extend(credential_field_paths(item, child_path))
+            matches.extend(secret_key_paths(item, child_path))
     elif isinstance(value, list):
         for index, item in enumerate(value):
-            matches.extend(credential_field_paths(item, f"{path}[{index}]"))
+            matches.extend(secret_key_paths(item, f"{path}[{index}]"))
     return matches
 
 

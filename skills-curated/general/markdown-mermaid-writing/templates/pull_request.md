@@ -148,7 +148,7 @@ flowchart LR
 
 ### Security checklist
 
-- [ ] No secrets, credentials, or PII in the diff
+- [ ] No secrets, credentials, API keys, or PII in the diff
 - [ ] Authentication/authorization changes reviewed (if applicable)
 - [ ] Input validation added for new user-facing inputs
 - [ ] Injection protections maintained (SQL, XSS, CSRF)

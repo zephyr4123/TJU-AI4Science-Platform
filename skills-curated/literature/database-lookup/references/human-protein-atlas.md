@@ -6,7 +6,7 @@ https://www.proteinatlas.org
 ```
 
 ## Auth
-Open access, no registration.
+No API key required.
 
 ## Key Endpoints
 

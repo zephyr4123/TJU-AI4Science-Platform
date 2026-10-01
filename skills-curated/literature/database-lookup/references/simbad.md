@@ -22,7 +22,7 @@ https://simbad.cds.unistra.fr/simbad/sim-coo
 
 ## Authentication
 
-Open access, no registration. All endpoints are public.
+No API key required. All endpoints are public.
 
 ## Key Endpoints
 

@@ -33,7 +33,7 @@ flowchart TD
 ### Choose **LiteParse** when
 
 - You need **coordinates** for citations, highlighting, or layout-aware chunking.
-- You want **fast local** parsing with no cloud service.
+- You want **fast local** parsing without API keys.
 - You are building **multimodal** workflows (parse JSON + page screenshots).
 - You are batch-processing **folders of PDFs** for a literature review pipeline.
 - Scanned PDFs need **OCR** with optional custom HTTP OCR backends.

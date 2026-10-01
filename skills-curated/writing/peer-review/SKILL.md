@@ -30,7 +30,7 @@ Never:
 - Send unpublished manuscript, supplement, review, or editorial text to an external service without specific publisher/author authorization and venue permission
 - Upload confidential content to a public model, search engine, citation service, grammar tool, plagiarism checker, or image service
 - Reuse content for training, benchmarking, product improvement, or unrelated research
-- Read broad environment state, `.env` files, or credentials
+- Read broad environment state, `.env` files, API keys, or credentials
 - Call a network, LLM, or image API from bundled tools
 - Invoke another skill or a PDF/image pipeline automatically
 - Impersonate an assigned reviewer, editor, journal, funder, or author

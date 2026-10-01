@@ -8,7 +8,7 @@ https://www.crystallography.net/cod
 
 ## Authentication
 
-**None required.** COD is fully open-access with no registration needed.
+**None required.** COD is fully open-access with no API key needed.
 
 ## Key Endpoints
 

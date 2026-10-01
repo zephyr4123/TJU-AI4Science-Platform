@@ -6,7 +6,7 @@ https://dailymed.nlm.nih.gov/dailymed/services/
 ```
 
 ## Auth
-Open access, no registration.
+No API key required.
 
 ## Key Endpoints
 

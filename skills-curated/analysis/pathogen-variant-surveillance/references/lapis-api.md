@@ -204,6 +204,6 @@ valid key for that instance.
 **Record it with any figure that will be quoted.** The same query returns different numbers on
 different days, and without the data version a result cannot be reproduced or audited.
 
-These are free public services that need no registration. Ask for aggregates rather than per-sequence rows,
+These are free public services with no API key. Ask for aggregates rather than per-sequence rows,
 send one query per question instead of paginating through sequences, and retry `429`/`5xx` with
 backoff (`MAX_ATTEMPTS = 3`, 1.5 s linear) rather than hammering.

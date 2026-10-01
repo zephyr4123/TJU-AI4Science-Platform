@@ -6,7 +6,7 @@ https://clinicaltrials.gov/api/v2/
 ```
 
 ## Auth
-Open access, no registration. Fully public.
+No API key required. Fully public.
 
 ## Key Endpoints
 
@@ -83,7 +83,7 @@ GET /studies/metadata
 Uses cursor-based pagination via `pageToken` (NOT numeric offsets). Include `countTotal=true` on first request to get total.
 
 ## Rate Limits
-Open access. Be reasonable — a few requests per second.
+No API key. Be reasonable — a few requests per second.
 
 ## Bulk download
 

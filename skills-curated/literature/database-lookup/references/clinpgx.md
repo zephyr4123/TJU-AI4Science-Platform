@@ -6,7 +6,7 @@ https://api.pharmgkb.org/v1/data/
 ```
 
 ## Auth
-Open access, no registration, for read-only access.
+No API key required for read-only access.
 
 ## Key Endpoints
 

@@ -6,7 +6,7 @@ https://www.metabolomicsworkbench.org/rest/
 ```
 
 ## Auth
-Open access, no registration. Fully public.
+No API key required. Fully public.
 
 ## URL Structure
 ```

@@ -13,7 +13,7 @@ against the live APIs in September 2026.
 
 ## Bioregistry
 
-Base URL: `https://bioregistry.io/api`. No registration.
+Base URL: `https://bioregistry.io/api`. No API key.
 
 | Endpoint | Question |
 | --- | --- |
@@ -60,7 +60,7 @@ run the regex against the whole CURIE.
 ## Identifiers.org
 
 Resolver: `https://resolver.api.identifiers.org/{CURIE}`. Registry docs at
-https://docs.identifiers.org/. No registration.
+https://docs.identifiers.org/. No API key.
 
 A successful body is `{apiVersion, errorMessage: null, payload: {resolvedResources: […]}}`.
 Each resource has `compactIdentifierResolvedUrl`, `providerCode`, `official`,
@@ -99,7 +99,7 @@ transport failure.
 ## ZOOMA
 
 Annotate: `https://www.ebi.ac.uk/spot/zooma/v2/api/services/annotate`.
-No registration. Slow — budget tens of seconds; the client uses a 60 s timeout.
+No API key. Slow — budget tens of seconds; the client uses a 60 s timeout.
 
 | Parameter | Effect |
 | --- | --- |

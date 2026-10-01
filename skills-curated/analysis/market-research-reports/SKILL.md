@@ -89,7 +89,7 @@ only after checking definitions and original-source lineage.
 
 Read `references/official_data_sources.md` before using public APIs. API rules
 and limits are a dated snapshot: verify current official terms before automated
-or high-volume retrieval.
+or high-volume retrieval. Never put an API key in a report or bundled script.
 
 ### 3. Create the source ledger
 

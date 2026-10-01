@@ -39,7 +39,7 @@ from _common import (
 )
 
 TOOL = "pixel_frame_planner"
-FRAME_SPEC = re.compile(r"^(\d+)(?:-(\d+))?$")
+FRAME_TOKEN = re.compile(r"^(\d+)(?:-(\d+))?$")
 PIXEL_TAGS = [
     "Modality",
     "Rows",
@@ -76,7 +76,7 @@ def parse_frame_selection(
     selected: set[int] = set()
     for token in specification.split(","):
         token = token.strip()
-        match = FRAME_SPEC.fullmatch(token)
+        match = FRAME_TOKEN.fullmatch(token)
         if not match:
             raise ToolError(
                 "frames must use comma-separated indices or inclusive ranges"

@@ -8,7 +8,7 @@ https://exoplanetarchive.ipac.caltech.edu
 
 ## Authentication
 
-Open access, no registration. All endpoints are public.
+No API key required. All endpoints are public.
 
 ## Key Endpoints
 
@@ -104,7 +104,7 @@ Note: The legacy API is deprecated in favor of TAP. Use TAP for new applications
 
 ## Rate Limits
 
-No registration or login required. No formal rate limits documented, but the archive requests that users avoid excessive automated queries. Large result sets may cause timeouts; use `TOP N` in ADQL or paginate with `OFFSET` and `MAXREC`.
+No API key or authentication required. No formal rate limits documented, but the archive requests that users avoid excessive automated queries. Large result sets may cause timeouts; use `TOP N` in ADQL or paginate with `OFFSET` and `MAXREC`.
 
 For very large downloads, use the bulk download interface at:
 ```

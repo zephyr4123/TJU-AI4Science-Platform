@@ -127,7 +127,7 @@ ai4sci skill run citation-management --script extract_metadata.py --input identi
    - Comprehensive metadata for journal articles
    - Publisher-provided information
    - Includes authors, title, journal, volume, pages, dates
-   - Free and open, no registration
+   - Free, no API key required
 
 2. **PubMed E-utilities**: Biomedical literature
    - Official NCBI metadata

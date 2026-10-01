@@ -10,7 +10,7 @@ Replace `dr18` with the desired data release (e.g., `dr17`, `dr16`).
 
 ## Authentication
 
-Open access, no registration. All endpoints are public.
+No API key required. All endpoints are public.
 
 ## Key Endpoints
 

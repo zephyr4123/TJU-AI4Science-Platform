@@ -328,7 +328,7 @@ ai4sci skill run pydicom --script pixel_frame_planner.py authorized/image.dcm --
 ai4sci skill run pydicom --script dicom_to_image.py authorized/image.dcm frame.png \
   --acknowledge-pixel-phi
 
-# Create a local pseudonymization key, then a scoped pseudonymized derivative plus audit
+# Create a secret key, then a scoped pseudonymized derivative plus audit
 ai4sci skill run pydicom --script anonymize_dicom.py --generate-uid-key project.key
 ai4sci skill run pydicom --script anonymize_dicom.py authorized/in.dcm derived/out.dcm \
   --uid-key-file project.key --uid-scope export-v1 \

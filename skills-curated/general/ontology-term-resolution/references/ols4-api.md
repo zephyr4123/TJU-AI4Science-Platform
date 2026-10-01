@@ -1,6 +1,6 @@
 # EBI OLS4 API reference
 
-Base URL: `https://www.ebi.ac.uk/ols4/api`. No registration. Be polite: send a
+Base URL: `https://www.ebi.ac.uk/ols4/api`. No API key, no registration. Be polite: send a
 descriptive `User-Agent`, keep concurrency low, and back off on HTTP 429.
 
 Every behaviour recorded here was checked against the live service in July 2026. OLS4 changed

@@ -29,7 +29,7 @@ model = LanguageModel(
 # Access underlying HuggingFace model
 model._model
 
-# The tokenizer
+# Access tokenizer
 model.tokenizer
 
 # Model config

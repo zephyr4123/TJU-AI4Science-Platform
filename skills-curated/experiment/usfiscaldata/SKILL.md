@@ -1,6 +1,6 @@
 ---
 name: usfiscaldata
-description: Query the U.S. Treasury Fiscal Data REST API for federal financial data. No account or registration required. Use for national debt (Debt to the Penny), Daily Treasury Statements, Monthly Treasury Statements, Treasury securities auctions, interest rates, foreign exchange rates, savings bonds, or U.S. government revenue and spending statistics.
+description: Query the U.S. Treasury Fiscal Data REST API for federal financial data. No API key required. Use for national debt (Debt to the Penny), Daily Treasury Statements, Monthly Treasury Statements, Treasury securities auctions, interest rates, foreign exchange rates, savings bonds, or U.S. government revenue and spending statistics.
 license: MIT
 allowed-tools: Read Write Edit Bash
 metadata:
@@ -12,7 +12,7 @@ metadata:
 
 本 skill 目录里的其它文件用 `ai4sci skill show usfiscaldata <相对路径>` 读。
 
-Free, open REST API from the U.S. Department of the Treasury for federal financial data. No account or registration required.
+Free, open REST API from the U.S. Department of the Treasury for federal financial data. No API key or registration required.
 
 **Base URL:** `https://api.fiscaldata.treasury.gov/services/api/fiscal_service`
 

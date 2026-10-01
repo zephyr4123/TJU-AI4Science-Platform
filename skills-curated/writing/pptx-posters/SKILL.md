@@ -20,7 +20,7 @@ poster. Do not route an unspecified poster request here merely because PowerPoin
 available.
 
 Version 2.0 generates a real one-slide `.pptx` from strict local JSON. It does not use
-HTML conversion, external templates, schematic/image-generation services, credentials,
+HTML conversion, external templates, schematic/image-generation services, API keys,
 environment files, network requests, or mandatory figure styles.
 
 ## Hard gates

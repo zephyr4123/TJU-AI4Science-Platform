@@ -186,7 +186,7 @@ Avoid logging:
 - Document contents
 - Base64 data URIs
 - Provider request/response bodies
-- Authorization headers or signed URLs
+- API keys, authorization headers, or signed URLs
 
 Useful safe provenance:
 

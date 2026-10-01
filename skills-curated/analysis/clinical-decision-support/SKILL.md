@@ -2,7 +2,7 @@
 name: clinical-decision-support
 description: Prepare and validate research-only clinical decision-support evaluation, evidence-profile, cohort, survival, biomarker/model, privacy, and governance artifacts. Use for aggregate or synthetic research documentation and traceability—not patient care or live clinical operation.
 license: MIT
-compatibility: Python 3.11+; local files only; bundled scripts use the standard library and require no network, credentials, LLMs, or image services.
+compatibility: Python 3.11+; local files only; bundled scripts use the standard library and require no network, credentials, API keys, LLMs, or image services.
 metadata:
   version: "2.2"
   skill-author: K-Dense Inc.

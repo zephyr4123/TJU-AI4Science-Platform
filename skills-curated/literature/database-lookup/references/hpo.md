@@ -6,7 +6,7 @@ https://ontology.jax.org/api/hp
 ```
 
 ## Auth
-Open access, no registration.
+No API key required.
 
 ## Important: URL-encode colons in HP IDs — `HP:0001250` becomes `HP%3A0001250`
 

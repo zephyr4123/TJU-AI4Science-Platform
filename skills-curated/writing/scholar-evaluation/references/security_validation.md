@@ -17,7 +17,7 @@ old `SKILL.md`.
 ## Remediation
 
 - Deleted both schematic-generation scripts.
-- Removed all network requests, credential handling, environment access,
+- Removed all network requests, API-key handling, environment access,
   environment-file loading, third-party model behavior, image handling,
   child-process execution, cross-skill invocation, and mandatory figure
   instructions.

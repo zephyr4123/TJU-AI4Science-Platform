@@ -9,7 +9,7 @@ https://ghoapi.azureedge.net/api
 ```
 
 ## Authentication
-**Open access, no registration.** The API is fully open and free.
+**No API key required.** The API is fully open and free.
 
 ## Rate Limits
 - No formal rate limits documented.

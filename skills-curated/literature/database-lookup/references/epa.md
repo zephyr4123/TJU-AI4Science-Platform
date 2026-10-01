@@ -8,7 +8,7 @@ https://data.epa.gov/efservice
 Note: The legacy URL `https://enviro.epa.gov/enviro/efservice` may redirect. Use the current base URL above.
 
 ## Authentication
-**None required.** Fully public, no registration needed.
+**None required.** Fully public, no API key needed.
 
 ## Rate Limits
 - No documented per-user rate limit.
@@ -207,22 +207,6 @@ Append format as the last path segment:
 ```
 
 ---
-
-## AQS Data API (Separate System)
-
-For more granular air quality data, EPA also provides the AQS Data API at:
-```
-https://aqs.epa.gov/data/api
-```
-
-- **Requires:** Free account at https://aqs.epa.gov/data/api/signup?email=YOUR_EMAIL
-- **Auth:** Pass `email` and `key` as query parameters.
-- Key endpoints: `/dailyData/byState`, `/annualData/byState`, `/sampleData/bySite`, `/monitors/byState`.
-
-**Example:**
-```
-https://aqs.epa.gov/data/api/dailyData/byState?email=YOUR_EMAIL&key=YOUR_KEY&param=44201&bdate=20240101&edate=20240131&state=06
-```
 
 ## Notes
 - Table and column names are case-insensitive in the URL.

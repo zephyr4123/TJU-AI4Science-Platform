@@ -64,7 +64,7 @@ metadata:                                   # 可选：字符串到字符串；�
 
 拦下来、不装载的只有这几种（隔离出去带原因，不拖垮别的 skill；出厂的三处库在门禁里一个都不许有）：没有 `SKILL.md`、frontmatter 坏、缺 `name` / `description`、`name` 与目录名对不上、description 超过 1024 字、脚本没有 PEP 723 头或锁文件。
 
-**零 key（P-27）**：skill 里不许出现第三方凭据——模型、检索、数据源、出图的 key 都不要，可选的也不要。门禁逐个文件查「api key」「access token」这类说法与 `*_TOKEN` `*_API_KEY` 这类环境变量名，查到就不过。
+**零 key（P-27）**：skill 里不许出现第三方凭据——模型、检索、数据源、出图的 key 都不要，可选的也不要。门禁逐个文件查要凭据的写法，查到就不过：「API key」「access token」这类说法（可跨行）、读或设凭据环境变量（`os.environ["X_KEY"]`、`export HF_TOKEN=`，`*_API_KEY` `*_SECRET` `*_PASSWORD` 在哪都算）、URL 里的 `key=`、登录命令（`huggingface-cli login`、`login(token=…)`）、`load_dotenv`。查用法不查字眼：「No API key required」「Never commit API keys」这类否定说法、分词器的 `pad_token`、占位符常量 `DEFAULT_IMAGE_TOKEN` 不算，**收录时别为过门禁改上游的字眼**；示意图里的字段名这类门禁分不出来的才改，台账记一笔。规则在 `framework/skills/library.py` 的 `KEY_*`。
 
 ## 脚本
 

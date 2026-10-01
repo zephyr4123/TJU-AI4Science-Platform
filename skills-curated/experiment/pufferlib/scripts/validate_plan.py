@@ -25,7 +25,7 @@ try:
         emit_json,
         load_json_object,
         require_keys,
-        credential_field_paths,
+        secret_key_paths,
         validate_slug,
     )
 except ImportError:  # Direct script execution.
@@ -41,7 +41,7 @@ except ImportError:  # Direct script execution.
         emit_json,
         load_json_object,
         require_keys,
-        credential_field_paths,
+        secret_key_paths,
         validate_slug,
     )
 
@@ -472,7 +472,7 @@ def validate_plan(plan: Any) -> list[str]:
     errors: list[str] = []
     if not isinstance(plan, dict):
         return ["$ must be an object"]
-    secret_paths = credential_field_paths(plan)
+    secret_paths = secret_key_paths(plan)
     if secret_paths:
         errors.append(
             "credential-bearing keys are forbidden in plans: " + ", ".join(secret_paths)

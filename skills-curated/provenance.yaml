@@ -46,8 +46,6 @@ skills:
   - 删 NCBI_API_KEY：search_pubmed.py 的 --api-key 参数和读环境变量的代码、extract_metadata.py 读 key 的代码、frontmatter
     envVars 条目、正文凭据表里的那一行（这节改名 Contact identifiers，只留 NCBI_EMAIL 和 OPENALEX_EMAIL）、references/pubmed_search.md
     与 metadata_extraction.md 的 key 段落；限速按匿名 3 次/秒写
-  - 「no API key」这类说法改成「open, no registration」，涉及 SKILL.md、search_openalex.py、script_reference.md、core_workflow.md
-    等
   - 补元数据那几步（Phase 2.5、core_workflow.md 的 Step 2、citation_validation.md）原来用 parallel-cli / parallel-web
     skill（要 Parallel 账号）和 WebSearch/WebFetch，换成平台自带的联网搜索和读网页，外加本 skill 的 extract_metadata / search_openalex
   - 删 core_workflow.md 的 Zotero / pyzotero 一节（Zotero Web API 要 key），正文里提到它的一句跟着删
@@ -65,9 +63,10 @@ skills:
   - 删 5 个只能 POST 或要自定义请求头的库（平台的读网页工具只能 GET）：gnomad、opentargets、rummageo、tcga-gdc、sec-edgar；库数从 80 变成 55，写进正文开头
   - 删正文的 POST-Only APIs 和 API Keys and Access Restrictions 两节（含查 .env 里 key 的步骤），换成一节 Access Scope；Making
     API Calls 改成只用平台自带的读网页工具发 GET，删掉 curl 兜底和各家 agent 的工具表，并说明参考里出现的 POST / curl 示例只取 GET 形式
-  - 保留的库参考里「No API key required」这类说法改成「Open access, no registration」；删掉 NCBI 一族（Gene/Protein/Taxonomy/GEO/SRA/ClinVar/dbSNP）、OpenFDA、Ensembl
-    的可选 key 和带 key 的限速；删 cbioportal 里私有实例要 token 的一句、mousemine 里要账号的一句
+  - 保留的库参考里删掉 NCBI 一族（Gene/Protein/Taxonomy/GEO/SRA/ClinVar/dbSNP）、OpenFDA、Ensembl 的可选 key 和带 key 的限速；删
+    cbioportal 里私有实例要 token 的一句、mousemine 里要账号的一句
   - database_selection_guide.md、retrieval-contract.md，以及正文的标识符表、标识符换算、限速、分页说明里，去掉已删的库：主库全删了的行把还在的备选库提上来，备选也没了就整行删；专利一节删空了就整节删
+  - 删 references/epa.md 的「AQS Data API」一节（要注册账号、URL 里带 key）；Envirofacts 的 AQS 表免 key，留着
 - name: nature-citation
   shelf: literature
   upstream: nature-skills
@@ -117,6 +116,8 @@ skills:
     --script x.py <文件>`；Europe PMC 预印本检索的 curl 例子改成 paginate.py
   - CORE 全文要注册才给，所以选库表里几处 CORE 全文去掉，CORE 那行标成「metadata only」
   - 正文开头加一句：其它文件用 ai4sci skill show 读
+  - references/opencitations.md 的 Authentication 删掉可选的 access token 用法，改成不用注册；zenodo.md 里 deposit 要 token
+    改说要账号（本来就不在范围内）
 - name: brainstorming-research-ideas
   shelf: hypothesis
   upstream: ai-research-skills
@@ -150,7 +151,6 @@ skills:
   upstream: k-dense
   path: skills/ncats-arax
   changes:
-  - compatibility 里的「needs no API key」改写成「needs no credentials」（零 key 门禁连这种说法也算）
   - 正文开头加一句 ai4sci skill show 读文件的说明
   - 6 处 python skills/ncats-arax/scripts/arax_client.py 改成 ai4sci skill run ncats-arax --script arax_client.py
   - arax_client.py 手写 PEP 723 头（只用标准库，requires-python >=3.10，dependencies = []）并出锁
@@ -676,8 +676,6 @@ skills:
   upstream: ai-research-skills
   path: 18-multimodal/llava
   changes:
-  - 把 DEFAULT_IMAGE_TOKEN 换成它的字面值 "<image>"（两处调用，import 行跟着改，加了一句注释）：零 key 门禁的 *_TOKEN 规则会把这个占位符常量当成凭据；值已对过上游
-    llava/constants.py
   - 替代项里删掉 GPT-4V 一条（API，要 key）
   - CLI 单图问答的入口从 llava.serve.cli 改成 llava.eval.run_llava：上游 serve/cli.py 没有 --query 参数，靠 input() 读问题（交互式）；eval/run_llava.py
     才有 --query（两个文件都读过）
@@ -861,14 +859,13 @@ skills:
     3 整节、Remote timeout 一条、Remote Execution 教程链接
   - references/README.md 删 Remote Execution (NDIF) 到文件尾（NDIF Setup、远程模型清单）；api.md 删 Remote Execution 小节与
     NDIF Remote Execution 整节；tutorials.md 删 Tutorial 4（远程）与 NDIF Resources 小节
-  - api.md 注释「# Access tokenizer」改成「# The tokenizer」（零 key 门禁误报 access token）
   - 正文开头加一句：其它文件用 ai4sci skill show nnsight <相对路径> 读
 - name: onekgpd
   shelf: experiment
   upstream: k-dense
   path: skills/onekgpd
   changes:
-  - compatibility 与 Prerequisites 里「no API key / no rate-limit token」的说法改写成「不需要凭据与配置」，去掉「自己装 uv」那一条
+  - Prerequisites 里「no API key / no rate-limit token」那条与「自己装 uv」那条合成一条「不需要凭据与配置」
   - 正文开头加一句 ai4sci skill show 读文件的说明
   - 正文与 references/onekgpd_commands.md 里的 uv run scripts/onekgpd_*.py 改成 ai4sci skill run onekgpd --script
     onekgpd_*.py
@@ -1017,8 +1014,6 @@ skills:
   - 脚本删外部日志：_common.py 的 LOGGER_CREDENTIAL_ENV 换成 LOGGER_BACKENDS=("none",)；train_template.py 去掉 --logger、--enable-external-logging、--acknowledge-external-disclosure、--upload-checkpoints，输出里的
     credential 和 external_logging_disclosure 字段也删了；validate_plan.py 只认 backend=none，删 neptune 分支和不再用的
     profile 参数
-  - 凭据检测函数 secret_key_paths / _SECRET_KEY 改名为 credential_field_paths / _CREDENTIAL_FIELD（门禁按字面查 secret
-    key），行为不变
   - 删 scripts/__init__.py；8 个 .py（含 _common.py）补 PEP 723 头（纯标准库，Python≥3.10）并出锁
   - 正文与参考里的 python3 scripts/x.py 改成 ai4sci skill run pufferlib --script x.py；正文开头加读文件的说明
 - name: pydicom
@@ -1031,8 +1026,6 @@ skills:
     numpy 2.5.1 要 Python≥3.12）
   - 正文、references/common_tags.md、references/transfer_syntaxes.md 和脚本 epilog 里的起法改成 ai4sci skill run pydicom
     --script …；开头加读文件的说明
-  - 为过零 key 门禁改了三处字眼：本地假名化密钥的「secret key」改成「pseudonymization key」（SKILL.md 和 anonymize_dicom.py 的 help
-    各一处）；pixel_frame_planner.py 的正则变量 FRAME_TOKEN 改名为 FRAME_SPEC
 - name: pyhealth
   shelf: experiment
   upstream: k-dense
@@ -1149,7 +1142,7 @@ skills:
   - 删 IBM 账号和真机 QPU 接入的内容：SKILL.md 删 IBM QPU Sampling、IBM QPU Estimation、Execution Modes 三节，选路表删两行，清单删两条（QPU
     计费、API key）；setup.md 删 IBM Quantum Platform Setup 与 Confirm Access 两节；backends.md 删 Connect、Discover
     Backends、Fractional Gates 三节，以及取回作业的 service 代码和账号相关的清单项、故障项；migration.md 删账号迁移一节；patterns.md 删 Pattern
-    2（IBM QPU Sampling），后面的依次重编号；transpilation.md 删 service.backend 代码块；testing.md 删掉凭据字眼
+    2（IBM QPU Sampling），后面的依次重编号；transpilation.md 删 service.backend 代码块
   - 删 scripts/inspect_runtime.py（它要读本机存好的 IBM 凭据）
   - primitives.md 的 Runtime Sampler 示例原来用 QiskitRuntimeService 挑机器，改成 FakeSherbrooke（本地测试模式，不要账号）
   - check_environment.py 检查的是运行它的那个解释器，经 skill run 起只会查到脚本自己的 uv 环境，所以挪到 references/；正文和 setup、migration、testing
@@ -1458,11 +1451,6 @@ skills:
   changes:
   - 删除 SKILL.md 末尾的「Citing Scientific Agent Skills」段
   - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show usfiscaldata <相对路径>` 读」
-  - description 与正文里的「No API key required / No API key or registration required」改写成「No account or registration
-    required」（零 key 门禁连「不用 key」的说法也拦）
-  - references/api-basics.md 的「No API key, no authentication, no registration required」改成「No authentication
-    or registration required」；references/response-format.md 的 403 行改成「Forbidden (not expected; the API
-    is public)」
 - name: vaex
   shelf: experiment
   upstream: k-dense
@@ -1526,7 +1514,6 @@ skills:
     assets/<模板>.json 改成工作目录里的副本，正文补一句：先用 ai4sci skill show 读出模板、存到工作目录再填
   - 删 Verification 一节（跑的是上游仓的 tests/ 和裸 python3），也删了上游的安全扫描记录 references/security_validation.md 及它在 Reference
     Map、references/README.md 里的条目
-  - compatibility、references/README.md、references/sources.md 里的「no ... API keys」改写成「no credentials」
 - name: dhdna-profiler
   shelf: analysis
   upstream: k-dense
@@ -1556,7 +1543,6 @@ skills:
   - 正文开头加了 ai4sci skill show 的说明
   - '`python3 scripts/x.py` 改成 `ai4sci skill run market-research-reports --script x.py`'
   - 「Templates and CLIs」加一句：命令里的 assets/… 先用 skill show 读出来，存进工作区，再把路径传给脚本
-  - SKILL.md 删掉「Never put an API key…」一句
   - references/official_data_sources.md 删掉 Census 要 key 的说明、BLS 注册版条目、BEA 要 UserID 的 API 段、FRED 要 key
     的那条、ONS 的「no-key」字样，以及「Keep credentials…」规则
   - references/sources.md 删掉 SRC-CENSUS-KEY、SRC-BEA-API 两行，另外三行改写掉 key 和注册的说法
@@ -1578,7 +1564,6 @@ skills:
   - 四个工具上游已经带 PEP 723 头（标准库），补了锁
   - 正文里的 `cd skills/…/scripts` 和 `python3 x.py` 改成 `ai4sci skill run pathogen-variant-surveillance --script
     x.py`；「`> out.tsv`」重定向的说法改成 stdout 只放数据
-  - compatibility 与 lapis-api.md 里的「No API key」改写
   - 正文开头加一句：其它文件用 ai4sci skill show 读
 - name: pathway-enrichment
   shelf: analysis
@@ -1831,8 +1816,6 @@ skills:
   changes:
   - 删「Citing Scientific Agent Skills」段
   - python3 scripts/x.py 起法改成 ai4sci skill run peer-review --script x.py（SKILL.md 与 references/tool_reference.md、reporting_standards.md、statistical_reproducibility.md）
-  - 「API keys」两处改写：SKILL.md 禁止清单改成「`.env` files, or credentials」，references/security_validation.md 改成「Credential
-    transmission」
   - 8 个脚本补 PEP 723 头（全是标准库，requires-python 照上游 compatibility 写 >=3.11）并出锁
   - 正文开头加一句用 ai4sci skill show 读目录里其它文件
 - name: pptx-posters
@@ -1843,7 +1826,6 @@ skills:
   - 删「Citing Scientific Agent Skills」段
   - 安装一节的 uv venv / uv pip install 改成一句：依赖钉在 PEP 723 头里，经 ai4sci skill run 起；--help 那句也改成 ai4sci 的写法
   - python -B scripts/x.py 起法改成 ai4sci skill run pptx-posters --script x.py（SKILL.md、references/manifest_spec.md、references/pptx_security.md、assets/poster_quality_checklist.md）
-  - 「API keys」「API key」两处改成 credentials / credential
   - 10 个脚本补 PEP 723 头并出锁：generate_poster 钉 python-pptx==1.0.2、Pillow==12.3.0、lxml==6.1.1，inventory_images
     钉 Pillow==12.3.0，其余只用标准库（requires-python >=3.10 照上游）
   - 正文开头加一句用 ai4sci skill show 读目录里其它文件
@@ -1876,13 +1858,11 @@ skills:
     skill run scholar-evaluation --script x.py（带环境变量前缀的命令过不了白名单）；命令里的 assets/… 改成工作目录里的副本，/tmp/ 下的输出改成写在工作目录
   - 正文开头加 show 那句，并说明 assets 里的模板要先读出来存进工作目录；local_tooling.md 同样补一句；「只用 Bash 跑 python3 命令」改成「只用 Bash 跑
     ai4sci skill run 命令」
-  - references/security_validation.md 的「API-key handling」改成「credential handling」（零 key 门禁的正则会命中）
 - name: scientific-writing
   shelf: writing
   upstream: k-dense
   path: skills/scientific-writing
   changes:
-  - compatibility 删掉「require no API keys」（零 key 门禁的正则会命中）
   - scripts/_common.py 挪成 scripts/_common/__init__.py（同 scientific-visualization）
   - 8 个脚本补 PEP 723 头（纯标准库，dependencies = []，requires-python >=3.11）并出锁
   - 正文和 references/（cli_reference、evidence_workflow、reporting_guidelines、authorship_ai_confidentiality）里的
@@ -1989,8 +1969,8 @@ skills:
   - Installation 段前加一句：批处理脚本经 `ai4sci skill run liteparse …` 起，自带环境；Python 写法放进实验代码，`lit` 命令要本机装了才能用
   - '`python scripts/batch_parse_dir.py` 改成 `ai4sci skill run liteparse …`（只有一个脚本，不用写 --script），脚本 docstring
     跟着改'
-  - LlamaParse（要注册的云服务）在 SKILL.md 和 references/choosing_a_parser.md 里的表格行、表格列、流程分支和整节都删了；「without API
-    keys」改写成「with no cloud service」；选型参考里 MarkItDown 的 Azure 说法也删了
+  - LlamaParse（要注册的云服务）在 SKILL.md 和 references/choosing_a_parser.md 里的表格行、表格列、流程分支和整节都删了；选型参考里 MarkItDown
+    的 Azure 说法也删了
   - batch_parse_dir.py 补了 PEP 723 头（liteparse==2.0.0）并出锁
 - name: markdown-mermaid-writing
   shelf: general
@@ -1998,9 +1978,8 @@ skills:
   path: skills/markdown-mermaid-writing
   changes:
   - 正文开头加了 ai4sci skill show 的说明（正文要读 references/ 和 templates/）
-  - 为过零 key 门禁，改了示例图里的名字：class.md 的 `#apiKey` 改成 `#credential`，complex_examples.md 的 REFRESH_TOKEN 改成
-    REFRESH_GRANT，er.md 的 API_KEY 实体改成 SERVICE_CREDENTIAL（说明文字一起改）
-  - templates/pull_request.md 的检查清单里删掉「API keys」几个字
+  - 示例图里两处数据模型的字段名改掉：class.md 的 `#apiKey` 改成 `#credential`，er.md 的 API_KEY 实体改成 SERVICE_CREDENTIAL（说明文字一起改）——零
+    key 门禁分不出示意图里的字段与真要的 key
 - name: markitdown
   shelf: general
   upstream: k-dense
@@ -2062,7 +2041,6 @@ skills:
   - 正文里的 `cd skills/…/scripts` 和 `python3 x.py` 改成 `ai4sci skill run ontology-term-resolution --script
     x.py`，表格里的脚本路径去掉 scripts/
   - 正文开头加一句：其它文件用 ai4sci skill show 读
-  - compatibility 与 references（ols4-api.md、companion-apis.md）里的「No API key」改成「No registration」
 - name: scientific-visualization
   shelf: general
   upstream: k-dense

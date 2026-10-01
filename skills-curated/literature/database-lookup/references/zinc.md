@@ -8,7 +8,7 @@ https://zinc.docking.org
 
 ## Auth
 
-Open access, no registration. Fully public API.
+No API key required. Fully open public API.
 
 ## URL Pattern
 

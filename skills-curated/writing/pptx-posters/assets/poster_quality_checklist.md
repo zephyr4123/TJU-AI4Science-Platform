@@ -29,7 +29,7 @@ ai4sci skill run pptx-posters --script validate_manifest.py poster.json
 - [ ] All optional image paths are manifest-relative local PNG/JPEG files.
 - [ ] Every asset hash matches.
 - [ ] Every asset has exact provenance and a license/permission statement.
-- [ ] No template file, remote image, URL download, credential, environment file,
+- [ ] No template file, remote image, URL download, API key, environment file,
       image-generation service, or network service was used.
 - [ ] The output path was new; no existing file was replaced.
 - [ ] The generated file is `.pptx`, never `.pptm`.

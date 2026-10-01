@@ -10,7 +10,7 @@ https://api.unpaywall.org/v2
 
 ## Authentication
 
-No registration. You must include your **email address** as a query parameter: `?email=you@example.com`
+No API key. You must include your **email address** as a query parameter: `?email=you@example.com`
 
 **Important:** Use a real email address. Unpaywall rejects placeholder emails like `test@example.com` with HTTP 422.
 

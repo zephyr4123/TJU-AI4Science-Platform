@@ -14,7 +14,7 @@ https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0
 ```
 
 ## Authentication
-**Open access, no registration.** The API is fully open and free.
+**No API key required.** The API is fully open and free.
 
 ## Rate Limits
 - No formal rate limits documented.

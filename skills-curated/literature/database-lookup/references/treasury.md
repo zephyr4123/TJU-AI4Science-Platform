@@ -9,7 +9,7 @@ https://api.fiscaldata.treasury.gov/services/api/fiscal_service
 ```
 
 ## Authentication
-**Open access, no registration.** The API is fully open and public.
+**No API key required.** The API is fully open and public.
 
 ## Rate Limits
 - **No formal rate limits published.**

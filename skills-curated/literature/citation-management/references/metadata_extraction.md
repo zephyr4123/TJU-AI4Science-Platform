@@ -120,7 +120,7 @@ math.ST  # Mathematics - Statistics
 
 **Base URL**: `https://api.crossref.org/works/`
 
-**Open, no registration**, but polite pool recommended:
+**No API key required**, but polite pool recommended:
 - Add email to User-Agent
 - Gets better service
 - No rate limits
@@ -278,7 +278,7 @@ Key fields:
 
 **Base URL**: `http://export.arxiv.org/api/query`
 
-**Open, no registration**
+**No API key required**
 
 #### arXiv ID to Metadata
 

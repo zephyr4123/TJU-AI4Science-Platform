@@ -309,7 +309,7 @@ provenance = {
 }
 ```
 
-Do not include saved-account dictionaries, full environments, or request headers.
+Do not include API keys, saved-account dictionaries, full environments, headers, or tokens.
 
 ## Troubleshooting Matrix
 

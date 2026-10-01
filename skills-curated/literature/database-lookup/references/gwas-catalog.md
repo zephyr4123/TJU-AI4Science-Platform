@@ -6,7 +6,7 @@ https://www.ebi.ac.uk/gwas/rest/api
 ```
 
 ## Auth
-Open access, no registration.
+No API key required.
 
 ## Note: Responses use HAL+JSON format with `_links` and `_embedded` keys.
 

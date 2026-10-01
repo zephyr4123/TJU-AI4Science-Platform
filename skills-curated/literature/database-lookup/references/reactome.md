@@ -137,4 +137,4 @@ Multiple values for same parameter: repeat the parameter (e.g. `types=Pathway&ty
 
 ## Rate Limits
 
-Open access, no registration. No formal rate limit published, but be reasonable — avoid hundreds of concurrent requests. For bulk data, use Reactome's downloadable dumps (MySQL, Neo4j, BioPAX, SBML).
+No API key required. No formal rate limit published, but be reasonable — avoid hundreds of concurrent requests. For bulk data, use Reactome's downloadable dumps (MySQL, Neo4j, BioPAX, SBML).

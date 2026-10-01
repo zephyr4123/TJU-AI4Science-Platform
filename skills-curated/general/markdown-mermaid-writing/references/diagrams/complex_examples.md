@@ -132,10 +132,10 @@ erDiagram
     accDescr: Five-entity schema for user authentication covering users, sessions, refresh tokens, login attempts, and MFA devices with cardinality relationships
 
     USER ||--o{ SESSION : "has"
-    USER ||--o{ REFRESH_GRANT : "owns"
+    USER ||--o{ REFRESH_TOKEN : "owns"
     USER ||--o{ LOGIN_ATTEMPT : "produces"
     USER ||--o{ MFA_DEVICE : "registers"
-    SESSION ||--|| REFRESH_GRANT : "paired with"
+    SESSION ||--|| REFRESH_TOKEN : "paired with"
 
     USER {
         uuid id PK "🔑 Primary key"
@@ -153,7 +153,7 @@ erDiagram
         timestamp expires_at "⏰ Expiration"
     }
 
-    REFRESH_GRANT {
+    REFRESH_TOKEN {
         uuid id PK "🔑 Primary key"
         uuid user_id FK "👤 Token owner"
         uuid session_id FK "🔗 Paired session"

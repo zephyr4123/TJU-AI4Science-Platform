@@ -20,8 +20,8 @@ Docs: https://developers.zenodo.org/
 
 **Published records are public.** `GET /api/records` works with no token.
 
-Deposit / publish (`/api/deposit/depositions`) requires a personal access
-token and is out of scope for this skill. Without a token that path returns
+Deposit / publish (`/api/deposit/depositions`) requires a Zenodo account
+and is out of scope for this skill. Without one that path returns
 HTTP **403** `Permission denied.` (not always 401). Do not start a deposit
 flow from a literature lookup.
 

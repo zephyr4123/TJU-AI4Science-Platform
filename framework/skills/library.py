@@ -48,11 +48,34 @@ METADATA_PREFIX = "ai4sci-"
 SYSTEM_TOOLS_KEY = "ai4sci-system-tools"
 PEP723_OPEN = "# /// script"
 PEP723_CLOSE = "# ///"
-# 零 key（纲领 P-27）：出厂的三处库里不许出现第三方凭据，门禁逐个文件查。两条：说法（不分大小写）与
-# 环境变量名（只认大写，`pad_token` `eos_token` 这类分词器的词不算）
-KEY_RE = re.compile(r"api[ _-]?key|access[ _-]?token|auth[ _-]?token|secret[ _-]?key",
-                    re.IGNORECASE)
-KEY_ENV_RE = re.compile(r"\b[A-Z][A-Z0-9_]*_(?:TOKEN|SECRET|API_KEY)\b")
+# 零 key（纲领 P-27）：出厂的三处库里不许出现「要凭据」的写法，门禁逐个文件查。查用法不查字眼：
+# 「No API key required」「Never commit API keys」这类否定说法、分词器的 `pad_token`、占位符
+# 常量 `DEFAULT_IMAGE_TOKEN`、词法的 `FRAME_TOKEN` 都不算——为过门禁改上游的字眼，同步上游时
+# 每处都要重改。说法可以跨行；同一分句里、或列表的引导句（「Never:」）里有否定就放过
+KEY_PHRASE_RE = re.compile(
+    r"(?:\b|(?<=_))(?:api[\s_-]?(?:keys?|tokens?)|access[\s_-]?tokens?|auth[\s_-]?tokens?"
+    r"|hf[\s_-]?tokens?|client[\s_-]?secrets?)\b|\b(?:secret|access)[_-]keys?\b", re.IGNORECASE)
+KEY_NEGATION_RE = re.compile(
+    r"\b(?:no|not|without|never|nor|avoid|removed?|forbid(?:den)?|prohibit(?:ed)?)\b"
+    r"|n't\b|无需|不需要|不用|不要|免", re.IGNORECASE)
+KEY_NEGATION_AFTER_RE = re.compile(
+    r"^\W{0,3}\(?\s*(?:N/A|not (?:required|needed)|no (?:\w+ )?required)", re.IGNORECASE)
+CLAUSE_START_RE = re.compile(r"[.!?。；;]\s|\n\s*\n|\n\s*(?:[-*+]|\d+\.|\||#)")
+BULLET_RE = re.compile(r"\s*(?:[-*+]|\d+\.)\s")
+# 环境变量：名字本身就是凭据的在哪都算；`*_KEY` `*_TOKEN` 只在被读、被设的地方算（`SORT_KEY` 不算）
+KEY_NAME = r"[A-Z][A-Z0-9_]*_(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)(?:_ID)?"
+KEY_USE_RES = (
+    re.compile(r"\b[A-Z][A-Z0-9_]*_(?:API_?KEY|API_TOKEN|ACCESS_TOKEN|AUTH_TOKEN|ACCESS_KEY(?:_ID)?"
+               r"|SECRET(?:_ACCESS)?(?:_KEY)?|PASSWORD|PASSWD)\b"),
+    re.compile(rf"(?:environ(?:\.get\(|\[)\s*[\"']|getenv\(\s*[\"']|process\.env\.|process\.env\[[\"']"
+               rf"|\$\{{?|\bexport\s+|\bsetenv\s+|\bset\s+`?){KEY_NAME}\b|\b{KEY_NAME}="
+               rf"|\b{KEY_NAME}`?\s+(?:environment|env)\b"),
+    # URL 里带 key、登录命令、读 .env
+    re.compile(r"[?&](?:api_?key|apikey|key|access_token)=", re.IGNORECASE),
+    re.compile(r"\b(?:huggingface-cli|hf auth|wandb|lamin|gh auth|docker|npm|swanlab)\s+login\b"
+               r"|`[\w.-]+(?: auth)? login\b|\bnotebook_login\("
+               r"|\blogin\(\s*(?:token|api_key|key)\s*=|\bload_dotenv\("),
+)
 KEY_SCAN_SUFFIXES = (".md", ".py", ".sh", ".yaml", ".yml", ".json", ".toml", ".txt", ".R", ".r")
 
 
@@ -335,16 +358,37 @@ def script_problems(script: Path) -> list[str]:
 
 
 def key_mentions(skill: Skill) -> list[str]:
-    """零 key（纲领 P-27）：skill 目录里提到第三方凭据的地方，一处一行 `文件:行`。"""
+    """零 key（纲领 P-27）：skill 目录里要第三方凭据的写法，一处一行 `文件:行`。"""
     hits: list[str] = []
     for path in sorted(p for p in skill.dir.rglob("*") if p.is_file()):
         if path.suffix not in KEY_SCAN_SUFFIXES and path.name != SKILL_FILE:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        for number, line in enumerate(text.splitlines(), 1):
-            if KEY_RE.search(line) or KEY_ENV_RE.search(line):
-                hits.append(f"{path.relative_to(skill.dir)}:{number}: {line.strip()[:120]}")
+        starts = [m.start() for m in KEY_PHRASE_RE.finditer(text)
+                  if not _negated(text, m.start(), m.end())]
+        starts += [m.start() for rx in KEY_USE_RES for m in rx.finditer(text)]
+        lines = text.splitlines()
+        for number in sorted({text.count("\n", 0, s) + 1 for s in starts}):
+            line = lines[number - 1].strip()[:120]
+            hits.append(f"{path.relative_to(skill.dir)}:{number}: {line}")
     return hits
+
+
+def _negated(text: str, start: int, end: int) -> bool:
+    """说法前的分句里有否定（「No API key required」）、紧跟着说不需要（「(N/A; no key
+    required)」），或它是一张列表的一项、引导句里有否定（「Never:」下面的「- API keys」）。"""
+    before = text[max(0, start - 150):start]
+    cuts = [m.end() for m in CLAUSE_START_RE.finditer(before)]
+    clause = before[cuts[-1]:] if cuts else before
+    if KEY_NEGATION_RE.search(clause.replace("\n", " ")) \
+            or KEY_NEGATION_AFTER_RE.search(text[end:end + 40]):
+        return True
+    lines = text[:start].split("\n")
+    if BULLET_RE.match(lines[-1]):
+        lead = next((line for line in reversed(lines[:-1])
+                     if line.strip() and not BULLET_RE.match(line)), "")
+        return bool(KEY_NEGATION_RE.search(lead))
+    return False
 
 
 def lock_path(script: Path) -> Path:

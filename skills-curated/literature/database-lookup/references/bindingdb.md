@@ -7,7 +7,7 @@ https://bindingdb.org/axis2/services/BDBService/
 ```
 
 ## Auth
-Open access, no registration. Fully free.
+No API key required. Fully open and free.
 
 ## Response Format
 Default is XML. Append `&response=application/json` to any endpoint for JSON.

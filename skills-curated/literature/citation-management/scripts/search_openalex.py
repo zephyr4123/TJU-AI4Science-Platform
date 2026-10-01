@@ -9,8 +9,8 @@
 OpenAlex Search Tool
 Search OpenAlex and export results as JSON or BibTeX.
 
-OpenAlex indexes ~250 million scholarly works across every discipline, is open
-without registration, and has a documented REST API rather than a scraped HTML surface. It
+OpenAlex indexes ~250 million scholarly works across every discipline, needs no
+API key, and has a documented REST API rather than a scraped HTML surface. It
 is the third leg of this skill's coverage: PubMed is authoritative for
 biomedicine, Google Scholar is broad but fragile and rate-limited, and OpenAlex
 is broad, stable, and machine-readable.
@@ -247,7 +247,7 @@ class OpenAlexSearcher:
 def main():
     """Command-line interface."""
     parser = argparse.ArgumentParser(
-        description='Search OpenAlex (open, no registration)',
+        description='Search OpenAlex (no API key required)',
         epilog='Example: python search_openalex.py "CRISPR gene editing" --limit 50 --format bibtex'
     )
 

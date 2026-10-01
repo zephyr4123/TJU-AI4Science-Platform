@@ -8,7 +8,7 @@ https://api.worldbank.org/v2
 
 ## Authentication
 
-**Open access, no registration.** The API is fully open.
+**No API key required.** The API is fully open.
 
 ## Key Endpoints
 

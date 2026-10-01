@@ -4,7 +4,7 @@
 
 - RESTful API — accepts HTTP GET requests only
 - Returns JSON by default (also CSV, XML)
-- No authentication or registration required
+- No API key, no authentication, no registration required
 - Open data, free for commercial and non-commercial use
 - Current versions: v1 and v2 (check each dataset's page for which version applies)
 

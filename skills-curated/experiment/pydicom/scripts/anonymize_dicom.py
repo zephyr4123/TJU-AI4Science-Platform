@@ -595,7 +595,7 @@ Examples:
     )
     parser.add_argument(
         "--uid-key-file",
-        help="Local pseudonymization key used for deterministic scoped pseudonyms and UIDs",
+        help="Local secret key used for deterministic scoped pseudonyms and UIDs",
     )
     parser.add_argument(
         "--uid-scope",

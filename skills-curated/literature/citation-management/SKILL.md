@@ -58,7 +58,7 @@ Find relevant papers. Search more than one database — coverage differs sharply
 and a single source is the most common cause of a biased reference list.
 
 ```bash
-# OpenAlex: ~250M works, every discipline, open (no registration), documented REST API
+# OpenAlex: ~250M works, every discipline, no API key, documented REST API
 ai4sci skill run citation-management --script search_openalex.py "CRISPR gene editing" --limit 50 --output results.json
 
 # PubMed: the authority for biomedical and life sciences (35M+ citations)
@@ -242,7 +242,7 @@ literature-review path — are in
 - `bibtex_formatting.md`: BibTeX entry types and formatting rules
 
 **Scripts** (in `scripts/`):
-- `search_openalex.py`: OpenAlex search client (open, no registration)
+- `search_openalex.py`: OpenAlex search client (no API key)
 - `search_pubmed.py`: PubMed E-utilities API client
 - `search_google_scholar.py`: Google Scholar search automation
 - `extract_metadata.py`: Universal metadata extractor

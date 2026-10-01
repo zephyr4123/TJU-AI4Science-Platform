@@ -14,7 +14,7 @@ databases deduplicate against each other.
 
 ### search_openalex.py
 
-Search OpenAlex. Open, no registration; ~250 million works across every discipline.
+Search OpenAlex. No API key; ~250 million works across every discipline.
 
 **Features**:
 - Keyless REST API with cursor pagination

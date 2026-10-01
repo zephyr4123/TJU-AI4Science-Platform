@@ -6,7 +6,7 @@ https://www.ebi.ac.uk/chembl/api/data
 ```
 
 ## Auth
-Open access, no registration. Fully free.
+No API key required. Fully open and free.
 
 ## Key Endpoints
 

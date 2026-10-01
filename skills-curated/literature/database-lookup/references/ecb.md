@@ -11,7 +11,7 @@ https://data-api.ecb.europa.eu/service
 Note: The legacy URL `https://sdw-wsrest.ecb.europa.eu/service` still works but the above is the current endpoint.
 
 ## Authentication
-**Open access, no registration.** The API is fully open and public.
+**No API key required.** The API is fully open and public.
 
 ## Rate Limits
 - No formal rate limits published.

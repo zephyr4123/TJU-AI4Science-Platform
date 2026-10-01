@@ -51,7 +51,7 @@ pip install -e .
 ```python
 from llava.model.builder import load_pretrained_model
 from llava.mm_utils import get_model_name_from_path, process_images, tokenizer_image_token
-from llava.constants import IMAGE_TOKEN_INDEX  # 图像占位符字符串是 "<image>"，同在 llava.constants
+from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from llava.conversation import conv_templates
 from PIL import Image
 import torch
@@ -71,7 +71,7 @@ image_tensor = image_tensor.to(model.device, dtype=torch.float16)
 
 # Create conversation
 conv = conv_templates["llava_v1"].copy()
-conv.append_message(conv.roles[0], "<image>\nWhat is in this image?")
+conv.append_message(conv.roles[0], DEFAULT_IMAGE_TOKEN + "\nWhat is in this image?")
 conv.append_message(conv.roles[1], None)
 prompt = conv.get_prompt()
 
@@ -126,7 +126,7 @@ python -m llava.eval.run_llava \
 conv = conv_templates["llava_v1"].copy()
 
 # Turn 1
-conv.append_message(conv.roles[0], "<image>\nWhat is in this image?")
+conv.append_message(conv.roles[0], DEFAULT_IMAGE_TOKEN + "\nWhat is in this image?")
 conv.append_message(conv.roles[1], None)
 response1 = generate(conv, model, image)  # "A dog playing in a park"
 

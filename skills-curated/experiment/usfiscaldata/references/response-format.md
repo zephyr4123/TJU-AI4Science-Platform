@@ -73,7 +73,7 @@ Array of row objects. All values are **strings**, regardless of logical type.
 | 200 | OK — successful GET |
 | 304 | Not Modified — cached response |
 | 400 | Bad Request — malformed URL or invalid parameter |
-| 403 | Forbidden (not expected; the API is public) |
+| 403 | Forbidden — invalid API key (N/A; no key required) |
 | 404 | Not Found — endpoint does not exist |
 | 405 | Method Not Allowed — non-GET request |
 | 429 | Too Many Requests — rate limited |
