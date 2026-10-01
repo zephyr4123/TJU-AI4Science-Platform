@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { SkillEntry, Workflow } from '@/api/types'
 
 import {
-  append, autoLayout, byFamily, deriveFrom, dropAt, fromWorkflow, groupSkills, inFamily, indexAt, insertAt, lineageLine, parseParam,
+  append, autoLayout, byFamily, deriveFrom, dropAt, fromWorkflow, groupSkills, hoverLine, inFamily, indexAt, insertAt, lineageLine, parseParam,
   place, positions, problemIndices, ROW_PITCH, ROW_WIDTH, setParam, skillsFor, stageItem, stopItem, tidy, toDraft, toggleCap, WIDTH,
 } from './model'
 
@@ -143,6 +143,11 @@ describe('流程的血缘（P-15）', () => {
     expect(sorted.map((wf) => wf.name)).toEqual(
       ['research', 'research-2', 'research-9', 'research-10', 'reproduce', 'reproduce-2', 'reproduce-4'])
     expect(sorted.map(inFamily)).toEqual([false, true, true, true, false, true, false])
+  })
+  it('悬停一行：有问题说问题，派生的说改了什么，别的说说明（差异为空数组不顶掉说明）', () => {
+    expect(hoverLine(flow('scratch', { diff: [], summary: '一句说明' }))).toBe('一句说明')
+    expect(hoverLine(flow('research-2', { diff: ['去掉断点'], summary: 's' }))).toBe('去掉断点')
+    expect(hoverLine({ ...flow('x', { diff: ['去掉断点'] }), problems: ['重名'] })).toBe('重名')
   })
   it('小字一行：派生的写改了什么，父流程改过先说', () => {
     expect(lineageLine(flow('research', { shipped: true }))).toBe('1 项，出厂')

@@ -186,7 +186,6 @@ def test_load_skill_reads_spec_fields_and_body(tmp_path):
     assert skill.name == "toy" and skill.description == "一句话" and skill.body == "# toy\n\n正文。"
     assert skill.compatibility == "Python 3.12" and skill.system_tools == ("pdftoppm", "tesseract")
     assert [p.name for p in skill.scripts] == ["go.py"]
-    assert [p.name for p in skill.references] == ["more.md"]
     assert skill.files() == ["references/more.md", "scripts/go.py"]  # 锁文件不列
     assert skill.notes == ()
 
@@ -493,8 +492,8 @@ def test_cli_run_with_ws_starts_the_script_inside_that_workspace(libraries, capf
     """助理站在项目里，skill 写的相对路径（materials/…）得落到点名的工作区，不是项目根（复现那条流程
     里 download 拉到了项目 materials/，reproduction --code 却只找工作区的 materials/，两边对不上）。
     `--ws` 写在 skill 名前后都认，且不递给脚本。"""
-    generic, _, _ = libraries
-    write_skill(generic, "where", "# where\n\n运行：`ai4sci skill run where`\n",
+    resident, _, _ = libraries
+    write_skill(resident, "where", "# where\n\n运行：`ai4sci skill run where`\n",
                 scripts={"go.py": CWD_PY})
     ws = spaces.make_workspace(tmp_path, "w1")
     monkeypatch.chdir(project_mod.of(ws).root)
@@ -536,6 +535,22 @@ def test_make_skills_gates_all_libraries_and_warms_only_the_resident(libraries):
     proc = _make_skills()
     assert proc.returncode == 1 and "零 key" in proc.stderr
     shutil.rmtree(resident / "keyed")
+    # 规范外的字段：收录的只提醒、照过；平台自带的要干净，算问题
+    write_skill(curated / "writing", "extra",
+                front="---\nname: extra\ndescription: x\nversion: 1\n---\n")
+    (curated / "licenses").mkdir()
+    (curated / "licenses" / "up.txt").write_text("MIT\n", encoding="utf-8")
+    (curated / "provenance.yaml").write_text(
+        "upstreams:\n  up: {title: up, url: https://x/up, commit: abc, license: MIT,"
+        " license_file: licenses/up.txt}\n"
+        "skills:\n  - {name: extra, shelf: writing, upstream: up, path: s/extra}\nrejected: []\n",
+        encoding="utf-8")
+    proc = _make_skills()
+    assert proc.returncode == 0, proc.stderr
+    write_skill(resident, "loose", front="---\nname: loose\ndescription: x\nversion: 1\n---\n")
+    proc = _make_skills()
+    assert proc.returncode == 1 and "loose" in proc.stderr and "规范之外的字段" in proc.stderr
+    shutil.rmtree(resident / "loose")
     # 平台自带的声明了系统命令就要在 PATH 上
     write_skill(resident, "needs", front="---\nname: needs\ndescription: x\nmetadata:\n"
                                          "  ai4sci-system-tools: definitely-not-a-command\n---\n")

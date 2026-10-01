@@ -524,7 +524,7 @@ def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
     # 「一模一样」，改出不同就好了（页面存是当场拒，那边草稿在内存里）
     proc = run_cli("workflow", "new", "--from", "research", "--title", "研究二", env=env)
     assert proc.returncode == EXIT_OK, proc.stderr
-    assert proc.stdout.startswith("ok research-2\tworkflows/research-2.yaml\tfrom=research")
+    assert proc.stdout.startswith(f"ok research-2\t{mine / 'research-2.yaml'}\tfrom=research")
     draft = yaml.safe_load((mine / "research-2.yaml").read_text(encoding="utf-8"))
     assert draft["from"]["name"] == "research" and draft["title"] == "研究二"
     proc = run_cli("show", "workflows", env=env)
@@ -539,7 +539,7 @@ def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
     assert run_cli("workflow", "new", "x", "--from", "quick", env=env).returncode == EXIT_USAGE
     proc = run_cli("workflow", "new", "scratch", "--title", "从零", env=env)
     assert proc.returncode == EXIT_OK
-    assert proc.stdout.startswith("ok scratch\tworkflows/scratch.yaml")
+    assert proc.stdout.startswith(f"ok scratch\t{mine / 'scratch.yaml'}")
     # 从零起的骨架也是草稿：连起两条（骨架一样）都起得来，改出不同之前标着「一模一样」
     proc = run_cli("workflow", "new", "another", "--title", "又一条", env=env)
     assert proc.returncode == EXIT_OK, proc.stderr

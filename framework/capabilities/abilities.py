@@ -4,8 +4,10 @@
 
 - **步骤**：`framework/capabilities/` 里的描述符。走到流程的那一格，框架起执行层、开带编号的产出、
   能签（`ai4sci cap <name>`）。
-- **skill**：`skills/` 与领域包里的 SKILL.md。教 agent 怎么做一件事的指南 + 脚本，agent 随手调、不开
-  编号产出（`ai4sci skill run <name>`），任何阶段都能用。
+- **skill**：三处库（平台自带 `skills/`、收录 `skills-curated/<架>/`、领域包
+  `domains/<包>/skills/`）里的 SKILL.md。教 agent 怎么做一件事的指南 + 脚本，agent 随手调、不开编号
+  产出（`ai4sci skill run <name>`），任何阶段都能挂；在项目里只有装载了的才能用（P-26，
+  `workspace/loadout.py`）。
 
 两种都能挂到流程的格子上、都进编辑台的库、都出现在看板的卡上；tag 只说明它是哪一类，不改它怎么跑。
 库里两种不许重名——流程文件里挂的只是一个名字，靠名字分辨是哪种。

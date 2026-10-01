@@ -29,7 +29,7 @@
 与 skill（任何阶段都能挂、不带参数——它的参数在调用时给）；`describe` 给每个名字标 `kind`，页面与
 `show flows` 照着分开画。
 阶段之间没有显式的输入输出接口：检查只看阶段名对不对、点名的能力在不在那个阶段、参数名与类型对不对、断点位置合不合法
-（不能开头就是断点、不能两个断点挨着）。一个阶段里要的东西盘上有没有，是那个能力开始执行时自己查的（P-7）。
+（不能开头就是断点、不能两个断点挨着）、一格里同一个能力只挂一次。一个阶段里要的东西盘上有没有，是那个能力开始执行时自己查的（P-7）。
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ from framework.contracts.capability import PARAM_TYPES, Capability
 from framework.contracts.stages import STAGE_NAMES as STAGES
 
 STOP = "断点"
-# 格子上挂的名字的两种 tag（framework/abilities.py 是出处；这里只是响应体里的两个词）
+# 格子上挂的名字的两种 tag（framework/capabilities/abilities.py 是出处；这里只是响应体里的两个词）
 KIND_STEP = "步骤"
 KIND_SKILL = "skill"
 # 文件名就是流程的名字（P-13）：小写英文加连字符，页面存流程时也按这个拒

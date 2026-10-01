@@ -1048,6 +1048,7 @@ skills:
   - 7 个 CLI 加 _common.py 补 PEP 723 头并出锁（5 个依赖 pymatgen==2026.5.4 + pymatgen-core==2026.7.16，Python≥3.11；io_conversion_plan.py
     和 artifact_manifest.py 是纯标准库）
   - 起法改成 ai4sci skill run pymatgen --script …；开头加读文件的说明
+  - 删掉许可证一段里 Materials Project 数据是 CC BY 4.0 的那两句（Materials Project 的查询已删，CC-BY 不收）
 - name: pymoo
   shelf: experiment
   upstream: k-dense

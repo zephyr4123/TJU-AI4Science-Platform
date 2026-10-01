@@ -395,7 +395,7 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     caps.set_defaults(func=cmd_caps)
     found = what.add_parser(
         "skills", help="查库里的 skill：名字、出处、本项目装了没有、一句话（按词、按阶段筛）")
-    found.add_argument("words", nargs="*", help="要有的词（名字与一句话里都算，不分大小写）")
+    found.add_argument("words", nargs="*", help="要有的词（名字、出处、一句话里都算，不分大小写）")
     found.add_argument("--stage", default="", help="收录库的哪一架：七个阶段的名字，或「通用」")
     found.add_argument("--json", action="store_true", help="打 JSON")
     found.set_defaults(func=cmd_skills)

@@ -222,6 +222,12 @@ export function byFamily(workflows: Workflow[]): Workflow[] {
   return [...out, ...workflows.filter((wf) => !out.includes(wf)).sort(byName)]
 }
 
+/** 流程库一行悬停时的那句：有问题说问题，派生的说改了什么，别的说说明。后端给每条都带 diff（从零拼的是空数组），
+ *  空数组不能顶掉说明 */
+export function hoverLine(wf: Workflow): string {
+  return wf.problems[0] ?? (wf.diff?.length ? wf.diff.join('；') : wf.summary)
+}
+
 /** 小字那一行：几项、出厂；派生的写改了什么，父流程改过要说 */
 export function lineageLine(wf: Workflow): string {
   const base = `${wf.stages.length} 项${wf.shipped ? '，出厂' : ''}`

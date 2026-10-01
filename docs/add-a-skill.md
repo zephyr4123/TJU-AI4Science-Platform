@@ -48,7 +48,7 @@ domains/<包>/skills/<name>/            领域包自带的：挂到流程实例�
 
 ## SKILL.md
 
-frontmatter 照 [agentskills.io](https://agentskills.io) 规范的字段写；规范外的字段（各家 agent 的 `allowed-tools`、`version`、`tags`……）不拦，只在 `make skills` 记一条提醒、不读：
+frontmatter 照 [agentskills.io](https://agentskills.io) 规范的字段写；规范外的字段（各家 agent 的 `allowed-tools`、`version`、`tags`……）收录与领域包的不拦，只在 `make skills` 记一条提醒、不读；**平台自带的 `skills/` 要干净**，规范外的字段、超过五百行的正文在门禁里算问题：
 
 ```yaml
 ---

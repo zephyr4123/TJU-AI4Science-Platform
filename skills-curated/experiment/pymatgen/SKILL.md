@@ -21,9 +21,7 @@ conversion, symmetry assignment, transformation, and database result as
 method- and parameter-dependent.
 
 The MIT frontmatter license covers this skill. `pymatgen` and
-`pymatgen-core` are MIT. Materials Project
-data is generally CC BY 4.0, while contributed data remains owned by its
-contributors. Check the exact artifact and data terms before redistribution.
+`pymatgen-core` are MIT.
 
 ## Verified snapshot (2026-07-23)
 

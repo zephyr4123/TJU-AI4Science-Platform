@@ -28,7 +28,6 @@ from framework.contracts.stages import STAGE_SLUGS, name_of
 
 SKILL_FILE = "SKILL.md"
 SCRIPTS_DIRNAME = "scripts"
-REFERENCES_DIRNAME = "references"
 LOCK_SUFFIX = ".lock"
 RESIDENT = "平台"  # 平台自带的那处库在清单里的名字；收录的叫「收录」；领域库用领域包的目录名
 CURATED = "收录"
@@ -99,7 +98,6 @@ class Skill:
     compatibility: str = ""
     metadata: dict[str, str] = field(default_factory=dict)
     scripts: tuple[Path, ...] = ()
-    references: tuple[Path, ...] = ()
     notes: tuple[str, ...] = ()  # 宽进的提醒：规范外的字段、超长正文……不拦，门禁打出来
 
     @property
@@ -268,8 +266,6 @@ def load_skill(directory: Path, library: str = RESIDENT, shelf: str = "") -> Ski
     notes = _frontmatter_notes(front)
     if len(body.splitlines()) > BODY_MAX_LINES:
         notes.append(f"正文 {len(body.splitlines())} 行，规范建议 {BODY_MAX_LINES} 行以内")
-    references = tuple(sorted(p for p in (directory / REFERENCES_DIRNAME).glob("*")
-                              if p.is_file()))
     raw_meta = front.get("metadata")
     metadata = ({str(k): v for k, v in raw_meta.items() if isinstance(v, str)}
                 if isinstance(raw_meta, dict) else {})
@@ -279,7 +275,7 @@ def load_skill(directory: Path, library: str = RESIDENT, shelf: str = "") -> Ski
         library=library, shelf=shelf, body=body.strip(),
         license=license_.strip() if isinstance(license_, str) else "",
         compatibility=compatibility.strip() if isinstance(compatibility, str) else "",
-        metadata=metadata, scripts=scripts, references=references, notes=tuple(notes),
+        metadata=metadata, scripts=scripts, notes=tuple(notes),
     )
 
 

@@ -50,6 +50,7 @@ display_name: PEtab 参数估计   # 给人看的名字
 2. 要领域约定就写 `prompts/experiment.md`；要 skill 就照 `add-a-skill.md` 放进 `skills/<name>/`。
 3. `make skills`（领域 skill 也过门禁）、`make check`。
 4. 在一份需求里用：`scoring.yaml` 写 `domain: <id>`（设计阶段 `cap design --domain <id>` 会写进去）。
-5. CHANGELOG 的 Unreleased 加一行，commit message 引外层 issue。
+5. 要用领域 skill：挂到工作区流程实例的格子上（`- 实验: [<name>]`），`ai4sci show flows` 校验，`ai4sci skill list` 里能看到它。
+6. CHANGELOG 的 Unreleased 加一行，commit message 引外层 issue。
 
 不改 `framework/`。测试不依赖仓里的领域包（P-5，夹具自带）；`domains/` 目录本身要在，`paths.py` 指不到会当场炸。

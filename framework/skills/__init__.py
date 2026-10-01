@@ -18,22 +18,11 @@
 from __future__ import annotations
 
 from framework.skills.catalog import catalog_text
-from framework.skills.library import (
-    Invalid,
-    Scan,
-    Skill,
-    SkillInvalid,
-    SkillNotFound,
-    everything,
-    find,
-    load_skill,
-    resident,
-    scan,
-)
-from framework.skills.run import run_script
+from framework.skills.library import SkillInvalid, SkillNotFound, everything, find, resident
 
-__all__ = ["Invalid", "Scan", "Skill", "SkillInvalid", "SkillNotFound", "everything", "find",
-           "load_skill", "resident", "scan", "catalog_text", "run_script", "EXECUTOR_BASH_RULES"]
+# 包外经 `skills.X` 用到的只有这几个；别的从 `framework.skills.library` / `run` 直接取
+__all__ = ["SkillInvalid", "SkillNotFound", "everything", "find", "resident", "catalog_text",
+           "EXECUTOR_BASH_RULES"]
 
 # 执行层会话的 Bash 白名单：只有 skill 的三个子命令。与协调层的 `Bash(ai4sci *)`（chat/guide.py）
 # 不同：执行层不许调能力、不许签字，它面前只有工具包

@@ -17,7 +17,7 @@ workspaces/<名字>/    一份需求的家：
 .ai4sci/chats/       你的对话（归项目，不归工作区）
 ```
 
-命令不带路径。**工作区级的命令带 `--ws <名字>`** 说清是哪个工作区（`ai4sci show project` 列出全部）；不带的话框架从当前目录往上找——人在终端 cd 进工作区时才是这样，你站在项目里，一律带。库（能力、流程 `workflows/`、需求模板 `templates/`、skill `skills/`、领域包）在项目外面，你只读不写。
+命令不带路径。**工作区级的命令带 `--ws <名字>`** 说清是哪个工作区（`ai4sci show project` 列出全部）；不带的话框架从当前目录往上找——人在终端 cd 进工作区时才是这样，你站在项目里，一律带。流程库（出厂的与课题组存的两层，路径在前言里）、需求模板 `templates/` 在项目外面，你只读不写；skill 只经 `ai4sci skill show / run` 用，不直接读它的目录。
 
 ## 你是谁、框架是谁
 
@@ -127,7 +127,7 @@ ai4sci cap verify --from analysis/1 --from experiment/1 --ws ours   # 核对数�
 
 跑一次要多久、要多少钱、要哪些 key，是你搜完要告诉研究者的头一件事；太贵就提议一个最小子集先跑通。找与挑在对话里做；材料散、候选多的论文让研究者一起挑（官方是 TF1 的、第三方有 PyTorch 版，用哪个）。
 
-**拉材料用 `download`**：`ai4sci skill run download git <url> --commit <sha> --out materials/<名字> --ws <名字>`（文件用 `file`、HF 上的用 `hf`；**带 `--ws`**，材料才落在那个工作区的 `materials/`——原码复现基线只在那里找），收据里的 commit / sha256 抄进 `sources.md`。环境：租来的机器用现成的 `ai4sci env use`，缺包就 `ai4sci env add --compute <名字> --from workspaces/<名字>/materials/<代码目录>/requirements.txt --ws <名字>` 补进去（原码复现基线跑不起来报 `ModuleNotFoundError` 多半是这个，补完 `--continue design/<n>` 接着跑，壳不用重写）；实验室机器可以 `ai4sci env resolve --from …` 隔离新建。
+**拉材料用 `download`**：`ai4sci skill run download git <url> --commit <sha> --out materials/<名字> --ws <名字>`（文件用 `file`、Hugging Face 上公开的用 `hf`——私有与门控的拉不了，请研究者自己下好放进 `materials/`；**带 `--ws`**，材料才落在那个工作区的 `materials/`——原码复现基线只在那里找），收据里的 commit / sha256 抄进 `sources.md`。环境：租来的机器用现成的 `ai4sci env use`，缺包就 `ai4sci env add --compute <名字> --from workspaces/<名字>/materials/<代码目录>/requirements.txt --ws <名字>` 补进去（原码复现基线跑不起来报 `ModuleNotFoundError` 多半是这个，补完 `--continue design/<n>` 接着跑，壳不用重写）；实验室机器可以 `ai4sci env resolve --from …` 隔离新建。
 
 **设计阶段用 `reproduction`（原码复现基线）**：`ai4sci cap reproduction --from literature/<n> --code <materials 里代码的目录名> --compute <机器> --ws <名字> --detach`。框架把代码搬进 `code/`，执行层只写起它的 launcher、算论文那几个数的 evaluate、目标 = 论文值的 scoring；跑一次就是复现结果，结论行里 `attainable=` 是论文值、`baseline=` 是我们的值、`upstream_changed=` 是改了几个上游文件（改动在 `upstream.diff`）。**对没对上你不判**：把两列数、σ、改了什么念给研究者，按需求里的标准由他说，签在页面上。草稿有问题（执行层说缺数据、缺 key、跑不起来）照 research 的做法喂回 `--continue design/<n> --feedback @<文件>`；缺的东西该补就补（拉数据、让研究者给 key 的名字）。
 

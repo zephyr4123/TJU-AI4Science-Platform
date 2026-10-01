@@ -206,7 +206,7 @@ def test_layout_is_optional_and_round_trips(tmp_path):
 
 def test_a_skill_hangs_on_any_stage_without_params_and_is_tagged(tmp_path):
     """主人 2026-09-22：skill 是能力的一种（tag skill）。哪个阶段都能挂、不带参数；响应体给每个名字
-    标 kind，步骤与 skill 不许重名（framework/abilities.py 查）。"""
+    标 kind，步骤与 skill 不许重名（framework/capabilities/abilities.py 查）。"""
     write(tmp_path, GOOD.replace("- 设计: [design]", "- 设计: [design, pdf]")
           .replace("- 验证", "- 验证: {download: {depth: 1}}"))
     [wf] = workflows.load_workflows(tmp_path)

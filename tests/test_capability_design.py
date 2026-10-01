@@ -156,8 +156,8 @@ def test_prompt_carries_requirement_hypothesis_skills_rules_and_escaped_dollars(
                                                                                  tmp_path):
     """挂在流程上的领域 skill 只以清单进提示（名字 + 一句话，P-26），正文由执行层
     `ai4sci skill show` 按需读（P-22）；执行层的 Bash 白名单只有 `ai4sci skill *`。"""
-    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-generic-skills"))
-    (tmp_path / "no-generic-skills").mkdir()
+    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-resident-skills"))
+    (tmp_path / "no-resident-skills").mkdir()
     monkeypatch.setenv(paths.DOMAINS_ROOT_ENV, str(ws[1]))  # 装载按库找挂上的名字（P-26）
     spaces.give_flow(ws[0], "  - 设计: [toy]\n")
     pack = new_pack(ws[0])
