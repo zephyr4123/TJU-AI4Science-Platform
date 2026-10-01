@@ -32,7 +32,7 @@ from framework.cli.workspace import read_template
 from framework.contracts import output, workflow_library, workflows
 from framework.contracts.capability import COLUMNS
 from framework.contracts.stages import STAGE_SLUGS, STAGES
-from framework.skills.library import shelf_of
+from framework.skills.shelves import shelf_of
 from framework.workspace import jobs, loadout, outputs, project
 
 
@@ -227,19 +227,19 @@ def cmd_caps(args: argparse.Namespace) -> int:
                   f"\tused_by={','.join(uses.get(d.name, [])) or '-'}")
             for key, label in COLUMNS:
                 print(f"  {label}：{getattr(d, key)}")
-    # 能力库的另一半：tag 为 skill 的，几百个，这里只按出处计数；清单与一句话由 show skills 查
+    # 能力库的另一半：tag 为 skill 的，几百个，这里只按架计数；清单与一句话由 show skills 查
     entries = abilities.skill_entries()
-    for where in dict.fromkeys(e["where"] for e in entries):
-        mine = [e for e in entries if e["where"] == where]
+    for stage in dict.fromkeys(e["stage"] for e in entries):
+        mine = [e for e in entries if e["stage"] == stage]
         used = ",".join(dict.fromkeys(f for e in mine for f in uses.get(e["name"], []))) or "-"
-        print(f"skill\t{where}\t{len(mine)} 个\tused_by={used}")
+        print(f"skill\t{stage}\t{len(mine)} 个\tused_by={used}")
     print("skill 的清单与一句话：ai4sci show skills [词…] [--stage <阶段>]")
     return EXIT_OK
 
 
 def cmd_skills(args: argparse.Namespace) -> int:
-    """查库：三处库的 skill，按词与架筛——词要都出现在名字、出处（「收录·写作」）或一句话里；
-    在项目里标出本项目装了没有。一句话多是上游的英文：中文词只认得出处里的阶段名。"""
+    """查库：三处库的 skill，按词与架筛——词要都出现在名字、位置（「实验·生物」）或一句话里；
+    在项目里标出本项目装了没有。一句话多是上游的英文：中文词只认得位置里的阶段名与 tag 名。"""
     try:
         shelf = shelf_of(args.stage) if args.stage else ""
     except ValueError as exc:
@@ -254,12 +254,12 @@ def cmd_skills(args: argparse.Namespace) -> int:
         haystack = f"{name} {where} {text}".lower()
         return all(w in haystack for w in words) and (not shelf or skill_shelf == shelf)
 
-    rows = [{"name": s.name, "where": s.where, "library": s.library, "shelf": s.shelf,
+    rows = [{"name": s.name, "where": s.where, "library": s.library, "shelf": s.shelf, "tag": s.tag,
              "loaded": None if loaded is None else s.name in loaded,
              "description": s.description, "problems": []}
             for s in found.skills if hit(s.name, s.where, s.description, s.shelf)]
     rows += [{"name": i.name, "where": i.where, "library": i.library, "shelf": i.shelf,
-              "loaded": False, "description": "", "problems": list(i.problems)}
+              "tag": i.tag, "loaded": False, "description": "", "problems": list(i.problems)}
              for i in found.invalid if hit(i.name, i.where, "", i.shelf)]
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
@@ -394,9 +394,10 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     caps.set_defaults(func=cmd_caps)
     found = what.add_parser(
-        "skills", help="查库里的 skill：名字、出处、本项目装了没有、一句话（按词、按阶段筛）")
-    found.add_argument("words", nargs="*", help="要有的词（名字、出处、一句话里都算，不分大小写）")
-    found.add_argument("--stage", default="", help="收录库的哪一架：七个阶段的名字，或「通用」")
+        "skills", help="查库里的 skill：名字、位置、本项目装了没有、一句话（按词、按阶段筛）")
+    found.add_argument("words", nargs="*",
+                       help="要有的词（名字、位置「实验·生物」、一句话里都算，不分大小写）")
+    found.add_argument("--stage", default="", help="哪一架：七个阶段的名字，或「通用」")
     found.add_argument("--json", action="store_true", help="打 JSON")
     found.set_defaults(func=cmd_skills)
     wfs = what.add_parser("workflows",

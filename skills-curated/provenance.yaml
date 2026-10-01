@@ -24,7 +24,6 @@ upstreams:
     license_file: licenses/ai-research-skills.txt
 skills:
 - name: ara-compiler
-  shelf: literature
   upstream: ai-research-skills
   path: 22-agent-native-research-artifact/compiler
   changes:
@@ -34,7 +33,6 @@ skills:
   - URL 的「fetch or clone」改成用 web fetch 读；要用仓库时先用平台的 download skill 拉进工作区
   - 正文开头加一句：目录里的其它文件用 `ai4sci skill show ara-compiler <相对路径>` 读
 - name: citation-management
-  shelf: literature
   upstream: k-dense
   path: skills/citation-management
   changes:
@@ -55,7 +53,6 @@ skills:
   - 删掉与不收的 literature-review、scientific-schematics 配合的说法：SKILL.md 三处与「Literature Review Skill」一节、references/core_workflow.md
     的「Integration with Literature Review Skill」一节
 - name: database-lookup
-  shelf: literature
   upstream: k-dense
   path: skills/database-lookup
   changes:
@@ -70,7 +67,6 @@ skills:
   - database_selection_guide.md、retrieval-contract.md，以及正文的标识符表、标识符换算、限速、分页说明里，去掉已删的库：主库全删了的行把还在的备选库提上来，备选也没了就整行删；专利一节删空了就整节删
   - 删 references/epa.md 的「AQS Data API」一节（要注册账号、URL 里带 key）；Envirofacts 的 AQS 表免 key，留着
 - name: nature-citation
-  shelf: literature
   upstream: nature-skills
   path: skills/nature-citation
   changes:
@@ -80,7 +76,6 @@ skills:
   - SKILL.md、static/core/workflow.md、references/script-usage.md 里的 python scripts/nature_citation.py 起法改成
     ai4sci skill run nature-citation --script nature_citation.py
 - name: nature-paper-card
-  shelf: literature
   upstream: nature-skills
   path: skills/nature-paper-card
   changes:
@@ -92,7 +87,6 @@ skills:
     ai4sci skill run 起」
   - 「相邻 skill」一节删了指向没收的 nature-academic-search、nature-literature-pipeline 的两行
 - name: nature-reader
-  shelf: literature
   upstream: nature-skills
   path: skills/nature-reader
   changes:
@@ -103,7 +97,6 @@ skills:
   - validate_reader_math.py 补了 PEP 723 头（只用标准库）并出了锁；static/core/workflow.md、static/core/output-contract.md、references/equation-handling.md
     的起法改成 ai4sci skill run nature-reader --script validate_reader_math.py；SKILL.md 第 4 步补上了起法
 - name: paper-lookup
-  shelf: literature
   upstream: k-dense
   path: skills/paper-lookup
   changes:
@@ -121,25 +114,21 @@ skills:
   - references/opencitations.md 的 Authentication 删掉可选的 access token 用法，改成不用注册；zenodo.md 里 deposit 要 token
     改说要账号（本来就不在范围内）
 - name: brainstorming-research-ideas
-  shelf: hypothesis
   upstream: ai-research-skills
   path: 21-research-ideation/brainstorming-research-ideas
   changes:
   - 「文献综述用 `scientific-skills:literature-review`」改成「用文献综述类 skill」：这个插件名在平台和上游都不存在
 - name: consciousness-council
-  shelf: hypothesis
   upstream: k-dense
   path: skills/consciousness-council
   changes:
   - Attribution 节删掉 ahkstrategies.net 与 TheMindBook 两条推广链接，只留作者署名「Created by AHK Strategies (ashrafkahoush-ux).」
 - name: creative-thinking-for-research
-  shelf: hypothesis
   upstream: ai-research-skills
   path: 21-research-ideation/creative-thinking-for-research
   changes:
   - 「文献综述用 `scientific-skills:literature-review`」改成「用文献综述类 skill」：这个插件名在平台和上游都不存在
 - name: hypothesis-generation
-  shelf: hypothesis
   upstream: k-dense
   path: skills/hypothesis-generation
   changes:
@@ -149,7 +138,6 @@ skills:
   - 删 references/security_validation.md（上游仓的安全扫描记录，复现命令指向没带进来的 tests/ 和仓库工具）及正文里对它的引用
   - scripts/ 8 个 .py（含 _common.py）补 PEP 723 头（>=3.11）并出锁
 - name: ncats-arax
-  shelf: hypothesis
   upstream: k-dense
   path: skills/ncats-arax
   changes:
@@ -157,7 +145,6 @@ skills:
   - 6 处 python skills/ncats-arax/scripts/arax_client.py 改成 ai4sci skill run ncats-arax --script arax_client.py
   - arax_client.py 手写 PEP 723 头（只用标准库，requires-python >=3.10，dependencies = []）并出锁
 - name: scientific-brainstorming
-  shelf: hypothesis
   upstream: k-dense
   path: skills/scientific-brainstorming
   changes:
@@ -168,7 +155,6 @@ skills:
   - 正文开头加 ai4sci skill show 那句
   - 「已有证据」交给的 skill 由不收的 literature-review 改成 paper-lookup
 - name: analytical-method-validation
-  shelf: design
   upstream: k-dense
   path: skills/analytical-method-validation
   changes:
@@ -179,7 +165,6 @@ skills:
   - 正文删掉 `cd skills/analytical-method-validation/scripts`，`python3 x.py …` 改成 `ai4sci skill run analytical-method-validation
     --script x.py …`；Scripts 一节原来那个 cd 代码块，换成 ai4sci 的通用起法
 - name: bigcode-evaluation-harness
-  shelf: design
   upstream: ai-research-skills
   path: 11-evaluation/bigcode-evaluation-harness
   changes:
@@ -190,7 +175,6 @@ skills:
     在本机跑，注明机器要有目标语言的编译器或解释器
   - 删 references/issues.md 的「Docker Issues」一节
 - name: experimental-design
-  shelf: design
   upstream: k-dense
   path: skills/experimental-design
   changes:
@@ -200,7 +184,6 @@ skills:
     import
   - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show experimental-design <相对路径>` 读。」
 - name: lm-evaluation-harness
-  shelf: design
   upstream: ai-research-skills
   path: 11-evaluation/lm-evaluation-harness
   changes:
@@ -210,7 +193,6 @@ skills:
     key 的自定义 API、对比、限流、缓存、成本几节，配置与可复现示例改用 local-completions
   - description 末句 APIs 改成 local OpenAI-compatible servers，正文指向该参考的一句同步改
 - name: statistical-power
-  shelf: design
   upstream: k-dense
   path: skills/statistical-power
   changes:
@@ -220,28 +202,24 @@ skills:
   - 正文改成用 ai4sci skill show 读出来、存到代码旁边再 import；正文和 references/closed_form_recipes.md、simulation_based_power.md
     里的 scripts/ 路径都改成 references/
 - name: accelerate
-  shelf: experiment
   upstream: ai-research-skills
   path: 08-distributed-training/accelerate
   changes:
   - frontmatter 的 name 由 huggingface-accelerate 改成目录名 accelerate
   - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show accelerate <相对路径>` 读
 - name: aeon
-  shelf: experiment
   upstream: k-dense
   path: skills/aeon
   changes:
   - 删掉文末「Citing Scientific Agent Skills」一段（让 agent 往稿子里引 K-Dense 的论文）
   - 正文开头加一句：其它文件用 `ai4sci skill show aeon <相对路径>` 读
 - name: anndata
-  shelf: experiment
   upstream: k-dense
   path: skills/anndata
   changes:
   - 删掉文末「Citing Scientific Agent Skills」一段
   - 正文开头加一句：其它文件用 `ai4sci skill show anndata <相对路径>` 读
 - name: arboreto
-  shelf: experiment
   upstream: k-dense
   path: skills/arboreto
   changes:
@@ -252,14 +230,12 @@ skills:
   - 正文的 `python scripts/basic_grn_inference.py …` 改成 `ai4sci skill run arboreto --script basic_grn_inference.py
     …`
 - name: astropy
-  shelf: experiment
   upstream: k-dense
   path: skills/astropy
   changes:
   - 删掉文末「Citing Scientific Agent Skills」一段
   - 正文开头加一句：其它文件用 `ai4sci skill show astropy <相对路径>` 读
 - name: audiocraft
-  shelf: experiment
   upstream: ai-research-skills
   path: 18-multimodal/audiocraft
   changes:
@@ -270,14 +246,12 @@ skills:
     GUI，后者还用 share=True 开公网链接）'
   - references/troubleshooting.md「FFmpeg not found」删掉 sudo apt-get 和 brew 两种装法（装系统软件），conda 装法和验证命令保留
 - name: awq
-  shelf: experiment
   upstream: ai-research-skills
   path: 10-optimization/awq
   changes:
   - frontmatter 的 name 由 awq-quantization 改为目录名 awq
   - 删 references/advanced-usage.md 的「Push to HuggingFace」一节（推到 Hub 要 HF 凭据）
 - name: axolotl
-  shelf: experiment
   upstream: ai-research-skills
   path: 03-fine-tuning/axolotl
   changes:
@@ -287,7 +261,6 @@ skills:
   - 删 references/other.md 配置参考里 push_dataset_to_hub 与 hf_use_auth_token 两个字段和注释（P-27）
   - 删 references/other.md 配置参考里整段 Comet 集成字段，含 comet_api_key（P-27）
 - name: biopython
-  shelf: experiment
   upstream: k-dense
   path: skills/biopython
   license_note: 写的是 Biopython 库的协议：任意用途使用、修改、再分发，只要求保留版权声明（上游 LICENSE.rst，2026-10-01 核对）
@@ -301,14 +274,12 @@ skills:
     去掉对应一句
   - 删用 rg/grep 搜参考文件的示例（Quick Reference 一节与 Reading Documentation 里的代码块），改成用 ai4sci skill show 读参考
 - name: bitsandbytes
-  shelf: experiment
   upstream: ai-research-skills
   path: 10-optimization/bitsandbytes
   changes:
   - frontmatter 的 name 由 quantizing-models-bitsandbytes 改为目录名 bitsandbytes
   - 正文开头加 `ai4sci skill show bitsandbytes <相对路径>` 读法句
 - name: blip-2
-  shelf: experiment
   upstream: ai-research-skills
   path: 18-multimodal/blip-2
   changes:
@@ -318,14 +289,12 @@ skills:
   - references/advanced-usage.md 删「Gradio interface」（本机 GUI）
   - references/advanced-usage.md 删「LangChain integration」（用 langchain.llms.OpenAI，要 OpenAI key）
 - name: cellxgene-census
-  shelf: experiment
   upstream: k-dense
   path: skills/cellxgene-census
   changes:
   - 删文末「Citing Scientific Agent Skills」自引用一节
   - 正文开头加「其它文件用 ai4sci skill show cellxgene-census <相对路径> 读」的提示
 - name: chroma
-  shelf: experiment
   upstream: ai-research-skills
   path: 15-rag/chroma
   changes:
@@ -335,7 +304,6 @@ skills:
     默认调 OpenAI）两节
   - references/integration.md 删 LangChain 一节，首句改成只提 LlamaIndex
 - name: cirq
-  shelf: experiment
   upstream: k-dense
   path: skills/cirq
   changes:
@@ -349,27 +317,23 @@ skills:
   - references/simulation.md 删 Noisy Virtual Hardware 小节、references/noise.md 删 Hardware-Based Noise Models
     一节（两处都要连 Google Quantum Engine）
 - name: clip
-  shelf: experiment
   upstream: ai-research-skills
   path: 18-multimodal/clip
   changes:
   - 照原样收
 - name: constitutional-ai
-  shelf: experiment
   upstream: ai-research-skills
   path: 07-safety-alignment/constitutional-ai
   changes:
   - 删去「Advanced topics」一节：三个链接（constitution-design.md、rlaif-comparison.md、cot-critique.md）指向上游并不存在的 references
     文件
 - name: dask
-  shelf: experiment
   upstream: k-dense
   path: skills/dask
   changes:
   - 删文末「Citing Scientific Agent Skills」自引用一节
   - 正文开头加「其它文件用 ai4sci skill show dask <相对路径> 读」的提示
 - name: datamol
-  shelf: experiment
   upstream: k-dense
   path: skills/datamol
   changes:
@@ -378,7 +342,6 @@ skills:
   - references/core_workflows.md 与 io_module.md 的 Remote File Support 段只留公开 HTTPS 读取，删掉 AWS / GCP 凭据环境变量的说明
   - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show datamol <相对路径>` 读。」
 - name: deepchem
-  shelf: experiment
   upstream: k-dense
   path: skills/deepchem
   changes:
@@ -388,7 +351,6 @@ skills:
     另加 transformers>=4.30,<5；三个都出了锁
   - 正文 6 处 `python scripts/x.py` 改成 `ai4sci skill run deepchem --script x.py`
 - name: deepspeed
-  shelf: experiment
   upstream: ai-research-skills
   path: 08-distributed-training/deepspeed
   changes:
@@ -396,7 +358,6 @@ skills:
   - Pattern 7 的配置文档摘录里，删去 Comet 的 api_key 字段说明（P-27，门禁会查到）
   - 「Use `view` to read specific reference files」改成「Use `ai4sci skill show deepspeed references/<file>`」
 - name: deeptools
-  shelf: experiment
   upstream: k-dense
   path: skills/deeptools
   license_note: deepTools 库现在的 LICENSE.txt 是 MIT 条款（2026-10-01 核对）
@@ -407,7 +368,6 @@ skills:
   - 正文 7 处 `python scripts/x.py` 改成 `ai4sci skill run deeptools --script x.py`
   - 两处「chmod +x 之后 ./qc.sh」改成「生成的 shell 脚本由实验代码用 subprocess 跑」
 - name: diffdock
-  shelf: experiment
   upstream: k-dense
   path: skills/diffdock
   changes:
@@ -424,13 +384,11 @@ skills:
     改成用 ai4sci skill show 读模板
   - Core Workflows 开头加一句：`python -m inference` 要在 DiffDock 仓和它的环境里跑，由实验代码来起
 - name: faiss
-  shelf: experiment
   upstream: ai-research-skills
   path: 15-rag/faiss
   changes:
   - 删「LangChain integration」一节（用 OpenAIEmbeddings，要 key）
 - name: flash-attention
-  shelf: experiment
   upstream: ai-research-skills
   path: 10-optimization/flash-attention
   changes:
@@ -438,7 +396,6 @@ skills:
   - 正文开头加 `ai4sci skill show` 读法句
   - 删正文里指向 references/algorithm.md 与 references/advanced-features.md 的两行（上游目录里没有这两份文件，悬空引用）
 - name: flowio
-  shelf: experiment
   upstream: k-dense
   path: skills/flowio
   changes:
@@ -448,7 +405,6 @@ skills:
     skill run flowio --script inspect_fcs.py …`
   - 正文开头加一句 ai4sci skill show 的说明
 - name: fluidsim
-  shelf: experiment
   upstream: k-dense
   path: skills/fluidsim
   changes:
@@ -460,7 +416,6 @@ skills:
     skill run fluidsim --script x.py`
   - 正文开头加一句 ai4sci skill show 的说明
 - name: geniml
-  shelf: experiment
   upstream: k-dense
   path: skills/geniml
   changes:
@@ -472,7 +427,6 @@ skills:
   - references/utilities.md 里讲 add_bed_to_s3/get_bed_from_s3 要接收云凭据的那句，改成「这两个连云对象存储，平台里不用」
   - 正文开头加一句 ai4sci skill show 的说明
 - name: genomic-coordinates
-  shelf: experiment
   upstream: k-dense
   path: skills/genomic-coordinates
   changes:
@@ -482,7 +436,6 @@ skills:
     x.py` 的写法，改成 `ai4sci skill run genomic-coordinates --script x.py`
   - 正文开头加一句 ai4sci skill show 的说明
 - name: geomaster
-  shelf: experiment
   upstream: k-dense
   path: skills/geomaster
   changes:
@@ -496,7 +449,6 @@ skills:
     的 key）以及基于 sentinelsat 的 Download Scripts 一节
   - 正文开头加一句 ai4sci skill show 的说明
 - name: geopandas
-  shelf: experiment
   upstream: k-dense
   path: skills/geopandas
   changes:
@@ -509,7 +461,6 @@ skills:
     一节改成假定已经有一个 SQLAlchemy engine
   - 正文开头加一句 ai4sci skill show 的说明
 - name: get-available-resources
-  shelf: experiment
   upstream: k-dense
   path: skills/get-available-resources
   changes:
@@ -521,7 +472,6 @@ skills:
   - 删 Bundled files 里指向上游仓 tests/ 的一条
   - scripts/ 5 个 .py（含辅助模块 _common.py）补 PEP 723 头（requires-python >=3.11，照 compatibility）并出锁
 - name: gget
-  shelf: experiment
   upstream: k-dense
   path: skills/gget
   changes:
@@ -534,7 +484,6 @@ skills:
   - 新增「Bundled scripts」一节，写三个脚本的 ai4sci skill run 起法（上游正文没提脚本）
   - 三个脚本补 PEP 723 头（gget==0.30.5，enrichment_pipeline 另加 pandas）并出锁
 - name: gguf
-  shelf: experiment
   upstream: ai-research-skills
   path: 10-optimization/gguf
   changes:
@@ -545,7 +494,6 @@ skills:
   - SKILL.md 与 references/troubleshooting.md 里连本机服务的 OpenAI 客户端示例改成 requests 直连，去掉 api_key 占位
   - 删 references/troubleshooting.md 里 sudo apt install nvidia-cuda-toolkit 那步
 - name: gptq
-  shelf: experiment
   upstream: ai-research-skills
   path: 10-optimization/gptq
   changes:
@@ -554,7 +502,6 @@ skills:
   - 删 references/integration.md 的 TGI 一节（Docker）
   - 删 references/troubleshooting.md 里 sudo apt-get install python3-dev 那步
 - name: grpo-rl-training
-  shelf: experiment
   upstream: ai-research-skills
   path: 06-post-training/grpo-rl-training
   changes:
@@ -564,7 +511,6 @@ skills:
     各一处；检查清单里的「wandb recommended」改成「TensorBoard, local」
   - 正文开头加一句：其它文件用 ai4sci skill show grpo-rl-training <相对路径> 读
 - name: gtars
-  shelf: experiment
   upstream: k-dense
   path: skills/gtars
   changes:
@@ -576,7 +522,6 @@ skills:
   - 删指向上游 tests/gtars 的单测命令
   - 删 scripts/__init__.py；7 个 .py（含 _common.py）补 PEP 723 头（>=3.10）并出锁
 - name: hqq
-  shelf: experiment
   upstream: ai-research-skills
   path: 10-optimization/hqq
   changes:
@@ -584,7 +529,6 @@ skills:
   - 正文开头加 `ai4sci skill show` 读法句
   - 删 SKILL.md 里 push_to_hub 那步（要 HF 凭据）
 - name: hugging-science
-  shelf: experiment
   upstream: k-dense
   path: skills/hugging-science
   changes:
@@ -599,19 +543,16 @@ skills:
     flagship-resources / topics-and-slugs）
   - fetch_catalog.py 补 PEP 723 头（标准库，>=3.10）并出锁
 - name: huggingface-tokenizers
-  shelf: experiment
   upstream: ai-research-skills
   path: 02-tokenization/huggingface-tokenizers
   changes:
   - 正文开头加一句：目录里的其它文件用 ai4sci skill show huggingface-tokenizers <相对路径> 读
 - name: knowledge-distillation
-  shelf: experiment
   upstream: ai-research-skills
   path: 19-emerging-techniques/knowledge-distillation
   changes:
   - 照原样收
 - name: lab-hardware-cad
-  shelf: experiment
   upstream: k-dense
   path: skills/lab-hardware-cad
   changes:
@@ -624,7 +565,6 @@ skills:
     >=3.12,<3.15，各自出锁
   - 被 import 的辅助模块 _common.py 手写了空依赖的 PEP 723 头并出锁（门禁按 scripts/*.py 全收）
 - name: lamindb
-  shelf: experiment
   upstream: k-dense
   path: skills/lamindb
   changes:
@@ -635,7 +575,6 @@ skills:
     连接串、连别人的实例、实例协作、生产部署模式、安全最佳实践；排障里的登录、存储凭据、数据库连接条目也删了
   - references/integrations.md 删掉 AWS S3、S3 兼容、GCS、W&B、Benchling（企业版）、外部数据库（带连接串密钥）这几节，以及 S3/GCS 凭据的排障条目
 - name: litgpt
-  shelf: experiment
   upstream: ai-research-skills
   path: 01-model-architecture/litgpt
   changes:
@@ -643,7 +582,6 @@ skills:
   - 正文开头加一句：目录里的其它文件用 ai4sci skill show litgpt <相对路径> 读
   - 删 references/supported-models.md 里 export HF_TOKEN 下载 gated 模型的示范（P-27）
 - name: llama-cpp
-  shelf: experiment
   upstream: ai-research-skills
   path: 12-inference-serving/llama-cpp
   changes:
@@ -652,7 +590,6 @@ skills:
   - 删 --interactive 交互式 chat 示例
   - references/server.md 删 Docker 与 NGINX 负载均衡两节，正文指向它的一句去掉 Docker
 - name: llama-factory
-  shelf: experiment
   upstream: ai-research-skills
   path: 03-fine-tuning/llama-factory
   changes:
@@ -660,7 +597,6 @@ skills:
   - 「Use `view` to read specific reference files」改成用 ai4sci skill show llama-factory references/<file>
     读
 - name: llava
-  shelf: experiment
   upstream: ai-research-skills
   path: 18-multimodal/llava
   changes:
@@ -671,13 +607,11 @@ skills:
   - 删「Web UI (Gradio)」和「Gradio App」两段（本机 GUI）
   - references/training.md 的 --report_to wandb 改成 --report_to none（W&B 要账号）
 - name: long-context
-  shelf: experiment
   upstream: ai-research-skills
   path: 19-emerging-techniques/long-context
   changes:
   - 正文开头加了一句：本 skill 目录里的其它文件用 `ai4sci skill show long-context <相对路径>` 读
 - name: mamba
-  shelf: experiment
   upstream: ai-research-skills
   path: 01-model-architecture/mamba
   changes:
@@ -686,7 +620,6 @@ skills:
   - Advanced topics 里三条链接指向上游就不存在的 references/selective-ssm.md、mamba2-details.md、performance.md，改指现有的
     architecture-details.md、training-guide.md、benchmarks.md
 - name: matchms
-  shelf: experiment
   upstream: k-dense
   path: skills/matchms
   changes:
@@ -696,7 +629,6 @@ skills:
     run matchms …`（只有一个脚本）
   - library_search.py 补了 PEP 723 头（matchms==0.33.1，requires-python >=3.12,<3.15）并出锁
 - name: matlab
-  shelf: experiment
   upstream: k-dense
   path: skills/matlab
   changes:
@@ -708,7 +640,6 @@ skills:
   - 6 个工具和 _common.py 手写了 PEP 723 头（只用标准库，requires-python 照上游写 >=3.11）；inventory_mat_file.py 加了 scipy
     和 h5py（因此 requires-python 是 >=3.12）；每个都出锁
 - name: medchem
-  shelf: experiment
   upstream: k-dense
   path: skills/medchem
   changes:
@@ -718,7 +649,6 @@ skills:
   - filter_molecules.py 的起法改成 ai4sci skill run medchem --script filter_molecules.py …
   - filter_molecules.py 补 PEP 723 头（requires-python >=3.11；medchem、datamol、rdkit、pandas、tqdm）并出锁
 - name: megatron-core
-  shelf: experiment
   upstream: ai-research-skills
   path: 08-distributed-training/megatron-core
   changes:
@@ -726,7 +656,6 @@ skills:
   - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show megatron-core <相对路径>` 读
   - 安装一段删去 Docker 起容器的做法（平台里用不了 Docker），只留 pip install megatron-core
 - name: miles
-  shelf: experiment
   upstream: ai-research-skills
   path: 06-post-training/miles
   changes:
@@ -736,14 +665,12 @@ skills:
     skill 自成一体
   - 正文开头加一句：其它文件用 ai4sci skill show miles <相对路径> 读
 - name: ml-training-recipes
-  shelf: experiment
   upstream: ai-research-skills
   path: 10-optimization/ml-training-recipes
   changes:
   - 正文开头加 `ai4sci skill show` 读法句
   - SKILL.md 写回时换行符由 CRLF 变 LF（内容未改；references/ 保持上游 CRLF 原样）
 - name: mlflow
-  shelf: experiment
   upstream: ai-research-skills
   path: 13-mlops/mlflow
   changes:
@@ -752,7 +679,6 @@ skills:
   - references/deployment.md 删「Docker Deployment」「Cloud Deployment」（含 SageMaker、Azure ML、KServe）两节和要 Docker
     的「Version Your Deployment」（build-docker）一条，目录、部署方式表和资源链接里对应的几行也一起删了，后面两条最佳实践重新编号
 - name: model-merging
-  shelf: experiment
   upstream: ai-research-skills
   path: 19-emerging-techniques/model-merging
   changes:
@@ -763,25 +689,21 @@ skills:
   - 删掉 references/evaluation.md 的 A/B 测试注释里「或用 GPT-4 当判分」半句
   - 删掉 SKILL.md「Common Benchmarks」里 MT-Bench 一条
 - name: model-pruning
-  shelf: experiment
   upstream: ai-research-skills
   path: 19-emerging-techniques/model-pruning
   changes:
   - 照原样收
 - name: moe-training
-  shelf: experiment
   upstream: ai-research-skills
   path: 19-emerging-techniques/moe-training
   changes:
   - 正文开头加了一句：本 skill 目录里的其它文件用 `ai4sci skill show moe-training <相对路径>` 读
 - name: molecular-dynamics
-  shelf: experiment
   upstream: k-dense
   path: skills/molecular-dynamics
   changes:
   - 安装段删掉 conda install 那条（装系统软件），留 uv pip install openmm mdanalysis
 - name: molfeat
-  shelf: experiment
   upstream: k-dense
   path: skills/molfeat
   changes:
@@ -789,13 +711,11 @@ skills:
   - 正文开头加一句 ai4sci skill show 读文件的说明
   - 「用 grep 查 references/available_featurizers.md」的两行命令改成 ai4sci skill show molfeat references/available_featurizers.md
 - name: nanogpt
-  shelf: experiment
   upstream: ai-research-skills
   path: 01-model-architecture/nanogpt
   changes:
   - 正文开头加一句：目录里的其它文件用 ai4sci skill show nanogpt <相对路径> 读
 - name: nature-experiment-log
-  shelf: experiment
   upstream: nature-skills
   path: skills/nature-experiment-log
   changes:
@@ -806,13 +726,11 @@ skills:
   - Obsidian 输出原来经仓库外的 obsidian skill 写入，改成输出根目录直接设为 vault 根目录
   - 处理流程里的 vision_analyze（平台没有这个工具）改成「看图并解析文本」
 - name: nemo-curator
-  shelf: experiment
   upstream: ai-research-skills
   path: 05-data-processing/nemo-curator
   changes:
   - 正文开头加一句：其它文件用 ai4sci skill show nemo-curator <相对路径> 读；其余照原样
 - name: neurokit2
-  shelf: experiment
   upstream: k-dense
   path: skills/neurokit2
   changes:
@@ -822,7 +740,6 @@ skills:
   - 7 个脚本补 PEP 723 头（requires-python >=3.10）并出锁：ecg_hrv_pipeline 依赖 neurokit2==0.2.13、numpy；eda_pipeline
     依赖 neurokit2==0.2.13、numpy、pandas；其余 5 个只用标准库
 - name: neuropixels-analysis
-  shelf: experiment
   upstream: k-dense
   path: skills/neuropixels-analysis
   changes:
@@ -840,7 +757,6 @@ skills:
   - 6 个脚本补 PEP 723 头（requires-python >=3.10，spikeinterface[full] 加各自 import 的包）并出锁；run_sorting.py、neuropixels_pipeline.py
     另加 kilosort（默认 sorter kilosort4 要用）和 mountainsort5（--sorter 的可选项）
 - name: nnsight
-  shelf: experiment
   upstream: ai-research-skills
   path: 04-mechanistic-interpretability/nnsight
   changes:
@@ -851,7 +767,6 @@ skills:
     NDIF Remote Execution 整节；tutorials.md 删 Tutorial 4（远程）与 NDIF Resources 小节
   - 正文开头加一句：其它文件用 ai4sci skill show nnsight <相对路径> 读
 - name: onekgpd
-  shelf: experiment
   upstream: k-dense
   path: skills/onekgpd
   changes:
@@ -864,7 +779,6 @@ skills:
   - assets/kgpe.json 去掉缩进空白，从 1.04 MB 压到 781 KB（3202 条记录逐条比对一致，onekgpd_meta.py 照样读）
   - 两个脚本上游已经带 PEP 723 头，只出了锁
 - name: openpi
-  shelf: experiment
   upstream: ai-research-skills
   path: 18-multimodal/openpi
   changes:
@@ -872,7 +786,6 @@ skills:
   - 正文开头加一句：其它文件用 `ai4sci skill show openpi <相对路径>` 读
   - 替代项里的 fine-tuning-openvla-oft 改成平台名 openvla-oft；删掉指向 evaluating-cosmos-policy 的一段（那个 skill 没收）
 - name: openpiv
-  shelf: experiment
   upstream: k-dense
   path: skills/openpiv
   changes:
@@ -886,7 +799,6 @@ skills:
   - Quick Start 里两行 `uv pip install` 换成一段说明：CLI 自带锁定的环境；实验代码要 import OpenPIV 的，在实验环境里钉 openpiv==0.25.4
   - 正文开头加一句：其它文件用 ai4sci skill show 读
 - name: openrlhf
-  shelf: experiment
   upstream: ai-research-skills
   path: 06-post-training/openrlhf
   changes:
@@ -898,7 +810,6 @@ skills:
     的说明与「Monitor W&B」一节跟着改
   - 正文开头加一句：其它文件用 ai4sci skill show openrlhf <相对路径> 读
 - name: opentrons-integration
-  shelf: experiment
   upstream: k-dense
   path: skills/opentrons-integration
   changes:
@@ -909,7 +820,6 @@ skills:
   - 「Install and Simulate」一节开头加一段：agent 不自己跑这些 shell 命令，仿真放在实验环境里，按钉死的 opentrons 版本跑
   - 正文开头加一句：其它文件用 ai4sci skill show 读
 - name: openvla-oft
-  shelf: experiment
   upstream: ai-research-skills
   path: 18-multimodal/openvla-oft
   changes:
@@ -924,7 +834,6 @@ skills:
   - 删 ALOHA 真机评测的客户端部分：SKILL.md Workflow 4 第 5 步和清单里对应的一行，aloha-workflow.md 的客户端环境和第 6 节（要真机器人，每轮还要操作员输入
     y/n）
 - name: optimize-for-gpu
-  shelf: experiment
   upstream: k-dense
   path: skills/optimize-for-gpu
   changes:
@@ -933,7 +842,6 @@ skills:
     里的 S3 例子改用 open_s3_public
   - 正文开头加一句：其它文件用 ai4sci skill show 读
 - name: outlines
-  shelf: experiment
   upstream: ai-research-skills
   path: 16-prompt-engineering/outlines
   changes:
@@ -943,7 +851,6 @@ skills:
   - 删掉 references/backends.md 环境变量示例里设 OpenAI key 的两行
   - 删掉 references/backends.md 的「Docker with vLLM」部署示例（Docker 在平台里用不了）
 - name: pathml
-  shelf: experiment
   upstream: k-dense
   path: skills/pathml
   changes:
@@ -956,7 +863,6 @@ skills:
   - 正文和 6 份 references 里的 `python scripts/x.py` 改成 `ai4sci skill run pathml --script x.py`
   - 正文开头加一句：其它文件用 ai4sci skill show 读
 - name: peft
-  shelf: experiment
   upstream: ai-research-skills
   path: 03-fine-tuning/peft
   changes:
@@ -964,7 +870,6 @@ skills:
   - 正文开头加一句：目录里的其它文件用 ai4sci skill show peft <相对路径> 读
   - 删合并 adapter 之后 push_to_hub 推到 Hugging Face Hub 的两行（要账号 token，P-27）
 - name: pennylane
-  shelf: experiment
   upstream: k-dense
   path: skills/pennylane
   changes:
@@ -974,7 +879,6 @@ skills:
   - devices_backends.md 的 select_device 去掉硬件分支，最佳实践删掉硬件报错与费用两条
   - 正文开头加一句用 ai4sci skill show 读目录里其它文件
 - name: polars
-  shelf: experiment
   upstream: k-dense
   path: skills/polars
   license_note: 链接指向 polars 库的 MIT
@@ -984,7 +888,6 @@ skills:
     账号的 BigQuery 一节；SKILL.md 支持格式清单去掉 BigQuery
   - 正文开头加一句用 ai4sci skill show 读目录里其它文件
 - name: polars-bio
-  shelf: experiment
   upstream: k-dense
   path: skills/polars-bio
   changes:
@@ -994,7 +897,6 @@ skills:
   - references/file_io.md 云存储一节删凭据说明与环境变量表，示例统一改成 allow_anonymous=True
   - 正文开头加一句用 ai4sci skill show 读目录里其它文件
 - name: pufferlib
-  shelf: experiment
   upstream: k-dense
   path: skills/pufferlib
   changes:
@@ -1007,7 +909,6 @@ skills:
   - 删 scripts/__init__.py；8 个 .py（含 _common.py）补 PEP 723 头（纯标准库，Python≥3.10）并出锁
   - 正文与参考里的 python3 scripts/x.py 改成 ai4sci skill run pufferlib --script x.py；正文开头加读文件的说明
 - name: pydicom
-  shelf: experiment
   upstream: k-dense
   path: skills/pydicom
   changes:
@@ -1017,7 +918,6 @@ skills:
   - 正文、references/common_tags.md、references/transfer_syntaxes.md 和脚本 epilog 里的起法改成 ai4sci skill run pydicom
     --script …；开头加读文件的说明
 - name: pyhealth
-  shelf: experiment
   upstream: k-dense
   path: skills/pyhealth
   changes:
@@ -1025,7 +925,6 @@ skills:
   - 正文开头加读文件的说明
   - 其余照原样收（没有 scripts/；assets/starter_pipeline.py 是示例模板，留在 assets/）
 - name: pylabrobot
-  shelf: experiment
   upstream: k-dense
   path: skills/pylabrobot
   changes:
@@ -1036,7 +935,6 @@ skills:
     assets/fixtures/；正文和 references 里的 tests/pylabrobot/fixtures/ 路径改成工作目录里的文件名，并说明从 assets/fixtures 读出来
   - 删「Run from the repository root」，也删了 references/visualization.md 里跑上游 unittest 的那一段
 - name: pymatgen
-  shelf: experiment
   upstream: k-dense
   path: skills/pymatgen
   changes:
@@ -1050,7 +948,6 @@ skills:
   - 起法改成 ai4sci skill run pymatgen --script …；开头加读文件的说明
   - 删掉许可证一段里 Materials Project 数据是 CC BY 4.0 的那两句（Materials Project 的查询已删，CC-BY 不收）
 - name: pymoo
-  shelf: experiment
   upstream: k-dense
   path: skills/pymoo
   changes:
@@ -1060,7 +957,6 @@ skills:
   - 正文里用 grep 搜 references/ 的提示改成用 ai4sci skill show 读对应的文件
   - 开头加读文件的说明
 - name: pyopenms
-  shelf: experiment
   upstream: k-dense
   path: skills/pyopenms
   changes:
@@ -1068,7 +964,6 @@ skills:
   - 16 个 CLI 补 PEP 723 头并出锁（pyopenms==3.5.0，有的另加 pandas / numpy / matplotlib，Python≥3.10）
   - 正文和脚本 docstring 里的起法改成 ai4sci skill run pyopenms --script …；开头加读文件的说明
 - name: pysam
-  shelf: experiment
   upstream: k-dense
   path: skills/pysam
   changes:
@@ -1076,7 +971,6 @@ skills:
   - 4 个 CLI 补 PEP 723 头（pysam==0.24.0，Python≥3.10）并出锁
   - 正文和 references/common_workflows.md 里的起法改成 ai4sci skill run pysam --script …；开头加读文件的说明
 - name: pytdc
-  shelf: experiment
   upstream: k-dense
   path: skills/pytdc
   changes:
@@ -1089,13 +983,11 @@ skills:
     是纯标准库；全部出锁
   - 开头加读文件的说明
 - name: pytorch-fsdp2
-  shelf: experiment
   upstream: ai-research-skills
   path: 08-distributed-training/pytorch-fsdp2
   changes:
   - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show pytorch-fsdp2 <相对路径>` 读
 - name: pytorch-lightning
-  shelf: experiment
   upstream: k-dense
   path: skills/pytorch-lightning
   changes:
@@ -1107,7 +999,6 @@ skills:
   - description、compatibility、安装命令里的 wandb / comet-ml 去掉
   - 正文开头加一句：其它文件用 ai4sci skill show pytorch-lightning <相对路径> 读
 - name: pytorch-lightning-airs
-  shelf: experiment
   upstream: ai-research-skills
   path: 08-distributed-training/pytorch-lightning
   changes:
@@ -1117,7 +1008,6 @@ skills:
     Hyperopt 一节编号改成 3
   - 正文 Advanced topics 里「Optuna, Ray Tune, and WandB sweeps」改成「Optuna, Ray Tune, and Hyperopt」
 - name: pyvene
-  shelf: experiment
   upstream: ai-research-skills
   path: 04-mechanistic-interpretability/pyvene
   changes:
@@ -1125,7 +1015,6 @@ skills:
   - 删掉「Share on HuggingFace」推到 Hub 的两行（推送要 HF token）
   - 正文开头加一句：其它文件用 ai4sci skill show pyvene <相对路径> 读
 - name: qiskit
-  shelf: experiment
   upstream: k-dense
   path: skills/qiskit
   changes:
@@ -1143,7 +1032,6 @@ skills:
     --script …
   - 正文开头加 ai4sci skill show 那句
 - name: qutip
-  shelf: experiment
   upstream: k-dense
   path: skills/qutip
   changes:
@@ -1154,20 +1042,17 @@ skills:
   - references 里的 `../scripts/` 改成 `scripts/`（相对 skill 根，ai4sci skill show 认这种写法）
   - 正文开头加 ai4sci skill show 那句
 - name: ray-data
-  shelf: experiment
   upstream: ai-research-skills
   path: 05-data-processing/ray-data
   changes:
   - 正文开头加一句：其它文件用 ai4sci skill show ray-data <相对路径> 读；其余照原样
 - name: ray-train
-  shelf: experiment
   upstream: ai-research-skills
   path: 08-distributed-training/ray-train
   changes:
   - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show ray-train <相对路径>` 读
   - Advanced topics 删去两条链接，它们指向上游并不存在的 references/hyperparameter-tuning.md 和 references/custom-loops.md
 - name: rdkit
-  shelf: experiment
   upstream: k-dense
   path: skills/rdkit
   changes:
@@ -1176,14 +1061,12 @@ skills:
   - 正文的 scripts 节补三条 ai4sci skill run rdkit --script … 起法，取自脚本自带的用法
   - 正文开头加 ai4sci skill show 那句
 - name: rwkv
-  shelf: experiment
   upstream: ai-research-skills
   path: 01-model-architecture/rwkv
   changes:
   - frontmatter 的 name 由 rwkv-architecture 改为目录名 rwkv
   - 正文开头加一句：目录里的其它文件用 ai4sci skill show rwkv <相对路径> 读
 - name: saelens
-  shelf: experiment
   upstream: ai-research-skills
   path: 04-mechanistic-interpretability/saelens
   changes:
@@ -1194,7 +1077,6 @@ skills:
   - 正文开头加一句：其它文件用 ai4sci skill show saelens <相对路径> 读
   - references/README.md 删掉指向不存在的 papers.md 那一行（上游就没有这个文件）
 - name: scanpy
-  shelf: experiment
   upstream: k-dense
   path: skills/scanpy
   changes:
@@ -1209,14 +1091,12 @@ skills:
   - assets/ 下的模板和 JSON 配置改成用 ai4sci skill show 读出来、存进工作目录再用
   - 正文开头加 ai4sci skill show 那句
 - name: scikit-bio
-  shelf: experiment
   upstream: k-dense
   path: skills/scikit-bio
   changes:
   - 删 Citing 自引用段
   - 正文开头加读文件提示句
 - name: scikit-learn
-  shelf: experiment
   upstream: k-dense
   path: skills/scikit-learn
   changes:
@@ -1226,20 +1106,17 @@ skills:
   - 删 Citing 自引用段
   - 正文开头加读文件提示句
 - name: scvelo
-  shelf: experiment
   upstream: k-dense
   path: skills/scvelo
   changes:
   - scripts/rna_velocity_workflow.py（没有参数、会下载 pancreas 示例数据的演示）挪到 references/
 - name: scvi-tools
-  shelf: experiment
   upstream: k-dense
   path: skills/scvi-tools
   changes:
   - 删 Citing 自引用段
   - 正文开头加读文件提示句
 - name: segment-anything
-  shelf: experiment
   upstream: ai-research-skills
   path: 18-multimodal/segment-anything
   changes:
@@ -1249,19 +1126,16 @@ skills:
   - references/advanced-usage.md 删「Gradio interface」（本机 GUI）
   - ONNX 导出命令前加一行注释，说明 scripts/export_onnx_model.py 是 segment-anything 仓库自带的脚本，不是本 skill 的
 - name: sentence-transformers
-  shelf: experiment
   upstream: ai-research-skills
   path: 15-rag/sentence-transformers
   changes:
   - 照原样收
 - name: sentencepiece
-  shelf: experiment
   upstream: ai-research-skills
   path: 02-tokenization/sentencepiece
   changes:
   - 正文开头加一句：目录里的其它文件用 ai4sci skill show sentencepiece <相对路径> 读
 - name: sglang
-  shelf: experiment
   upstream: ai-research-skills
   path: 12-inference-serving/sglang
   changes:
@@ -1269,7 +1143,6 @@ skills:
   - OpenAI SDK 示例（带 api_key 占位）改成 requests 直连本机端点
   - references/deployment.md 删 Docker、Kubernetes、NGINX 负载均衡、扩缩容、鉴权（--api-key）五节，正文指向它的一句同步改
 - name: simpo
-  shelf: experiment
   upstream: ai-research-skills
   path: 06-post-training/simpo
   changes:
@@ -1277,7 +1150,6 @@ skills:
   - references/datasets.md 删掉 dataset.push_to_hub 一行，以及接在后面引用 Hub 数据集的「Use in config」一段（推送要 HF token）
   - 正文开头加一句：其它文件用 ai4sci skill show simpo <相对路径> 读
 - name: simpy
-  shelf: experiment
   upstream: k-dense
   path: skills/simpy
   changes:
@@ -1292,7 +1164,6 @@ skills:
   - cli-guide.md 的 pinned install 一句改成锁文件已钉 SimPy 4.1.2；作为库用时先用 ai4sci skill show 把 basic_simulation_template.py、resource_monitor.py、_common.py
     存到代码旁边
 - name: slime
-  shelf: experiment
   upstream: ai-research-skills
   path: 06-post-training/slime
   changes:
@@ -1300,14 +1171,12 @@ skills:
   - 删掉安装里的 Docker 段，留 From Source；前置清单改成「Megatron-LM + SGLang installed」
   - 正文开头加一句：其它文件用 ai4sci skill show slime <相对路径> 读
 - name: speculative-decoding
-  shelf: experiment
   upstream: ai-research-skills
   path: 19-emerging-techniques/speculative-decoding
   changes:
   - 正文开头加了一句：本 skill 目录里的其它文件用 `ai4sci skill show speculative-decoding <相对路径>` 读
   - 删掉 See Also 里指向 references/draft_model.md 的一行（上游没有这个文件，是悬空引用）
 - name: stable-baselines3
-  shelf: experiment
   upstream: k-dense
   path: skills/stable-baselines3
   changes:
@@ -1317,7 +1186,6 @@ skills:
     Resources 节合并成一个 references/ 列表
   - 正文与 references/custom_environments.md 里的 scripts/x.py 路径改成 references/x.py
 - name: stable-diffusion
-  shelf: experiment
   upstream: ai-research-skills
   path: 18-multimodal/stable-diffusion
   changes:
@@ -1327,7 +1195,6 @@ skills:
   - references/troubleshooting.md 删「Access denied for gated models」（huggingface-cli login 和 token）
   - references/advanced-usage.md 删「Docker deployment」和「Kubernetes deployment」
 - name: swanlab
-  shelf: experiment
   upstream: ai-research-skills
   path: 13-mlops/swanlab
   changes:
@@ -1338,7 +1205,6 @@ skills:
   - Quick Start 开头加一句：在平台里给 swanlab.init 传 mode="local"，日志存本地，云端模式要登录
   - 正文开头加一句：其它文件用 `ai4sci skill show swanlab <相对路径>` 读
 - name: sympy
-  shelf: experiment
   upstream: k-dense
   path: skills/sympy
   license_note: 链接指向 sympy 库的 BSD 3-Clause
@@ -1346,14 +1212,12 @@ skills:
   - 删去文末 Citing 自引段落
   - 标题下加一句 ai4sci skill show 读目录文件的说明
 - name: tensorboard
-  shelf: experiment
   upstream: ai-research-skills
   path: 13-mlops/tensorboard
   changes:
   - Resources 里删掉 TensorBoard.dev 的链接（要账号的公开分享服务）
   - 正文开头加一句：其它文件用 `ai4sci skill show tensorboard <相对路径>` 读
 - name: tensorrt-llm
-  shelf: experiment
   upstream: ai-research-skills
   path: 12-inference-serving/tensorrt-llm
   changes:
@@ -1363,7 +1227,6 @@ skills:
     超时几处，正文指向它的一句同步改
   - references/multi-gpu.md 删 Kubernetes 部署一节
 - name: timesfm-forecasting
-  shelf: experiment
   upstream: k-dense
   path: skills/timesfm-forecasting
   changes:
@@ -1379,21 +1242,18 @@ skills:
   - 示例 README 的 cd 路径改成存下来的副本，删掉指向未带图片的行；run_example.sh 删掉 SKILL_ROOT，检查命令改成 ai4sci skill run；forecast_csv.py
     失败提示里的命令也同步改了
 - name: torch-geometric
-  shelf: experiment
   upstream: k-dense
   path: skills/torch-geometric
   changes:
   - 删去文末 Citing 自引段落
   - 标题下加一句 ai4sci skill show 读目录文件的说明
 - name: torchdrug
-  shelf: experiment
   upstream: k-dense
   path: skills/torchdrug
   changes:
   - 删去文末 Citing 自引段落
   - 标题下加一句 ai4sci skill show 读目录文件的说明
 - name: torchforge
-  shelf: experiment
   upstream: ai-research-skills
   path: 06-post-training/torchforge
   changes:
@@ -1401,7 +1261,6 @@ skills:
   - 监控清单里的「Check W&B dashboard」改成「Check the training logs」
   - 正文开头加一句：其它文件用 ai4sci skill show torchforge <相对路径> 读
 - name: torchtitan
-  shelf: experiment
   upstream: ai-research-skills
   path: 01-model-architecture/torchtitan
   changes:
@@ -1409,7 +1268,6 @@ skills:
   - 正文开头加一句：目录里的其它文件用 ai4sci skill show torchtitan <相对路径> 读
   - 删 Quick start 与 Workflow 1 下载 tokenizer 命令里的 --hf_token 参数，以及「去 HF 拿 token」那行注释（P-27）
 - name: transformer-lens
-  shelf: experiment
   upstream: ai-research-skills
   path: 04-mechanistic-interpretability/transformer-lens
   changes:
@@ -1418,7 +1276,6 @@ skills:
   - 正文开头加一句：其它文件用 ai4sci skill show transformer-lens <相对路径> 读
   - references/README.md 删掉指向不存在的 papers.md 那一行（上游就没有这个文件）
 - name: transformers
-  shelf: experiment
   upstream: k-dense
   path: skills/transformers
   changes:
@@ -1431,21 +1288,18 @@ skills:
   - references/models.md 删掉「Save to Hugging Face Hub」节和排错里的 huggingface_hub login
   - references/tokenizers.md 删掉 tokenizer.push_to_hub 示例
 - name: trl-fine-tuning
-  shelf: experiment
   upstream: ai-research-skills
   path: 06-post-training/trl-fine-tuning
   changes:
   - frontmatter 的 name 从 fine-tuning-with-trl 改成目录名 trl-fine-tuning
   - 正文开头加一句：其它文件用 ai4sci skill show trl-fine-tuning <相对路径> 读
 - name: usfiscaldata
-  shelf: experiment
   upstream: k-dense
   path: skills/usfiscaldata
   changes:
   - 删除 SKILL.md 末尾的「Citing Scientific Agent Skills」段
   - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show usfiscaldata <相对路径>` 读」
 - name: vaex
-  shelf: experiment
   upstream: k-dense
   path: skills/vaex
   changes:
@@ -1456,7 +1310,6 @@ skills:
   - 'S3 显式 fs_options 的示例换成读公开桶的 `fs_options={''anon'': True}`；排查一节的「Verify credentials」改成用 `anon=True`
     检查桶能不能访问'
 - name: verl
-  shelf: experiment
   upstream: ai-research-skills
   path: 06-post-training/verl
   changes:
@@ -1466,7 +1319,6 @@ skills:
   - 删掉「Multi-Turn Tool Calling」一节：它指向的 references/multi-turn.md 上游就没有这个文件
   - 正文开头加一句：其它文件用 ai4sci skill show verl <相对路径> 读
 - name: vllm
-  shelf: experiment
   upstream: ai-research-skills
   path: 12-inference-serving/vllm
   changes:
@@ -1478,7 +1330,6 @@ skills:
   - references/server-deployment.md 删 Docker、Kubernetes、NGINX、Prometheus / Grafana 几段，正文指向它的一句同步改
   - 删 references/troubleshooting.md 里 huggingface-cli login 与 sudo ufw allow 两条
 - name: whisper
-  shelf: experiment
   upstream: ai-research-skills
   path: 18-multimodal/whisper
   changes:
@@ -1486,7 +1337,6 @@ skills:
   - 安装段删掉 brew、apt、choco 三种装 ffmpeg 的命令（装系统软件），保留一句 Requires ffmpeg on PATH
   - 删「With LangChain」（向量库用 OpenAIEmbeddings，要 OpenAI key）
 - name: zarr-python
-  shelf: experiment
   upstream: k-dense
   path: skills/zarr-python
   changes:
@@ -1495,7 +1345,6 @@ skills:
   - SKILL.md、references/storage_backends.md、references/v3_migration.md 删掉云凭据指引：IAM 角色、workload identity、gcloud
     应用默认凭据、不许打印凭据、排查鉴权时读 .env 变量这几句与对应注释
 - name: clinical-decision-support
-  shelf: analysis
   upstream: k-dense
   path: skills/clinical-decision-support
   changes:
@@ -1508,13 +1357,11 @@ skills:
   - 删 Verification 一节（跑的是上游仓的 tests/ 和裸 python3），也删了上游的安全扫描记录 references/security_validation.md 及它在 Reference
     Map、references/README.md 里的条目
 - name: dhdna-profiler
-  shelf: analysis
   upstream: k-dense
   path: skills/dhdna-profiler
   changes:
   - 删掉末尾「Built By」那段（推广作者的商业平台 themindbook.app）
 - name: exploratory-data-analysis
-  shelf: analysis
   upstream: k-dense
   path: skills/exploratory-data-analysis
   changes:
@@ -1528,7 +1375,6 @@ skills:
   - 「Version baseline」下面两段 `uv pip install` 换成一句话：脚本依赖写在 PEP 723 头和锁里，ai4sci skill run 第一次运行时建环境
   - 正文开头加一句 ai4sci skill show 的说明
 - name: market-research-reports
-  shelf: analysis
   upstream: k-dense
   path: skills/market-research-reports
   changes:
@@ -1541,14 +1387,12 @@ skills:
   - references/sources.md 删掉 SRC-CENSUS-KEY、SRC-BEA-API 两行，另外三行改写掉 key 和注册的说法
   - 7 个脚本和 _common.py 手写了 PEP 723 头（只用标准库，requires-python 照上游写 >=3.11）并出锁
 - name: networkx
-  shelf: analysis
   upstream: k-dense
   path: skills/networkx
   changes:
   - 删掉文末自引用一节
   - 正文开头加一句 ai4sci skill show 读文件的说明
 - name: pathogen-variant-surveillance
-  shelf: analysis
   upstream: k-dense
   path: skills/pathogen-variant-surveillance
   changes:
@@ -1559,7 +1403,6 @@ skills:
     x.py`；「`> out.tsv`」重定向的说法改成 stdout 只放数据
   - 正文开头加一句：其它文件用 ai4sci skill show 读
 - name: pathway-enrichment
-  shelf: analysis
   upstream: k-dense
   path: skills/pathway-enrichment
   changes:
@@ -1570,7 +1413,6 @@ skills:
   - 正文开头加一句用 ai4sci skill show 读目录里其它文件
   - Integration 一节删掉不收的 depmap、bioservices、literature-review
 - name: pkpd-modeling
-  shelf: analysis
   upstream: k-dense
   path: skills/pkpd-modeling
   changes:
@@ -1581,7 +1423,6 @@ skills:
     >=3.11 照上游）
   - 正文开头加一句用 ai4sci skill show 读目录里其它文件
 - name: pydeseq2
-  shelf: analysis
   upstream: k-dense
   path: skills/pydeseq2
   changes:
@@ -1591,7 +1432,6 @@ skills:
   - 正文的 python scripts/run_deseq2_analysis.py 改成 ai4sci skill run pydeseq2 --script run_deseq2_analysis.py，「Read
     references/…」改成 ai4sci skill show；开头加读文件的说明
 - name: pymc
-  shelf: analysis
   upstream: k-dense
   path: skills/pymc
   changes:
@@ -1601,7 +1441,6 @@ skills:
     skill show 读出来、存到实验代码目录再 import
   - 开头加读文件的说明
 - name: scikit-survival
-  shelf: analysis
   upstream: k-dense
   path: skills/scikit-survival
   changes:
@@ -1613,7 +1452,6 @@ skills:
   - 删 Citing 自引用段
   - 正文开头加读文件提示句
 - name: shap
-  shelf: analysis
   upstream: k-dense
   path: skills/shap
   changes:
@@ -1626,7 +1464,6 @@ skills:
   - 删 Citing 自引用段
   - 正文开头加读文件提示句
 - name: statistical-analysis
-  shelf: analysis
   upstream: k-dense
   path: skills/statistical-analysis
   changes:
@@ -1636,21 +1473,18 @@ skills:
   - 「在 skill 目录里跑或把 scripts/ 加进 sys.path」改成用 ai4sci skill show 读出来、存到分析代码旁边再 import；Bundled Resources
     的 Scripts 小节改名为 Helper module
 - name: statsmodels
-  shelf: analysis
   upstream: k-dense
   path: skills/statsmodels
   changes:
   - 删去文末 Citing 自引段落
   - 标题下加一句 ai4sci skill show 读目录文件的说明
 - name: umap-learn
-  shelf: analysis
   upstream: k-dense
   path: skills/umap-learn
   changes:
   - 删除 SKILL.md 末尾的「Citing Scientific Agent Skills」段
   - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show umap-learn <相对路径>` 读」
 - name: uncertainty-and-units
-  shelf: analysis
   upstream: k-dense
   path: skills/uncertainty-and-units
   changes:
@@ -1661,7 +1495,6 @@ skills:
   - 正文里 15 处 `python skills/uncertainty-and-units/scripts/x.py` 改成 `ai4sci skill run uncertainty-and-units
     --script x.py`
 - name: clinical-reports
-  shelf: writing
   upstream: k-dense
   path: skills/clinical-reports
   changes:
@@ -1673,7 +1506,6 @@ skills:
     x.py
   - 溯源清单模板那一句补上说明：用 ai4sci skill show 读模板、在工作目录存副本；报告模板由 generate_report_template.py 拷出来
 - name: ml-paper-writing
-  shelf: writing
   upstream: ai-research-skills
   path: 20-ml-paper-writing/ml-paper-writing
   changes:
@@ -1693,7 +1525,6 @@ skills:
     key」，删推荐 SerpApi（付费、要 key）的那一句
   - 正文开头加一句：目录里的其它文件用 `ai4sci skill show ml-paper-writing <相对路径>` 读
 - name: nature-data
-  shelf: writing
   upstream: nature-skills
   path: skills/nature-data
   changes:
@@ -1702,7 +1533,6 @@ skills:
   - 共享包里的 journal-formats/nature-machine-intelligence.md 拷进 references/shared/，连同它引用的 core/ethics.md、core/research-compliance.md；SKILL.md
     与 manifest.yaml 里的 ../nature-shared/ 路径改成相对 skill 根的 references/shared/…
 - name: nature-paper-to-patent
-  shelf: writing
   upstream: nature-skills
   path: skills/nature-paper-to-patent
   changes:
@@ -1718,7 +1548,6 @@ skills:
   - SKILL.md 第 5 节、static/core/workflow.md 里的两道门、static/fragments/source/pdf-text.md 的起法，都改成 ai4sci skill
     run nature-paper-to-patent --script …
 - name: nature-paper2ppt
-  shelf: writing
   upstream: nature-skills
   path: skills/nature-paper2ppt
   changes:
@@ -1728,7 +1557,6 @@ skills:
   - audit_pptx_quality.py 补了 PEP 723 头（只用标准库）并出了锁；SKILL.md、static/core/workflow.md、references/self-review.md
     里的起法改成 ai4sci skill run nature-paper2ppt --script audit_pptx_quality.py
 - name: nature-polishing
-  shelf: writing
   upstream: nature-skills
   path: skills/nature-polishing
   changes:
@@ -1741,7 +1569,6 @@ skills:
   - 共享包的 check_consistency.py 拷进 scripts/，补了头（只用标准库）并出了锁；consistency-sweep.md 里的起法改成 ai4sci skill run
     nature-polishing --script check_consistency.py；SKILL.md 指向一致性扫描的那句补上了起法（平台要求有脚本的 skill 在正文里写怎么起）
 - name: nature-proposal-writer
-  shelf: writing
   upstream: nature-skills
   path: skills/nature-proposal-writer
   changes:
@@ -1758,7 +1585,6 @@ skills:
   - docstring、references/export-archive.md 的起法改成 ai4sci skill run nature-proposal-writer --script build_proposal_docx.py，SKILL.md
     的参考索引表也补上了起法；删了 export-archive.md 里的「Load pdf only when PDF is requested」，因为平台的 pdf skill 是解析 PDF，不是生成
 - name: nature-response
-  shelf: writing
   upstream: nature-skills
   path: skills/nature-response
   changes:
@@ -1772,7 +1598,6 @@ skills:
     ai4sci skill run nature-response --script check_package_consistency.py
   - templates/ 下的三个 .tex 照带：都是仓库自己写的，只用标准 article/letter 类，受仓库的 Apache-2.0 覆盖
 - name: nature-reviewer
-  shelf: writing
   upstream: nature-skills
   path: skills/nature-reviewer
   changes:
@@ -1783,7 +1608,6 @@ skills:
   - 互盲审稿原来要求每位审稿人在独立的上下文或子代理里写，平台没有子代理：改成上游自带的退路——三份报告依次写、写完不回头改，并在 Review setup 里写明不能保证互盲（改了默认立场一条、工作流第
     4、5 步）
 - name: nature-statistics
-  shelf: writing
   upstream: nature-skills
   path: skills/nature-statistics
   changes:
@@ -1794,7 +1618,6 @@ skills:
   - check_consistency.py 拷进 scripts/，补了头（只用标准库）并出了锁；consistency-sweep.md 的起法改成 ai4sci skill run nature-statistics
     --script check_consistency.py；SKILL.md 相关文件表里那一行补上了起法
 - name: nature-writing
-  shelf: writing
   upstream: nature-skills
   path: skills/nature-writing
   changes:
@@ -1804,7 +1627,6 @@ skills:
     和 static 下各片段里的 ../nature-shared/ 路径，全部改成 references/shared/…
   - templates/submission 下的四个 .tex 照带：都是仓库自己写的，只用标准 article/letter 类，受仓库的 Apache-2.0 覆盖
 - name: peer-review
-  shelf: writing
   upstream: k-dense
   path: skills/peer-review
   changes:
@@ -1813,7 +1635,6 @@ skills:
   - 8 个脚本补 PEP 723 头（全是标准库，requires-python 照上游 compatibility 写 >=3.11）并出锁
   - 正文开头加一句用 ai4sci skill show 读目录里其它文件
 - name: pptx-posters
-  shelf: writing
   upstream: k-dense
   path: skills/pptx-posters
   changes:
@@ -1824,7 +1645,6 @@ skills:
     钉 Pillow==12.3.0，其余只用标准库（requires-python >=3.10 照上游）
   - 正文开头加一句用 ai4sci skill show 读目录里其它文件
 - name: presenting-conference-talks
-  shelf: writing
   upstream: ai-research-skills
   path: 20-ml-paper-writing/presenting-conference-talks
   changes:
@@ -1832,7 +1652,6 @@ skills:
   - Step 4 的 latexmk 与 python3 generate_slides.py 两步注明分别要 TeX Live 和装了 python-pptx 的 Python，环境里没有就把命令交给讲者
   - 正文开头加一句：目录里的其它文件用 `ai4sci skill show presenting-conference-talks <相对路径>` 读
 - name: research-grants
-  shelf: writing
   upstream: k-dense
   path: skills/research-grants
   changes:
@@ -1842,7 +1661,6 @@ skills:
     Parallel 的 key，这批没收）
   - 正文开头加 ai4sci skill show 那句
 - name: scholar-evaluation
-  shelf: writing
   upstream: k-dense
   path: skills/scholar-evaluation
   changes:
@@ -1853,7 +1671,6 @@ skills:
   - 正文开头加 show 那句，并说明 assets 里的模板要先读出来存进工作目录；local_tooling.md 同样补一句；「只用 Bash 跑 python3 命令」改成「只用 Bash 跑
     ai4sci skill run 命令」
 - name: scientific-writing
-  shelf: writing
   upstream: k-dense
   path: skills/scientific-writing
   changes:
@@ -1864,7 +1681,6 @@ skills:
   - 删 Citing 自引用段
   - 正文开头加读文件提示句
 - name: systems-paper-writing
-  shelf: writing
   upstream: ai-research-skills
   path: 20-ml-paper-writing/systems-paper-writing
   changes:
@@ -1873,7 +1689,6 @@ skills:
   - description 里的「LaTeX templates」改成「official LaTeX template links」
   - 正文开头加一句：目录里的其它文件用 `ai4sci skill show systems-paper-writing <相对路径>` 读
 - name: treatment-plans
-  shelf: writing
   upstream: k-dense
   path: skills/treatment-plans
   changes:
@@ -1886,7 +1701,6 @@ skills:
   - 不带 references/security_validation.md（上游自家仓库的安全扫描记录，有两行 API key 字眼，复现命令依赖没发布的测试与扫描工具）；SKILL.md 的 Reference
     map 与 references/README.md 里指向它的条目一并删掉
 - name: venue-templates
-  shelf: writing
   upstream: k-dense
   path: skills/venue-templates
   changes:
@@ -1898,7 +1712,6 @@ skills:
   - LaTeX 模板照原样带上：Elsevier elsarticle 的 3 个 .tex 和 3 个 .bst 文件头写明 LPPL 1.3；其余 6 个 .tex 是上游自写的脚手架（文件头自注
     not an official template），按 skill 的 MIT 带
 - name: ara-rigor-reviewer
-  shelf: verification
   upstream: ai-research-skills
   path: 22-agent-native-research-artifact/rigor-reviewer
   changes:
@@ -1907,7 +1720,6 @@ skills:
   - level2_report.json 写到 ARA 根目录，或调用者指定的目录：P-20 规定写在哪由调用者定，上游的产出被引用后会冻结
   - 正文开头加一句：目录里的其它文件用 `ai4sci skill show ara-rigor-reviewer <相对路径>` 读
 - name: iso-standards-readiness
-  shelf: verification
   upstream: k-dense
   path: skills/iso-standards-readiness
   changes:
@@ -1918,7 +1730,6 @@ skills:
     目录里的相对路径找不到）
   - scripts/ 10 个 .py（含辅助模块 _common.py、_catalog.py）补 PEP 723 头（>=3.11）并出锁
 - name: nature-ref-verifier
-  shelf: verification
   upstream: nature-skills
   path: skills/nature-ref-verifier
   changes:
@@ -1929,7 +1740,6 @@ skills:
   - 删了「超过 20 条就拆给并行子代理」的批量策略
   - 删了「Zotero 更新指令」整段（其中 pyzotero Web 模式要 API key），以及「环境依赖」整节（pyzotero、zotero-mcp、kimi 工具）
 - name: scientific-critical-thinking
-  shelf: verification
   upstream: k-dense
   path: skills/scientific-critical-thinking
   changes:
@@ -1939,7 +1749,6 @@ skills:
   - 删末尾「Citing Scientific Agent Skills」自引用段
   - 正文开头（H1 后）加「本 skill 目录里的其它文件用 `ai4sci skill show scientific-critical-thinking <相对路径>` 读。」
 - name: academic-plotting
-  shelf: general
   upstream: ai-research-skills
   path: 20-ml-paper-writing/academic-plotting
   changes:
@@ -1954,7 +1763,6 @@ skills:
     fallback」
   - 正文开头加一句：目录里的其它文件用 `ai4sci skill show academic-plotting <相对路径>` 读
 - name: liteparse
-  shelf: general
   upstream: k-dense
   path: skills/liteparse
   changes:
@@ -1967,7 +1775,6 @@ skills:
     的 Azure 说法也删了
   - batch_parse_dir.py 补了 PEP 723 头（liteparse==2.0.0）并出锁
 - name: markdown-mermaid-writing
-  shelf: general
   upstream: k-dense
   path: skills/markdown-mermaid-writing
   changes:
@@ -1976,7 +1783,6 @@ skills:
     key 门禁分不出示意图里的字段与真要的 key
   - 删掉与不收的 scientific-schematics 配合的一节和工作流里的一步；「With literature-review」改成泛指文献综述
 - name: markitdown
-  shelf: general
   upstream: k-dense
   path: skills/markitdown
   changes:
@@ -1994,7 +1800,6 @@ skills:
   - batch_convert.py 补 PEP 723 头（markitdown[pdf,docx,pptx,xlsx,xls,outlook,audio-transcription]==0.1.6），convert_literature.py
     补 markitdown[pdf]==0.1.6；requires-python 都是 >=3.12,<3.14，出锁
 - name: matplotlib
-  shelf: general
   upstream: k-dense
   path: skills/matplotlib
   license_note: 链接指向 matplotlib 库的许可证（PSF 式，OSI 认可、可再分发）
@@ -2009,7 +1814,6 @@ skills:
   - 两个脚本补 PEP 723 头（requires-python >=3.10，numpy、matplotlib）并出锁
   - plot_template.py 的 PEP 723 头补上 scipy（直方图里 from scipy.stats import norm，上游没写进依赖），重新出锁
 - name: nature-figure
-  shelf: general
   upstream: nature-skills
   path: skills/nature-figure
   changes:
@@ -2028,7 +1832,6 @@ skills:
     ai4sci skill show 取出脚本文本再拷
   - 原来让人 pip install requirements.txt 装 PyMuPDF，改成说明 ai4sci skill run 会按锁自动装
 - name: ontology-term-resolution
-  shelf: general
   upstream: k-dense
   path: skills/ontology-term-resolution
   changes:
@@ -2039,7 +1842,6 @@ skills:
     x.py`，表格里的脚本路径去掉 scripts/
   - 正文开头加一句：其它文件用 ai4sci skill show 读
 - name: scientific-visualization
-  shelf: general
   upstream: k-dense
   path: skills/scientific-visualization
   changes:
@@ -2056,7 +1858,6 @@ skills:
   - 删 Citing 自引用段
   - 正文开头加读文件提示句
 - name: seaborn
-  shelf: general
   upstream: k-dense
   path: skills/seaborn
   changes:

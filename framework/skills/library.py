@@ -1,18 +1,20 @@
 """三处 skill 库的读取点：扫目录、校验 SKILL.md 与脚本、按名字找（纲领 P-22）。
 
 一个 skill 就是一个目录：`SKILL.md`（frontmatter + 正文）、可选 `scripts/` `references/` `assets/`。
-三处库，名字合起来唯一（`ai4sci skill show <name>` 只认名字）：
+三处库同一种摆法，skill 放在 `<库>/<架>/<tag>/<name>/`——架与 tag 在分类表 `shelves.py`
+（外层 #205），目录就是它在能力镜头里的位置；名字三处合起来唯一（`ai4sci skill show <name>`
+只认名字）：
 
-- **平台自带** `skills/<name>/`：常驻，项目里的会话一直装载（纲领 P-26）。
-- **收录** `skills-curated/<架>/<name>/`：社区整合包按七个研究阶段加 `general`（通用）分拣进来，
-  架就是阶段的 slug；挂到流程实例上才装载。来源与改动记在台账 `provenance.yaml`（`provenance.py`）。
-- **领域包** `domains/<包>/skills/<name>/`：挂到流程实例上才装载。
+- **平台自带** `skills/`：常驻，项目里的会话一直装载（纲领 P-26）。
+- **收录** `skills-curated/`：社区整合包分拣进来；挂到流程实例上才装载。来源与改动记在台账
+  `provenance.yaml`（`provenance.py`）。
+- **领域包** `domains/<包>/skills/`：挂到流程实例上才装载。
 
 宽进：格式照 agentskills.io，规范外的 frontmatter 字段、超长正文、类型不对的可选字段只记一条提醒
 （`Skill.notes`），不拦。不合格的——没有 SKILL.md、frontmatter 坏、缺 name / description、name 与目录
-对不上、脚本没有 PEP 723 头或锁文件——隔离出去带原因（`Invalid`），不拖垮别的：装载一个项目时只碰
-它要的那几个（`workspace/loadout.py`），整库扫描只在门禁与查库时做；门禁（`make skills`）对出厂的
-三处库仍要求全部合格。
+对不上、脚本没有 PEP 723 头或锁文件、目录不在分类表的某个 `<架>/<tag>/` 下面——隔离出去带原因
+（`Invalid`），不拖垮别的：装载一个项目时只碰它要的那几个（`workspace/loadout.py`），整库扫描只在门禁
+与查库时做；门禁（`make skills`）对出厂的三处库仍要求全部合格。
 """
 
 from __future__ import annotations
@@ -24,15 +26,14 @@ from pathlib import Path
 import yaml
 
 from framework import paths
-from framework.contracts.stages import STAGE_SLUGS, name_of
+from framework.skills.shelves import SHELVES, TAGS, place
 
 SKILL_FILE = "SKILL.md"
 SCRIPTS_DIRNAME = "scripts"
 LOCK_SUFFIX = ".lock"
 RESIDENT = "平台"  # 平台自带的那处库在清单里的名字；收录的叫「收录」；领域库用领域包的目录名
 CURATED = "收录"
-GENERAL_SHELF = "general"  # 收录库里不属于某个研究阶段的那一架：画图、格式转换这类通用工具
-CURATED_SHELVES = (*STAGE_SLUGS, GENERAL_SHELF)
+CURATED_EXTRAS = ("licenses",)  # 收录库根上除了各架，还有上游许可证原文的目录（台账在根上，是文件）
 # agentskills.io 规范的 frontmatter 字段（`allowed-tools` 是规范里的实验字段、各家 agent 的权限
 # 写法；平台的权限由适配器定，读了也不用，所以和其它规范外的字段一样只提醒）
 SPEC_FIELDS = ("name", "description", "license", "compatibility", "metadata")
@@ -93,7 +94,8 @@ class Skill:
     dir: Path
     library: str  # 平台 / 收录 / 领域包的名字
     body: str  # SKILL.md 正文（去 frontmatter）
-    shelf: str = ""  # 收录库的架（阶段 slug 或 general）；另两处库没有架
+    shelf: str = ""  # 架：七个阶段的 slug 或 general（`shelves.py`）；单独读一个目录时是空的
+    tag: str = ""  # 架下面的 tag
     license: str = ""
     compatibility: str = ""
     metadata: dict[str, str] = field(default_factory=dict)
@@ -107,7 +109,8 @@ class Skill:
 
     @property
     def where(self) -> str:
-        return where(self.library, self.shelf)
+        """给人看的位置：实验·生物、通用·资料。"""
+        return place(self.shelf, self.tag) if self.shelf else ""
 
     def files(self) -> list[str]:
         """目录里正文以外的文件（相对路径）：`ai4sci skill show <name> <文件>` 能读的就是这些。
@@ -127,12 +130,14 @@ class Skill:
 
 @dataclass(frozen=True)
 class Invalid:
-    """一个不合格的 skill 目录：不装载、不进清单，带着原因留给门禁与查库的人看。"""
+    """一个不合格的 skill 目录：不装载、不进清单，带着原因留给门禁与查库的人看。摆错了地方的
+    （不在分类表的 `<架>/<tag>/` 下面）没有架与 tag。"""
 
     dir: Path
     library: str
     problems: tuple[str, ...]
     shelf: str = ""
+    tag: str = ""
 
     @property
     def name(self) -> str:
@@ -140,7 +145,7 @@ class Invalid:
 
     @property
     def where(self) -> str:
-        return where(self.library, self.shelf)
+        return place(self.shelf, self.tag) if self.shelf else ""
 
 
 @dataclass(frozen=True)
@@ -153,43 +158,19 @@ class Scan:
 
 @dataclass(frozen=True)
 class Root:
-    """一处库（或收录库的一架）：名字、架、目录。"""
+    """一处库：名字（平台 / 收录 / 领域包名）与根目录，skill 在它下面的 `<架>/<tag>/<name>/`。"""
 
     library: str
     path: Path
-    shelf: str = ""
-
-
-def where(library: str, shelf: str) -> str:
-    """给人看的出处：平台 / 收录·文献 / 收录·通用 / 领域包名。"""
-    if library != CURATED:
-        return library
-    return f"{CURATED}·{'通用' if shelf == GENERAL_SHELF else name_of(shelf)}"
-
-
-def shelf_of(text: str) -> str:
-    """阶段名、slug 或「通用」→ 架；认不出就炸（调用方先给用户说清有哪些）。"""
-    if text in ("通用", GENERAL_SHELF):
-        return GENERAL_SHELF
-    if text in CURATED_SHELVES:
-        return text
-    for slug in STAGE_SLUGS:
-        if name_of(slug) == text:
-            return slug
-    raise ValueError(f"不是阶段：{text!r}（七个阶段的名字，或「通用」）")
 
 
 # ── 三处库 ───────────────────────────────────────────────────────────────────
 def roots(domains_root: Path | None = None) -> list[Root]:
-    """全部库，按「平台 → 收录各架（阶段序，最后通用）→ 领域包（按名）」排；不存在的架跳过。"""
-    curated = paths.curated_skills_root()
-    out = [Root(RESIDENT, paths.skills_root())]
-    out += [Root(CURATED, curated / shelf, shelf) for shelf in CURATED_SHELVES
-            if (curated / shelf).is_dir()]
+    """全部库：平台、收录、领域包（按名）。"""
     root = paths.domains_root() if domains_root is None else Path(domains_root)
-    out += [Root(d.name, d / "skills") for d in sorted(root.iterdir())
-            if d.is_dir() and (d / "skills").is_dir()]
-    return out
+    return [Root(RESIDENT, paths.skills_root()), Root(CURATED, paths.curated_skills_root()),
+            *(Root(d.name, d / "skills") for d in sorted(root.iterdir())
+              if d.is_dir() and (d / "skills").is_dir())]
 
 
 def resident() -> Scan:
@@ -202,50 +183,79 @@ def everything(domains_root: Path | None = None) -> Scan:
     return scan(roots(domains_root))
 
 
+def cells(found_roots: list[Root]) -> list[tuple[Root, str, str, Path]]:
+    """几处库里存在的 `<架>/<tag>/` 目录，按分类表的序（架 → tag → 库）：能力镜头一架一行、
+    一个 tag 一组，几处库的同一个 tag 排在一起。"""
+    return [(root, shelf, tag.slug, root.path / shelf / tag.slug)
+            for shelf in SHELVES for tag in TAGS[shelf] for root in found_roots
+            if (root.path / shelf / tag.slug).is_dir()]
+
+
 def names(domains_root: Path | None = None) -> frozenset[str]:
     """三处库里有哪些 skill 的名字：只看目录名、不解析（合格不合格都算）。流程里挂的名字是不是
     skill 看目录在不在——每条 `cap` / `show flows` 都要问，几百个 SKILL.md 不能每次都读一遍。"""
-    return frozenset(d.name for root in roots(domains_root) if root.path.is_dir()
-                     for d in root.path.iterdir() if d.is_dir())
+    return frozenset(d.name for *_, cell in cells(roots(domains_root))
+                     for d in cell.iterdir() if d.is_dir())
 
 
 def find(name: str, domains_root: Path | None = None) -> Skill:
     """按名字找一个：只看目录名，不扫全库；不合格就带原因抛 SkillInvalid，重名也抛。"""
-    hits = [(root, root.path / name) for root in roots(domains_root)
-            if (root.path / name).is_dir()]
+    hits = [(root, shelf, tag, cell / name) for root, shelf, tag, cell
+            in cells(roots(domains_root)) if (cell / name).is_dir()]
     if not hits:
         raise SkillNotFound(f"没有叫 {name!r} 的 skill（ai4sci show skills <词> 查库）")
     if len(hits) > 1:
-        raise SkillInvalid(f"skill {name!r} 重名：" + "、".join(str(d) for _, d in hits)
+        raise SkillInvalid(f"skill {name!r} 重名：" + "、".join(str(h[-1]) for h in hits)
                            + "（三处库合起来要唯一）")
-    root, directory = hits[0]
-    return load_skill(directory, root.library, root.shelf)
+    root, shelf, tag, directory = hits[0]
+    return load_skill(directory, root.library, shelf, tag)
 
 
 def scan(found_roots: list[Root]) -> Scan:
-    """扫几处库，每个子目录一个 skill；坏的与重名的（后到的那个）隔离出去带原因，不抛。"""
+    """扫几处库，每个 `<架>/<tag>/` 下的子目录一个 skill；坏的、重名的（后到的那个）、摆错了地方
+    的隔离出去带原因，不抛。"""
     skills: list[Skill] = []
     invalid: list[Invalid] = []
     seen: dict[str, Path] = {}
-    for root in found_roots:
-        if not root.path.is_dir():
-            continue
-        for directory in sorted(p for p in root.path.iterdir() if p.is_dir()):
+    for root, shelf, tag, cell in cells(found_roots):
+        for directory in sorted(p for p in cell.iterdir() if p.is_dir()):
             if directory.name in seen:
                 clash = f"名字与 {seen[directory.name]} 重复（三处库合起来要唯一）"
-                invalid.append(Invalid(directory, root.library, (clash,), root.shelf))
+                invalid.append(Invalid(directory, root.library, (clash,), shelf, tag))
                 continue
             seen[directory.name] = directory
             try:
-                skills.append(load_skill(directory, root.library, root.shelf))
+                skills.append(load_skill(directory, root.library, shelf, tag))
             except SkillInvalid as exc:
                 invalid.append(Invalid(directory, root.library, tuple(str(exc).splitlines()),
-                                       root.shelf))
+                                       shelf, tag))
+    for root in found_roots:
+        invalid += _misplaced(root)
     return Scan(tuple(skills), tuple(invalid))
 
 
+def _misplaced(root: Root) -> list[Invalid]:
+    """一处库里摆错了地方的目录：根上不是架的、架下面不是表里的 tag 的。不报的话这些 skill 就
+    悄悄从清单里消失了。文件不算（台账、说明），收录库根上的许可证原文目录不算。"""
+    if not root.path.is_dir():
+        return []
+    rule = "skill 放在 <架>/<tag>/<name>/，架与 tag 见分类表 framework/skills/shelves.py"
+    out: list[Invalid] = []
+    for entry in sorted(p for p in root.path.iterdir() if p.is_dir()):
+        if root.library == CURATED and entry.name in CURATED_EXTRAS:
+            continue
+        if entry.name not in SHELVES:
+            out.append(Invalid(entry, root.library, (f"{entry.name} 不是架（{rule}）",)))
+            continue
+        slugs = [t.slug for t in TAGS[entry.name]]
+        for sub in sorted(p for p in entry.iterdir() if p.is_dir() and p.name not in slugs):
+            problem = f"{entry.name}/{sub.name} 不是这一架的 tag（有：{'、'.join(slugs)}；{rule}）"
+            out.append(Invalid(sub, root.library, (problem,)))
+    return out
+
+
 # ── 一个 skill ───────────────────────────────────────────────────────────────
-def load_skill(directory: Path, library: str = RESIDENT, shelf: str = "") -> Skill:
+def load_skill(directory: Path, library: str = RESIDENT, shelf: str = "", tag: str = "") -> Skill:
     directory = Path(directory).resolve()
     path = directory / SKILL_FILE
     if not path.is_file():
@@ -272,7 +282,7 @@ def load_skill(directory: Path, library: str = RESIDENT, shelf: str = "") -> Ski
     license_, compatibility = front.get("license"), front.get("compatibility")
     return Skill(
         name=front["name"], description=str(front["description"]).strip(), dir=directory,
-        library=library, shelf=shelf, body=body.strip(),
+        library=library, shelf=shelf, tag=tag, body=body.strip(),
         license=license_.strip() if isinstance(license_, str) else "",
         compatibility=compatibility.strip() if isinstance(compatibility, str) else "",
         metadata=metadata, scripts=scripts, notes=tuple(notes),

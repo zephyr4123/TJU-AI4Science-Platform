@@ -93,12 +93,13 @@ def templates_root() -> Path:
 
 def skills_root() -> Path:
     """平台自带的 skill（纲领 P-22）：常驻，项目里的会话一直装载（P-26）。收录的在
-    `curated_skills_root()`，领域包自己的在 `domains/<包>/skills/`。"""
+    `curated_skills_root()`，领域包自己的在 `domains/<包>/skills/`；三处都摆成 `<架>/<tag>/<name>/`
+    （分类表 `framework/skills/shelves.py`）。"""
     return _library(SKILLS_ROOT_ENV, SKILLS_DIRNAME)
 
 
 def curated_skills_root() -> Path:
-    """收录的社区 skill：按七个研究阶段加 `general` 分拣成子目录，挂到流程实例上才装载
+    """收录的社区 skill：按分类表分拣成 `<架>/<tag>/` 子目录，挂到流程实例上才装载
     （P-22、P-26）。"""
     return _library(CURATED_SKILLS_ROOT_ENV, CURATED_SKILLS_DIRNAME)
 

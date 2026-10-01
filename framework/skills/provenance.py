@@ -1,6 +1,6 @@
 """收录库的台账 `skills-curated/provenance.yaml`：每个收录的 skill 从哪来、改了什么（纲领 P-22）。
 
-台账是收录这件事的唯一记录：目录里的每个 skill 在 `skills` 里有且只有一行，架对得上；上游写明仓库、
+台账是收录这件事的唯一记录：目录里的每个 skill 在 `skills` 里有且只有一行；上游写明仓库、
 提交与许可证，许可证原文拷在 `licenses/` 里（MIT、Apache 要求随代码带原文）；不收的写进 `rejected`
 带原因，下次同步上游时不用再判一遍。形状：
 
@@ -13,7 +13,6 @@
         license_file: licenses/k-dense.txt
     skills:
       - name: paper-lookup               # 平台里的名字（= 目录名）
-        shelf: literature                # 架：七个阶段的 slug 或 general
         upstream: k-dense
         path: skills/paper-lookup        # 上游仓里的原路径
         changes: [命令改成 ai4sci skill run, …]
@@ -28,7 +27,8 @@
 认得出是可收的（`MIT license`、`3-clause BSD` 这类写法归一成 SPDX 名）或没写（随上游仓）就过；
 认不出的（链接、库自己的协议名、一段话）台账那行要写 `license_note`，说清查过、为什么能收。
 
-对账只读台账与目录，不碰上游仓：上游的克隆不在仓里，换机器照样能查。
+放在哪一架哪个 tag 不记在这里：目录就是它的位置（`<架>/<tag>/<name>/`，分类表 `shelves.py`），
+一个事实只放一处。对账只读台账与目录，不碰上游仓：上游的克隆不在仓里，换机器照样能查。
 """
 
 from __future__ import annotations
@@ -40,7 +40,14 @@ from pathlib import Path
 import yaml
 
 from framework import paths
-from framework.skills.library import CURATED_SHELVES, SKILL_FILE, SkillInvalid, split_frontmatter
+from framework.skills.library import (
+    CURATED,
+    SKILL_FILE,
+    Root,
+    SkillInvalid,
+    cells,
+    split_frontmatter,
+)
 
 LEDGER_FILE = "provenance.yaml"
 # 能随开源平台再分发、不附加使用限制的许可证（SPDX 名）。NC、专有、没有许可证的一律不收；
@@ -61,7 +68,6 @@ class LedgerInvalid(ValueError):
 @dataclass(frozen=True)
 class Entry:
     name: str
-    shelf: str
     upstream: str
     path: str
     changes: tuple[str, ...]
@@ -102,16 +108,13 @@ def check(root: Path | None = None) -> list[Entry]:
             problems.append(f"upstreams.{key} 的许可证原文 {up['license_file']} 不在")
     entries: list[Entry] = []
     for i, row in enumerate(raw.get("skills") or []):
-        if not isinstance(row, dict) or not all(row.get(k) for k in
-                                                 ("name", "shelf", "upstream", "path")):
-            problems.append(f"skills 第 {i + 1} 行要有 name / shelf / upstream / path")
+        if not isinstance(row, dict) or not all(row.get(k) for k in ("name", "upstream", "path")):
+            problems.append(f"skills 第 {i + 1} 行要有 name / upstream / path")
             continue
         if row["upstream"] not in upstreams:
             problems.append(f"{row['name']}: upstream {row['upstream']!r} 不在 upstreams 里")
-        if row["shelf"] not in CURATED_SHELVES:
-            problems.append(f"{row['name']}: 架 {row['shelf']!r} 不是 {CURATED_SHELVES} 之一")
         changes = row.get("changes") or []
-        entries.append(Entry(str(row["name"]), str(row["shelf"]), str(row["upstream"]),
+        entries.append(Entry(str(row["name"]), str(row["upstream"]),
                              str(row["path"]), tuple(str(c) for c in changes),
                              str(row.get("license_note") or "")))
     rejected = raw.get("rejected") or []
@@ -127,16 +130,14 @@ def check(root: Path | None = None) -> list[Entry]:
         if entry.name in listed:
             problems.append(f"{entry.name}: 台账里出现了两次")
         listed[entry.name] = entry
-    on_disk = {d.name: shelf for shelf in CURATED_SHELVES if (root / shelf).is_dir()
-               for d in (root / shelf).iterdir() if (d / SKILL_FILE).is_file()}
+    on_disk = {d.name: d for *_, cell in cells([Root(CURATED, root)])
+               for d in cell.iterdir() if (d / SKILL_FILE).is_file()}
     for name in sorted(set(on_disk) - set(listed)):
-        problems.append(f"{on_disk[name]}/{name}: 在收录库里但台账里没有")
+        problems.append(f"{on_disk[name].relative_to(root)}: 在收录库里但台账里没有")
     for name in sorted(set(listed) - set(on_disk)):
         problems.append(f"{name}: 台账里有但收录库里没有")
     for name in sorted(set(listed) & set(on_disk)):
-        if listed[name].shelf != on_disk[name]:
-            problems.append(f"{name}: 台账写架 {listed[name].shelf}，目录在 {on_disk[name]}")
-        own = _own_license(root / on_disk[name] / name)
+        own = _own_license(on_disk[name])
         if own and spdx(own) is None and not listed[name].license_note:
             problems.append(f"{name}: skill 自己写的许可证 {own[:80]!r} 认不出是可收的："
                             "查清后在台账那行写 license_note，说明为什么能收")

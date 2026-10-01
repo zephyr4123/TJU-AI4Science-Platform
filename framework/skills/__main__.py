@@ -4,7 +4,8 @@
 （纲领 P-27）：哪个文件提到第三方凭据就不过 → 收录库的台账与目录对账（`provenance.py`）→ 平台自带的
 每个脚本 `uv lock --check` + `uv sync`，声明的系统命令 `which` 一遍。收录的与领域包的不预热：几百个
 skill 一个项目只用到几个，第一次 `ai4sci skill run` 时按锁建环境（`run.py`）。任何一步不过就退 1、
-问题一行一条；过了每处库打一行计数。
+问题一行一条；过了每处库打一行计数。摆错地方的目录（不在分类表的
+`<架>/<tag>/` 下面）在扫库时就隔离成不合格的了，第一步拦下。
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import sys
 from collections import Counter
 
 from framework.skills import everything, run
-from framework.skills.library import RESIDENT, SkillInvalid, key_mentions
+from framework.skills.library import RESIDENT, SkillInvalid, key_mentions, roots
 from framework.skills.provenance import LedgerInvalid, check
 
 
@@ -44,11 +45,12 @@ def main() -> int:
     if problems:
         print("\n".join(problems), file=sys.stderr)
         return 1
-    counts = Counter(skill.where for skill in found.skills)
-    scripts = Counter(skill.where for skill in found.skills for _ in skill.scripts)
-    notes = Counter(skill.where for skill in found.skills for _ in skill.notes)
-    for where in dict.fromkeys(skill.where for skill in found.skills):
-        print(f"{where}\t{counts[where]} 个 skill\t{scripts[where]} 个脚本\t{notes[where]} 条提醒")
+    counts = Counter(skill.library for skill in found.skills)
+    scripts = Counter(skill.library for skill in found.skills for _ in skill.scripts)
+    notes = Counter(skill.library for skill in found.skills for _ in skill.notes)
+    for name in (root.library for root in roots()):
+        if counts[name]:
+            print(f"{name}\t{counts[name]} 个 skill\t{scripts[name]} 个脚本\t{notes[name]} 条提醒")
     return 0
 
 
