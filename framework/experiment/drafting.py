@@ -19,9 +19,9 @@ from pathlib import Path
 import yaml
 
 from backends import Runner
-from framework import skills
 from framework.executor import prompting, session
 from framework.experiment import pack as packs
+from framework.workspace import loadout
 
 LOGGER = logging.getLogger("ai4sci.drafting")
 # 执行层只许写这些：评分契约、评分脚本、基线代码；data/ env/ 是研究者带来的，锁死
@@ -88,8 +88,7 @@ def draft(
         "lint_select": LINT_SELECT, "lint_line_length": LINT_LINE_LENGTH,
         "harness_contract": HARNESS_CONTRACT.read_text(encoding="utf-8").strip(),
     }
-    prompt = prompting.build_prompt(
-        Path(template), values, skills=skills.for_executor(domain, domains_root=domains_root))
+    prompt = prompting.build_prompt(Path(template), values, loadout=loadout.around(pack))
 
     log_dir, number = _next_session_dir(pack / LOG_DIRNAME)
     log_dir.mkdir(parents=True)

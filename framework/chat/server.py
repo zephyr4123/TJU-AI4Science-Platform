@@ -95,7 +95,7 @@ from backends import (
 )
 from framework import agents, computes, paths
 from framework.chat import boards, conversation, guide, notify, removal, scope, settings
-from framework.contracts import output, requirement, stages, workflows
+from framework.contracts import output, requirement, stages, workflow_library, workflows
 from framework.contracts.capability import Capability
 from framework.workspace import jobs, outputs, project, root
 from framework.workspace import removal as ws_removal
@@ -153,21 +153,21 @@ class ChatServer(ThreadingHTTPServer):
         self.add_compute = add_compute or _no_add_compute
         # 页面构建目录；None 就是没构建，根路径回一句怎么构建，接口照常
         self.ui_dir = None if ui_dir is None else Path(ui_dir).resolve()
-        # 两份指南在起服务时各读一次：文件不在当场炸，不等第一条消息才发现。这里存的是不带
-        # 「工具怎么用」的那份；发消息时按这段对话那家适配器补上它自己的那段（`system_prompt_for`）
-        self.system_prompts = ({kind: guide.system_prompt(kind) for kind in guide.KINDS}
-                               if system_prompts is None else system_prompts)
-        self._injected_prompts = system_prompts is not None
+        # 两份指南在起服务时各读一次：文件不在当场炸，不等第一条消息才发现。真拼 system prompt 在
+        # 发消息时（研究助理那份带本项目装载的 skill 清单，每轮现算，纲领 P-26）；测试可以整份注入
+        if system_prompts is None:
+            for kind in guide.KINDS:
+                guide.system_prompt(kind)
+        self.system_prompts = system_prompts
 
-    def system_prompt_for(self, kind: str, chat: Chat) -> str:
-        """这个域的指南 + 这家 CLI 的「工具怎么用」。真指南由 guide 拼（那段插在前言之后）；
-        测试注入的
-        指南直接接在后面。"""
-        tool = chat.tool_guide(guide.bash_rules(kind))
-        if self._injected_prompts:
-            base = self.system_prompts[kind]
-            return base + ("\n\n" + tool.strip() + "\n" if tool.strip() else "")
-        return guide.system_prompt(kind, tool_guide=tool)
+    def system_prompt_for(self, where: scope.Scope, chat: Chat) -> str:
+        """这个域的指南 + 这家 CLI 的「工具怎么用」+（研究助理）本项目装载的 skill 清单，由 scope
+        拼；测试注入的指南直接接上「工具怎么用」。"""
+        if self.system_prompts is None:
+            return where.system_prompt(chat)
+        tool = chat.tool_guide(guide.bash_rules(where.kind))
+        return self.system_prompts[where.kind] + ("\n\n" + tool.strip() + "\n" if tool.strip()
+                                                  else "")
 
     @property
     def projects_root(self) -> Path:
@@ -325,8 +325,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_settings(parts[1:], body)
         if len(parts) == 3 and parts[0] == "workflows" and parts[2] == "remove":
             try:
-                workflows.Library(paths.workflows_root(),
-                                  paths.user_workflows_root(self.server.home)).remove(parts[1])
+                workflow_library.Library(paths.workflows_root(), paths.user_workflows_root(
+                    self.server.home)).remove(parts[1])
             except FileNotFoundError as exc:
                 return self._error(HTTPStatus.NOT_FOUND, str(exc))
             except workflows.WorkflowInvalid as exc:  # 出厂的
@@ -503,7 +503,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream(self, where: scope.Scope, conv: conversation.Conversation, chat: Chat,
                 text: str, tuning: Tuning) -> None:
-        system_prompt = self.server.system_prompt_for(where.kind, chat)
+        system_prompt = self.server.system_prompt_for(where, chat)
         try:
             events = conversation.send(
                 conv, chat, text, system_prompt=system_prompt,

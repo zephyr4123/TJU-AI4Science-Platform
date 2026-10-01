@@ -59,7 +59,7 @@ stdout 一行 JSON：`{"out": …, "pages": 22, "sections": 12, "tables": 4, "fi
 
 | 现象 | 原因 | 怎么办 |
 |---|---|---|
-| `uv` 报 offline / 找不到包 | 环境没预热 | 起服务的人跑 `make skills`（唯一联网的一步） |
+| `uv` 报找不到包、网络错 | 环境没预热 | 起服务的人跑 `make skills` |
 | 退出码 3，「链接返回的不是 PDF」 | 给的是论文页面不是 PDF 直链 | arXiv 用 `https://arxiv.org/pdf/<id>`；期刊页面多半要登录，让研究者把文件放进 `materials/` |
 | `sections` 为 0、`paper.md` 几乎空 | 扫描件 | 换带文字层的版本 |
 | 表格数字对不上原文 | 版面切错 | 看 `paper.md` 里那张表的 markdown，或让研究者核对那一页 |

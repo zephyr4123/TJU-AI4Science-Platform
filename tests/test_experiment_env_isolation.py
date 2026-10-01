@@ -20,6 +20,7 @@ from framework.capabilities.auto_research.open import EnvBuildError
 from framework.experiment import env, layout
 from framework.experiment.context import load_context, read_domain_extra
 from tests.fixtures import packs_factory as pf
+from tests.fixtures import spaces
 from tests.fixtures.scripted_backend import ScriptedRunner
 from tests.test_experiment_loop import make_loop_pack, open_run, train_for_mse
 
@@ -84,6 +85,7 @@ def test_domain_prompt_is_snapshotted_and_skills_go_in_as_a_catalog(tmp_path, mo
     (domain / "prompts" / "experiment.md").write_text("实验时只调学习率。\n", encoding="utf-8")
     (domain / "skills" / "petab").mkdir(parents=True)
     (domain / "skills" / "petab" / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
+    spaces.give_flow(pack.workspace, "  - 实验: [petab]\n")  # 领域 skill 挂上才装载（P-26）
 
     run_dir = open_run(pack)
     assert layout.domain_prompt(run_dir).is_file()

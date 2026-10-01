@@ -8,7 +8,7 @@ import yaml
 
 from framework import paths
 from framework.capabilities import discover
-from framework.contracts import workflows
+from framework.contracts import workflow_library, workflows
 from framework.contracts.workflows import Pick, Stage, Stop
 
 GOOD = """\
@@ -229,13 +229,20 @@ def test_a_skill_hangs_on_any_stage_without_params_and_is_tagged(tmp_path):
                                 catalog(), skills={"pdf"})
 
 
-def library(tmp_path) -> workflows.Library:
+def library(tmp_path) -> workflow_library.Library:
     """两层库：出厂的一条 research，用户库还不存在（第一次存时才建）。"""
     shipped = tmp_path / "shipped"
     shipped.mkdir()
     (shipped / "research.yaml").write_text(GOOD.replace("name: w", "name: research"),
                                            encoding="utf-8")
-    return workflows.Library(shipped, tmp_path / "home" / "studio" / "workflows")
+    return workflow_library.Library(shipped, tmp_path / "home" / "studio" / "workflows")
+
+
+def mine() -> dict:
+    """人存的一条：比出厂的 research 少最后那个断点（结构一样的会被查重拒）。"""
+    doc = {**yaml.safe_load(GOOD), "name": "mine"}
+    doc["stages"] = doc["stages"][:-1]
+    return doc
 
 
 def test_library_lists_both_layers_shipped_first_and_flags_the_source(tmp_path):
@@ -243,7 +250,7 @@ def test_library_lists_both_layers_shipped_first_and_flags_the_source(tmp_path):
     lib = library(tmp_path)
     assert [d["name"] for d in lib.describe(catalog())] == ["research"]
     assert lib.names() == ["research"] and lib.shipped_names() == {"research"}
-    saved = lib.save({**yaml.safe_load(GOOD), "name": "mine"}, catalog())
+    saved = lib.save(mine(), catalog())
     assert saved.name == "mine" and (lib.user / "mine.yaml").is_file()
     assert not (lib.shipped / "mine.yaml").exists()  # 出厂目录一个字节都没动
     flags = {d["name"]: d["shipped"] for d in lib.describe(catalog())}
@@ -264,7 +271,7 @@ def test_library_refuses_shipped_names_on_save_and_remove_but_removes_user_ones(
         lib.remove("research")
     with pytest.raises(FileNotFoundError):
         lib.remove("mine")
-    lib.save({**yaml.safe_load(GOOD), "name": "mine"}, catalog())
+    lib.save(mine(), catalog())
     assert lib.remove("mine") == lib.user / "mine.yaml" and not (lib.user / "mine.yaml").exists()
     (lib.user / "research.yaml").write_text(GOOD.replace("name: w", "name: research"),
                                             encoding="utf-8")
@@ -282,3 +289,115 @@ def test_describe_dir_marks_nothing_as_shipped_unless_told(tmp_path):
     assert [d["shipped"] for d in workflows.describe_dir(tmp_path, catalog())] == [False]
     rows = workflows.describe_dir(tmp_path, catalog(), shipped=True)
     assert [d["shipped"] for d in rows] == [True]
+
+
+# ── 起名、血缘、差异、查重（纲领 P-15，外层 #199）──────────────────────────────
+def test_from_is_optional_and_checked_and_round_trips(tmp_path):
+    """没有 from 的老文件照常读；from 要是 {name, hash}；存回去 from 紧跟在 name 后面。"""
+    write(tmp_path, GOOD)
+    assert workflows.load_workflow(tmp_path / "w.yaml").origin is None
+    origin = "from: {name: research, hash: 3f2a9c1e0b7d}\n"
+    write(tmp_path, GOOD.replace("title: 一条", origin + "title: 一条"))
+    wf = workflows.load_workflow(tmp_path / "w.yaml")
+    assert wf.origin == workflows.Origin("research", "3f2a9c1e0b7d")
+    assert wf.to_dict()["from"] == {"name": "research", "hash": "3f2a9c1e0b7d"}
+    for bad in ("from: research", "from: {name: research}", "from: {name: R, hash: abcdef12}",
+                "from: {name: research, hash: zz}"):
+        write(tmp_path, GOOD.replace("title: 一条", f"{bad}\ntitle: 一条"))
+        with pytest.raises(workflows.WorkflowInvalid, match="from 要是"):
+            workflows.load_workflow(tmp_path / "w.yaml")
+    doc = {**yaml.safe_load(GOOD), "from": wf.origin.to_dict()}
+    saved = workflows.save_workflow(tmp_path / "out", doc, catalog())
+    text = (tmp_path / "out" / "w.yaml").read_text(encoding="utf-8")
+    assert text.startswith("name: w\nfrom:\n  name: research\n") and saved.origin == wf.origin
+
+
+def test_structure_hash_ignores_words_and_layout_but_not_params_or_stops():
+    base = workflows.parse_workflow("w.yaml", yaml.safe_load(GOOD))
+    reworded = workflows.parse_workflow("w.yaml", yaml.safe_load(
+        GOOD.replace("title: 一条", "title: 换个标题").replace("断点: 看一眼假设", "断点: 换句话")))
+    assert reworded.content_hash() == base.content_hash()
+    more_iters = workflows.parse_workflow("w.yaml", yaml.safe_load(
+        GOOD.replace("max_iters: 2", "max_iters: 3")))
+    assert more_iters.content_hash() != base.content_hash()
+    no_stop = workflows.parse_workflow("w.yaml", yaml.safe_load(
+        GOOD.replace("  - 断点: 看一眼假设\n", "")))
+    assert no_stop.content_hash() != base.content_hash()
+
+
+def test_derived_flows_are_named_after_their_family_and_record_where_they_came_from(tmp_path):
+    lib = library(tmp_path)
+    research = lib.load("research")
+    doc = lib.derive("research")
+    assert doc["name"] == "research-2"
+    assert doc["from"] == {"name": "research", "hash": research.content_hash()}
+    doc["stages"] = doc["stages"][:-1]
+    first = lib.save(doc, catalog())
+    assert first.name == "research-2" and first.origin.name == "research"
+    # 从 research-2 再派生：还是 research 家族，序号往后排
+    second = lib.derive("research-2")
+    assert second["name"] == "research-3" and second["from"]["name"] == "research-2"
+    assert lib.family("research-2") == "research" and lib.family("research") == "research"
+    with pytest.raises(FileNotFoundError, match="没有叫 'nope'"):
+        lib.derive("nope")
+
+
+def test_page_saves_get_names_from_the_platform(tmp_path):
+    """页面存流程不填名字：带 from（父流程的名字）的是派生，按家族起；不带的按标题里的英文词起。"""
+    lib = library(tmp_path)
+    doc = {**yaml.safe_load(GOOD), "from": "research"}
+    doc.pop("name")
+    doc["stages"] = doc["stages"][:-1]
+    saved = lib.save(doc, catalog())
+    assert saved.name == "research-2"
+    assert saved.origin == workflows.Origin("research", lib.load("research").content_hash())
+    scratch = {**yaml.safe_load(GOOD), "title": "快速看一眼 Quick Look"}
+    scratch.pop("name")
+    scratch["stages"] = scratch["stages"][:3]
+    assert lib.save(scratch, catalog()).name == "quick-look"
+    chinese = {**yaml.safe_load(GOOD), "title": "只有中文"}
+    chinese.pop("name")
+    chinese["stages"] = chinese["stages"][:2]
+    assert lib.save(chinese, catalog()).name == "flow"
+    with pytest.raises(workflows.WorkflowInvalid, match="from 'gone' 不在库里"):
+        lib.save({**doc, "from": "gone"}, catalog())
+
+
+def test_a_flow_identical_to_one_in_the_library_is_refused(tmp_path):
+    """结构一模一样的不存第二份；参数不同算不同；标题不同不算。"""
+    lib = library(tmp_path)
+    same = {**yaml.safe_load(GOOD), "name": "copy", "title": "换个标题"}
+    with pytest.raises(workflow_library.DuplicateWorkflow, match="库里的 research 和这条一模一样"):
+        lib.save(same, catalog())
+    nine = {"实验": {"auto-research": {"max_iters": 9}}}
+    tweaked = {**same, "stages": [*same["stages"][:4], nine, "验证"]}
+    assert lib.save(tweaked, catalog()).name == "copy"
+    # 改自己（覆盖）不算和自己重
+    assert lib.save({**tweaked, "title": "再改"}, catalog(), overwrite=True).title == "再改"
+    # 手搬进来的一模一样的：清单上后到的那条带问题
+    (lib.user / "zzz.yaml").write_text(GOOD.replace("name: w", "name: zzz"), encoding="utf-8")
+    problems = {row["name"]: row["problems"] for row in lib.describe(catalog())}
+    assert problems["research"] == [] and problems["copy"] == []
+    assert problems["zzz"] == ["与 research 一模一样（阶段、能力、参数、断点都相同）：删掉一条"]
+
+
+def test_diff_says_what_changed_in_plain_words_and_flags_a_changed_parent(tmp_path):
+    lib = library(tmp_path)
+    doc = lib.derive("research")
+    doc["stages"] = ["文献", {"假设": ["pdf"]}, "设计", {"断点": "核对评分脚本"},
+                     {"实验": {"auto-research": {"max_iters": 5}}}, "验证"]
+    lib.save(doc, catalog(), skills=SKILLS)
+    row = next(r for r in lib.describe(catalog(), SKILLS) if r["name"] == "research-2")
+    caps = catalog()
+    design_title, auto = caps["design"].title, caps["auto-research"]
+    iters = f"「实验」{auto.title} 的" + next(p.label for p in auto.params if p.name == "max_iters")
+    assert row["family"] == "research" and row["parent_changed"] is False
+    assert row["diff"] == ["加了阶段「文献」", "「假设」加挂 pdf", "去掉断点「看一眼假设」",
+                           f"「设计」不再挂 {design_title}", f"{iters}：2 → 5"]
+    # 父流程之后改过：差异照算，并提醒
+    (lib.shipped / "research.yaml").write_text(
+        GOOD.replace("name: w", "name: research").replace("max_iters: 2", "max_iters: 4"),
+        encoding="utf-8")
+    row = next(r for r in lib.describe(catalog(), SKILLS) if r["name"] == "research-2")
+    assert row["parent_changed"] is True and f"{iters}：4 → 5" in row["diff"]
+    assert next(r for r in lib.describe(catalog(), SKILLS) if r["name"] == "research")["diff"] == []

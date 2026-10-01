@@ -6,7 +6,7 @@
 
 科研全自动化平台的生产代码：一个研究者在页面上跟助理说清课题、确认需求，助理照流程调用框架的能力做设计、实验、分析、验证，人只在断点上确认。四层：协调层（人 + 助理）做科研判断；框架是零模型的诚实执行基底（开门、开产出目录、封评分脚本、跑打分、记账、判冻结与签字）；执行层 coding agent 是唯一写代码的；skill 脚本是确定性工具。
 
-产品纲领（P-1 到 P-25）、流程细则、未决问题与案例卡在外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 的 `docs/`（那边的 README 是产品侧的地图）；本仓由它的 `./repos clone all` 拉到 `platform/` 目录下。这份是代码侧的地图。
+产品纲领（P-1 到 P-27）、流程细则、未决问题与案例卡在外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 的 `docs/`（那边的 README 是产品侧的地图）；本仓由它的 `./repos clone all` 拉到 `platform/` 目录下。这份是代码侧的地图。
 
 ## 系统一眼看
 
@@ -32,7 +32,7 @@ flowchart TB
     MACH["算力<br/>本机 / 一台能 ssh 的 Linux"]
     DATA["数据根<br/>projects/… studio/"]
     CFG["按人的清单<br/>~/.config/ai4sci/<br/>agents.yaml computes.yaml"]
-    SHIP["出厂件<br/>workflows/ templates/ domains/<br/>skills/ coordinator/"]
+    SHIP["出厂件<br/>workflows/ templates/ domains/<br/>skills/ skills-curated/ coordinator/"]
   end
   UI --> SRV
   TERM --> CLI
@@ -77,7 +77,8 @@ platform/
 ├── compute/       算力适配器：local.py 本机、ssh.py 一台能 ssh 上去的 Linux（按人的清单 ~/.config/ai4sci/computes.yaml 选）
 ├── coordinator/   两位助理的指南（线上 prompt）：README.md 项目里的研究助理、studio.md 编辑台的流程助理
 ├── domains/       领域包：generic/ 兜底、petab/ 参数估计（docs/add-a-domain.md）
-├── skills/        skill 库：pdf/ 解析论文、download/ 拉材料（docs/add-a-skill.md）
+├── skills/        平台自带的 skill（常驻）：pdf/ 解析论文、download/ 拉材料（docs/add-a-skill.md）
+├── skills-curated/ 收录的社区 skill：按七个阶段加 general 分架，台账 provenance.yaml；挂到流程上才装载
 ├── workflows/     出厂的流程：research（改进）、reproduce（论文复现），只读；人在编辑台存的在数据根 studio/workflows/，两层合起来是库，工作区取实例
 ├── templates/     需求模板库：generic / ai / cs / materials / reproduce
 ├── projects/      数据根（源码模式）：一个项目一位助理，样例三个单工作区项目 mlp-regression、boehm-nll、rahman-nll
@@ -110,7 +111,7 @@ ai4sci serve                                # 起服务，浏览器开 http://12
 **改代码**：clone 仓库，前提是 uv + node 22 + git。
 
 ```bash
-make up                                     # 一行起：.venv（uv.lock）→ 页面 → skill 预热 → ai4sci check → ai4sci serve
+make up                                     # 一行起：.venv（uv.lock）→ 页面 → skill 门禁与预热 → ai4sci check → ai4sci serve
 make check                                  # 门禁：CHANGELOG + ruff + skills + pytest + 页面，与 CI 完全相同
 make lock                                   # 改了 pyproject 的依赖后重钉 uv.lock
 make clean                                  # 删仓里装出来的：.venv、node_modules、页面构建；不碰配置、登录、数据

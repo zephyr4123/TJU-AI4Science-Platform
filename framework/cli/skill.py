@@ -1,9 +1,13 @@
-"""`ai4sci skill list | show <name> | run <name> [--script <文件>] [参数…]`：工具包（纲领 P-22）。
+"""`ai4sci skill list | show <name> [<文件>] | run <name> [--script <文件>] [参数…]`：工具包
+（纲领 P-22）。
 
-在 cli 层。`list` 打清单（名字、库、一句话——与注入 prompt 的是同一份）；`show` 打正文、目录的
-绝对路径、scripts/ 与 references/ 清单，agent 照正文里的命令跑；`run` 起脚本：`uv run --locked
---offline`，`--script` 之后的参数原样递给脚本，stdout 与退出码原样透出。两处库合起来按名字找，
-名字全局唯一；执行层的 Bash 白名单只放行这一组子命令（`framework.skills.EXECUTOR_BASH_RULES`）。
+在 cli 层。在项目里只认本项目装载的那套（纲领 P-26，`workspace/loadout.py`）：平台自带的加
+各工作区流程实例上挂的；装载之外的 show / run 拒，说清先挂到流程上。不在项目里（人在终端、
+门禁）看三处库全部。`list` 打清单（名字、出处、一句话——与注入 prompt 的是同一份）；`show`
+打正文、目录、目录里的其它文件，带上文件名就打那个文件（参考、模板、`manifest.yaml`：执行层的
+读文件工具只放行工作目录，读 skill 目录得经这里）；`run` 起脚本：`uv run --locked`，`--script`
+之后的参数原样递给脚本，stdout 与退出码原样透出。执行层的 Bash 白名单只放行这一组子命令
+（`framework.skills.EXECUTOR_BASH_RULES`）。
 
 `run` 不解析脚本的输出、不猜路径：写哪里由调用它的 agent 用 `--out` 定（助理 → `materials/`，
 能力 → 自己的产出目录）。
@@ -23,18 +27,25 @@ from framework.cli._common import (
     current_workspace,
 )
 from framework.skills import run as runner
+from framework.workspace import loadout, project
+from framework.workspace.loadout import Loadout
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    try:
-        found = skills.all_skills()
-    except skills.SkillInvalid as exc:
-        print(str(exc), file=sys.stderr)
-        return EXIT_INVALID
-    for skill in found:
-        print(f"{skill.name}\t{skill.library}\t{skill.description}")
-    if not found:
-        print("（两处库里都没有 skill）", file=sys.stderr)
+    loaded = _loadout()
+    if loaded is None:
+        found = skills.everything()
+        rows = [(s.name, s.where, s.description) for s in found.skills]
+        bad = [(i.name, i.problems[0]) for i in found.invalid]
+    else:
+        rows = [(s.name, s.where, s.description) for s in loaded.skills]
+        bad = list(loaded.unavailable)
+    for name, where, description in rows:
+        print(f"{name}\t{where}\t{description}")
+    for name, reason in bad:
+        print(f"{name}\t不可用\t{reason}")
+    if not rows and not bad:
+        print("（一个 skill 都没有）", file=sys.stderr)
     return EXIT_OK
 
 
@@ -42,7 +53,14 @@ def cmd_show(args: argparse.Namespace) -> int:
     skill = _find(args.name)
     if isinstance(skill, int):
         return skill
-    print(f"# {skill.name}\t{skill.library}\t{skill.dir}")
+    if args.file:
+        try:
+            print(skill.read(args.file), end="")
+        except skills.SkillNotFound as exc:
+            print(str(exc), file=sys.stderr)
+            return EXIT_USAGE
+        return EXIT_OK
+    print(f"# {skill.name}\t{skill.where}\t{skill.dir}")
     print(f"description: {skill.description}")
     if skill.compatibility:
         print(f"compatibility: {skill.compatibility}")
@@ -50,8 +68,10 @@ def cmd_show(args: argparse.Namespace) -> int:
         print(f"{key}: {value}")
     if skill.scripts:
         print("scripts: " + ", ".join(p.name for p in skill.scripts))
-    if skill.references:
-        print("references: " + ", ".join(p.name for p in skill.references))
+    files = [f for f in skill.files() if not f.startswith(f"{skills.library.SCRIPTS_DIRNAME}/")]
+    if files:
+        print("files: " + ", ".join(files)
+              + f"（读一个：ai4sci skill show {skill.name} <文件>）")
     print()
     print(skill.body)
     return EXIT_OK
@@ -99,7 +119,25 @@ def _split_ws(script_args: list[str], ws: str) -> tuple[list[str], str] | None:
     return script_args, ws
 
 
+def _loadout() -> Loadout | None:
+    """站在项目里就是本项目装载的那套；不在任何项目里（终端、门禁）是 None，看全库。"""
+    try:
+        return loadout.of(project.find())
+    except project.ProjectNotFound:
+        return None
+
+
 def _find(name: str):
+    """按名字取一个 skill；在项目里只认装载的（纲领 P-26）。"""
+    loaded = _loadout()
+    if loaded is not None and not loaded.has_skill(name):
+        reason = dict(loaded.unavailable).get(name)
+        print(f"skill {name!r} 挂在流程上，但用不了：{reason}" if reason else
+              f"这个项目没有装载 skill {name!r}：要用先挂到工作区流程实例的格子上"
+              f"（改 flows/<流程>.yaml，ai4sci show flows 校验）；"
+              f"库里有什么用 ai4sci show skills <词> 查",
+              file=sys.stderr)
+        return EXIT_INVALID
     try:
         return skills.find(name)
     except skills.SkillNotFound as exc:
@@ -113,13 +151,16 @@ def _find(name: str):
 def add_parser(groups: argparse._SubParsersAction) -> None:
     skill = groups.add_parser("skill", help="工具包：清单、读一个、起它的脚本")
     actions = skill.add_subparsers(dest="action", required=True)
-    listing = actions.add_parser("list", help="清单：名字、库、一句话")
+    listing = actions.add_parser("list", help="清单：名字、出处、一句话（在项目里是本项目装载的）")
     listing.set_defaults(func=cmd_list)
-    showing = actions.add_parser("show", help="一个 skill 的全文、目录与脚本清单")
+    showing = actions.add_parser(
+        "show", help="一个 skill 的全文、目录与文件清单；带文件名就打那个文件")
     showing.add_argument("name", help="skill 名（ai4sci skill list）")
+    showing.add_argument("file", nargs="?", default="",
+                         help="skill 目录里的一个文件（相对路径，如 references/api.md）")
     showing.set_defaults(func=cmd_show)
     running = actions.add_parser(
-        "run", help="起 skill 的脚本：uv run --locked --offline，其余参数原样递给脚本")
+        "run", help="起 skill 的脚本：uv run --locked，其余参数原样递给脚本")
     running.add_argument("name", help="skill 名")
     running.add_argument("--script", default=None,
                          help="skill 有几个脚本时点名哪一个（文件名）；只有一个时不用给")

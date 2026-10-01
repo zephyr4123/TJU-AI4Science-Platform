@@ -49,7 +49,7 @@ from framework.contracts.capability import (
     Ports,
 )
 from framework.contracts.output import Meta
-from framework.workspace import jobs, outputs
+from framework.workspace import jobs, loadout, outputs, project
 from framework.workspace.root import Workspace
 
 FROM_HELP = ("读哪几个产出（<阶段目录>/<序号>，比如 design/1；同一项目里兄弟工作区的写 "
@@ -112,6 +112,17 @@ def cmd_cap(args: argparse.Namespace) -> int:
     return code
 
 
+def _not_loaded(ws: Workspace, descriptor: Capability) -> str:
+    """项目只装载它各工作区流程实例上挂的能力（纲领 P-26）：这个步骤点了名、或它的阶段在流程里
+    敞开着（没点名，用什么由助理看着办）才能跑；不然返回拒绝的那句话，说清先取流程或改实例。"""
+    if loadout.of(project.of(ws)).allows_step(descriptor.name, descriptor.stage):
+        return ""
+    return (f"这个项目没有装载步骤 {descriptor.name}（{descriptor.stage}）："
+            f"项目只用流程实例上挂的能力。"
+            f"先 ai4sci flow take <流程> 取一条，或在实例里加上「{descriptor.stage}」这个阶段"
+            f"（点名 {descriptor.name} 或不点名），ai4sci show flows 校验")
+
+
 def _close_failed_job(ws: Workspace, job_id: str | None, result: str) -> None:
     """在作业里：作业记失败、它开的产出记失败、属于某段对话的去叫醒；不在作业里什么都不做。"""
     if not job_id:
@@ -134,12 +145,15 @@ def _fail_open_output(ws: Workspace, oid: str | None, line: str) -> None:
 
 def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports: Ports,
          job_id: str | None, agent: dict | None) -> tuple[int, str]:
-    """门 → 输入 → 断点 → 开产出 → 跑 → 记账。返回退出码与那一行话（成功是结论行，
-    失败是能力自己说的那一句）。"""
+    """门 → 装载 → 输入 → 断点 → 开产出 → 跑 → 记账。返回退出码与那一行话（成功是结论行，
+    失败是能力自己说的那一句）；在作业里，这一行由 cmd_cap 回写进作业记录。"""
     try:
         version = requirement.require_confirmed(ws.root)
     except requirement.NotConfirmed as exc:
         return EXIT_INVALID, str(exc)
+    refused = _not_loaded(ws, descriptor)
+    if refused:
+        return EXIT_INVALID, refused
     try:
         inputs = outputs.resolve_inputs(ws, list(args.inputs or []))
     except (ValueError, output.OutputNotFound) as exc:  # OutputChanged 是 ValueError

@@ -1,17 +1,20 @@
 // 编辑台的「能力」镜头（P-21，外层 #112）：平台现在能做什么。按七个阶段陈列步骤的名字——一个阶段挂再多也只是名字的清单，
-// 空着的阶段老实写「暂无」；第八列是 skill（能力的另一个 tag，主人 2026-09-22）：哪个阶段都能挂，所以不归在某一列下；每个名字是一张小卡（SpotlightCard，与画布上的节点同一种材料，一看就是个东西），hover 是一行，
+// 空着的阶段老实写「暂无」；skill（能力的另一个 tag，主人 2026-09-22）哪个阶段都能挂、几百个，不归在某一列下，在下面按出处分架、可查找（P-22）；每个名字是一张小卡（SpotlightCard，与画布上的节点同一种材料，一看就是个东西），hover 是一行，
 // 点了原地切成详情页：顶上一枚常驻的「能力」返回键，宋体大名与一行，底下参数与五栏，一列到底（主人：不要侧边目录）。
 // 流程镜头里节点上的小片与配置板里的名字点了也跳到这里，一个详情两处入口。
 // 层次与文件镜头同一做法：陈列印在雾景上不加框；详情才是一块抬起的面。对话窗浮在右边时（主人 2026-09-23：层级不能互相盖），
 // 这一面按 useChatInset() 在右边留出板的宽度，列自动折到下面、详情居中在剩下的地方；关了板又铺满。
 import { ArrowLeft, Toolbox } from '@phosphor-icons/react'
-import { createElement, type ReactNode } from 'react'
+import { createElement, type ReactNode, useState } from 'react'
 
 import type { Capability, SkillEntry, StageInfo } from '@/api/types'
 import { useChatInset } from '@/chat/ChatPanel'
 import { Markdown } from '@/components/Markdown'
 import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
+import { Input } from '@/components/ui/input'
 import { groupByStage, stageIcon } from '@/lib/stages'
+
+import { groupSkills, matchesSkill } from './model'
 
 /** 五栏的标题，顺序与后端 `COLUMNS` 一致（词表里的词） */
 const COLUMNS: [keyof Pick<Capability, 'does' | 'does_not' | 'brings' | 'leaves' | 'stops'>, string][] = [
@@ -35,13 +38,16 @@ export function Catalog({ stages, catalog, skills, focus, onFocus }: {
   )
 }
 
-/** 陈列：七列步骤（列头阶段图标 + 宋体阶段名）+ 第八列 skill，底下一张一张小卡；印在雾景上，不加框 */
+/** 陈列：七列步骤（列头阶段图标 + 宋体阶段名），底下一张一张小卡；skill 在下面按出处分架、可查找；印在雾景上，不加框 */
 function Shelf({ stages, catalog, skills, onOpen }: {
   stages: StageInfo[]; catalog: Capability[]; skills: SkillEntry[]; onOpen: (name: string) => void
 }) {
   const groups = groupByStage(stages.map((s) => s.name), catalog)
+  const [query, setQuery] = useState('')
+  const shelves = groupSkills(skills.filter((s) => matchesSkill(s, query)))
   return (
-    <div className="mx-auto grid max-w-[96rem] grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-4 gap-y-8 px-8 pt-10 pb-8" aria-label="能力">
+    <div className="mx-auto max-w-[96rem] px-8 pt-10 pb-8">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-4 gap-y-8" aria-label="能力">
       {groups.map((group) => (
         <section key={group.stage} aria-label={group.stage}>
           <h2 className="flex items-center gap-2 font-serif text-[1.0625rem] font-semibold">
@@ -60,22 +66,36 @@ function Shelf({ stages, catalog, skills, onOpen }: {
             )}
         </section>
       ))}
-      <section aria-label="skill">
-        <h2 className="flex items-center gap-2 font-serif text-[1.0625rem] font-semibold">
-          <Toolbox weight="duotone" aria-hidden className="size-[1.25rem] text-foreground/70" />
-          skill
-        </h2>
-        {skills.length === 0
-          ? <p className="mt-3 px-3 py-2.5 text-[0.9375rem] text-muted-foreground/70">暂无</p>
-          : (
-            <ul className="mt-3 space-y-2">
-              {skills.map((skill) => (
-                <Card key={skill.name} title={skill.title} brief={skill.brief} onOpen={() => onOpen(skill.name)}
-                      icon={<Toolbox weight="duotone" aria-hidden className="size-4 shrink-0 text-foreground/60" />} />
-              ))}
-            </ul>
-          )}
-      </section>
+    </div>
+    {/* skill：几百个，按出处分架（平台、收录各阶段、领域包），上面一个查找 */}
+    <div className="mt-12 flex items-center gap-3">
+      <h2 className="flex items-center gap-2 font-serif text-[1.25rem] font-semibold">
+        <Toolbox weight="duotone" aria-hidden className="size-[1.375rem] text-foreground/70" />
+        skill
+      </h2>
+      <span className="text-[0.8125rem] text-muted-foreground tabular-nums">{skills.length}</span>
+      <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="查找" aria-label="查找 skill"
+             className="ml-auto h-8 w-[16rem] bg-card/85 text-[0.875rem] backdrop-blur-sm" />
+    </div>
+    {shelves.length === 0
+      ? <p className="mt-3 px-3 py-2.5 text-[0.9375rem] text-muted-foreground/70">暂无</p>
+      : (
+        <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-4 gap-y-8">
+          {shelves.map((shelf) => (
+            <section key={shelf.where} aria-label={shelf.where}>
+              <h3 className="flex items-baseline gap-2 font-serif text-[1.0625rem] font-semibold">
+                {shelf.where}<span className="font-sans text-[0.75rem] font-normal text-muted-foreground tabular-nums">{shelf.skills.length}</span>
+              </h3>
+              <ul className="mt-3 space-y-2">
+                {shelf.skills.map((skill) => (
+                  <Card key={skill.name} title={skill.title} brief={skill.brief} onOpen={() => onOpen(skill.name)}
+                        icon={<Toolbox weight="duotone" aria-hidden className="size-4 shrink-0 text-foreground/60" />} />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -116,7 +136,7 @@ function SkillDetail({ skill, onBack }: { skill: SkillEntry; onBack: () => void 
         <h1 className="font-serif text-[2rem] leading-tight font-semibold tracking-tight">{skill.title}</h1>
         <p className="mt-2 text-[1.0625rem] text-muted-foreground">{skill.brief}</p>
         <p className="t-label mt-3 flex flex-wrap gap-x-4">
-          <span>{skill.library === 'generic' ? '通用' : skill.library}</span>
+          <span>{skill.where}</span>
           {skill.scripts.map((name) => <span key={name}>{name}</span>)}
           {skill.used_by.length > 0 && <span>用在 {skill.used_by.join('、')}</span>}
         </p>

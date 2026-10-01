@@ -34,8 +34,9 @@ def steps() -> dict[str, Capability]:
 
 
 def skill_names() -> frozenset[str]:
-    """两处库里所有 skill 的名字（通用 + 每个领域包的）；流程校验认这一份。"""
-    return frozenset(skill.name for skill in skills.all_skills())
+    """三处库里所有 skill 的名字（不合格的也算：流程里挂的名字是不是 skill 看目录在不在）；
+    流程校验认这一份。"""
+    return skills.everything().names()
 
 
 def check_disjoint(step_names: set[str] | frozenset[str], names: frozenset[str]) -> None:
@@ -46,11 +47,12 @@ def check_disjoint(step_names: set[str] | frozenset[str], names: frozenset[str])
 
 def skill_entry(skill: Skill) -> dict[str, Any]:
     """给 `GET /skills` 与页面：与步骤描述符同一层的字段（name / title / brief / kind），
-    另带 SKILL.md 正文与脚本名。title 就是它的名字：skill 的名字是 agent 叫它的词，页面照显示。"""
+    另带出处（库、收录库的架、给人看的一句「收录·文献」）、SKILL.md 正文与脚本名。title 就是它的
+    名字：skill 的名字是 agent 叫它的词，页面照显示。"""
     return {"name": skill.name, "kind": KIND_SKILL, "title": skill.name, "brief": skill.description,
-            "library": skill.library, "body": skill.body,
-            "scripts": [script.name for script in skill.scripts]}
+            "library": skill.library, "shelf": skill.shelf, "where": skill.where,
+            "body": skill.body, "scripts": [script.name for script in skill.scripts]}
 
 
 def skill_entries() -> list[dict[str, Any]]:
-    return [skill_entry(skill) for skill in skills.all_skills()]
+    return [skill_entry(skill) for skill in skills.everything().skills]

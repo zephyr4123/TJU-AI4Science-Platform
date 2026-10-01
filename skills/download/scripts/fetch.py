@@ -12,7 +12,7 @@
 `<out>/.ai4sci-download.json`，之后哪个能力拿到这个目录都知道它从哪来。
 
 退出码：0 成；2 参数不对、目录已存在、git 不在；3 网络或远端的错；4 校验不过（sha256、commit）。
-token 只读环境变量 HF_TOKEN，绝不收参数（密钥不进 argv）。
+只拉公开的：平台不收任何第三方凭据（纲领 P-27），HF 那一路显式不带凭据，私有与门控的仓库拉不了。
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -133,12 +132,12 @@ def cmd_hf(args: argparse.Namespace) -> int:
         _fail(EXIT_USAGE, f"huggingface_hub 不在脚本环境里（{exc}）：起服务的人跑 make skills 预热")
         raise AssertionError("不可达") from exc
     out = _prepare_out(args.out, args.repo.rsplit("/", 1)[-1])
-    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
     try:
-        info = huggingface_hub.HfApi(token=token).repo_info(
+        # token=False：不读环境变量、不读本机登录过的凭据，只当匿名访问（纲领 P-27）
+        info = huggingface_hub.HfApi(token=False).repo_info(
             args.repo, repo_type=args.type, revision=args.revision)
         huggingface_hub.snapshot_download(
-            args.repo, repo_type=args.type, revision=info.sha, local_dir=str(out), token=token)
+            args.repo, repo_type=args.type, revision=info.sha, local_dir=str(out), token=False)
     except huggingface_hub.errors.HfHubHTTPError as exc:  # 401 / 403 / 404 都在这
         shutil.rmtree(out, ignore_errors=True)
         _fail(EXIT_NETWORK, f"Hugging Face 拒绝或找不到 {args.repo}（{args.type}）：{exc}")
@@ -167,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     file.add_argument("--name", default="", help="落盘的文件名；缺省用链接末尾那段")
     file.add_argument("--out", default=None, help="落到哪个目录；缺省 materials/<文件名>")
     file.set_defaults(func=cmd_file)
-    hf = sub.add_parser("hf", help="拉 Hugging Face 上的数据集或模型（私有的读 HF_TOKEN）")
+    hf = sub.add_parser("hf", help="拉 Hugging Face 上公开的数据集或模型")
     hf.add_argument("repo", help="<org>/<name>")
     hf.add_argument("--type", default="model", choices=("model", "dataset"))
     hf.add_argument("--revision", default=None, help="分支、tag 或 commit；缺省 main")

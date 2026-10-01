@@ -21,7 +21,6 @@ import { useChatInset } from '@/chat/ChatPanel'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { suggestId } from '@/lib/slug'
 import { coverageSentence } from '@/lib/stages'
 import { useToken } from '@/lib/tokens'
 import { useMediaQuery, WIDE } from '@/lib/useMediaQuery'
@@ -31,7 +30,8 @@ import { cn } from '@/lib/utils'
 import { Catalog } from './Catalog'
 import { Inspector } from './Inspector'
 import {
-  append, arranged, type Draft, dropAt, EMPTY, fromWorkflow, type Item, parseSeed, patch, place, positions, problemIndices,
+  append, arranged, deriveFrom, type Draft, dropAt, EMPTY, fromWorkflow, type Item, parseSeed, patch, place, positions,
+  problemIndices,
   remove, type Seed, SEED_MIME, tidy, toDraft,
 } from './model'
 import { type CapChip, StageNode, type StageNodeType, StopNode, type StopNodeType } from './nodes'
@@ -110,8 +110,8 @@ function Editor({ stages, workflows, catalog, skills, onSaved, onOpenCap }: {
   }, [check.data])
 
   const add = (seed: Seed) => setItems((items) => append(items, seed))
-  // 出厂的两条只读：载入后名字清空，保存就是从标题另起一条自己的（后端对出厂的名字拒 409）
-  const load = (wf: Workflow) => { setDraft({ ...fromWorkflow(wf), name: wf.shipped ? '' : wf.name }); setSelected(null) }
+  // 出厂的只读：载入就是从它派生，名字由平台起（「家族名-序号」，P-15）；自己存的载入是改它自己
+  const load = (wf: Workflow) => { setDraft(wf.shipped ? deriveFrom(wf) : fromWorkflow(wf)); setSelected(null) }
   const current = selected === null ? null : draft.items.find((it) => it.uid === selected) ?? null
   const inspector = current && (
     <Inspector key={current.uid} item={current} catalog={catalog} skills={skills} onOpenCap={onOpenCap}
@@ -135,7 +135,7 @@ function Editor({ stages, workflows, catalog, skills, onSaved, onOpenCap }: {
               </Button>
             )}
             <Library workflows={workflows} onLoad={load} onRemoved={onSaved} />
-            <Save draft={draft} setDraft={setDraft} names={workflows.map((wf) => wf.name)}
+            <Save draft={draft} setDraft={setDraft}
                   ok={draft.items.length > 0 && check.data !== null && problems.length === 0} onSaved={onSaved} />
           </div>
           {wide && inspector && (
@@ -177,21 +177,21 @@ function Heading({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) =
 }
 
 
-/** 右上角：保存。载入自己存过的（或这次存过一次的）就是覆盖它自己；新拼的与载入出厂的文件名从标题生成、避开库里已有的，所以没有「同名」这回事 */
-function Save({ draft, setDraft, names, ok, onSaved }: {
-  draft: Draft; setDraft: (f: (d: Draft) => Draft) => void; names: string[]; ok: boolean; onSaved: () => void
+/** 右上角：保存。载入自己存过的（或这次存过一次的）就是覆盖它自己，旁边另有「另存」——从它派生一条；新拼的与载入出厂的
+ *  名字空着交给平台起（派生的「家族名-序号」，P-15），所以人不用想名字，也没有「同名」这回事 */
+function Save({ draft, setDraft, ok, onSaved }: {
+  draft: Draft; setDraft: (f: (d: Draft) => Draft) => void; ok: boolean; onSaved: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
   const filled = draft.title.trim() !== '' && draft.summary.trim() !== ''
-  const save = async () => {
+  const mine = draft.name.trim() !== ''
+  const save = async (as: Draft, overwrite: boolean) => {
     setBusy(true)
     setNote(null)
-    const existing = draft.name.trim() !== ''
-    const name = existing ? draft.name.trim() : suggestId(draft.title, names, new Date(), 'flow')
     try {
-      const saved = await api.saveWorkflow({ ...toDraft({ ...draft, name }), overwrite: existing })
-      setDraft((d) => ({ ...d, name: saved.name }))
+      const saved = await api.saveWorkflow({ ...toDraft(as), overwrite })
+      setDraft((d) => ({ ...d, name: saved.name, from: saved.from }))
       setNote({ ok: true, text: '已保存' })
       onSaved()
     } catch (exc) {
@@ -201,9 +201,13 @@ function Save({ draft, setDraft, names, ok, onSaved }: {
     }
   }
   return (
-    <div className="flex items-center gap-3">
-      {note && <span className={cn('max-w-[20rem] truncate text-[0.8125rem]', note.ok ? 'text-ok' : 'text-bad')}>{note.text}</span>}
-      <Button size="sm" className="rounded-full px-4 shadow-sm" onClick={() => void save()} disabled={!ok || !filled || busy}>
+    <div className="flex items-center gap-2">
+      {note && <span className={cn('max-w-[20rem] truncate text-[0.8125rem]', note.ok ? 'text-ok' : 'text-bad')} title={note.text}>{note.text}</span>}
+      {mine && (
+        <Button size="sm" variant="outline" className="rounded-full bg-card/85 px-4 shadow-sm backdrop-blur-sm" disabled={!ok || !filled || busy}
+                onClick={() => void save({ ...draft, name: '', from: { name: draft.name } }, false)}>另存</Button>
+      )}
+      <Button size="sm" className="rounded-full px-4 shadow-sm" onClick={() => void save(draft, mine)} disabled={!ok || !filled || busy}>
         {busy ? '保存中' : '保存'}
       </Button>
     </div>

@@ -8,7 +8,7 @@
 
 后端是 pymupdf4llm 的版面模式（pymupdf-layout，纯 CPU、ONNX 小模型）：分出标题、节标题、正文、
 列表、公式、图、表、图注、脚注、页眉页脚。公式不出 LaTeX，切成图片；表格出单元格文本。
-依赖写在头部的 PEP 723 块里，锁在旁边的 `extract.py.lock`；框架用 `uv run --locked --offline` 起它。
+依赖写在头部的 PEP 723 块里，锁在旁边的 `extract.py.lock`；框架用 `uv run --locked` 起它。
 
 只做一件事：读一个 PDF（本地路径或 URL），把三样产物写进 `--out`。不猜路径、不写别处；
 结果一行 JSON 到 stdout，诊断到 stderr；退出码 0 成、2 输入不在、3 下载失败、4 不是能解析的 PDF。

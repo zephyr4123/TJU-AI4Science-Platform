@@ -43,7 +43,7 @@ def _descriptors() -> dict[str, object]:
 
 
 def _skill_names() -> frozenset[str]:
-    """两处库里 skill 的名字；与步骤重名当场报，不让页面拿到分辨不出的清单。"""
+    """三处库里 skill 的名字；与步骤重名当场报，不让页面拿到分辨不出的清单。"""
     names = abilities.skill_names()
     abilities.check_disjoint(set(discover()), names)
     return names
@@ -72,12 +72,13 @@ def _descriptor_map() -> dict[str, object]:
 
 
 def _save_workflow(doc: dict) -> dict:
-    """编辑台存流程：核对形状与通不通，写进用户库（出厂的名字拒），回它在清单里的样子。"""
+    """编辑台存流程：名字不给由平台起（派生的 `<家族名>-<序号>`，P-15），核对形状、通不通、
+    与库里有没有一模一样的，写进用户库（出厂的名字拒），回它在清单里的样子（带家族与差异）。"""
     catalog, skills = _descriptors(), _skill_names()
     overwrite = bool(doc.pop("overwrite", False))
-    saved = library().save(doc, catalog, skills=skills, overwrite=overwrite)
-    [described] = workflows.describe([saved], catalog, skills)
-    return described
+    lib = library()
+    saved = lib.save(doc, catalog, skills=skills, overwrite=overwrite)
+    return next(row for row in lib.describe(catalog, skills) if row["name"] == saved.name)
 
 
 def _check_workflow(doc: dict) -> dict:

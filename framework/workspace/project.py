@@ -168,6 +168,16 @@ def find(start: Path | None = None) -> Project:
         f"或者 ai4sci project new <id> 起一个")
 
 
+def containing(path: Path) -> Project:
+    """路径所在的项目：只从它往上找 project.md，不看 `AI4SCI_PROJECT`——产出目录、工作区在哪个
+    项目里是盘上的事实，环境变量指别处也不改变它（执行层的会话装哪套能力按这个算，纲领 P-26）。"""
+    origin = Path(path).resolve()
+    for directory in (origin, *origin.parents):
+        if (directory / MARKER).is_file():
+            return Project(directory)
+    raise ProjectNotFound(f"{origin} 不在任何项目里")
+
+
 def of(workspace: Workspace) -> Project:
     """工作区所在的项目：上两级。老布局（工作区直接在 workspaces/ 下）不在任何项目里，先搬。"""
     try:

@@ -134,7 +134,9 @@ def test_research_guide_takes_flows_and_never_builds_them():
 
 def test_studio_guide_builds_flows_and_never_runs_experiments():
     text = guide.system_prompt(guide.STUDIO)
-    assert "workflows/<name>.yaml" in text and "ai4sci show workflows" in text
+    # 名字由平台起（P-15）：派生用 workflow new --from，从零起给英文名；改完 show workflows 校验
+    assert "ai4sci workflow new --from <名字>" in text and "ai4sci show workflows" in text
+    assert "ai4sci show skills" in text  # 几百个 skill 查着挂，不一次摊开（P-26）
     # 前言里两层库都写实路径：只能写人存的那层，出厂的只读
     assert (f"（`{paths.user_workflows_root()}`）。出厂的流程在 `{paths.workflows_root()}`，只读"
             in text)

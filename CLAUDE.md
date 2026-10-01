@@ -5,14 +5,14 @@
 ## 0. 这是什么、在哪
 
 - 科研全自动化平台的生产代码，Python 包 `ai4sci`（入口 `framework.cli:main`），页面在 `ui/web/`。四层：协调层（人 + 助理）做科研判断，框架是零模型的诚实执行基底，执行层 coding agent 是唯一写代码的，skill 脚本是确定性工具。
-- 本仓是**内仓**：外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 把它 clone 到 `platform/`，外层对它的 git 不知情。产品纲领（P-1 到 P-25）、流程细则、未决问题、案例卡都在外层 `docs/`；issue 也开在外层。只 clone 了本仓的人先去外层读 `docs/architecture/README.md`。
+- 本仓是**内仓**：外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 把它 clone 到 `platform/`，外层对它的 git 不知情。产品纲领（P-1 到 P-27）、流程细则、未决问题、案例卡都在外层 `docs/`；issue 也开在外层。只 clone 了本仓的人先去外层读 `docs/architecture/README.md`。
 - 两种跑法：源码（clone + `make up`）出厂件在仓根、数据根缺省仓根；包（`uv tool install` wheel）出厂件在 `framework/shipped/`、数据根 `~/ai4sci`。分辨只在 `framework/paths.py` 一处。
 
 ## 1. 开工前先读哪份
 
 | 要做的事 | 先读 |
 |---|---|
-| 任何改动 | 本文件；`README.md`（代码侧的地图：系统一眼看、文档索引）；外层 `docs/architecture/README.md`（产品边界与 25 条原则） |
+| 任何改动 | 本文件；`README.md`（代码侧的地图：系统一眼看、文档索引）；外层 `docs/architecture/README.md`（产品边界与 27 条原则） |
 | 改后端（`framework/` `backends/` `compute/`） | `framework/README.md`：分层与依赖方向、技术栈、模式与约定、异常与退出码、环境变量 |
 | 写或改测试 | `tests/README.md`：怎么写、夹具、live 门控、门禁各跑什么 |
 | 改页面（`ui/web/`） | `ui/README.md`：技术栈、约定、测试政策、浏览器闭环；`docs/DESIGN.md` 视觉与布局；`docs/PRODUCT.md` 给谁用 |
@@ -75,7 +75,7 @@
 4. **密钥与敏感配置只进环境变量**，绝不进代码、不进 argv；ssh 只认密钥，清单里没有 password 字段（`framework/computes.py` 断言）。
 5. **环境隔离**：平台一律 `.venv`、uv 管一切（`make venv` = `uv sync --locked`，改依赖 `make lock`）；课题的依赖不进平台 venv，每次实验按 `materials/env/` 自建 venv，harness 只经 `$AI4SCI_PYTHON` 起解释器；skill 脚本 PEP 723 自带依赖；页面依赖只进 `ui/web/node_modules`。
 6. **每个改动写 `CHANGELOG.md` 的 Unreleased**；发版只走 `make release VERSION=x.y.z`，不手工打 tag（`make changelog`）。
-7. **`make check` 是提交前门禁，与 CI 完全相同**：changelog → ruff → skills（校验 + 预热，唯一联网的一步）→ pytest → `ui-check`（素材不进仓 + tsc + oxlint + vitest + 构建）。门禁命令别接 `| tail`，管道会吞退出码。
+7. **`make check` 是提交前门禁，与 CI 完全相同**：changelog → ruff → skills（三处库校验、零 key、收录台账对账、平台自带的预热）→ pytest → `ui-check`（素材不进仓 + tsc + oxlint + vitest + 构建）。门禁命令别接 `| tail`，管道会吞退出码。
 8. **跨仓变更以外层 issue 为锚**，commit message 引用它。
 9. **`.claude/` 是本机会话产物**，已 gitignore；不读取、不依赖。
 10. **素材不进仓**（P-17）：图片 / 视频只写 CDN URL，只在 `ui/web/src/assets.ts`；`git ls-files ui/` 里没有二进制（`make ui-check`）；图标全站一套 Phosphor 内联，品牌标是唯一自绘的 SVG。

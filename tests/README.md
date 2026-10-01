@@ -36,7 +36,7 @@
 
 ## 5. 门禁
 
-`make check` = `changelog`（CHANGELOG 格式）→ `lint`（ruff，含 BLE 不吞异常）→ `skills`（SKILL.md 校验 + 脚本锁文件 + uv 预热，唯一联网的一步）→ `test`（pytest）→ `ui-check`（素材不进仓 + tsc + oxlint + vitest + 构建）。CI 跑的就是这一句。
+`make check` = `changelog`（CHANGELOG 格式）→ `lint`（ruff，含 BLE 不吞异常）→ `skills`（三处库的 SKILL.md 与脚本锁文件、零 key、收录台账对账、平台自带的 uv 预热）→ `test`（pytest）→ `ui-check`（素材不进仓 + tsc + oxlint + vitest + 构建）。CI 跑的就是这一句。
 
 - 提交前跑 `make check`，不接 `| tail`（管道会吞退出码）：`make check > /tmp/check.log 2>&1; echo $?`。
 - 没有覆盖率工具，也不设覆盖率门槛：判据是爆炸半径——改了行为的地方有测试，改了检查器的地方有反例。

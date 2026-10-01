@@ -124,7 +124,7 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, sections: int = 4) ->
 - 只往 `output_dir` 写。`meta.yaml` 与 `signed.json` 是框架写的，不要碰。
 - 缺东西开工就报错：`raise CapabilityFailed("论文初稿要分析阶段的 analysis.md：--from analysis/<n>")`。说清缺哪个阶段的哪个文件，助理读了报错去补。
 - 失败 `raise CapabilityFailed`，不降级不兜底；产出目录留着，meta 记 `status: failed`。
-- 起执行层的能力：提示模板放子包里的 `prompt.md`，交给 `executor.prompting.build_prompt`，它会接上通用段——领域包给这一族的补充（`domains/<包>/prompts/<族>.md`，由你这个能力快照进产出目录再传进去，看 `auto_research/open.py::_snapshot_domain`）、skill 清单（`skills.for_executor(domain)`，通用 + 所选领域包的，执行层按需 `ai4sci skill show`）、联网规矩。执行层会话的 Bash 只放行 `ai4sci skill *`（`executor.session`）。
+- 起执行层的能力：提示模板放子包里的 `prompt.md`，交给 `executor.prompting.build_prompt`，它会接上通用段——领域包给这一族的补充（`domains/<包>/prompts/<族>.md`，由你这个能力快照进产出目录再传进去，看 `auto_research/open.py::_snapshot_domain`）、skill 清单（`loadout.around(产出目录)`：本项目装载的那套，纲领 P-26，执行层按需 `ai4sci skill show`）、联网规矩。执行层会话的 Bash 只放行 `ai4sci skill *`（`executor.session`）。
 - 能力互不 import。同族共用的读写放 `framework/<族>/`，`tests/test_layering.py` 查。
 
 不用写的：CLI 子命令、`--from` / `--flow` / `--continue` / `--detach`、页面上的节点与能力小片、`show caps`——都从描述符生成。

@@ -21,6 +21,7 @@ from framework.experiment import drafting as design
 from framework.experiment import pack as packs
 from framework.workspace import outputs
 from tests.fixtures import packs_factory as pf
+from tests.fixtures import spaces
 from tests.fixtures.scripted_backend import ScriptedRunner
 
 SKILL_MD = ("---\nname: toy\ndescription: 夹具 skill\n---\n\n"
@@ -136,10 +137,12 @@ def test_good_draft_is_sealed_lint_clean_validates_and_gets_the_domain(ws):
 
 def test_prompt_carries_requirement_hypothesis_skills_rules_and_escaped_dollars(ws, monkeypatch,
                                                                                  tmp_path):
-    """领域 skill 只以清单进提示（名字 + 一句话），正文由执行层 `ai4sci skill show` 按需读（P-22）；
-    执行层的 Bash 白名单只有 `ai4sci skill *`。"""
+    """挂在流程上的领域 skill 只以清单进提示（名字 + 一句话，P-26），正文由执行层
+    `ai4sci skill show` 按需读（P-22）；执行层的 Bash 白名单只有 `ai4sci skill *`。"""
     monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-generic-skills"))
     (tmp_path / "no-generic-skills").mkdir()
+    monkeypatch.setenv(paths.DOMAINS_ROOT_ENV, str(ws[1]))  # 装载按库找挂上的名字（P-26）
+    spaces.give_flow(ws[0], "  - 设计: [toy]\n")
     pack = new_pack(ws[0])
     runner, _ = run_design(ws, pack, GOOD_DRAFT, hypothesis="### hypothesis.md\n\n加一层会更好")
     prompt = runner.prompts[0]

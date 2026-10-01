@@ -2,16 +2,18 @@
 // 纯函数，不碰 React 也不碰 React Flow：位置、顺序、插入、页面形状 ↔ 文件形状。
 // 位置：人摆过的项记着坐标（存进文件的 layout 块），没摆过的按顺序自动排、放不下换行；顺序 = 阅读顺序（先上后下、同一行先左后右），
 // 拖一个节点松手，它留在松手的地方，顺序按阅读顺序重算——边跟着顺序画，所以看着在哪就是排第几。
-import type { DraftItem, FlowItem, Workflow, WorkflowDraft } from '@/api/types'
+import type { DraftItem, FlowItem, Origin, SkillEntry, Workflow, WorkflowDraft } from '@/api/types'
 
 export interface XY { x: number; y: number }
 export interface Pick { cap: string; with: Record<string, unknown> }
 export interface StageItem { uid: number; kind: 'stage'; stage: string; caps: Pick[]; pos?: XY }
 export interface StopItem { uid: number; kind: 'stop'; note: string; pos?: XY }
 export type Item = StageItem | StopItem
-export interface Draft { name: string; title: string; summary: string; items: Item[] }
+/** 画布上的这条。`name` 空着就是还没存过（存的时候平台起名）；`from` 是父流程：
+ *  只有名字是「从它派生」，带 hash 的是载入的那条本来就有的血缘，覆盖存时原样留着 */
+export interface Draft { name: string; title: string; summary: string; items: Item[]; from: Origin | { name: string } | null }
 
-export const EMPTY: Draft = { name: '', title: '', summary: '', items: [] }
+export const EMPTY: Draft = { name: '', title: '', summary: '', items: [], from: null }
 
 /** 从梯子拖 / 点过来的是什么；拖的时候塞在 dataTransfer 里过画布 */
 export type Seed = { kind: 'stage'; stage: string } | { kind: 'stop'; note: string }
@@ -149,14 +151,20 @@ export function toDraft(draft: Draft): WorkflowDraft {
     return { [item.stage]: Object.fromEntries(item.caps.map((p) => [p.cap, Object.keys(p.with).length ? p.with : null])) }
   })
   const doc: WorkflowDraft = { name: draft.name.trim(), title: draft.title.trim(), summary: draft.summary.trim(), stages }
+  if (draft.from) doc.from = 'hash' in draft.from ? draft.from : draft.from.name
   if (arranged(draft.items)) doc.layout = positions(draft.items).map(({ x, y }) => [Math.round(x), Math.round(y)])
   return doc
 }
 
-/** 库里的一条 → 画布：名字照旧，存回去要勾「覆盖同名」；文件里有 layout 就照它摆 */
+/** 库里的一条 → 画布：名字与血缘照旧（存回去是覆盖它自己）；文件里有 layout 就照它摆 */
 export function fromWorkflow(wf: Workflow): Draft {
   const items = wf.stages.map((item, i) => fromItem(item, wf.layout?.[i] ? { x: wf.layout[i][0], y: wf.layout[i][1] } : undefined))
-  return { name: wf.name, title: wf.title, summary: wf.summary, items }
+  return { name: wf.name, title: wf.title, summary: wf.summary, items, from: wf.from }
+}
+
+/** 从库里一条派生：照抄它，名字空着（平台起「家族名-序号」），父流程记它 */
+export function deriveFrom(wf: Workflow): Draft {
+  return { ...fromWorkflow(wf), name: '', from: { name: wf.name } }
 }
 
 export function fromItem(item: FlowItem, pos?: XY): Item {
@@ -176,4 +184,46 @@ export function parseParam(type: string | undefined, raw: string): unknown {
   if (type === 'int') { const n = Number(text); return Number.isInteger(n) ? n : undefined }
   if (type === 'float') { const n = Number(text); return Number.isFinite(n) ? n : undefined }
   return text
+}
+
+
+// ── skill 怎么摆 ─────────────────────────────────────────────────────────────
+/** 查找：词都要出现在名字或一句话里（不分大小写）；空词就是全要 */
+export function matchesSkill(skill: SkillEntry, query: string): boolean {
+  const hay = `${skill.name} ${skill.brief}`.toLowerCase()
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w))
+}
+
+/** 配置板里一个阶段给哪些 skill 勾：没在查找时，是已经挂上的、平台自带的、收录在这个阶段那一架上的（几百个不一次摊开，
+ *  P-26）；在查找时，是全库里对得上的。挂上的总在最前 */
+export function skillsFor(skills: SkillEntry[], stage: string, picked: string[], query: string): SkillEntry[] {
+  const shown = query.trim()
+    ? skills.filter((s) => matchesSkill(s, query))
+    : skills.filter((s) => s.library === '平台' || s.where === `收录·${stage}` || picked.includes(s.name))
+  return [...shown.filter((s) => picked.includes(s.name)), ...shown.filter((s) => !picked.includes(s.name))]
+}
+
+/** 能力镜头里 skill 按出处分组：平台、收录各架（阶段序，最后通用）、领域包——后端给的顺序就是这个序 */
+export function groupSkills(skills: SkillEntry[]): { where: string; skills: SkillEntry[] }[] {
+  const groups = new Map<string, SkillEntry[]>()
+  for (const skill of skills) groups.set(skill.where, [...(groups.get(skill.where) ?? []), skill])
+  return [...groups].map(([where, list]) => ({ where, skills: list }))
+}
+
+// ── 流程库怎么排（P-15 血缘）────────────────────────────────────────────────
+/** 按家族排：出厂的与从零拼的各起一个家族，派生的紧跟在家族的头后面（家族里按名字排） */
+export function byFamily(workflows: Workflow[]): Workflow[] {
+  const heads = workflows.filter((wf) => (wf.family ?? wf.name) === wf.name)
+  const rest = workflows.filter((wf) => !heads.includes(wf))
+  const out = heads.flatMap((head) => [head, ...rest.filter((wf) => wf.family === head.name).sort((a, b) => a.name.localeCompare(b.name))])
+  return [...out, ...rest.filter((wf) => !out.includes(wf))]  // 家族的头不在库里了（父流程删了）的放最后
+}
+
+/** 小字那一行：几项、出厂；派生的写改了什么，父流程改过要说 */
+export function lineageLine(wf: Workflow): string {
+  const base = `${wf.stages.length} 项${wf.shipped ? '，出厂' : ''}`
+  if (!wf.from) return base
+  const changed = wf.parent_changed ? '父流程后来改过；' : ''
+  const diff = wf.diff?.length ? wf.diff.join('；') : '与父流程一样'
+  return `${changed}${diff}`
 }

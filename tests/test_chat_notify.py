@@ -36,7 +36,8 @@ def _job(chat_id: str | None, exit_code: int = 0) -> jobs.Job:
 def scripted(monkeypatch):
     chat = ScriptedChat([])
     monkeypatch.setattr(notify, "get_chat", lambda name: chat)
-    monkeypatch.setattr(notify.guide, "system_prompt", lambda kind, tool_guide="": "指南")
+    monkeypatch.setattr(notify.guide, "system_prompt",
+                        lambda kind, tool_guide="", project=None: "指南")
     return chat
 
 

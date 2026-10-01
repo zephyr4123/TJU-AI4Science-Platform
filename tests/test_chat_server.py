@@ -481,6 +481,7 @@ def test_output_board_and_sign(served, tmp_path):
     base, _ = served
     run_dir, pack = make_run(tmp_path)
     doc_dir = write_analysis(pack, good_analysis(run_dir))
+    (pack.workspace.flows / "open.yaml").unlink()  # 夹具那条敞开的流程不是这里要看的
     (pack.workspace.flows / "research.yaml").write_text(
         (paths.workflows_root() / "research.yaml").read_text(encoding="utf-8"), encoding="utf-8")
     status, _, body = call(base, "/projects/p/workspaces/toy")

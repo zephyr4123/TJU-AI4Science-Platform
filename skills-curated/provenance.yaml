@@ -1,0 +1,24 @@
+# 收录台账（纲领 P-22）：skills-curated/ 里每个 skill 一行，不收的也一行带原因。
+# 生产者是收录的人，照内仓 docs/add-a-skill.md「收录社区 skill」做；framework/skills/provenance.py 对账，
+# make skills 守着：目录与台账一一对得上、许可证在可收的里、原文在 licenses/。
+upstreams:
+  k-dense:
+    title: K-Dense Scientific Agent Skills
+    url: https://github.com/K-Dense-AI/scientific-agent-skills
+    commit: 49c6e97775eaa18ba791bebe23162a70ae601c18
+    license: MIT
+    license_file: licenses/k-dense.txt
+  nature-skills:
+    title: Nature Skills
+    url: https://github.com/Yuan1z0825/nature-skills
+    commit: 9e2d90e2171a61dc0ae072e43e8d16e3fc73572f
+    license: Apache-2.0
+    license_file: licenses/nature-skills.txt
+  ai-research-skills:
+    title: AI Research SKILLs
+    url: https://github.com/Orchestra-Research/AI-Research-SKILLs
+    commit: 773a52944ba4747a18bd4ae9ade53fff041adcbc
+    license: MIT
+    license_file: licenses/ai-research-skills.txt
+skills: []
+rejected: []

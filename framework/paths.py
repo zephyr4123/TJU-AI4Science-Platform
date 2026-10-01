@@ -1,7 +1,8 @@
 """仓根与几个根目录的读取点，全框架只此一处（纲领 P-15：读数据根的只有这里）。
 
 两类目录分开想：随代码走的**出厂件**——出厂的流程 `workflows/`、需求模板 `templates/`、领域包
-`domains/`、skill 库 `skills/`、两位助理的指南 `coordinator/`、页面构建 `ui/web/dist`；随使用长出
+`domains/`、平台自带的 skill `skills/`、收录的社区 skill `skills-curated/`、两位助理的指南
+`coordinator/`、页面构建 `ui/web/dist`；随使用长出
 来的**数据**——项目 `projects/`、编辑台的对话 `studio/chats/`、人在编辑台存的流程 `studio/workflows/`
 ——根是 `AI4SCI_HOME`。流程库是两层合起来看：出厂的只读，人存的在数据根（外层 #149）。
 
@@ -9,7 +10,7 @@
 - **源码**：clone 了仓库、`make up` 起，出厂件就在仓根下，数据根不设也落在仓根（样例项目在那）。
 - **包**：`uv tool install` 装的 wheel，出厂件由 `make package` 拷进 `framework/shipped/` 随包带走，
   数据根缺省 `~/ai4sci`（第一次用时建）。分辨只看一件事：仓根下有没有 `pyproject.toml`。
-五个环境变量各自只在这里读一次、断言一次：指向的不是目录当场炸，不静默回落（P-7 / P-8）。
+六个环境变量各自只在这里读一次、断言一次：指向的不是目录当场炸，不静默回落（P-7 / P-8）。
 按人的配置目录 `~/.config/ai4sci/`（算力清单、底座清单，纲领 P-23 P-25）与 uv 的缓存也在这里
 给出（页面「设置 → 存放」念给人看）；两份清单各自的读写点仍在 `framework/computes.py` 与
 `framework/agents.py`。
@@ -30,16 +31,19 @@ WORKFLOWS_ROOT_ENV = "AI4SCI_WORKFLOWS_ROOT"
 DOMAINS_ROOT_ENV = "AI4SCI_DOMAINS_ROOT"
 TEMPLATES_ROOT_ENV = "AI4SCI_TEMPLATES_ROOT"
 SKILLS_ROOT_ENV = "AI4SCI_SKILLS_ROOT"
+CURATED_SKILLS_ROOT_ENV = "AI4SCI_CURATED_SKILLS_ROOT"
 WORKFLOWS_DIRNAME = "workflows"
 DOMAINS_DIRNAME = "domains"
 TEMPLATES_DIRNAME = "templates"
 SKILLS_DIRNAME = "skills"
+CURATED_SKILLS_DIRNAME = "skills-curated"
 GUIDES_DIRNAME = "coordinator"
 UI_DIRNAME = "ui"
 STUDIO_DIRNAME = "studio"  # 数据根下编辑台的家：chats/ 对话、workflows/ 人存的流程
 # 出厂件里每一样在仓根下的位置（页面在 ui/web/dist，包里搬平成 ui/）
 SHIPPED = {WORKFLOWS_DIRNAME: Path(WORKFLOWS_DIRNAME), DOMAINS_DIRNAME: Path(DOMAINS_DIRNAME),
            TEMPLATES_DIRNAME: Path(TEMPLATES_DIRNAME), SKILLS_DIRNAME: Path(SKILLS_DIRNAME),
+           CURATED_SKILLS_DIRNAME: Path(CURATED_SKILLS_DIRNAME),
            GUIDES_DIRNAME: Path(GUIDES_DIRNAME), UI_DIRNAME: Path("ui") / "web" / "dist"}
 DEFAULT_HOME = Path.home() / "ai4sci"
 CONFIG_DIR = Path.home() / ".config" / "ai4sci"
@@ -88,8 +92,15 @@ def templates_root() -> Path:
 
 
 def skills_root() -> Path:
-    """平台通用的 skill 库（纲领 P-22）；领域包自己的在 `domains/<包>/skills/`，不在这里。"""
+    """平台自带的 skill（纲领 P-22）：常驻，项目里的会话一直装载（P-26）。收录的在
+    `curated_skills_root()`，领域包自己的在 `domains/<包>/skills/`。"""
     return _library(SKILLS_ROOT_ENV, SKILLS_DIRNAME)
+
+
+def curated_skills_root() -> Path:
+    """收录的社区 skill：按七个研究阶段加 `general` 分拣成子目录，挂到流程实例上才装载
+    （P-22、P-26）。"""
+    return _library(CURATED_SKILLS_ROOT_ENV, CURATED_SKILLS_DIRNAME)
 
 
 def guides_root() -> Path:
@@ -114,7 +125,7 @@ def config_dir() -> Path:
 
 
 def uv_cache_dir() -> Path:
-    """uv 的缓存：skill 脚本 `uv run --offline` 建环境要往里写；uv 自己认 `UV_CACHE_DIR`，这里照它。
+    """uv 的缓存：skill 脚本 `uv run --locked` 建环境要往里写；uv 自己认 `UV_CACHE_DIR`，这里照它。
     """
     raw = os.environ.get(UV_CACHE_ENV)
     return Path(raw).expanduser() if raw else DEFAULT_UV_CACHE

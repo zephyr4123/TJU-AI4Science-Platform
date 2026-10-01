@@ -391,7 +391,12 @@ export interface SkillEntry {
   kind: 'skill'
   title: string
   brief: string
+  /** 哪处库：平台（自带、常驻）、收录（社区整合包分拣进来的）、领域包的名字（纲领 P-22） */
   library: string
+  /** 收录库的架：七个阶段的 slug 或 general；另两处库是空串 */
+  shelf: string
+  /** 给人看的出处：平台 / 收录·文献 / 收录·通用 / 领域包名 */
+  where: string
   body: string
   scripts: string[]
   used_by: string[]
@@ -406,9 +411,12 @@ export type FlowItem =
  *  一项是阶段名、`{阶段: [能力]}`、`{阶段: {能力: 参数}}`、`"断点"` 或 `{断点: 一句话}`。 */
 export type DraftItem = string | Record<string, string | string[] | Record<string, Record<string, unknown> | null>>
 export interface WorkflowDraft {
+  /** 空串：名字由平台起（派生的叫「家族名-序号」，P-15） */
   name: string
   title: string
   summary: string
+  /** 父流程：只给名字是「从它派生」（hash 平台填），给全的是改自己时原样留着 */
+  from?: string | Origin
   stages: DraftItem[]
   /** 画布上每一项的坐标（与 stages 一样长），人摆过才带 */
   layout?: [number, number][]
@@ -421,10 +429,21 @@ export interface WorkflowCheck {
   problems: string[]
 }
 
+/** 派生自哪条、派生那一刻它的结构 hash（纲领 P-15） */
+export interface Origin { name: string; hash: string }
+
 export interface Workflow {
   name: string
   title: string
   summary: string
+  /** 派生自库里哪条；从零拼的是 null */
+  from: Origin | null
+  /** 家族名：顺着 from 走到底的那条；页面按它分组 */
+  family?: string
+  /** 与父流程现在的样子比，改了什么，一行一句人话 */
+  diff?: string[]
+  /** 父流程在派生之后改过 */
+  parent_changed?: boolean
   stages: FlowItem[]
   /** 画布上每一项的坐标（与 stages 一样长）；没人摆过就是 null */
   layout: [number, number][] | null
