@@ -5,8 +5,9 @@
 （`bash_rules`），指南只管说话。
 服务起的会话用 `--setting-sources ""` 隔离，什么都不读，所以这里显式塞。指南在仓根 `coordinator/`，
 不在 framework 包里：装成包运行时这个文件不在，读不到就明说，不悄悄给一份空指南。
-研究助理的 system prompt 里还有一份 skill 清单（`<available_skills>`，纲领 P-22）：通用库里的，
-起会话时扫；领域 skill 不给协调层（P-11）。流程助理不跑东西，不给清单。
+研究助理的 system prompt 里还有一份 skill 清单（`<available_skills>`，纲领 P-22）：本项目装载的那套
+（P-26，`workspace/loadout.py`），每轮发消息时现算——流程实例上刚挂的下一句话就在。流程助理不跑
+东西，不给清单。
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from framework import paths, skills
+from framework.workspace import loadout
+from framework.workspace.project import Project
 
 PROJECT = "project"
 STUDIO = "studio"
@@ -67,10 +70,13 @@ PREAMBLES = {
   哪条被拒就如实说被拒。
 - 要做的事没有对应的命令（比如想跑一段 python）：不要绕，停下来告诉研究者
   「平台还没有这个功能」，缺口记下来是平台的事。
-- 工具包：指南前面「工具包」一节列的 skill 是你随时能用的（解析论文这类），流程格子上挂着的
-  （`show flows` 里带 `[skill]`）是那一步推荐用的。用到哪个就
-  `ai4sci skill show <name>` 读全文、照它写的命令跑；产物写进 `materials/`（解析出来的东西也是原件，
-  只追加，不改已有的文件）。
+- 工具包：前面「工具包」一节列的是这个项目装载的 skill——平台自带的（解析论文、拉材料），加本项目
+  各工作区流程实例上挂着的（`show flows` 里带 `[skill]`）。用到哪个就 `ai4sci skill show <name>`
+  读全文、照它写的命令跑；产物写进 `materials/`（解析出来的东西也是原件，只追加，不改已有的文件）。
+  清单之外的用不了：库里按阶段分好了架，`ai4sci show skills --stage <阶段|通用> [词…]` 翻一架
+  （一句话多是英文，词用英文，比如 `--stage 分析 statistics`），
+  合适的先跟研究者说一声，再挂到那个工作区流程实例的格子上（改 `flows/<name>.yaml`，比如
+  `- 文献: [pdf, paper-lookup]`），`ai4sci show flows --ws <名字>` 校验，下一条命令就能用。
 - 联网：研究者给的是链接不是文件、要查论文有没有公开的代码与数据、库的 API 或报错拿不准、
   要近期的事实——这些时候去查，用你**自带的联网搜索与网页读取工具**；不要在 Bash 里用 curl / wget
   之类命令去凑（也没放行），不要拿记忆里的版本号、API 当事实。查到的东西写进文件时带上来源链接，
@@ -88,7 +94,8 @@ PREAMBLES = {
 
 你是这个平台编辑台的流程助理，对面是课题组里搭流程的人。你管的是**库**：把科研的七个研究阶段排成一条
 通用的流程——每个阶段挂哪些能力、哪几个阶段完了要人签——存进你工作目录下的 `workflows/`
-（`{library}`）。出厂的流程在 `{shipped}`，只读：不能改、不能删，要改就另存一条新名字的。
+（`{library}`）。出厂的流程在 `{shipped}`，只读：不能改、不能删；要在哪条上改，
+`ai4sci workflow new --from <它>` 派生一条（名字与 `from` 由平台填，你不起名字）。
 库里的流程不依附任何课题，
 项目里的研究助理会把它取到自己的工作区里改参数再走。
 下面那份指南讲怎么拼、怎么查、怎么存。在服务里有几条补充：
@@ -110,8 +117,10 @@ class GuideMissing(FileNotFoundError):
     """指南文件不在：服务不能带着空指南起会话。"""
 
 
-def system_prompt(kind: str, guide_path: Path | None = None, tool_guide: str = "") -> str:
-    """前言 + 这家 CLI 的「工具怎么用」（`Chat.tool_guide`，可空）+ skill 清单 + 指南原文。"""
+def system_prompt(kind: str, guide_path: Path | None = None, tool_guide: str = "",
+                  project: Project | None = None) -> str:
+    """前言 + 这家 CLI 的「工具怎么用」（`Chat.tool_guide`，可空）+ 本项目装载的 skill 清单
+    （研究助理、给了项目才有）+ 指南原文。"""
     assert kind in KINDS, f"指南只有 {KINDS}，得到 {kind!r}"
     guide_path = GUIDE_PATHS[kind] if guide_path is None else guide_path  # 调用时取，测试可换指南
     if not guide_path.is_file():
@@ -125,8 +134,9 @@ def system_prompt(kind: str, guide_path: Path | None = None, tool_guide: str = "
     parts = [preamble.strip()]
     if tool_guide.strip():
         parts.append(tool_guide.strip())
-    if kind == PROJECT:
-        catalog = skills.catalog_text(skills.for_coordinator())  # 没有 skill 就是空串，不输出空块
+    if kind == PROJECT and project is not None:
+        loaded = loadout.of(project)
+        catalog = skills.catalog_text(loaded.skills, loaded.unavailable)  # 都没有就是空串
         if catalog:
             parts.append(catalog.strip())
     parts.append(text)

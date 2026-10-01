@@ -8,6 +8,30 @@
 
 ## [Unreleased]
 
+### 新增
+- 编辑台：能力镜头里的 skill 按出处分架、能查找；配置板默认只列已挂的、平台自带的、本阶段那一架的，其余「查找全库」（#197）
+- 收录社区 skill 库 `skills-curated/`：K-Dense、Nature Skills、AI Research SKILLs 按七个阶段加「通用」分拣，台账 `provenance.yaml` 记来源、提交、许可证、改动；`ai4sci show skills` 按词、按阶段查库（#198）
+- 流程命名带血缘：机器名平台起（派生的 `<家族名>-<序号>`）、文件记 `from`、差异现算、库里结构一样的拒；`ai4sci workflow new [--from]`，编辑台流程库按家族分组、能「另存」（#199）
+- `ai4sci skill show <name> <文件>` 读 skill 目录里的参考与模板（#197）
+- 环境变量 `AI4SCI_CURATED_SKILLS_ROOT` 指收录库；`GET /skills/<name>` 取一个 skill 带正文（#197）
+
+### 变更
+- 流程里同一格挂同一个能力两次算问题；查重与差异同一个口径（一格里挂的先后不算、参数 2 与 2.0 相同）（#199）
+- 升级：1.0.x 的数据根跑一次外层的 `scripts/oneoff/migrate-to-1.1.py <数据根>`（旧对话里塞进人话的指南挪出去、meta 去掉 `guide_sha`、续不上的会话改开新会话、流程实例补 `from`）（#200 #199）
+- 能力按项目装载：研究助理与执行层只装平台自带的 skill 加本项目流程实例上挂的能力，装载之外的 `skill show / run` 与 `cap` 拒，领域 skill 也要挂上。迁移：先 `ai4sci flow take <流程>`，要用的 skill 挂到实例的格子上（#197）
+- skill 宽进：规范外的 frontmatter 字段只提醒（平台自带的 `skills/` 除外，门禁里算问题），不合格的单个隔离、不拖垮整库；收录与领域包的脚本首次运行时按锁建环境，`make skills` 只预热平台自带的（#197）
+- `show caps` 文本里 skill 按出处计数不逐个列；`show caps --json`、`GET /skills` 不带 SKILL.md 正文，`skill show` 不打库的路径。迁移：正文用 `ai4sci skill show <name>` 或 `GET /skills/<name>`（#197）
+- `ai4sci skill` 与 `show skills` 按 cwd 所在的项目判装载，cwd 不在项目里才看 `AI4SCI_PROJECT`；流程上拼错的名字列为不可用、不再关掉那个阶段（#197）
+
+### 修复
+- 项目共用的原件（`projects/<p>/materials/`）进不了设计与复现：开工时与工作区的原件一起搬进 `data/`，同名以工作区的为准；复现的论文代码两处都找（#201）
+- Claude Code 续接对话时沿用开会话那份指南、新送的不生效（实测）：改成与 Codex 一样只在开会话时送，指南中途变了由框架把变了的几节塞进那一轮，人的原话照原样存（#200）
+- `ai4sci skill run <name> --script <文件>` 里写在名字后面的 `--script` 被当成脚本参数吞掉（#198）
+
+### 移除
+- 一个第三方 key 都不要：`download` 不再读 Hugging Face 凭据，只拉公开的仓库；门禁查三处库里要凭据的用法。迁移：门控仓库在网页上手动下好放进 `materials/`（#196）
+- 协调层端口的 `guide_channel`（两家都只在开会话时收指南，没有第二种了）；`RunContext.domain`（没有读取方）（#200）
+
 ## [1.0.1] - 2026-09-23
 
 ### 修复

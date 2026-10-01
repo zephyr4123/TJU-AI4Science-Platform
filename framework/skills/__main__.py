@@ -1,27 +1,37 @@
-"""`make skills` 的入口（`python -m framework.skills`）：承接时把两处库过一遍门禁、预热脚本环境。
+"""`make skills` 的入口（`python -m framework.skills`）：三处库的门禁，平台自带的预热。
 
-顺序：扫库（SKILL.md 合规范、脚本有 PEP 723 头与锁）→ 每个脚本 `uv lock --check` + `uv sync`
-（唯一允许联网的一步）→ 每个 skill 声明的系统命令 `which` 一遍。任何一步不过就退 1、问题一行一条；
-过了打一行清单。之后 `ai4sci skill run` 全部 `--locked --offline`。
+顺序：扫三处库，一个不合格都不行（出厂的我们自己负责，宽进只给研究者自己放进来的）→ 零 key
+（纲领 P-27）：哪个文件提到第三方凭据就不过 → 收录库的台账与目录对账（`provenance.py`）→ 平台自带的
+每个脚本 `uv lock --check` + `uv sync`，声明的系统命令 `which` 一遍。收录的与领域包的不预热：几百个
+skill 一个项目只用到几个，第一次 `ai4sci skill run` 时按锁建环境（`run.py`）。任何一步不过就退 1、
+问题一行一条；过了每处库打一行计数。
 """
 
 from __future__ import annotations
 
 import shutil
 import sys
+from collections import Counter
 
-from framework.skills import all_skills, run
-from framework.skills.library import SkillInvalid
+from framework.skills import everything, run
+from framework.skills.library import RESIDENT, SkillInvalid, key_mentions
+from framework.skills.provenance import LedgerInvalid, check
 
 
 def main() -> int:
+    found = everything()
+    problems = [f"{bad.dir}: {p}" for bad in found.invalid for p in bad.problems]
+    for skill in found.skills:
+        problems += [f"{skill.dir}/{hit}（零 key，纲领 P-27）" for hit in key_mentions(skill)]
+        if skill.library == RESIDENT:
+            problems += [f"{skill.dir}: {note}（平台自带的要干净）" for note in skill.notes]
     try:
-        skills = all_skills()
-    except SkillInvalid as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-    problems: list[str] = []
-    for skill in skills:
+        check()
+    except LedgerInvalid as exc:
+        problems.append(str(exc))
+    for skill in found.skills:
+        if skill.library != RESIDENT:
+            continue
         for script in skill.scripts:
             try:
                 run.warm_script(script)
@@ -34,8 +44,11 @@ def main() -> int:
     if problems:
         print("\n".join(problems), file=sys.stderr)
         return 1
-    for skill in skills:
-        print(f"{skill.name}\t{skill.library}\t{len(skill.scripts)} 个脚本\t{skill.dir}")
+    counts = Counter(skill.where for skill in found.skills)
+    scripts = Counter(skill.where for skill in found.skills for _ in skill.scripts)
+    notes = Counter(skill.where for skill in found.skills for _ in skill.notes)
+    for where in dict.fromkeys(skill.where for skill in found.skills):
+        print(f"{where}\t{counts[where]} 个 skill\t{scripts[where]} 个脚本\t{notes[where]} 条提醒")
     return 0
 
 

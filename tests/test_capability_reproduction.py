@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from framework.capabilities import reproduction as cap
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
 from framework.experiment import pack as packs
 from framework.workspace import outputs
+from framework.workspace import project as project_mod
 from tests.fixtures import packs_factory as pf
 from tests.fixtures.scripted_backend import ScriptedRunner
 from tests.test_capability_design import MAKE_RUN0_SH
@@ -91,6 +93,25 @@ def test_missing_code_dir_is_named_with_what_materials_has(ws, monkeypatch):
         cap.run(_open(workspace), _inputs(workspace, lit),
                 Ports(runner=runner, compute=LocalCompute()), code="nope")
     assert runner.calls == 0
+
+
+def test_paper_code_in_the_projects_shared_materials_is_found(ws, monkeypatch):
+    """外层 #201：几个工作区复现同一篇论文的不同数字，论文的代码放在项目共用的 materials/ 里：
+    --code 两处都找，候选清单两处都列；其余共用原件也进 data/。"""
+    workspace, domains, lit = ws
+    monkeypatch.setattr(cap.paths, "domains_root", lambda: domains)
+    shared = project_mod.of(workspace).materials
+    shutil.move(str(workspace.materials / UPSTREAM), str(shared / UPSTREAM))
+    (shared / "table2.csv").write_text("n,acc\n", encoding="utf-8")
+    runner = ScriptedRunner([_shell()])
+    with pytest.raises(CapabilityFailed, match="--code <目录名>.*corebench"):
+        cap.run(_open(workspace), _inputs(workspace, lit),
+                Ports(runner=runner, compute=LocalCompute()))
+    pack = _open(workspace)
+    cap._prepare(pack, workspace.root, UPSTREAM)
+    assert (pack / "code" / "train.py").is_file() and not (pack / "data" / UPSTREAM).exists()
+    assert (pack / "data" / "table2.csv").is_file() and (pack / "data" / "notes.txt").is_file()
+    assert json.loads((pack / packs.UPSTREAM_NAME).read_text(encoding="utf-8"))["name"] == UPSTREAM
 
 
 def test_upstream_is_moved_into_code_shell_is_drafted_baseline_runs_and_edits_are_recorded(

@@ -41,8 +41,11 @@ def cmd_take(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     raw = yaml.safe_load(source.read_text(encoding="utf-8"))
     name = args.as_name or args.name
+    parent = lib.load(args.name)
     if isinstance(raw, dict):
         raw["name"] = name  # 实例可以换个名字：同一条库里的流程按两种参数各取一份
+        if parent is not None:  # 实例也记取自哪条（P-15）：show flows 照它算差异
+            raw["from"] = workflows.Origin(parent.name, parent.content_hash()).to_dict()
     try:
         taken = workflows.save_workflow(ws.flows, raw, abilities.steps(),
                                         skills=abilities.skill_names())
@@ -68,6 +71,41 @@ def cmd_remove(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
     return report(removed, f"ok 删了流程实例 {removed.what}")
+
+
+def cmd_new_workflow(args: argparse.Namespace) -> int:
+    """在库里人存的那层起一条流程，名字与 `from` 由平台填（纲领 P-15）：`--from <名字>` 是派生，
+    照抄那条、名字起成 `<家族名>-<序号>`；不带就是从零起一条，名字由流程助理给。"""
+    lib = library()
+    if args.parent:
+        if args.name:
+            print("派生的名字由平台起，不用给：去掉名字，或去掉 --from", file=sys.stderr)
+            return EXIT_USAGE
+        try:
+            doc = lib.derive(args.parent)
+        except FileNotFoundError as exc:
+            print(str(exc), file=sys.stderr)
+            return EXIT_USAGE
+        if args.title:
+            doc["title"] = args.title
+    else:
+        if not args.name or not args.title:
+            print("从零起一条要给英文名与标题：ai4sci workflow new <name> --title <标题>"
+                  "（从库里一条改，用 --from <名字>，名字由平台起）", file=sys.stderr)
+            return EXIT_USAGE
+        doc = {"name": args.name, "title": args.title, "summary": args.title,
+               "stages": ["设计"]}
+    try:
+        saved = lib.save(doc, abilities.steps(), skills=abilities.skill_names(), draft=True)
+    except (workflows.WorkflowInvalid, FileExistsError) as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_INVALID
+    origin = f"\tfrom={saved.origin.name}" if saved.origin else ""
+    # 打实际路径：助理站在 studio/ 里、人在终端站在别处，照着都找得到
+    print(f"ok {saved.name}\t{lib.find(saved.name)}{origin}"
+          f"\tnext=改这个文件（阶段、能力、断点、标题、说明；起点与库里某条一样，改出不同之前"
+          f" show workflows 会标「一模一样」），ai4sci show workflows 校验")
+    return EXIT_OK
 
 
 def cmd_remove_workflow(args: argparse.Namespace) -> int:
@@ -101,6 +139,12 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     lib = groups.add_parser(
         "workflow", help="流程库：人存的流程文件（数据根 studio/workflows/*.yaml）；出厂的只读")
     lib_actions = lib.add_subparsers(dest="action", required=True)
+    making = lib_actions.add_parser(
+        "new", help="起一条：--from <名字> 从库里一条派生（名字平台起），或 <name> --title 从零起")
+    making.add_argument("name", nargs="?", default="", help="从零起时的英文名（小写、连字符）")
+    making.add_argument("--from", dest="parent", default="", help="从库里哪条派生")
+    making.add_argument("--title", default="", help="标题（中文，一句话）；派生时缺省照抄父流程的")
+    making.set_defaults(func=cmd_new_workflow)
     dropping = lib_actions.add_parser("remove", help="删库里人自己存的一条流程；出厂的不能删")
     dropping.add_argument("name", help="流程名（文件名去掉 .yaml）")
     dropping.set_defaults(func=cmd_remove_workflow)

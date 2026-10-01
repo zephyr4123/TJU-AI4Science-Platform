@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from framework.contracts.stages import STAGE_NAMES
 from framework.workspace import project as project_mod
 from framework.workspace.project import Project
 from framework.workspace.root import Workspace
@@ -33,3 +34,22 @@ def workspace_dir(tmp_path: Path, ws_id: str, project_id: str = DEFAULT_PROJECT)
     """一个工作区在盘上的位置（不建）。"""
     return (tmp_path / project_mod.PROJECTS_DIRNAME / project_id / project_mod.WORKSPACES_DIRNAME
             / ws_id)
+
+
+def give_flow(ws: Workspace, stages: str, name: str = "f") -> Path:
+    """给工作区放一条流程实例：项目只装载流程上挂的能力（纲领 P-26），测试要跑步骤、要领域
+    skill 进清单，就得先有流程。`stages` 是 YAML 的 stages 列表原文，
+    如 `"  - 设计\n  - 实验: [petab]\n"`。"""
+    ws.flows.mkdir(exist_ok=True)
+    path = ws.flows / f"{name}.yaml"
+    path.write_text(f"name: {name}\ntitle: 夹具\nsummary: 夹具\nstages:\n{stages}",
+                    encoding="utf-8")
+    return path
+
+
+# 七个阶段都敞开、一个断点没有的流程：只为让步骤装载上（纲领 P-26），不测流程本身的测试用它
+OPEN_STAGES = "".join(f"  - {name}\n" for name in STAGE_NAMES)
+
+
+def open_flow(ws: Workspace) -> Path:
+    return give_flow(ws, OPEN_STAGES, name="open")

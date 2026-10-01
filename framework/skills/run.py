@@ -1,10 +1,12 @@
-"""起一个 skill 的脚本：`uv run --locked --offline --script <脚本> <参数…>`（纲领 P-22）。
+"""起一个 skill 的脚本：`uv run --locked --script <脚本> <参数…>`（纲领 P-22）。
 
 只做一件事：找到脚本、按锁起环境、把参数原样递过去；不解析脚本的输出，不替脚本猜路径。
 stdout / stderr 直通调用方（agent 读 stdout 的那行 JSON），退出码原样返回。
 
-`--locked`：锁文件与头部的依赖对不上就报错，不静默重解析；`--offline`：环境由 `make skills` 预热过，
-运行时不联网，沙箱断网照跑。冷机器上会失败，uv 的报错会说没缓存——那是承接没做完，不是运行时该兜的。
+`--locked`：锁文件与头部的依赖对不上就报错，不静默重解析。环境在 uv 的全机缓存里：平台自带的由
+`make skills` 预热过，运行时不用联网；收录的与领域包的几百个不全量预热（一个项目只用到其中几个，
+装一台新机器不该先下几个 G），第一次跑时 uv 按锁把环境建进缓存，之后同样不联网。`ai4sci` 的命令在
+两家适配器里都在沙箱外跑（能联网），所以这一次联网走得通。
 uv 是平台 venv 里的（`python -m uv`，与 experiment/env.py 同一份），不找系统 PATH 上的。
 """
 
@@ -18,7 +20,7 @@ from pathlib import Path
 
 from framework.skills.library import Skill, SkillInvalid, lock_path
 
-UV_RUN_ARGS = ("run", "--locked", "--offline", "--script")
+UV_RUN_ARGS = ("run", "--locked", "--script")
 UV_LOCK_CHECK_ARGS = ("lock", "--check", "--script")
 UV_SYNC_ARGS = ("sync", "--locked", "--script")
 
@@ -67,8 +69,8 @@ def run_script(script: Path, args: list[str], cwd: Path | None = None) -> int:
 
 
 def warm_script(script: Path) -> None:
-    """`make skills` 用：核对锁文件（`uv lock --script --check`）再预热环境（`uv sync`）。
-    这是唯一允许联网的一步；失败就带 stderr 抛，不留一个「看起来预热过」的环境。"""
+    """`make skills` 用（平台自带的那几个）：核对锁文件（`uv lock --script --check`）再预热环境
+    （`uv sync`）。失败就带 stderr 抛，不留一个「看起来预热过」的环境。"""
     uv = uv_argv()
     for what, argv in (("uv lock --check", [*uv, *UV_LOCK_CHECK_ARGS, str(script)]),
                        ("uv sync", [*uv, *UV_SYNC_ARGS, str(script)])):

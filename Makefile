@@ -11,7 +11,7 @@ PY   := $(VENV)/bin/python
 UV   := $(shell command -v uv 2>/dev/null || echo $(HOME)/.local/bin/uv)
 PORT ?= 8765
 
-up: venv ui-auto skills             ## 一行起服务：环境、页面、skill 预热、自检，然后 ai4sci serve
+up: venv ui-auto skills             ## 一行起服务：环境、页面、skill 门禁与预热、自检，然后 ai4sci serve
 	-$(PY) -m framework.cli check
 	$(PY) -m framework.cli serve --port $(PORT)
 
@@ -33,7 +33,7 @@ lock:                              ## 改了 pyproject 的依赖后重新钉版�
 lint: venv                         ## 静态检查：ruff（含裸 except 门禁）
 	$(VENV)/bin/ruff check .
 
-skills: venv                       ## skill 门禁与预热：SKILL.md 合规范、每个脚本锁文件对得上、环境建好（唯一联网的一步）
+skills: venv                       ## skill 门禁：三处库合规范、零 key、收录台账对账；平台自带的脚本锁对得上、环境预热（收录与领域包的第一次运行时建）
 	$(PY) -m framework.skills
 
 test: venv                         ## 框架测试；真 CLI 冒烟测试要 AI4SCI_LIVE=1

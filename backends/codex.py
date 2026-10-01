@@ -45,7 +45,7 @@
   只在 `-` 时读 stdin，给了位置参数就静默丢掉管道里的内容。
 - **续接**：`codex exec resume <thread_id> -` 加同一组 `-c`；`--ephemeral` 的线程续不了（no rollout
   found），协调层不带它、执行层带。resume 时 `developer_instructions` 不再生效（线程开头那份留着），
-  指南变了由框架把全文塞进话里（端口 `guide_channel = "thread"`）。
+  指南变了由框架把变了的几节塞进话里。
 - **指南**走 `-c developer_instructions="<TOML 字符串>"`：叠加在内置指令之外，不替换
   （`model_instructions_file` 是整体替换，官方不建议）；换行与中文实测都行。AGENTS.md 一律不读：
   `project_doc_max_bytes=0`。
@@ -460,7 +460,6 @@ class CodexChat:
 
     name = NAME
     cost_reporting = "turn"
-    guide_channel = "thread"  # developer_instructions 只在开线程时生效，指南变了框架塞进话里
 
     def __init__(self, cli: str = "codex") -> None:
         self.cli = cli

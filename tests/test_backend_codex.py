@@ -200,7 +200,6 @@ def test_tool_guide_names_the_allowed_commands():
     assert "一条都不跑" in cx.tool_guide(())
     # 协调层那段：这家没有单独的读文件工具，看文件就是 shell 的只读命令；指南只在开线程时送到
     chat = cx.CodexChat()
-    assert chat.guide_channel == "thread"
     text = chat.tool_guide(("ai4sci",))
     assert "ls、cat" in text and "`ai4sci …`" in text and "不算「运行动作」" in text
 

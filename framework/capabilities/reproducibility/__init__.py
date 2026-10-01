@@ -13,7 +13,6 @@ import logging
 import math
 from pathlib import Path
 
-from framework import skills
 from framework.contracts import requirement
 from framework.contracts.capability import Capability, CapabilityFailed, Inputs, Param, Ports
 from framework.contracts.output import read_meta
@@ -23,6 +22,7 @@ from framework.experiment import pack as packs
 from framework.experiment.analysis import check_session_outcome
 from framework.experiment.context import DIRECTION_ZH
 from framework.experiment.results import read_metrics
+from framework.workspace import loadout
 
 LOGGER = logging.getLogger("ai4sci.reproducibility")
 NAME = "reproducibility"
@@ -79,15 +79,12 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, feedback: str = "") -
     oid = next(i for i in inputs.ids if i.startswith("design/"))
     if not (design_dir / packs.BASELINE_DIRNAME / "results.json").is_file():
         raise CapabilityFailed(f"{oid} 还没有跑出 baseline/，没有可分析的复现结果")
-    scoring = packs.read_scoring(design_dir)
-    domain = str(scoring.get("domain", packs.DEFAULT_DOMAIN))
     values = _prompt_values(design_dir, oid, inputs)
     # 重写不是接着改（分析每次都是新的一份，P-19），但上一版的问题要让执行层看见，别让它盲改：
     # 真跑时第二版把训练超参写在正文里被数字核对拦下，第三版不知道第二版错在哪
     values["feedback"] = (f"## 上一版的问题（这次要避免）\n\n{feedback.strip()}"
                           if feedback.strip() else "")
-    prompt = prompting.build_prompt(PROMPT_TEMPLATE, values,
-                                    skills=skills.for_executor(domain))
+    prompt = prompting.build_prompt(PROMPT_TEMPLATE, values, loadout=loadout.around(output_dir))
     result = session.run_session(
         ports.runner, prompt, cwd=output_dir, allowed_paths=[output_dir],
         log_dir=output_dir / LOG_DIRNAME,

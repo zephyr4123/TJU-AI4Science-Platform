@@ -25,6 +25,7 @@ from framework.contracts.capability import Capability, CapabilityFailed, Inputs,
 from framework.experiment import drafting, env
 from framework.experiment import pack as packs
 from framework.experiment.baseline import run_baseline
+from framework.workspace import project as project_mod
 
 LOGGER = logging.getLogger("ai4sci.reproduction")
 NAME = "reproduction"
@@ -60,8 +61,9 @@ DESCRIPTOR = Capability(
         "预检里「离尽头不够一个门就无解」那一条不适用：基线到论文值的距离就是复现的结果本身。"
     ),
     brings=(
-        "已确认的需求（哪篇论文、哪几个数、复现到第几级、对上的标准）；原件 materials/ 里"
-        "论文的代码目录（带 download 的收据更好：来源与 commit 有据）、数据、materials/env/"
+        "已确认的需求（哪篇论文、哪几个数、复现到第几级、对上的标准）；原件——工作区的或项目"
+        "共用的 materials/ 里论文的代码目录（带 download 的收据更好：来源与 commit 有据）、数据，"
+        "工作区的 materials/env/"
         "（按上游的 requirements 算的清单，或机器上现成的解释器）；文献阶段的产出 sources.md 可选。"
         "改第二版时接着上一次产出，带修改意见。"
     ),
@@ -103,9 +105,8 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, code: str = "",
         if not path.is_file():
             raise CapabilityFailed(f"--feedback 指的文件不存在：{path}")
         feedback = path.read_text(encoding="utf-8")
-    materials = Path(inputs.workspace) / MATERIALS_DIRNAME
-    _prepare(output_dir, materials, code)
-    upstream_dir = materials / packs.read_upstream(output_dir)["name"]
+    _prepare(output_dir, Path(inputs.workspace), code)
+    upstream_dir = _code_dir(Path(inputs.workspace), packs.read_upstream(output_dir)["name"])
     oid = f"design/{output_dir.name}"
     next_step = (f"next=把论文值（attainable）与我们的值（baseline）念给研究者，对上了没由他判；"
                  f"签了就 ai4sci cap reproducibility --from {oid}")
@@ -149,10 +150,11 @@ def _drafted(pack: Path) -> bool:
     return (pack / packs.SCORING_NAME).is_file() and (pack / "harness" / "SHA256SUMS").is_file()
 
 
-def _prepare(pack: Path, materials: Path, code: str) -> None:
-    """第一次进这个目录：论文的代码搬进 code/、其余原件搬进 data/、原件里的 env/ 搬成包的 env/，
-    记下上游的出处。第二次（--continue）什么都不动，只查 materials/env/ 与包里的 env/ 还对不对
-    得上。"""
+def _prepare(pack: Path, workspace: Path, code: str) -> None:
+    """第一次进这个目录：论文的代码搬进 code/（工作区的或项目共用的原件里找，外层 #201）、其余原件
+    搬进 data/（两处的，同名以工作区为准）、工作区原件里的 env/ 搬成包的 env/，记下上游的出处。
+    第二次（--continue）什么都不动，只查 materials/env/ 与包里的 env/ 还对不对得上。"""
+    materials = workspace / MATERIALS_DIRNAME
     if (pack / "code").exists():
         changed = _env_changed(materials / env.ENV_DIRNAME, pack / env.ENV_DIRNAME)
         if changed and _same_interpreter(materials / env.ENV_DIRNAME, pack / env.ENV_DIRNAME):
@@ -169,15 +171,16 @@ def _prepare(pack: Path, materials: Path, code: str) -> None:
                 "ai4sci cap reproduction")
         return
     if not materials.is_dir():
-        raise CapabilityFailed(f"工作区没有 {MATERIALS_DIRNAME}/：论文的代码要先拉到那里"
-                               "（ai4sci skill run download git …）")
-    candidates = sorted(p.name for p in materials.iterdir()
-                        if p.is_dir() and p.name not in IGNORED)
+        raise CapabilityFailed(
+            f"工作区没有 {MATERIALS_DIRNAME}/：环境清单 env/ 要在那里；论文的代码拉到那里或项目"
+            "共用的 materials/（ai4sci skill run download git …）")
+    candidates = sorted({p.name for d in project_mod.material_dirs(workspace) for p in d.iterdir()
+                         if p.is_dir() and p.name not in IGNORED})
     if not code:
         raise CapabilityFailed(
             "要说清原件里哪个目录是论文的代码：--code <目录名>；"
             f"{MATERIALS_DIRNAME}/ 里有：{', '.join(candidates) or '（空）'}")
-    src = materials / code
+    src = _code_dir(workspace, code)
     if not src.is_dir():
         raise CapabilityFailed(
             f"{MATERIALS_DIRNAME}/{code}/ 不存在；有：{', '.join(candidates) or '（空）'}")
@@ -190,13 +193,22 @@ def _prepare(pack: Path, materials: Path, code: str) -> None:
             + "\n".join(problems))
     # 收据不进 code/：出处已经记进 upstream.json，上游的树保持原样
     shutil.copytree(src, pack / "code", ignore=shutil.ignore_patterns(*IGNORED, RECEIPT_NAME))
-    shutil.copytree(materials, pack / "data",
-                    ignore=shutil.ignore_patterns(*IGNORED, code, RECEIPT_NAME))
+    shadowed = project_mod.copy_materials(workspace, pack / "data", *IGNORED, code, RECEIPT_NAME)
     shutil.copytree(materials / env.ENV_DIRNAME, pack / env.ENV_DIRNAME)
     (pack / packs.UPSTREAM_NAME).write_text(
         json.dumps(_upstream_of(src, code), ensure_ascii=False, indent=2), encoding="utf-8")
-    LOGGER.info("reproduction_prepare pack=%s code=%s files=%d", pack, code,
-                sum(1 for p in (pack / "code").rglob("*") if p.is_file()))
+    LOGGER.info("reproduction_prepare pack=%s code=%s from=%s files=%d shadowed=%s", pack, code,
+                src.parent, sum(1 for p in (pack / "code").rglob("*") if p.is_file()),
+                shadowed or "-")
+
+
+def _code_dir(workspace: Path, name: str) -> Path:
+    """论文的代码目录：工作区的原件里有就用它，不然项目共用的（与 copy_materials 同一个先后）；
+    两处都没有就是工作区那个不存在的路径，调用方报。"""
+    for directory in reversed(project_mod.material_dirs(workspace)):
+        if (directory / name).is_dir():
+            return directory / name
+    return workspace / MATERIALS_DIRNAME / name
 
 
 def _upstream_of(src: Path, name: str) -> dict[str, str]:

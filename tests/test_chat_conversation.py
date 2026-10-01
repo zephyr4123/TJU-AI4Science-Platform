@@ -164,43 +164,48 @@ def test_stale_lock_from_a_dead_process_is_reclaimed_but_a_live_one_is_honoured(
     lock.unlink()
 
 
-def test_guide_change_between_turns_is_announced_to_the_agent(tmp_path):
-    """外层 #122：平台中途加了命令（指南变了），助理照上一轮的记忆答「做不了」。指南的指纹记在
-    meta，下一轮指纹变了就在话前面加一句提示；没变不加；第一轮不加。"""
-    conv, chat = start(tmp_path, reply("一"), reply("二"), reply("三"))
-    drain(conv, chat, "第一句")
-    assert conv.guide_sha and not chat.calls[0]["message"].startswith("（平台提示")
-    drain(conv, chat, "第二句")
-    assert not chat.calls[1]["message"].startswith("（平台提示")
-    list(conv_mod.send(conv, chat, "第三句", system_prompt=GUIDE + "\n新加了一条命令",
-                       allowed_paths=[], bash_rules=()))
+def test_guide_change_mid_conversation_sends_only_the_changed_sections(tmp_path):
+    """外层 #122 #131 #200：两家 CLI 续接时都不再收 system prompt，指南中途变了（平台加了命令、
+    流程实例上新挂了 skill）由框架塞进那一轮的话里——只塞变了的几节、删掉的报节名，不整份塞
+    （研究助理的指南两万多字）。人的原话照原样存，塞进去的另存，页面的历史里没有它。"""
+    kit = "## 工具包\n<available_skills>pdf</available_skills>"
+    guide = f"# 你在服务里\n前言\n\n{kit}\n\n# 指南\n正文"
+    conv, chat = start(tmp_path, reply("一"), reply("二"), reply("三"), reply("四"))
+    send = lambda text, prompt: list(conv_mod.send(  # noqa: E731
+        conv, chat, text, system_prompt=prompt, allowed_paths=[], bash_rules=()))
+    send("第一句", guide)
+    assert chat.calls[0]["message"] == "第一句"  # 第一轮指南随开会话送到
+    send("第二句", guide)
+    assert chat.calls[1]["message"] == "第二句"  # 没变不塞
+    hung_kit = kit.replace("pdf</available", "pdf polish</available")
+    hung = guide.replace(kit, hung_kit)
+    send("好的，开始吧", hung)
     sent = chat.calls[2]["message"]
-    assert sent.startswith(conv_mod.GUIDE_CHANGED_NOTICE) and sent.endswith("第三句")
-    assert (conv.dir / "turn-3" / "message.md").read_text(encoding="utf-8").startswith("（平台提示")
-    reloaded = conv_mod.load_conversation(tmp_path / "chats", conv.chat_id)
-    assert reloaded.guide_sha == conv.guide_sha
+    assert sent.startswith("（平台提示") and sent.endswith("好的，开始吧")
+    assert "<available_skills>pdf polish</available_skills>" in sent
+    assert "前言" not in sent and "正文" not in sent  # 没变的节不塞
+    turn = conv.dir / "turn-3"
+    assert (turn / "message.md").read_text(encoding="utf-8") == "好的，开始吧\n"
+    assert "polish" in (turn / conv_mod.GUIDE_UPDATE_NAME).read_text(encoding="utf-8")
+    [third] = [t for t in conv_mod.read_turns(conv) if t["turn"] == 3]
+    assert third["message"] == "好的，开始吧"
+    send("第四句", hung.replace(f"\n\n{hung_kit}", ""))
+    assert "删掉了，不再作数：## 工具包" in chat.calls[3]["message"]
 
 
-def test_guide_change_is_reinjected_in_full_for_thread_channel_clis(tmp_path):
-    """P-25 / 外层 #131：Codex 只在开线程时收指南（developer_instructions，resume 再给不生效），
-    指南变了
-    框架把新指南全文塞进那一轮的话里；turn 渠道的（Claude Code 每轮整份送）只加一句提示。"""
+def test_without_a_record_of_what_was_sent_the_whole_guide_counts_as_changed(tmp_path):
+    """对话目录里没有 guide.md（不知道 CLI 手里是哪份）而有会话可续：整份都算变了、整份塞；
+    没开过会话（第一轮）不塞——指南随开会话送到。"""
     conv, chat = start(tmp_path, reply("一"), reply("二"))
-    chat.guide_channel = "thread"
     drain(conv, chat, "第一句")
-    list(conv_mod.send(conv, chat, "第二句", system_prompt=GUIDE + "\n新加了一条命令",
-                       allowed_paths=[], bash_rules=()))
+    (conv.dir / conv_mod.GUIDE_NAME).unlink()
+    drain(conv, chat, "第二句")
     sent = chat.calls[1]["message"]
-    expected = conv_mod.GUIDE_REINJECT.format(guide=(GUIDE + "\n新加了一条命令").strip())
-    assert sent.startswith(expected)
-    assert conv_mod.GUIDE_CHANGED_NOTICE in sent and sent.endswith("第二句")
-    assert "新加了一条命令" in sent  # 全文在话里
-    # 第一轮（还没线程）不塞：那一轮的指南本来就会随开线程送到
+    assert "你是协调 agent" in sent and sent.endswith("第二句")
+    assert (conv.dir / conv_mod.GUIDE_NAME).read_text(encoding="utf-8") == GUIDE
     conv2, chat2 = start(tmp_path / "b", reply("一"))
-    chat2.guide_channel = "thread"
-    conv2.guide_sha = "stale"
     drain(conv2, chat2, "第一句")
-    assert "<guide>" not in chat2.calls[0]["message"]
+    assert chat2.calls[0]["message"] == "第一句"
 
 
 def test_empty_message_and_timeout_env(tmp_path, monkeypatch):

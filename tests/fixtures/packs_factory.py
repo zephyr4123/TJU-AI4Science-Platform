@@ -119,9 +119,13 @@ def to_yaml(doc: dict[str, Any]) -> str:
     return yaml.safe_dump(doc, allow_unicode=True, sort_keys=False)
 
 
-def make_workspace(tmp_path: Path, ws_id: str = "toy", *, confirmed: bool = True) -> Workspace:
-    """一个工作区：需求写好（缺省已确认）、materials/env/ 备好。"""
+def make_workspace(tmp_path: Path, ws_id: str = "toy", *, confirmed: bool = True,
+                   flow: bool = True) -> Workspace:
+    """一个工作区：需求写好（缺省已确认）、materials/env/ 备好；缺省带一条七个阶段都敞开的流程
+    （项目只装载流程上挂的能力，纲领 P-26，不带就跑不了步骤）。"""
     workspace = spaces.make_workspace(tmp_path, ws_id)
+    if flow:
+        spaces.open_flow(workspace)
     workspace.requirement.write_text(REQUIREMENT, encoding="utf-8")
     write_env(workspace.materials)
     if confirmed:

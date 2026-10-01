@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Workflow } from '@/api/types'
+import type { SkillEntry, Workflow } from '@/api/types'
 
 import {
-  append, autoLayout, dropAt, fromWorkflow, indexAt, insertAt, parseParam, place, positions, problemIndices, ROW_PITCH, ROW_WIDTH,
-  setParam, stageItem, stopItem, tidy, toDraft, toggleCap, WIDTH,
+  append, autoLayout, byFamily, deriveFrom, dropAt, fromWorkflow, groupSkills, hoverLine, inFamily, indexAt, insertAt, lineageLine, parseParam,
+  place, positions, problemIndices, ROW_PITCH, ROW_WIDTH, setParam, skillsFor, stageItem, stopItem, tidy, toDraft, toggleCap, WIDTH,
 } from './model'
 
 const strip = (draft: ReturnType<typeof fromWorkflow>) => draft.items.map((it) => (it.kind === 'stop' ? { note: it.note } : { stage: it.stage, caps: it.caps }))
@@ -12,7 +12,7 @@ const strip = (draft: ReturnType<typeof fromWorkflow>) => draft.items.map((it) =
 describe('画布 ↔ 文件', () => {
   it('不点名一个名字、点名一个清单、带参数写映射、断点一个词或一句话', () => {
     const draft = {
-      name: ' r ', title: 't', summary: 's',
+      name: ' r ', title: 't', summary: 's', from: null,
       items: [
         stageItem('假设'), stopItem('发布'),
         stageItem('设计', [{ cap: 'design', with: {} }]),
@@ -27,7 +27,7 @@ describe('画布 ↔ 文件', () => {
   })
   it('库里的一条载入画布时参数跟着来，名字照旧', () => {
     const wf = {
-      name: 'research', title: 't', summary: 's', covers: [], remarks: [], problems: [], shipped: false, layout: null,
+      name: 'research', title: 't', summary: 's', from: null, covers: [], remarks: [], problems: [], shipped: false, layout: null,
       stages: [
         { kind: 'stage', stage: '实验', caps: [{ cap: 'auto-research', with: { max_iters: 3 } }] },
         { kind: 'stop', note: '验收' },
@@ -78,11 +78,11 @@ describe('位置与顺序', () => {
     expect(more2[3].pos).toEqual({ x: 900 + WIDTH.stage + 56, y: 0 })
   })
   it('摆过才把坐标写进文件；库里带 layout 的载入时照它摆', () => {
-    const draft = { name: 'r', title: 't', summary: 's', items }
+    const draft = { name: 'r', title: 't', summary: 's', items, from: null }
     expect(toDraft(draft).layout).toBeUndefined()
     const moved = { ...draft, items: place(items, items[2].uid, { x: 900.4, y: 0 }) }
     expect(toDraft(moved).layout).toEqual([[0, 0], [WIDTH.stage + 56, 0], [900, 0]])
-    const wf = { name: 'x', title: 't', summary: 's', covers: [], remarks: [], problems: [], shipped: false, layout: [[5, 6], [7, 8]],
+    const wf = { name: 'x', title: 't', summary: 's', from: null, covers: [], remarks: [], problems: [], shipped: false, layout: [[5, 6], [7, 8]],
       stages: [{ kind: 'stage', stage: '假设', caps: [] }, { kind: 'stop', note: '' }] } as Workflow
     expect(fromWorkflow(wf).items.map((it) => it.pos)).toEqual([{ x: 5, y: 6 }, { x: 7, y: 8 }])
   })
@@ -110,5 +110,72 @@ describe('节点里的能力与参数', () => {
     expect(problemIndices('第 3 项「设计」里的 verify 属于「验证」阶段')).toEqual([2])
     expect(problemIndices('第 2 项与第 3 项都是断点：两个断点挨着等于一个')).toEqual([1, 2])
     expect(problemIndices('有实验没有验证')).toEqual([])
+  })
+})
+
+const flow = (name: string, extra: Partial<Workflow> = {}): Workflow => ({
+  name, title: name, summary: 's', covers: [], remarks: [], problems: [], shipped: false, layout: null, from: null,
+  stages: [{ kind: 'stage', stage: '设计', caps: [] }], family: name, diff: [], parent_changed: false, ...extra,
+}) as Workflow
+
+describe('流程的血缘（P-15）', () => {
+  it('从出厂的派生：名字空着交给平台起，存的时候只带父流程的名字', () => {
+    const draft = deriveFrom(flow('research', { shipped: true }))
+    expect(draft.name).toBe('')
+    expect(toDraft(draft).from).toBe('research')
+  })
+  it('改自己存过的：名字与血缘原样带回去', () => {
+    const own = flow('research-2', { from: { name: 'research', hash: 'abcdef123456' }, family: 'research' })
+    expect(toDraft(fromWorkflow(own))).toMatchObject({ name: 'research-2', from: { name: 'research', hash: 'abcdef123456' } })
+    expect(toDraft(fromWorkflow(flow('scratch'))).from).toBeUndefined()
+  })
+  it('库按家族排：派生的跟在家族的头后面、序号按数字排，父流程不在了的放最后、不缩进', () => {
+    const rows = [
+      flow('research', { shipped: true }), flow('reproduce', { shipped: true }),
+      flow('research-10', { from: { name: 'research-2', hash: 'a'.repeat(12) }, family: 'research' }),
+      flow('reproduce-2', { from: { name: 'reproduce', hash: 'b'.repeat(12) }, family: 'reproduce' }),
+      flow('research-2', { from: { name: 'research', hash: 'c'.repeat(12) }, family: 'research' }),
+      flow('research-9', { from: { name: 'research', hash: 'e'.repeat(12) }, family: 'research' }),
+      // 后端真给的孤儿形状：父流程 reproduce-3 删了，家族走不上去，家族名就是它自己
+      flow('reproduce-4', { from: { name: 'reproduce-3', hash: 'd'.repeat(12) }, family: 'reproduce-4' }),
+    ]
+    const sorted = byFamily(rows)
+    expect(sorted.map((wf) => wf.name)).toEqual(
+      ['research', 'research-2', 'research-9', 'research-10', 'reproduce', 'reproduce-2', 'reproduce-4'])
+    expect(sorted.map(inFamily)).toEqual([false, true, true, true, false, true, false])
+  })
+  it('悬停一行：有问题说问题，派生的说改了什么，别的说说明（差异为空数组不顶掉说明）', () => {
+    expect(hoverLine(flow('scratch', { diff: [], summary: '一句说明' }))).toBe('一句说明')
+    expect(hoverLine(flow('research-2', { diff: ['去掉断点'], summary: 's' }))).toBe('去掉断点')
+    expect(hoverLine({ ...flow('x', { diff: ['去掉断点'] }), problems: ['重名'] })).toBe('重名')
+  })
+  it('小字一行：派生的写改了什么，父流程改过先说', () => {
+    expect(lineageLine(flow('research', { shipped: true }))).toBe('1 项，出厂')
+    const child = flow('research-2', { from: { name: 'research', hash: 'a'.repeat(12) }, diff: ['加了阶段「文献」', '去掉断点'] })
+    expect(lineageLine(child)).toBe('加了阶段「文献」；去掉断点')
+    expect(lineageLine({ ...child, diff: [], parent_changed: true })).toBe('父流程后来改过；与父流程一样')
+  })
+})
+
+const skill = (name: string, where: string, brief = name): SkillEntry => ({
+  name, kind: 'skill', title: name, brief, library: where.startsWith('收录') ? '收录' : where, shelf: '', where,
+  scripts: [], used_by: [],
+})
+
+describe('skill 怎么摆（P-22、P-26）', () => {
+  const lib = [skill('pdf', '平台'), skill('paper-lookup', '收录·文献', '查论文 OpenAlex'), skill('polish', '收录·写作'),
+    skill('plot', '收录·通用'), skill('petab', 'petab')]
+  it('不查找时：挂上的在前，再是平台自带的与这个阶段那一架的', () => {
+    expect(skillsFor(lib, '文献', [], '').map((s) => s.name)).toEqual(['pdf', 'paper-lookup'])
+    expect(skillsFor(lib, '文献', ['polish'], '').map((s) => s.name)).toEqual(['polish', 'pdf', 'paper-lookup'])
+  })
+  it('查找时看全库：词都要有、不分大小写', () => {
+    expect(skillsFor(lib, '文献', [], 'openalex').map((s) => s.name)).toEqual(['paper-lookup'])
+    expect(skillsFor(lib, '写作', [], 'p').map((s) => s.name)).toEqual(['pdf', 'paper-lookup', 'polish', 'plot', 'petab'])
+    expect(skillsFor(lib, '写作', [], '查论文 nope')).toEqual([])
+  })
+  it('能力镜头按出处分架，照后端给的顺序', () => {
+    expect(groupSkills(lib).map((g) => [g.where, g.skills.length])).toEqual(
+      [['平台', 1], ['收录·文献', 1], ['收录·写作', 1], ['收录·通用', 1], ['petab', 1]])
   })
 })

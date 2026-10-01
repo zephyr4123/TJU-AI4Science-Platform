@@ -1,9 +1,9 @@
 """任务自带环境与领域包注入在 run 这一层的验收（spec A-12、纲领 packs.md §2 §3）。
 
-- run new 按 work/env/ 建 runs/<id>/.venv，任务目录里的 .venv 不被拷进 work/
-- harness 经框架跑时，解释器落在 run 自己的 .venv 下（A-12 的机器证据）
-- 领域包的 prompts/experiment.md 随 run 快照，进执行层提示的「领域约定」段；领域 skill 不快照，
-  以清单（名字 + 一句话）进执行层提示的「工具包」段（纲领 P-22）
+- 开实验按 env/ 建 experiment/<n>/.venv，设计包里的 .venv 不被拷进 work/
+- harness 经框架跑时，解释器落在这次实验自己的 .venv 下（A-12 的机器证据）
+- 领域包的 prompts/experiment.md 随实验快照，进执行层提示的「领域约定」段；领域 skill 挂到流程实例上
+  才装载（P-26），以清单（名字 + 一句话）进执行层提示的「工具包」段
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from framework.capabilities.auto_research.open import EnvBuildError
 from framework.experiment import env, layout
 from framework.experiment.context import load_context, read_domain_extra
 from tests.fixtures import packs_factory as pf
+from tests.fixtures import spaces
 from tests.fixtures.scripted_backend import ScriptedRunner
 from tests.test_experiment_loop import make_loop_pack, open_run, train_for_mse
 
@@ -77,13 +78,14 @@ def test_open_clears_the_half_built_experiment_when_the_env_cannot_be_built(tmp_
 def test_domain_prompt_is_snapshotted_and_skills_go_in_as_a_catalog(tmp_path, monkeypatch):
     pack = make_loop_pack(tmp_path)
     monkeypatch.setenv(paths.DOMAINS_ROOT_ENV, str(pack.domains_root))
-    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-generic-skills"))
-    (tmp_path / "no-generic-skills").mkdir()
+    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-resident-skills"))
+    (tmp_path / "no-resident-skills").mkdir()
     domain = pack.domains_root / "generic"
     (domain / "prompts").mkdir()
     (domain / "prompts" / "experiment.md").write_text("实验时只调学习率。\n", encoding="utf-8")
     (domain / "skills" / "petab").mkdir(parents=True)
     (domain / "skills" / "petab" / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
+    spaces.give_flow(pack.workspace, "  - 实验: [petab]\n")  # 领域 skill 挂上才装载（P-26）
 
     run_dir = open_run(pack)
     assert layout.domain_prompt(run_dir).is_file()
@@ -101,9 +103,9 @@ def test_domain_prompt_is_snapshotted_and_skills_go_in_as_a_catalog(tmp_path, mo
     assert prompt.rstrip().endswith("一类命令。"), "提示末尾接这家 CLI 自己的「工具怎么用」"
 
 
-def test_domain_without_prompt_or_skills_injects_nothing(tmp_path, monkeypatch):
-    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-generic-skills"))
-    (tmp_path / "no-generic-skills").mkdir()
+def test_nothing_hung_and_no_domain_prompt_injects_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-resident-skills"))
+    (tmp_path / "no-resident-skills").mkdir()
     pack = make_loop_pack(tmp_path)
     run_dir = open_run(pack)
     assert read_domain_extra(run_dir) == ""

@@ -96,8 +96,8 @@ def open_experiment(
 def _snapshot_domain(domain_dir: Path, run_dir: Path) -> None:
     """领域包的实验追加段随实验快照一份，跑起来后不回头看领域包；没有就不留，也不回退到别的领域。
 
-    领域 skill 不快照：它们按名字进执行层的 `<available_skills>` 清单，执行层 `ai4sci skill show`
-    时读的是库里的现版本，读了什么在那一轮的事件流里（纲领 P-22）。
+    领域包的 skill 不快照：挂到流程实例上才装载（P-26），以名字进执行层的 `<available_skills>`，
+    执行层 `ai4sci skill show` 读的是库里的现版本，读了什么在那一轮的事件流里。
     """
     src = domain_dir / "prompts" / "experiment.md"
     if src.is_file():

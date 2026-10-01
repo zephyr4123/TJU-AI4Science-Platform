@@ -38,9 +38,9 @@ flowchart TB
 
 | 子包 | 放什么 | 出处 |
 |---|---|---|
-| `contracts/` | 框架认的东西的形状，只有这几样：七个研究阶段（`stages`）、需求与确认（`requirement`）、产出目录与签字（`output`：`meta.yaml`、`signed.json`、tree hash）、流程文件（`workflows`）、能力描述符与入口形状（`capability`：`Capability` / `Inputs` / `Param` / `Ports`，文案的字数与禁用词断言） | 谁都不 import |
-| `skills/` | skill 库的读取点：扫两处库、校验 SKILL.md 与脚本、拼 `<available_skills>`、`uv run` 起脚本 | `library.py` `catalog.py` `run.py` |
-| `workspace/` | 项目与工作区的磁盘：`project`（`project.md`）、`root`（`requirement.md`、七个阶段目录、`.ai4sci/`）、`outputs`（`<stage>/<n>/` 的开与收、冻结判断、跨工作区引用）、`progress`（流程实例走到哪，从 meta 现算）、`jobs`（后台作业）、`removal`（删，拒的条件在文件头） | |
+| `contracts/` | 框架认的东西的形状，只有这几样：七个研究阶段（`stages`）、需求与确认（`requirement`）、产出目录与签字（`output`：`meta.yaml`、`signed.json`、tree hash）、流程文件（`workflows`：形状与检查；`workflow_library`：库的两层、机器名、`from` 血缘、差异、结构查重，P-15）、能力描述符与入口形状（`capability`：`Capability` / `Inputs` / `Param` / `Ports`，文案的字数与禁用词断言） | 谁都不 import |
+| `skills/` | skill 库的读取点：扫三处库（平台自带、收录、领域包）、宽进地校验、不合格的隔离、收录台账、拼 `<available_skills>`、`uv run` 起脚本 | `library.py` `provenance.py` `catalog.py` `run.py` |
+| `workspace/` | 项目与工作区的磁盘：`project`（`project.md`）、`root`（`requirement.md`、七个阶段目录、`.ai4sci/`）、`outputs`（`<stage>/<n>/` 的开与收、冻结判断、跨工作区引用）、`progress`（流程实例走到哪，从 meta 现算）、`loadout`（一个项目装载哪些能力：常驻 skill 加各工作区流程实例上挂的，研究助理、执行层、`ai4sci skill` / `cap` 都从这一处取，P-26）、`jobs`（后台作业）、`removal`（删，拒的条件在文件头） | |
 | `executor/` | 起执行层会话：`prompting` 组提示（模板 + 领域约定 + skill 清单 + 联网规矩）、`session` 起会话留档（Bash 只放行 `ai4sci skill`） | |
 | `experiment/` | 实验这一族能力私下的约定：设计那包合不合约（`pack`）、`env`（`env/` 与 uv venv、保证给 harness 的环境变量）、`headroom` 预检、`layout` 实验目录布局、`checkpoint` `ledger` `notebook` `artifacts` `results` `analysis` `report`、`drafting` 起执行层写草稿、`baseline` 跑基线、`harness_contract.md` 给执行层的 harness 约定；`schemas/` 三份 JSON Schema | 契约层不认识它（纲领 P-19） |
 | `chat/` | 两位助理与页面后端：`scope` 定域（可写目录、指南、命令前缀）、`guide` 注入指南与前言、`conversation` 一段对话（落盘、忙锁、收件箱）、`notify` 作业跑完排进收件箱、`boards` 看板读盘、`settings` 设置、`removal` 目录外的删（会话、镜像）、`server` 标准库 HTTP + SSE（端点清单在文件头） | |
@@ -88,6 +88,7 @@ sequenceDiagram
   A->>C: ai4sci cap design --ws w --detach
   C->>C: 助理会话里的确认与签字一律拒（refuse_if_assistant 只管 sign / confirm）
   C->>W: require_confirmed：需求确认了没
+  C->>W: loadout：本项目的流程实例装载了这个步骤没有（P-26）
   C->>W: resolve_inputs：--from 在不在、冻结 hash 对不对
   C->>W: _place_in_flow：挂哪条流程第几项，断点签没签
   C->>W: open_output → design/1/meta.yaml（running，记 compute 与 agent）
@@ -160,7 +161,7 @@ sequenceDiagram
 | 变量 | 读取点 | 意思 |
 |---|---|---|
 | `AI4SCI_HOME` | `paths.py` | 数据根（项目、编辑台对话、人存的流程 `studio/workflows/`）；不设：源码模式仓根、包模式 `~/ai4sci` |
-| `AI4SCI_WORKFLOWS_ROOT` `AI4SCI_DOMAINS_ROOT` `AI4SCI_TEMPLATES_ROOT` `AI4SCI_SKILLS_ROOT` | `paths.py` | 四种出厂件库的位置；指向的不是目录当场炸 |
+| `AI4SCI_WORKFLOWS_ROOT` `AI4SCI_DOMAINS_ROOT` `AI4SCI_TEMPLATES_ROOT` `AI4SCI_SKILLS_ROOT` `AI4SCI_CURATED_SKILLS_ROOT` | `paths.py` | 五种出厂件库的位置（平台自带的 skill 与收录的分两处）；指向的不是目录当场炸 |
 | `AI4SCI_PROJECT` | `workspace/project.py` | 当前项目（不设从 cwd 往上找 `project.md`） |
 | `AI4SCI_COMPUTES` `AI4SCI_AGENTS` | `computes.py` `agents.py` | 两份按人的清单的位置（缺省 `~/.config/ai4sci/`） |
 | `AI4SCI_CHAT_ID` | `workspace/jobs.py`、`cli/_common.py`；适配器 `build_env` 设 | 调命令的那段对话：作业记下来，跑完把结果排进它的收件箱；人的动作据此拒助理 |

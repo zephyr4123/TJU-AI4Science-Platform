@@ -34,7 +34,7 @@ def catalog():
 
 
 def test_workspace_summary_and_detail(tmp_path):
-    ws = pf.make_workspace(tmp_path, "w", confirmed=False)
+    ws = pf.make_workspace(tmp_path, "w", confirmed=False, flow=False)
     summary = boards.workspace_summary(ws)
     assert summary["id"] == "w" and summary["title"] == "夹具课题"
     assert summary["requirement"]["confirmed"] is False and summary["running"] == 0
@@ -63,6 +63,7 @@ def test_requirement_detail_carries_diff_base_and_pending(tmp_path):
 def test_stages_list_outputs_with_signature_and_flows_carry_progress(tmp_path):
     pack = pf.make_pack(tmp_path)
     ws = pack.workspace
+    (ws.flows / "open.yaml").unlink()  # 夹具那条敞开的流程不是这里要看的
     (ws.flows / "quick.yaml").write_text(FLOW, encoding="utf-8")
     # 把设计产出记到流程的第 0 项下，签字；实验在第 2 项下
     _, meta = outputs.find_output(ws, "design/1")
@@ -99,7 +100,7 @@ def test_stages_list_outputs_with_signature_and_flows_carry_progress(tmp_path):
 
 
 def test_broken_flow_file_is_a_problem_row(tmp_path):
-    ws = pf.make_workspace(tmp_path, "w")
+    ws = pf.make_workspace(tmp_path, "w", flow=False)
     (ws.flows / "zz.yaml").write_text("name: zz\n", encoding="utf-8")
     [flow] = boards.workspace_detail(ws, catalog())["flows"]
     assert flow["name"] == "zz" and flow["problems"] == ["zz.yaml: 缺 title"]

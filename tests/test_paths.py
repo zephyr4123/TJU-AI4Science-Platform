@@ -23,14 +23,16 @@ def test_source_mode_reads_the_repo(monkeypatch):
 
 def test_package_mode_reads_shipped_and_makes_a_home(monkeypatch, tmp_path: Path):
     shipped = tmp_path / "shipped"
-    for name in ("workflows", "templates", "domains", "skills", "coordinator", "ui"):
+    for name in paths.SHIPPED:
         (shipped / name).mkdir(parents=True)
     monkeypatch.setattr(paths, "from_source", lambda: False)
     monkeypatch.setattr(paths, "SHIPPED_DIR", shipped)
     monkeypatch.setattr(paths, "DEFAULT_HOME", tmp_path / "home" / "ai4sci")
     monkeypatch.delenv(paths.HOME_ENV, raising=False)
     monkeypatch.delenv(paths.SKILLS_ROOT_ENV, raising=False)
+    monkeypatch.delenv(paths.CURATED_SKILLS_ROOT_ENV, raising=False)
     assert paths.skills_root() == shipped / "skills"
+    assert paths.curated_skills_root() == shipped / "skills-curated"
     assert paths.guides_root() == shipped / "coordinator"
     assert paths.ui_dir() == shipped / "ui"
     assert not (tmp_path / "home" / "ai4sci").exists()
