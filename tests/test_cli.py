@@ -640,9 +640,10 @@ def test_cap_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch
     ws = pf.make_workspace(tmp_path, "toy")
     (ws.materials / "val.json").write_text('{"y": [1.0]}', encoding="utf-8")
     domains = tmp_path / "domains"
-    (domains / "generic" / "skills" / "toy").mkdir(parents=True)
+    skill = domains / "generic" / "skills" / "experiment" / "data" / "toy" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
     (domains / "generic" / "profile.yaml").write_text("id: generic\n", encoding="utf-8")
-    (domains / "generic" / "skills" / "toy" / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
+    skill.write_text(SKILL_MD, encoding="utf-8")
     monkeypatch.chdir(ws.root)
     monkeypatch.setenv("AI4SCI_DOMAINS_ROOT", str(domains))
     scoring = {k: v for k, v in pf.default_scoring().items() if k != "domain"}

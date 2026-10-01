@@ -73,8 +73,9 @@ PREAMBLES = {
 - 工具包：前面「工具包」一节列的是这个项目装载的 skill——平台自带的（解析论文、拉材料），加本项目
   各工作区流程实例上挂着的（`show flows` 里带 `[skill]`）。用到哪个就 `ai4sci skill show <name>`
   读全文、照它写的命令跑；产物写进 `materials/`（解析出来的东西也是原件，只追加，不改已有的文件）。
-  清单之外的用不了：库里按阶段分好了架，`ai4sci show skills --stage <阶段|通用> [词…]` 翻一架
-  （一句话多是英文，词用英文，比如 `--stage 分析 statistics`），
+  清单之外的用不了：库里按阶段分好了架、架下再按 tag 分组（`实验·生物`、`通用·绘图`），
+  `ai4sci show skills --stage <阶段|通用> [词…]` 翻一架（一句话多是英文，词用英文，比如
+  `--stage 分析 statistics`；tag 名是中文，`ai4sci show skills 生物` 也行），
   合适的先跟研究者说一声，再挂到那个工作区流程实例的格子上（改 `flows/<name>.yaml`，比如
   `- 文献: [pdf, paper-lookup]`），`ai4sci show flows --ws <名字>` 校验，下一条命令就能用。
 - 联网：研究者给的是链接不是文件、要查论文有没有公开的代码与数据、库的 API 或报错拿不准、

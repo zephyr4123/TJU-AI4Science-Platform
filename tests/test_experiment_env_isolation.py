@@ -83,8 +83,9 @@ def test_domain_prompt_is_snapshotted_and_skills_go_in_as_a_catalog(tmp_path, mo
     domain = pack.domains_root / "generic"
     (domain / "prompts").mkdir()
     (domain / "prompts" / "experiment.md").write_text("实验时只调学习率。\n", encoding="utf-8")
-    (domain / "skills" / "petab").mkdir(parents=True)
-    (domain / "skills" / "petab" / "SKILL.md").write_text(SKILL_MD, encoding="utf-8")
+    skill = domain / "skills" / "experiment" / "biology" / "petab" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(SKILL_MD, encoding="utf-8")
     spaces.give_flow(pack.workspace, "  - 实验: [petab]\n")  # 领域 skill 挂上才装载（P-26）
 
     run_dir = open_run(pack)

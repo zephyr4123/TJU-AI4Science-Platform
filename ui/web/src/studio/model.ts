@@ -2,7 +2,7 @@
 // 纯函数，不碰 React 也不碰 React Flow：位置、顺序、插入、页面形状 ↔ 文件形状。
 // 位置：人摆过的项记着坐标（存进文件的 layout 块），没摆过的按顺序自动排、放不下换行；顺序 = 阅读顺序（先上后下、同一行先左后右），
 // 拖一个节点松手，它留在松手的地方，顺序按阅读顺序重算——边跟着顺序画，所以看着在哪就是排第几。
-import type { DraftItem, FlowItem, Origin, SkillEntry, Workflow, WorkflowDraft } from '@/api/types'
+import type { Capability, DraftItem, FlowItem, Origin, SkillEntry, Workflow, WorkflowDraft } from '@/api/types'
 
 export interface XY { x: number; y: number }
 export interface Pick { cap: string; with: Record<string, unknown> }
@@ -187,27 +187,63 @@ export function parseParam(type: string | undefined, raw: string): unknown {
 }
 
 
-// ── skill 怎么摆 ─────────────────────────────────────────────────────────────
-/** 查找：词都要出现在名字或一句话里（不分大小写）；空词就是全要 */
-export function matchesSkill(skill: SkillEntry, query: string): boolean {
-  const hay = `${skill.name} ${skill.brief}`.toLowerCase()
-  return query.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w))
+// ── 能力怎么摆（外层 #205）──────────────────────────────────────────────────
+/** 能力镜头里「通用」那一行：下载、读 PDF、画图这类哪个阶段都用的 skill（分类表 `framework/skills/shelves.py`）；
+ *  不是画布上能拖的阶段 */
+export const GENERAL = '通用'
+
+/** 查找：词都要出现在名字、一行或位置（阶段名、tag 名）里（不分大小写）；空词就是全要 */
+function matches(hay: string, query: string): boolean {
+  const text = hay.toLowerCase()
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every((w) => text.includes(w))
+}
+const skillMatches = (s: SkillEntry, query: string) => matches(`${s.name} ${s.brief} ${s.stage} ${s.tag}`, query)
+
+/** 一组：同一个 tag 的 skill，后端给的顺序（分类表的序）照搬 */
+function byTag(skills: SkillEntry[]): { stage: string; tag: string; skills: SkillEntry[] }[] {
+  const groups = new Map<string, { stage: string; tag: string; skills: SkillEntry[] }>()
+  for (const s of skills) {
+    const key = `${s.stage}·${s.tag}`
+    groups.set(key, { stage: s.stage, tag: s.tag, skills: [...(groups.get(key)?.skills ?? []), s] })
+  }
+  return [...groups.values()]
 }
 
-/** 配置板里一个阶段给哪些 skill 勾：没在查找时，是已经挂上的、平台自带的、收录在这个阶段那一架上的（几百个不一次摊开，
- *  P-26）；在查找时，是全库里对得上的。挂上的总在最前 */
-export function skillsFor(skills: SkillEntry[], stage: string, picked: string[], query: string): SkillEntry[] {
+export interface ShelfRow { stage: string; steps: Capability[]; tags: { tag: string; skills: SkillEntry[] }[] }
+
+/** 能力镜头：七个阶段按序一行、最后「通用」一行；一行里是这个阶段的步骤与按 tag 分组的 skill（能力的两个 tag 挂在
+ *  同一个阶段下面）。空着的阶段也占一行——页面诚实地告诉人这个阶段还没有；描述符里出现了清单外的阶段就追加在
+ *  「通用」前面，不丢。查找时只留对得上的，没对上的 tag 与行收起来 */
+export function shelfRows(stages: string[], steps: Capability[], skills: SkillEntry[], query: string): ShelfRow[] {
+  const order = [...stages]
+  for (const s of [...steps.map((c) => c.stage), ...skills.map((s) => s.stage)]) if (s !== GENERAL && !order.includes(s)) order.push(s)
+  order.push(GENERAL)
+  const rows = order.map((stage) => ({
+    stage,
+    steps: steps.filter((c) => c.stage === stage && matches(`${c.name} ${c.title} ${c.brief} ${c.stage}`, query)),
+    tags: byTag(skills.filter((s) => s.stage === stage && skillMatches(s, query))).map(({ tag, skills: list }) => ({ tag, skills: list })),
+  }))
+  return query.trim() ? rows.filter((r) => r.steps.length + r.tags.length > 0) : rows
+}
+
+export interface SkillGroup { key: string; label: string; skills: SkillEntry[]; picked: number }
+
+/** 配置板里一个阶段给哪些 skill 勾，按 tag 分组：没在查找时，是这个阶段的、「通用」的，加上已经挂上的（几百个不一次摊开，
+ *  P-26）；在查找时，是全库里对得上的。本阶段的组排前面、组名只写 tag，别的组名带阶段（通用·资料）；组里挂上的在前 */
+export function skillGroupsFor(skills: SkillEntry[], stage: string, picked: string[], query: string): SkillGroup[] {
   const shown = query.trim()
-    ? skills.filter((s) => matchesSkill(s, query))
-    : skills.filter((s) => s.library === '平台' || s.where === `收录·${stage}` || picked.includes(s.name))
-  return [...shown.filter((s) => picked.includes(s.name)), ...shown.filter((s) => !picked.includes(s.name))]
-}
-
-/** 能力镜头里 skill 按出处分组：平台、收录各架（阶段序，最后通用）、领域包——后端给的顺序就是这个序 */
-export function groupSkills(skills: SkillEntry[]): { where: string; skills: SkillEntry[] }[] {
-  const groups = new Map<string, SkillEntry[]>()
-  for (const skill of skills) groups.set(skill.where, [...(groups.get(skill.where) ?? []), skill])
-  return [...groups].map(([where, list]) => ({ where, skills: list }))
+    ? skills.filter((s) => skillMatches(s, query))
+    : skills.filter((s) => s.stage === stage || s.stage === GENERAL || picked.includes(s.name))
+  const rank = (s: string) => (s === stage ? 0 : s === GENERAL ? 1 : 2)
+  return byTag(shown)
+    .sort((a, b) => rank(a.stage) - rank(b.stage))
+    .map((g) => {
+      const mine = g.skills.filter((s) => picked.includes(s.name))
+      return {
+        key: `${g.stage}·${g.tag}`, label: g.stage === stage ? g.tag : `${g.stage}·${g.tag}`,
+        skills: [...mine, ...g.skills.filter((s) => !picked.includes(s.name))], picked: mine.length,
+      }
+    })
 }
 
 // ── 流程库怎么排（P-15 血缘）────────────────────────────────────────────────

@@ -4,10 +4,10 @@
 
 - **步骤**：`framework/capabilities/` 里的描述符。走到流程的那一格，框架起执行层、开带编号的产出、
   能签（`ai4sci cap <name>`）。
-- **skill**：三处库（平台自带 `skills/`、收录 `skills-curated/<架>/`、领域包
-  `domains/<包>/skills/`）里的 SKILL.md。教 agent 怎么做一件事的指南 + 脚本，agent 随手调、不开编号
-  产出（`ai4sci skill run <name>`），任何阶段都能挂；在项目里只有装载了的才能用（P-26，
-  `workspace/loadout.py`）。
+- **skill**：三处库（平台自带 `skills/`、收录 `skills-curated/`、领域包 `domains/<包>/skills/`，
+  都按分类表摆成 `<架>/<tag>/<name>/`）里的 SKILL.md。教 agent 怎么做一件事的指南 + 脚本，
+  agent 随手调、不开编号产出（`ai4sci skill run <name>`），任何阶段都能挂；在项目里只有装载了的
+  才能用（P-26，`workspace/loadout.py`）。
 
 两种都能挂到流程的格子上、都进编辑台的库、都出现在看板的卡上；tag 只说明它是哪一类，不改它怎么跑。
 库里两种不许重名——流程文件里挂的只是一个名字，靠名字分辨是哪种。
@@ -23,6 +23,7 @@ from framework.contracts.capability import Capability
 from framework.contracts.workflows import KIND_SKILL, KIND_STEP
 from framework.skills import library
 from framework.skills.library import Skill
+from framework.skills.shelves import shelf_name, tag_name
 
 __all__ = ["KIND_SKILL", "KIND_STEP", "AbilityNameClash", "check_disjoint", "skill_detail",
            "skill_entries", "skill_entry", "skill_names", "steps"]
@@ -50,11 +51,12 @@ def check_disjoint(step_names: set[str] | frozenset[str], names: frozenset[str])
 
 def skill_entry(skill: Skill) -> dict[str, Any]:
     """清单里的一行（`GET /skills`、`show caps --json`）：与步骤描述符同一层的字段（name / title /
-    brief / kind），另带出处（库、收录库的架、给人看的一句「收录·文献」）与脚本名。不带正文：库有
-    几百个，整库带正文一次 2.5 MB；正文按名字单取（`skill_detail`），agent 在项目里读要过装载
-    （`ai4sci skill show`）。title 就是名字：skill 的名字是 agent 叫它的词，页面照显示。"""
+    brief / kind），另带它在能力镜头里的位置（阶段名或「通用」、tag 名，外层 #205）与脚本名。出处
+    （平台 / 收录 / 领域包）不给页面：研究者用不上，许可证在台账里。不带正文：库有几百个，整库带正文
+    一次 2.5 MB；正文按名字单取（`skill_detail`），agent 在项目里读要过装载（`ai4sci skill show`）。
+    title 就是名字：skill 的名字是 agent 叫它的词，页面照显示。"""
     return {"name": skill.name, "kind": KIND_SKILL, "title": skill.name, "brief": skill.description,
-            "library": skill.library, "shelf": skill.shelf, "where": skill.where,
+            "stage": shelf_name(skill.shelf), "tag": tag_name(skill.shelf, skill.tag),
             "scripts": [script.name for script in skill.scripts]}
 
 
