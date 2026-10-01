@@ -184,6 +184,16 @@ def test_scripts_need_a_pep723_header_and_a_lockfile(tmp_path):
         library.load_skill(no_lock)
 
 
+def test_underscore_modules_are_imported_helpers_not_tools(tmp_path):
+    """`scripts/_common.py` 这类被工具 import 的模块不是能起的工具：不进脚本清单、不要求 PEP 723
+    头与锁（收录的整合包里很常见）。"""
+    directory = write_skill(tmp_path, "kit", scripts={"go.py": HELLO_PY})
+    (directory / "scripts" / "_common.py").write_text("X = 1\n", encoding="utf-8")
+    skill = library.load_skill(directory)
+    assert [p.name for p in skill.scripts] == ["go.py"]
+    assert run.pick_script(skill, None).name == "go.py"
+
+
 def test_scan_isolates_bad_and_duplicate_skills_without_dropping_the_rest(tmp_path):
     """一个坏的不拖垮整库：好的照常在，坏的与重名的（后到的那个）带原因隔离出去。"""
     resident = tmp_path / "skills"
@@ -347,6 +357,23 @@ def test_cli_outside_a_project_sees_every_library(libraries, capfd, tmp_path, mo
     assert json.loads(capfd.readouterr().out.strip()) == {"args": ["--input", "a", "--flag"]}
     assert main(["skill", "run", "petab"]) == 2  # 没有脚本
     assert "没有脚本" in capfd.readouterr().err
+
+
+def test_cli_run_takes_script_before_or_after_the_skill_name(libraries, capfd, tmp_path,
+                                                             monkeypatch):
+    """SKILL.md 里都写 `ai4sci skill run <name> --script <文件> …`：`--script` 写在名字后面也认、
+    不递给脚本（argparse 把名字后面的全当脚本参数，要自己摘出来，与 --ws 同一个做法）。"""
+    resident, _, _ = libraries
+    monkeypatch.chdir(tmp_path)
+    write_skill(resident, "two", "# two\n\n`ai4sci skill run two --script b.py`\n",
+                scripts={"a.py": HELLO_PY, "b.py": HELLO_PY})
+    assert main(["skill", "run", "two", "--script", "b.py", "--x", "1"]) == 0
+    assert json.loads(capfd.readouterr().out.strip()) == {"args": ["--x", "1"]}
+    assert main(["skill", "run", "--script", "a.py", "two", "--y"]) == 0
+    assert json.loads(capfd.readouterr().out.strip()) == {"args": ["--y"]}
+    assert main(["skill", "run", "two", "--script"]) == 2  # 文件名没给
+    assert main(["skill", "run", "two"]) == 2  # 几个脚本得点名
+    assert "--script" in capfd.readouterr().err
 
 
 CWD_PY = PEP723 + (

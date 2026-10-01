@@ -1,6 +1,8 @@
 # 收录台账（纲领 P-22）：skills-curated/ 里每个 skill 一行，不收的也一行带原因。
 # 生产者是收录的人，照内仓 docs/add-a-skill.md「收录社区 skill」做；framework/skills/provenance.py 对账，
 # make skills 守着：目录与台账一一对得上、许可证在可收的里、原文在 licenses/。
+# 2026-10-01 收录（外层 #198）：三个整合包 284 个 skill 逐个过筛，收 200、不收 84。之后定的约定：scripts/ 里
+# 下划线开头的是被 import 的模块、不是工具，它们收录时补的锁已删，changes 里提到的以此为准。
 upstreams:
   k-dense:
     title: K-Dense Scientific Agent Skills
@@ -20,5 +22,2363 @@ upstreams:
     commit: 773a52944ba4747a18bd4ae9ade53fff041adcbc
     license: MIT
     license_file: licenses/ai-research-skills.txt
-skills: []
-rejected: []
+skills:
+- name: ara-compiler
+  shelf: literature
+  upstream: ai-research-skills
+  path: 22-agent-native-research-artifact/compiler
+  changes:
+  - 名字用上游 frontmatter 里的 ara-compiler：上游目录名是 compiler，平台要求 name 与目录名一致
+  - 「作为 Claude Code agent，用 Read/Write/Edit/Bash/Glob/Grep」改成「用自己的文件工具」
+  - 删掉 Claude Code 斜杠命令的 `$ARGUMENTS` 说法，改成「按给到的输入灵活解读」
+  - URL 的「fetch or clone」改成用 web fetch 读；要用仓库时先用平台的 download skill 拉进工作区
+  - 正文开头加一句：目录里的其它文件用 `ai4sci skill show ara-compiler <相对路径>` 读
+- name: citation-management
+  shelf: literature
+  upstream: ai-research-skills
+  path: skills/citation-management
+  changes:
+  - 删文末「Citing Scientific Agent Skills」自引用一节
+  - 正文开头加「其它文件用 ai4sci skill show citation-management <相对路径> 读」的提示
+  - 被各脚本导入的共用模块 scripts/_common.py 挪到 scripts/lib/_common.py，各脚本原来的 sys.path 那一行改指 lib/
+  - 6 个联网脚本用 uv add --script 补依赖（requests；search_google_scholar.py 用 scholarly），format_bibtex.py 补标准库头，requires-python
+    定为 >=3.10，7 个都出了锁
+  - 删 NCBI_API_KEY：search_pubmed.py 的 --api-key 参数和读环境变量的代码、extract_metadata.py 读 key 的代码、frontmatter
+    envVars 条目、正文凭据表里的那一行（这节改名 Contact identifiers，只留 NCBI_EMAIL 和 OPENALEX_EMAIL）、references/pubmed_search.md
+    与 metadata_extraction.md 的 key 段落；限速按匿名 3 次/秒写
+  - 「no API key」这类说法改成「open, no registration」，涉及 SKILL.md、search_openalex.py、script_reference.md、core_workflow.md
+    等
+  - 补元数据那几步（Phase 2.5、core_workflow.md 的 Step 2、citation_validation.md）原来用 parallel-cli / parallel-web
+    skill（要 Parallel 账号）和 WebSearch/WebFetch，换成平台自带的联网搜索和读网页，外加本 skill 的 extract_metadata / search_openalex
+  - 删 core_workflow.md 的 Zotero / pyzotero 一节（Zotero Web API 要 key），正文里提到它的一句跟着删
+  - 正文、references、assets 里 python scripts/x.py 的起法全部改成 ai4sci skill run citation-management --script x.py；删
+    google_scholar_search.md 里一行裸 python -c 过滤和 script_reference.md 里接 pbcopy 的管道示例
+  - Dependencies 一节改写成「脚本自带 PEP 723 依赖和锁，ai4sci skill run 第一次运行时建环境」
+- name: database-lookup
+  shelf: literature
+  upstream: ai-research-skills
+  path: skills/database-lookup
+  changes:
+  - 删文末「Citing Scientific Agent Skills」自引用一节
+  - 正文开头加「其它文件用 ai4sci skill show database-lookup <相对路径> 读」的提示
+  - 删 20 个默认就要 key、注册或付费的库的参考文件和清单行（P-27）：addgene、alphavantage、bea、biogrid、bls、brenda、census、cosmic、datacommons、disgenet、drugbank、federal-reserve、fred、lincs-l1000、materials-project、nasa、noaa、omim、openweathermap、uspto
+  - 删 5 个只能 POST 或要自定义请求头的库（平台的读网页工具只能 GET）：gnomad、opentargets、rummageo、tcga-gdc、sec-edgar；库数从 80 变成 55，写进正文开头
+  - 删正文的 POST-Only APIs 和 API Keys and Access Restrictions 两节（含查 .env 里 key 的步骤），换成一节 Access Scope；Making
+    API Calls 改成只用平台自带的读网页工具发 GET，删掉 curl 兜底和各家 agent 的工具表，并说明参考里出现的 POST / curl 示例只取 GET 形式
+  - 保留的库参考里「No API key required」这类说法改成「Open access, no registration」；删掉 NCBI 一族（Gene/Protein/Taxonomy/GEO/SRA/ClinVar/dbSNP）、OpenFDA、Ensembl
+    的可选 key 和带 key 的限速；删 cbioportal 里私有实例要 token 的一句、mousemine 里要账号的一句
+  - database_selection_guide.md、retrieval-contract.md，以及正文的标识符表、标识符换算、限速、分页说明里，去掉已删的库：主库全删了的行把还在的备选库提上来，备选也没了就整行删；专利一节删空了就整节删
+- name: nature-citation
+  shelf: literature
+  upstream: ai-research-skills
+  path: skills/nature-citation
+  changes:
+  - 照搬目录，不带上游仓库的周边文件：README.md、README_EN.md、agents/、tests/、evals/
+  - 正文 H1 后加了一句：本 skill 目录里的其它文件用 ai4sci skill show nature-citation <相对路径> 读
+  - scripts/nature_citation.py 补了 PEP 723 头（依赖 defusedxml、requires-python >=3.10），并出了锁
+  - SKILL.md、static/core/workflow.md、references/script-usage.md 里的 python scripts/nature_citation.py 起法改成
+    ai4sci skill run nature-citation --script nature_citation.py
+- name: nature-paper-card
+  shelf: literature
+  upstream: ai-research-skills
+  path: skills/nature-paper-card
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/、tests/、evals/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-paper-card <相对路径> 读
+  - 共享包的 core/terminology-ledger.md 拷进 references/shared/，manifest 的 always_load 改指这份
+  - prepare_paper.py 补了 PEP 723 头（pymupdf），audit_paper_card.py 补了头（只用标准库），两个都出了锁
+  - 正文里「先解析 SKILL_DIR、再按路径跑脚本」那三步和两条审计命令，改成 ai4sci skill run nature-paper-card --script …；脚本红线第一条改成「脚本只经
+    ai4sci skill run 起」
+  - 「相邻 skill」一节删了指向没收的 nature-academic-search、nature-literature-pipeline 的两行
+- name: nature-reader
+  shelf: literature
+  upstream: ai-research-skills
+  path: skills/nature-reader
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/、evals/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-reader <相对路径> 读
+  - 共享包的 core/terminology-ledger.md 拷进 references/shared/，并改了 manifest、SKILL.md、static/core/workflow.md
+    的路径
+  - validate_reader_math.py 补了 PEP 723 头（只用标准库）并出了锁；static/core/workflow.md、static/core/output-contract.md、references/equation-handling.md
+    的起法改成 ai4sci skill run nature-reader --script validate_reader_math.py；SKILL.md 第 4 步补上了起法
+- name: paper-lookup
+  shelf: literature
+  upstream: ai-research-skills
+  path: skills/paper-lookup
+  changes:
+  - 删除文末自引段，以及「Adding New Databases」一节（那是给上游维护者看的，指向不存在的 tests/）
+  - _common.py 移到 scripts/_lib/，四个脚本的 sys.path 改指 _lib；四个脚本补 PEP 723（标准库，>=3.11）并出锁
+  - 删 key：「API Keys and Access」整节（含让 agent 读 .env 的指令）换成「Access and Rate Limits」，写的是不注册时各家的限额；删掉 paginate.py
+    里读 OPENALEX_API_KEY 的代码和 docstring 里的 key 变量；_common.py 的打码列表去掉 api_key、apikey、key
+  - references 里的 key 段落改写，涉及 openalex、semantic-scholar、pubmed、core、figshare、doaj、unpaywall 七份
+  - 「Making API Calls」里「Use curl via Bash」那段换成平台上的三种取数方式：paginate.py 自己联网；download file 存下原始字节再交给解析脚本；自带的网页读取工具只用来看，不用它的结果计数。另写明
+    POST 接口和要自定义请求头的接口用不了
+  - 正文和 arxiv.md 里 `curl … | python3 scripts/x.py -` 的例子改成先 download file、再 `ai4sci skill run paper-lookup
+    --script x.py <文件>`；Europe PMC 预印本检索的 curl 例子改成 paginate.py
+  - CORE 全文要注册才给，所以选库表里几处 CORE 全文去掉，CORE 那行标成「metadata only」
+  - 正文开头加一句：其它文件用 ai4sci skill show 读
+- name: brainstorming-research-ideas
+  shelf: hypothesis
+  upstream: ai-research-skills
+  path: 21-research-ideation/brainstorming-research-ideas
+  changes:
+  - 「文献综述用 `scientific-skills:literature-review`」改成「用文献综述类 skill」：这个插件名在平台和上游都不存在
+- name: consciousness-council
+  shelf: hypothesis
+  upstream: ai-research-skills
+  path: skills/consciousness-council
+  changes:
+  - Attribution 节删掉 ahkstrategies.net 与 TheMindBook 两条推广链接，只留作者署名「Created by AHK Strategies (ashrafkahoush-ux).」
+- name: creative-thinking-for-research
+  shelf: hypothesis
+  upstream: ai-research-skills
+  path: 21-research-ideation/creative-thinking-for-research
+  changes:
+  - 「文献综述用 `scientific-skills:literature-review`」改成「用文献综述类 skill」：这个插件名在平台和上游都不存在
+- name: hypothesis-generation
+  shelf: hypothesis
+  upstream: ai-research-skills
+  path: skills/hypothesis-generation
+  changes:
+  - 删自引段；正文开头加 ai4sci skill show 读目录文件的说明
+  - 正文与 references 里的 python3 scripts/x.py 全部改成 ai4sci skill run hypothesis-generation --script x.py（共
+    29 处）
+  - 删 references/security_validation.md（上游仓的安全扫描记录，复现命令指向没带进来的 tests/ 和仓库工具）及正文里对它的引用
+  - scripts/ 8 个 .py（含 _common.py）补 PEP 723 头（>=3.11）并出锁
+- name: ncats-arax
+  shelf: hypothesis
+  upstream: ai-research-skills
+  path: skills/ncats-arax
+  changes:
+  - compatibility 里的「needs no API key」改写成「needs no credentials」（零 key 门禁连这种说法也算）
+  - 正文开头加一句 ai4sci skill show 读文件的说明
+  - 6 处 python skills/ncats-arax/scripts/arax_client.py 改成 ai4sci skill run ncats-arax --script arax_client.py
+  - arax_client.py 手写 PEP 723 头（只用标准库，requires-python >=3.10，dependencies = []）并出锁
+- name: scientific-brainstorming
+  shelf: hypothesis
+  upstream: ai-research-skills
+  path: skills/scientific-brainstorming
+  changes:
+  - 删 Citing 段
+  - 4 个脚本（含 _common.py）只用标准库，补 PEP 723 头（Python>=3.11）并出锁
+  - SKILL.md 和 references/idea_evaluation.md 的 python scripts/x.py 起法改成 ai4sci skill run scientific-brainstorming
+    --script x.py
+  - 正文开头加 ai4sci skill show 那句
+- name: analytical-method-validation
+  shelf: design
+  upstream: ai-research-skills
+  path: skills/analytical-method-validation
+  changes:
+  - 删掉文末「Citing Scientific Agent Skills」一段
+  - 正文开头加一句：其它文件用 `ai4sci skill show analytical-method-validation <相对路径>` 读
+  - scripts/ 下 8 个 .py（6 个工具，加 _catalog.py、_common.py 两个被 import 的模块）都补了 PEP 723 头（纯标准库，dependencies =
+    []，requires-python >=3.10），并各出一个锁
+  - 正文删掉 `cd skills/analytical-method-validation/scripts`，`python3 x.py …` 改成 `ai4sci skill run analytical-method-validation
+    --script x.py …`；Scripts 一节原来那个 cd 代码块，换成 ai4sci 的通用起法
+- name: bigcode-evaluation-harness
+  shelf: design
+  upstream: ai-research-skills
+  path: 11-evaluation/bigcode-evaluation-harness
+  changes:
+  - frontmatter 的 name 由 evaluating-code-models 改为目录名 bigcode-evaluation-harness
+  - 删 --use_auth_token 参数，删 references/issues.md 里两节 HF 登录（HuggingFace Authentication、Private/Gated Model
+    Access）
+  - MultiPL-E 的 Docker 执行步骤（SKILL.md、references/benchmarks.md、references/issues.md）改成同一条 main.py --load_generations_path
+    在本机跑，注明机器要有目标语言的编译器或解释器
+  - 删 references/issues.md 的「Docker Issues」一节
+- name: experimental-design
+  shelf: design
+  upstream: ai-research-skills
+  path: skills/experimental-design
+  changes:
+  - 删了文末「Citing Scientific Agent Skills」一段（那段要 agent 往稿子里加 K-Dense 的论文引用）
+  - scripts/randomization.py 和 scripts/doe_designs.py 是给 import 的模块，没有命令行入口，所以挪到 references/；正文、Resources
+    以及 factorial_and_doe.md、randomization_and_blocking.md 里的路径都跟着改了，并写明先用 ai4sci skill show 读出来、拷到实验代码旁边再
+    import
+  - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show experimental-design <相对路径>` 读。」
+- name: lm-evaluation-harness
+  shelf: design
+  upstream: ai-research-skills
+  path: 11-evaluation/lm-evaluation-harness
+  changes:
+  - frontmatter 的 name 由 evaluating-llms-harness 改为目录名 lm-evaluation-harness
+  - 正文开头加 `ai4sci skill show` 读法句
+  - references/api-evaluation.md 只留本机 OpenAI 兼容服务（vLLM、llama.cpp）的评测：删 OpenAI / Anthropic（要 key）、TGI（Docker）、Ollama（系统软件）、带
+    key 的自定义 API、对比、限流、缓存、成本几节，配置与可复现示例改用 local-completions
+  - description 末句 APIs 改成 local OpenAI-compatible servers，正文指向该参考的一句同步改
+- name: statistical-power
+  shelf: design
+  upstream: ai-research-skills
+  path: skills/statistical-power
+  changes:
+  - 删去文末 Citing 自引段落
+  - 标题下加一句 ai4sci skill show 读目录文件的说明
+  - scripts/power.py、simulate_power.py 是给代码 import 的模块（__main__ 只跑冒烟示例，没有 --help），挪到 references/
+  - 正文改成用 ai4sci skill show 读出来、存到代码旁边再 import；正文和 references/closed_form_recipes.md、simulation_based_power.md
+    里的 scripts/ 路径都改成 references/
+- name: accelerate
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 08-distributed-training/accelerate
+  changes:
+  - frontmatter 的 name 由 huggingface-accelerate 改成目录名 accelerate
+  - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show accelerate <相对路径>` 读
+- name: aeon
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/aeon
+  changes:
+  - 删掉文末「Citing Scientific Agent Skills」一段（让 agent 往稿子里引 K-Dense 的论文）
+  - 正文开头加一句：其它文件用 `ai4sci skill show aeon <相对路径>` 读
+- name: anndata
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/anndata
+  changes:
+  - 删掉文末「Citing Scientific Agent Skills」一段
+  - 正文开头加一句：其它文件用 `ai4sci skill show anndata <相对路径>` 读
+- name: arboreto
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/arboreto
+  changes:
+  - 删掉文末「Citing Scientific Agent Skills」一段
+  - 正文开头加一句：其它文件用 `ai4sci skill show arboreto <相对路径>` 读
+  - basic_grn_inference.py 补了 PEP 723 头并出锁。依赖钉到 arboreto、dask[dataframe]<2024.3、distributed<2024.3、numpy<2、pandas<2.2，requires-python
+    定为 >=3.10,<3.11，因为实测 arboreto 0.1.6 在新版 dask 下跑不起来
+  - 正文的 `python scripts/basic_grn_inference.py …` 改成 `ai4sci skill run arboreto --script basic_grn_inference.py
+    …`
+- name: astropy
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/astropy
+  changes:
+  - 删掉文末「Citing Scientific Agent Skills」一段
+  - 正文开头加一句：其它文件用 `ai4sci skill show astropy <相对路径>` 读
+- name: audiocraft
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 18-multimodal/audiocraft
+  changes:
+  - frontmatter 的 name 从 audiocraft-audio-generation 改成目录名 audiocraft
+  - 正文开头加一句：其它文件用 `ai4sci skill show audiocraft <相对路径>` 读
+  - 「Use alternatives」里删掉 Stable Audio 一条（它说的是要账号的商业服务）
+  - '删 SKILL.md 的 Workflow 3: Gradio demo 和 references/advanced-usage.md 的「Gradio with advanced controls」（都是本机
+    GUI，后者还用 share=True 开公网链接）'
+  - references/troubleshooting.md「FFmpeg not found」删掉 sudo apt-get 和 brew 两种装法（装系统软件），conda 装法和验证命令保留
+- name: awq
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 10-optimization/awq
+  changes:
+  - frontmatter 的 name 由 awq-quantization 改为目录名 awq
+  - 删 references/advanced-usage.md 的「Push to HuggingFace」一节（推到 Hub 要 HF 凭据）
+- name: axolotl
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 03-fine-tuning/axolotl
+  changes:
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show axolotl <相对路径> 读
+  - 「Use `view` to read specific reference files」改成用 ai4sci skill show axolotl references/<file> 读
+  - 删 references/other.md 里「私有数据集要开 hf_use_auth_token」那一句（P-27）
+  - 删 references/other.md 配置参考里 push_dataset_to_hub 与 hf_use_auth_token 两个字段和注释（P-27）
+  - 删 references/other.md 配置参考里整段 Comet 集成字段，含 comet_api_key（P-27）
+- name: biopython
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/biopython
+  changes:
+  - 删文末「Citing Scientific Agent Skills」自引用一节
+  - 正文开头加「其它文件用 ai4sci skill show biopython <相对路径> 读」的提示
+  - 删 NCBI_API_KEY 的所有用法：frontmatter envVars 条目、安装节与「Writing Biopython Code」里读 key 的代码、Best Practices
+    一条、references/databases.md 的 API Key 小节；限速只写匿名的 3 次/秒（P-27）
+  - 删要装系统软件的段落：references/blast.md 的 Running Local BLAST 与 Parsing Other BLAST Formats（本地 blastn/makeblastdb）、references/alignment.md
+    的 Running External Alignment Tools（clustalo/muscle），When to Use 与排错里提本地 BLAST 的句子跟着改，compatibility
+    去掉对应一句
+  - 删用 rg/grep 搜参考文件的示例（Quick Reference 一节与 Reading Documentation 里的代码块），改成用 ai4sci skill show 读参考
+- name: bitsandbytes
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 10-optimization/bitsandbytes
+  changes:
+  - frontmatter 的 name 由 quantizing-models-bitsandbytes 改为目录名 bitsandbytes
+  - 正文开头加 `ai4sci skill show bitsandbytes <相对路径>` 读法句
+- name: blip-2
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 18-multimodal/blip-2
+  changes:
+  - frontmatter 的 name 从 blip-2-vision-language 改成目录名 blip-2
+  - 正文开头加一句：其它文件用 `ai4sci skill show blip-2 <相对路径>` 读
+  - 替代项里删掉 GPT-4V/Claude 3 一条（专有 API，要 key）
+  - references/advanced-usage.md 删「Gradio interface」（本机 GUI）
+  - references/advanced-usage.md 删「LangChain integration」（用 langchain.llms.OpenAI，要 OpenAI key）
+- name: cellxgene-census
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/cellxgene-census
+  changes:
+  - 删文末「Citing Scientific Agent Skills」自引用一节
+  - 正文开头加「其它文件用 ai4sci skill show cellxgene-census <相对路径> 读」的提示
+- name: chroma
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 15-rag/chroma
+  changes:
+  - 建集合的示例里删掉 OpenAIEmbeddingFunction(api_key=...) 那段
+  - 「Embedding functions」下删掉 OpenAI、HuggingFace（推理 API 要 key）两小节
+  - 删「LangChain integration」（用 OpenAIEmbeddings）和「LlamaIndex integration」（from_documents / as_query_engine
+    默认调 OpenAI）两节
+  - references/integration.md 删 LangChain 一节，首句改成只提 LlamaIndex
+- name: cirq
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/cirq
+  changes:
+  - 删文末「Citing Scientific Agent Skills」自引用一节
+  - 正文开头加「其它文件用 ai4sci skill show cirq <相对路径> 读」的提示
+  - 删「在云端 QPU 上跑」的用法（Google Quantum Engine 要 GCP 账号，IonQ / AQT / Pasqal / Azure 要 key，P-27）：When to Use
+    一条、IonQ/AQT/Pasqal/Azure 的安装行、Supported providers 列表与认证链接、Hardware Execution Template 一节
+  - cirq-google 只当离线的器件模型与门集来装，Hardware Integration 一节的描述改成只讲器件模型、拓扑和按硬件编译
+  - references/hardware.md 删 Service Providers、Authentication and Access 两节，以及要从 Engine 取实时校准的 Best Qubit
+    Selection 小节，开头一句跟着改
+  - references/simulation.md 删 Noisy Virtual Hardware 小节、references/noise.md 删 Hardware-Based Noise Models
+    一节（两处都要连 Google Quantum Engine）
+- name: clip
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 18-multimodal/clip
+  changes:
+  - 照原样收
+- name: constitutional-ai
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 07-safety-alignment/constitutional-ai
+  changes:
+  - 删去「Advanced topics」一节：三个链接（constitution-design.md、rlaif-comparison.md、cot-critique.md）指向上游并不存在的 references
+    文件
+- name: dask
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/dask
+  changes:
+  - 删文末「Citing Scientific Agent Skills」自引用一节
+  - 正文开头加「其它文件用 ai4sci skill show dask <相对路径> 读」的提示
+- name: datamol
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/datamol
+  changes:
+  - 删掉末尾「Citing Scientific Agent Skills」那段（让 agent 往稿子里引 K-Dense 论文）
+  - 删掉 S3 / GCS 云存储读写与凭据相关内容（P-27）：SKILL.md 的 compatibility 一句、能力清单一条、安装里的 s3fs/gcsfs、最佳实践第 4 条、排错一条，后面的最佳实践重新编号
+  - references/core_workflows.md 与 io_module.md 的 Remote File Support 段只留公开 HTTPS 读取，删掉 AWS / GCP 凭据环境变量的说明
+  - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show datamol <相对路径>` 读。」
+- name: deepchem
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/deepchem
+  changes:
+  - 删掉末尾自引用段
+  - 正文开头加读文件的提示句
+  - 三个脚本补 PEP 723 头：requires-python >=3.10,<3.12（照 deepchem 2.8.0 在 PyPI 上的声明），依赖 deepchem[torch]；transfer_learning.py
+    另加 transformers>=4.30,<5；三个都出了锁
+  - 正文 6 处 `python scripts/x.py` 改成 `ai4sci skill run deepchem --script x.py`
+- name: deepspeed
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 08-distributed-training/deepspeed
+  changes:
+  - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show deepspeed <相对路径>` 读
+  - Pattern 7 的配置文档摘录里，删去 Comet 的 api_key 字段说明（P-27，门禁会查到）
+  - 「Use `view` to read specific reference files」改成「Use `ai4sci skill show deepspeed references/<file>`」
+- name: deeptools
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/deeptools
+  changes:
+  - 删掉末尾自引用段
+  - 正文开头加读文件的提示句
+  - validate_files.py 和 workflow_generator.py 只用标准库，手写 PEP 723 头（dependencies = []）并出锁
+  - 正文 7 处 `python scripts/x.py` 改成 `ai4sci skill run deeptools --script x.py`
+  - 两处「chmod +x 之后 ./qc.sh」改成「生成的 shell 脚本由实验代码用 subprocess 跑」
+- name: diffdock
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/diffdock
+  changes:
+  - 删掉末尾自引用段（DiffDock 自己两篇论文的 Citations 段留着，那是引所用的工具，不是推广整合包）
+  - 正文开头加读文件的提示句
+  - setup_check.py 挪到 references/：它检查的是自己所在的 Python 环境，用 ai4sci skill run 起只会查到隔离环境，没有意义；正文改成在 DiffDock
+    环境里由实验代码跑一份拷贝，正文 4 处提到它的地方都跟着改了
+  - 删掉 Docker 安装：SKILL.md 的 Option 2、compatibility 里一句、references/workflows_examples.md 的 Docker Installation、setup_check.py
+    打印的 Docker 提示
+  - 删掉本机 GUI：SKILL.md 的「Graphical User Interface」段、workflows_examples.md 的 Workflow 7
+  - prepare_batch_csv.py（依赖 pandas、rdkit）和 analyze_results.py（只用标准库）补 PEP 723 头并出锁；正文起法改成 `ai4sci skill
+    run diffdock --script …`
+  - 「using the Read tool」改成 `ai4sci skill show diffdock references/…`；`cp assets/custom_inference_config.yaml`
+    改成用 ai4sci skill show 读模板
+  - Core Workflows 开头加一句：`python -m inference` 要在 DiffDock 仓和它的环境里跑，由实验代码来起
+- name: faiss
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 15-rag/faiss
+  changes:
+  - 删「LangChain integration」一节（用 OpenAIEmbeddings，要 key）
+- name: flash-attention
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 10-optimization/flash-attention
+  changes:
+  - frontmatter 的 name 由 optimizing-attention-flash 改为目录名 flash-attention
+  - 正文开头加 `ai4sci skill show` 读法句
+  - 删正文里指向 references/algorithm.md 与 references/advanced-features.md 的两行（上游目录里没有这两份文件，悬空引用）
+- name: flowio
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/flowio
+  changes:
+  - 删了文末 Citing 段
+  - scripts/inspect_fcs.py 补了 PEP 723 头（flowio==1.4.0、numpy）并出锁
+  - 正文「Bundled Inspector」和 references/workflows.md 里用 FLOWIO_SKILL_DIR 加 `uv run --with` 的起法，改成 `ai4sci
+    skill run flowio --script inspect_fcs.py …`
+  - 正文开头加一句 ai4sci skill show 的说明
+- name: fluidsim
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/fluidsim
+  changes:
+  - 删了文末 Citing 段
+  - 删了 scripts/__init__.py
+  - 6 个 CLI 和 2 个辅助模块（_common、_schema）补了 PEP 723 头并出锁。budget_summary、output_inventory、restart_compatibility
+    在上游会懒加载 h5py，所以声明了 h5py；其余只用标准库
+  - 正文和 parameters.md、output_analysis.md、simulation_workflow.md 里的 `python3 scripts/x.py` 都改成 `ai4sci
+    skill run fluidsim --script x.py`
+  - 正文开头加一句 ai4sci skill show 的说明
+- name: geniml
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/geniml
+  changes:
+  - 删了文末 Citing 段
+  - 删了 scripts/__init__.py
+  - 6 个 CLI 和 _common 补了 PEP 723 头（都只用标准库）并出锁
+  - 正文和 region2vec、scembed、bedspace、consensus_peaks、utilities 五份参考里的 `python skills/geniml/scripts/x.py`
+    都改成 `ai4sci skill run geniml --script x.py`
+  - references/utilities.md 里讲 add_bed_to_s3/get_bed_from_s3 要接收云凭据的那句，改成「这两个连云对象存储，平台里不用」
+  - 正文开头加一句 ai4sci skill show 的说明
+- name: genomic-coordinates
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/genomic-coordinates
+  changes:
+  - 删了文末 Citing 段
+  - 4 个 CLI 和 _common 补了 PEP 723 头（都只用标准库）并出锁
+  - 正文和 reference-builds.md、variant-representation.md 里先 `cd skills/genomic-coordinates/scripts` 再 `python3
+    x.py` 的写法，改成 `ai4sci skill run genomic-coordinates --script x.py`
+  - 正文开头加一句 ai4sci skill show 的说明
+- name: geomaster
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/geomaster
+  changes:
+  - 删了文末 Citing 段
+  - SKILL.md：删了 Google Earth Engine 时间序列示例（要 Google 账号）；COG 示例去掉 AWSSession 凭据，改成读一个公开 HTTP 地址的 COG；安装行（README.md
+    里也有）去掉 earthengine-api
+  - references/big-data.md：删了 Google Earth Engine 和 Google Cloud Storage 两节
+  - references/code-examples.md：删了基于 GEE 的遥感示例块（51–55），并去掉 pydeck 示例里的 mapbox 底图参数（那个底图要 token）
+  - references/remote-sensing.md：删了整节「Landsat Processing」（基于 GEE）
+  - references/data-sources.md：删了 sentinelsat 带用户名和口令的示例、ERA5 的 CDS API 示例（要 key）、整节 APIs（Google Maps、Mapbox、OpenWeatherMap
+    的 key）以及基于 sentinelsat 的 Download Scripts 一节
+  - 正文开头加一句 ai4sci skill show 的说明
+- name: geopandas
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/geopandas
+  changes:
+  - 删了文末 Citing 段
+  - 6 个 CLI 和 _common 补了 PEP 723 头并出锁。5 个分析 CLI 和 _common 带上游钉版的 GeoPandas 栈（geopandas 1.1.4、numpy 2.5.1、pandas
+    3.0.5、shapely 2.1.2、pyproj 3.7.2、pyogrio 0.13.0、pyarrow 25.0.0、packaging 26.2）；sensitive_coordinates_checklist
+    只用标准库
+  - 正文里的 `python skills/geopandas/scripts/x.py` 改成 `ai4sci skill run geopandas --script x.py`
+  - 删了 SKILL.md 里「只读 GEOPANDAS_POSTGIS_PASSWORD 这类数据库密钥」那一条；references/data-io.md 里用环境变量拼数据库口令来建连接的说明和代码也删了，PostGIS
+    一节改成假定已经有一个 SQLAlchemy engine
+  - 正文开头加一句 ai4sci skill show 的说明
+- name: get-available-resources
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/get-available-resources
+  changes:
+  - 删文末「Citing Scientific Agent Skills」自引段
+  - 正文开头加「本 skill 目录里的其它文件用 ai4sci skill show get-available-resources <相对路径> 读」
+  - 正文与 references/snapshot_schema.md 里的 python scripts/x.py 改成 ai4sci skill run get-available-resources
+    --script x.py，删「Run from this skill directory」
+  - 「Optional psutil enhancement」里的 uv pip install psutil 改为 detect_resources.py 的锁里自带 psutil==7.2.2
+  - 删 Bundled files 里指向上游仓 tests/ 的一条
+  - scripts/ 5 个 .py（含辅助模块 _common.py）补 PEP 723 头（requires-python >=3.11，照 compatibility）并出锁
+- name: gget
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/gget
+  changes:
+  - 删自引段；正文开头加 ai4sci skill show 读目录文件的说明
+  - Installation 段的 uv venv / uv pip install 改为「脚本锁里已钉 gget==0.30.5；实验代码在实验环境依赖里钉 gget==0.30.5」；Error
+    Handling 与 references/database_info.md 里的 pip install 同样改
+  - 删 COSMIC 模块（下载库要 COSMIC 账号密码）：description、模块表、setup 说明、凭据那条 best practice，references 里 module_catalog
+    / module_reference / database_info 的对应小节，common_workflows 与 workflows 里的 COSMIC 步骤
+  - 删 gpt 模块（要 OpenAI key）：模块表、setup 列表，module_catalog / module_reference / database_info 的对应小节
+  - 新增「Bundled scripts」一节，写三个脚本的 ai4sci skill run 起法（上游正文没提脚本）
+  - 三个脚本补 PEP 723 头（gget==0.30.5，enrichment_pipeline 另加 pandas）并出锁
+- name: gguf
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 10-optimization/gguf
+  changes:
+  - frontmatter 的 name 由 gguf-quantization 改为目录名 gguf
+  - 正文开头加 `ai4sci skill show` 读法句
+  - 删 llama-cli --interactive 交互模式示例
+  - 删「Integration with tools」一节（Ollama、LM Studio、text-generation-webui 要装系统软件或开本机 GUI）
+  - SKILL.md 与 references/troubleshooting.md 里连本机服务的 OpenAI 客户端示例改成 requests 直连，去掉 api_key 占位
+  - 删 references/troubleshooting.md 里 sudo apt install nvidia-cuda-toolkit 那步
+- name: gptq
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 10-optimization/gptq
+  changes:
+  - 正文开头加 `ai4sci skill show` 读法句
+  - 删 SKILL.md 里 push_to_hub 那步（要 HF 凭据）
+  - 删 references/integration.md 的 TGI 一节（Docker）
+  - 删 references/troubleshooting.md 里 sudo apt-get install python3-dev 那步
+- name: grpo-rl-training
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 06-post-training/grpo-rl-training
+  changes:
+  - templates/basic_grpo_training.py 与 examples/reward_functions_library.py 是示例代码，挪进 references/，两个空目录删掉；SKILL.md
+    的「Usage Instructions for Agents」与 README.md 的目录树和路径跟着改
+  - report_to="wandb" 改成 report_to="tensorboard"（W&B 要账号与 key），SKILL.md 与 references/basic_grpo_training.py
+    各一处；检查清单里的「wandb recommended」改成「TensorBoard, local」
+  - 正文开头加一句：其它文件用 ai4sci skill show grpo-rl-training <相对路径> 读
+- name: gtars
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/gtars
+  changes:
+  - 删自引段；正文开头加 ai4sci skill show 读目录文件的说明
+  - 删 uv venv / uv pip install 建环境的代码块，改为在实验环境依赖里钉 gtars==0.9.2，并在实验代码里核对版本
+  - 删 SKILL.md 与 references/cli.md 里的 cargo install 步骤（要 Rust 工具链），改为一句「只在已有审过的 gtars 二进制的地方用 CLI」
+  - python3 -B scripts/x.py 全部改成 ai4sci skill run gtars --script x.py（SKILL.md 与 references 的 overlap
+    / tokenizers / refget / coverage / cli）
+  - 删指向上游 tests/gtars 的单测命令
+  - 删 scripts/__init__.py；7 个 .py（含 _common.py）补 PEP 723 头（>=3.10）并出锁
+- name: hqq
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 10-optimization/hqq
+  changes:
+  - frontmatter 的 name 由 hqq-quantization 改为目录名 hqq
+  - 正文开头加 `ai4sci skill show` 读法句
+  - 删 SKILL.md 里 push_to_hub 那步（要 HF 凭据）
+- name: hugging-science
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/hugging-science
+  changes:
+  - 删自引段；正文开头加 ai4sci skill show 读目录文件的说明
+  - '删整节「Authentication: HF_TOKEN」，以及 references 里 using-datasets / using-models / using-spaces 中 HF_TOKEN
+    与 .env 的读取段'
+  - 删 HF Inference API 与 Inference Providers（要 token、按量付费）：description、正文第 4 步、using-models.md 的两节与决策表的两行、flagship-resources
+    里的两处说法
+  - 删 using-spaces 里「Duplicate 到自己账号」一条
+  - references 里的 uv pip install / uv add 改为「在实验环境依赖里钉 …」
+  - python scripts/fetch_catalog.py 改成 ai4sci skill run hugging-science --script fetch_catalog.py（正文与
+    flagship-resources / topics-and-slugs）
+  - fetch_catalog.py 补 PEP 723 头（标准库，>=3.10）并出锁
+- name: huggingface-tokenizers
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 02-tokenization/huggingface-tokenizers
+  changes:
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show huggingface-tokenizers <相对路径> 读
+- name: imaging-data-commons
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/imaging-data-commons
+  changes:
+  - 正文开头加 ai4sci skill show 读目录文件的说明（上游没有自引段）
+  - 删 IDC MCP 服务一节和 references/mcp_guide.md；正文、rest_api_guide、licensing_and_citation 里的 MCP 路线一并删
+  - 删 BigQuery（要 GCP 计费账号）和 Google Healthcare DICOMweb（要 GCP 认证）两条路线：references/bigquery_guide.md 整份删；dicomweb_guide
+    里的认证端点、覆盖对比、认证段和 403 排查删；cloud_storage_guide / sql_patterns / clinical_data_guide / rest_api_guide
+    里的对应句子和链接删掉或改写
+  - 删 scripts/check_version.py（检查 idc-index 与 skill 更新），各处「run check_version.py」改为「在实验环境依赖里钉 idc-index>=0.12.5」；删
+    Resources 里的「Skill updates / watch releases」
+  - 访问路径选择改写成两条（只读元数据走 REST，其余在实验代码里用 idc-index）；数据访问表删 MCP / Google Healthcare / SlicerIDCBrowser / BigQuery
+    四行；故障排查删 BigQuery 一条和 3D Slicer / QuPath 本机查看器的建议
+- name: knowledge-distillation
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 19-emerging-techniques/knowledge-distillation
+  changes:
+  - 照原样收
+- name: lab-hardware-cad
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/lab-hardware-cad
+  changes:
+  - 删了末尾的「Citing Scientific Agent Skills」引用段
+  - 正文开头加了一句「本 skill 目录里的其它文件用 `ai4sci skill show lab-hardware-cad <相对路径>` 读」
+  - Setup 段里的 uv venv / uv pip install 换成说明：脚本经 ai4sci skill run 起、自带依赖，模型文件在脚本的环境里 import
+  - 正文、references/*.md 与脚本 docstring 里 `python scripts/x.py` 全改成 `ai4sci skill run lab-hardware-cad --script
+    x.py`，脚本表前加了一句起法
+  - check.py、gen.py 补 PEP 723 头（build123d==0.11.1），snapshot.py 补 build123d、matplotlib、numpy，requires-python
+    >=3.12,<3.15，各自出锁
+  - 被 import 的辅助模块 _common.py 手写了空依赖的 PEP 723 头并出锁（门禁按 scripts/*.py 全收）
+- name: lamindb
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/lamindb
+  changes:
+  - 删了末尾引用段
+  - 正文开头加了 ai4sci skill show 的说明
+  - SKILL.md 删掉 W&B 用例（Use Case 3）和 W&B 条目、`lamin login` 一步、两条凭据安全规则，以及云存储、PostgreSQL、部署模式的列表项
+  - references/setup-deployment.md 删掉这几节：Authentication（LaminHub 账号与 API key）、云存储（S3/GCS/S3 兼容）、PostgreSQL
+    连接串、连别人的实例、实例协作、生产部署模式、安全最佳实践；排障里的登录、存储凭据、数据库连接条目也删了
+  - references/integrations.md 删掉 AWS S3、S3 兼容、GCS、W&B、Benchling（企业版）、外部数据库（带连接串密钥）这几节，以及 S3/GCS 凭据的排障条目
+- name: litgpt
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 01-model-architecture/litgpt
+  changes:
+  - frontmatter 的 name 由 implementing-llms-litgpt 改为目录名 litgpt
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show litgpt <相对路径> 读
+  - 删 references/supported-models.md 里 export HF_TOKEN 下载 gated 模型的示范（P-27）
+- name: llama-cpp
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 12-inference-serving/llama-cpp
+  changes:
+  - 正文开头加 `ai4sci skill show` 读法句
+  - 删 brew install llama.cpp（装系统软件），只留从源码编译
+  - 删 --interactive 交互式 chat 示例
+  - references/server.md 删 Docker 与 NGINX 负载均衡两节，正文指向它的一句去掉 Docker
+- name: llama-factory
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 03-fine-tuning/llama-factory
+  changes:
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show llama-factory <相对路径> 读
+  - 「Use `view` to read specific reference files」改成用 ai4sci skill show llama-factory references/<file>
+    读
+- name: llava
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 18-multimodal/llava
+  changes:
+  - 把 DEFAULT_IMAGE_TOKEN 换成它的字面值 "<image>"（两处调用，import 行跟着改，加了一句注释）：零 key 门禁的 *_TOKEN 规则会把这个占位符常量当成凭据；值已对过上游
+    llava/constants.py
+  - 替代项里删掉 GPT-4V 一条（API，要 key）
+  - CLI 单图问答的入口从 llava.serve.cli 改成 llava.eval.run_llava：上游 serve/cli.py 没有 --query 参数，靠 input() 读问题（交互式）；eval/run_llava.py
+    才有 --query（两个文件都读过）
+  - 删 CLI 多轮对话一段（要人在终端里打字）
+  - 删「Web UI (Gradio)」和「Gradio App」两段（本机 GUI）
+  - references/training.md 的 --report_to wandb 改成 --report_to none（W&B 要账号）
+- name: long-context
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 19-emerging-techniques/long-context
+  changes:
+  - 正文开头加了一句：本 skill 目录里的其它文件用 `ai4sci skill show long-context <相对路径>` 读
+- name: mamba
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 01-model-architecture/mamba
+  changes:
+  - frontmatter 的 name 由 mamba-architecture 改为目录名 mamba
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show mamba <相对路径> 读
+- name: matchms
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/matchms
+  changes:
+  - 删了末尾引用段
+  - 正文开头加了 ai4sci skill show 的说明
+  - 正文、references/workflows.md 和脚本 docstring 里的 `uv run python scripts/library_search.py` 改成 `ai4sci skill
+    run matchms …`（只有一个脚本）
+  - library_search.py 补了 PEP 723 头（matchms==0.33.1，requires-python >=3.12,<3.15）并出锁
+- name: matlab
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/matlab
+  changes:
+  - 删了末尾引用段
+  - 正文开头加了 ai4sci skill show 的说明
+  - 「Run from this skill directory…」改成 ai4sci skill run 的写法；SciPy/h5py 那段改成「已写进 inventory_mat_file.py
+    自己的依赖」
+  - 正文和 references 里的 `python scripts/x.py` 改成 `ai4sci skill run matlab --script x.py`
+  - 6 个工具和 _common.py 手写了 PEP 723 头（只用标准库，requires-python 照上游写 >=3.11）；inventory_mat_file.py 加了 scipy
+    和 h5py（因此 requires-python 是 >=3.12）；每个都出锁
+- name: medchem
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/medchem
+  changes:
+  - 删掉文末自引用一节
+  - 正文开头加一句 ai4sci skill show 读文件的说明
+  - 删掉用 mamba 装 lilly-medchem-rules（conda 原生包）的安装段落、版本说明里的同一句，以及最佳实践第 5 条（Lilly 需另装）
+  - filter_molecules.py 的起法改成 ai4sci skill run medchem --script filter_molecules.py …
+  - filter_molecules.py 补 PEP 723 头（requires-python >=3.11；medchem、datamol、rdkit、pandas、tqdm）并出锁
+- name: megatron-core
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 08-distributed-training/megatron-core
+  changes:
+  - frontmatter 的 name 由 training-llms-megatron 改成目录名 megatron-core
+  - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show megatron-core <相对路径>` 读
+  - 安装一段删去 Docker 起容器的做法（平台里用不了 Docker），只留 pip install megatron-core
+- name: miles
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 06-post-training/miles
+  changes:
+  - frontmatter 的 name 从 miles-rl-training 改成目录名 miles
+  - 删掉安装里的 Docker 段，留从源码装；前置清单「Docker environment with miles」改成「miles installed from source」
+  - 正文与 references/api-reference.md 引用了 ../slime/references/api-reference.md，把这个文件拷进来改名 references/slime-api-reference.md，三处路径跟着改，让
+    skill 自成一体
+  - 正文开头加一句：其它文件用 ai4sci skill show miles <相对路径> 读
+- name: ml-training-recipes
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 10-optimization/ml-training-recipes
+  changes:
+  - 正文开头加 `ai4sci skill show` 读法句
+  - SKILL.md 写回时换行符由 CRLF 变 LF（内容未改；references/ 保持上游 CRLF 原样）
+- name: mlflow
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 13-mlops/mlflow
+  changes:
+  - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show mlflow <相对路径>` 读
+  - SKILL.md 删「Deploy to Cloud」一节（SageMaker、Azure ML 部署要云账号）
+  - references/deployment.md 删「Docker Deployment」「Cloud Deployment」（含 SageMaker、Azure ML、KServe）两节和要 Docker
+    的「Version Your Deployment」（build-docker）一条，目录、部署方式表和资源链接里对应的几行也一起删了，后面两条最佳实践重新编号
+- name: model-merging
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 19-emerging-techniques/model-merging
+  changes:
+  - 正文开头加了一句：本 skill 目录里的其它文件用 `ai4sci skill show model-merging <相对路径>` 读
+  - 删掉 references/evaluation.md 的 MT-Bench 一节（它的跑法要拿 GPT-4 判分，要 OpenAI key，P-27）
+  - references/evaluation.md 里其余 MT-Bench 的地方一并删掉：comprehensive_eval 里的 mt_bench 一项（后面的编号跟着改）、部署清单里 MT-Bench
+    一条、MT-Bench 分数区间表和资源链接
+  - 删掉 references/evaluation.md 的 A/B 测试注释里「或用 GPT-4 当判分」半句
+  - 删掉 SKILL.md「Common Benchmarks」里 MT-Bench 一条
+- name: model-pruning
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 19-emerging-techniques/model-pruning
+  changes:
+  - 照原样收
+- name: moe-training
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 19-emerging-techniques/moe-training
+  changes:
+  - 正文开头加了一句：本 skill 目录里的其它文件用 `ai4sci skill show moe-training <相对路径>` 读
+- name: molecular-dynamics
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/molecular-dynamics
+  changes:
+  - 安装段删掉 conda install 那条（装系统软件），留 uv pip install openmm mdanalysis
+- name: molfeat
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/molfeat
+  changes:
+  - 删掉文末自引用一节
+  - 正文开头加一句 ai4sci skill show 读文件的说明
+  - 「用 grep 查 references/available_featurizers.md」的两行命令改成 ai4sci skill show molfeat references/available_featurizers.md
+- name: nanogpt
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 01-model-architecture/nanogpt
+  changes:
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show nanogpt <相对路径> 读
+- name: nature-experiment-log
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/nature-experiment-log
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-experiment-log <相对路径> 读
+  - description 去掉「可选集成飞书 CLI」，改成可以放进 Obsidian vault、用 Dataview 检索
+  - 删了飞书相关的全部内容：飞书群输入方式、bot 权限说明、处理流程里从飞书取材那一步、「可选的飞书 CLI 集成」整节（这些都要 bot 账号和权限）
+  - Obsidian 输出原来经仓库外的 obsidian skill 写入，改成输出根目录直接设为 vault 根目录
+  - 处理流程里的 vision_analyze（平台没有这个工具）改成「看图并解析文本」
+- name: nemo-curator
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 05-data-processing/nemo-curator
+  changes:
+  - 正文开头加一句：其它文件用 ai4sci skill show nemo-curator <相对路径> 读；其余照原样
+- name: neurokit2
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/neurokit2
+  changes:
+  - 删掉文末自引用一节
+  - 正文开头加一句 ai4sci skill show 读文件的说明
+  - 6 处 python skills/neurokit2/scripts/x.py 改成 ai4sci skill run neurokit2 --script x.py
+  - 7 个脚本补 PEP 723 头（requires-python >=3.10）并出锁：ecg_hrv_pipeline 依赖 neurokit2==0.2.13、numpy；eda_pipeline
+    依赖 neurokit2==0.2.13、numpy、pandas；其余 5 个只用标准库
+- name: neuropixels-analysis
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/neuropixels-analysis
+  changes:
+  - 删掉文末自引用一节，以及 frontmatter 里 metadata.openclaw 的 ANTHROPIC_API_KEY 声明
+  - 正文开头加一句 ai4sci skill show 读文件的说明
+  - 第 7 节「AI 辅助 curation」删掉调 Anthropic API 的段落和代码，只留 agent 自己看图这一种做法；安装段删掉 uv pip install anthropic
+  - references/AI_CURATION.md 删掉 Anthropic / OpenAI 调用示例、凭据说明，以及依赖模型调用的成本与混合 curation 代码；保留 agent 看图、只看不确定的
+    unit、各面板看什么、最佳实践
+  - 删掉用 Docker / Singularity 跑 sorter 的内容：SKILL.md 一行、references/api_reference.md 一行、references/SPIKE_SORTING.md
+    一整节
+  - references/standard_workflow.md 的 AI-assisted 一节去掉 Anthropic 客户端代码
+  - 6 个脚本的起法改成 ai4sci skill run neuropixels-analysis --script x.py …；explore_recording 补一条 --plot --output
+    出图的用法；assets/analysis_template.py 从 cp 改成用 ai4sci skill show 读
+  - explore_recording.py 在 import pyplot 前加 matplotlib.use("Agg")，否则不给 --output 时 plt.show() 会弹窗
+  - 6 个脚本补 PEP 723 头（requires-python >=3.10，spikeinterface[full] 加各自 import 的包）并出锁；run_sorting.py、neuropixels_pipeline.py
+    另加 kilosort（默认 sorter kilosort4 要用）和 mountainsort5（--sorter 的可选项）
+- name: nnsight
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 04-mechanistic-interpretability/nnsight
+  changes:
+  - frontmatter 的 name 从 nnsight-remote-interpretability 改成目录名 nnsight
+  - NDIF 远程执行要注册拿 API key（P-27）：删掉 description 里的远程用法、引言里的远程一句、Key Value Proposition 一节、「大模型无本地 GPU」那条用法、安装后的注册一句、Workflow
+    3 整节、Remote timeout 一条、Remote Execution 教程链接
+  - references/README.md 删 Remote Execution (NDIF) 到文件尾（NDIF Setup、远程模型清单）；api.md 删 Remote Execution 小节与
+    NDIF Remote Execution 整节；tutorials.md 删 Tutorial 4（远程）与 NDIF Resources 小节
+  - api.md 注释「# Access tokenizer」改成「# The tokenizer」（零 key 门禁误报 access token）
+  - 正文开头加一句：其它文件用 ai4sci skill show nnsight <相对路径> 读
+- name: onekgpd
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/onekgpd
+  changes:
+  - compatibility 与 Prerequisites 里「no API key / no rate-limit token」的说法改写成「不需要凭据与配置」，去掉「自己装 uv」那一条
+  - 正文开头加一句 ai4sci skill show 读文件的说明
+  - 正文与 references/onekgpd_commands.md 里的 uv run scripts/onekgpd_*.py 改成 ai4sci skill run onekgpd --script
+    onekgpd_*.py
+  - 示例里的 --output /tmp/x.json 改成工作目录里的 x.json；输出规则改成必须用 --output 写到工作目录（默认的临时文件在工作目录外，执行层读不到），并去掉「用 jq
+    取字段」
+  - assets/kgpe.json 去掉缩进空白，从 1.04 MB 压到 781 KB（3202 条记录逐条比对一致，onekgpd_meta.py 照样读）
+  - 两个脚本上游已经带 PEP 723 头，只出了锁
+- name: openpi
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 18-multimodal/openpi
+  changes:
+  - frontmatter 的 name 从 fine-tuning-serving-openpi 改成目录名 openpi
+  - 正文开头加一句：其它文件用 `ai4sci skill show openpi <相对路径>` 读
+  - 替代项里的 fine-tuning-openvla-oft 改成平台名 openvla-oft；删掉指向 evaluating-cosmos-policy 的一段（那个 skill 没收）
+- name: openpiv
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/openpiv
+  changes:
+  - 删除 scripts/__init__.py
+  - analyze.py 只是被 import 的 PIVAnalyzer 类、不是工具，移到 scripts/_lib/；run_example.py 的 import 改成 `from _lib.analyze
+    import`；正文改成先用 ai4sci skill show 读出来，再拷到实验代码旁
+  - runner.py、run_example.py 补 PEP 723（openpiv==0.25.4、numpy、matplotlib）并出锁；requires-python 定为 >=3.12，因为
+    uv 写进来的 numpy 下限要 3.12
+  - 正文里的 `python skills/openpiv/scripts/x.py` 改成 `ai4sci skill run openpiv --script x.py`；run_example
+    的输出目录从 /tmp 改成相对路径（正文和脚本 docstring 都改了）
+  - Quick Start 里两行 `uv pip install` 换成一段说明：CLI 自带锁定的环境；实验代码要 import OpenPIV 的，在实验环境里钉 openpiv==0.25.4
+  - 正文开头加一句：其它文件用 ai4sci skill show 读
+- name: openrlhf
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 06-post-training/openrlhf
+  changes:
+  - frontmatter 的 name 从 openrlhf-training 改成目录名 openrlhf
+  - 安装里的 docker run 和 sudo pip uninstall 删掉，只留 pip install openrlhf[vllm]；硬件要求里的 Docker 一行删掉；multi-node-training.md
+    的两处 docker run 删掉，ray start 留着
+  - ray job submit 的 working_dir 原来是 Docker 挂载点 /openrlhf，三处改成「.」
+  - W&B 日志（--use_wandb {token}）换成 --use_tensorboard <路径>，multi-node-training.md 两处、custom-rewards.md 一处；extra_logs
+    的说明与「Monitor W&B」一节跟着改
+  - 正文开头加一句：其它文件用 ai4sci skill show openrlhf <相对路径> 读
+- name: opentrons-integration
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/opentrons-integration
+  changes:
+  - 删除文末自引段
+  - scripts/ 下 6 个协议模板是示例代码、不是工具，挪到 references/，正文表格路径跟着改，删掉空的 scripts/
+  - requirements-flex.txt、requirements-ot2.txt 留在根目录；正文和 validation_and_operations.md 里的 `skills/opentrons-integration/requirements-flex.txt`
+    改成相对路径
+  - 「Install and Simulate」一节开头加一段：agent 不自己跑这些 shell 命令，仿真放在实验环境里，按钉死的 opentrons 版本跑
+  - 正文开头加一句：其它文件用 ai4sci skill show 读
+- name: openvla-oft
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 18-multimodal/openvla-oft
+  changes:
+  - frontmatter 的 name 从 fine-tuning-openvla-oft 改成目录名 openvla-oft
+  - 正文开头加一句：其它文件用 `ai4sci skill show openvla-oft <相对路径>` 读
+  - 替代项里的 fine-tuning-serving-openpi 改成 openpi；删掉指向 evaluating-cosmos-policy 的一条
+  - 训练命令删掉 --wandb_entity 和 --wandb_project（SKILL.md、libero-workflow.md、aloha-workflow.md 三处），评测的 --use_wandb
+    提示和 W&B 日志位置那一行也删了；上游 vla-scripts/finetune.py 第 793 行无条件调用 wandb.init，所以每条训练命令前加了 export WANDB_MODE=offline，不用
+    W&B 账号
+  - libero-workflow.md 的数据集下载从 git@hf.co SSH（要 HF 账号的 SSH key）改成 https://huggingface.co/datasets/openvla/modified_libero_rlds（已用
+    HF API 核过，不是门控仓库）
+  - 删 ALOHA 真机评测的客户端部分：SKILL.md Workflow 4 第 5 步和清单里对应的一行，aloha-workflow.md 的客户端环境和第 6 节（要真机器人，每轮还要操作员输入
+    y/n）
+- name: optimize-for-gpu
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/optimize-for-gpu
+  changes:
+  - 删除文末自引段
+  - references/kvikio.md 删掉两个要 AWS 凭据的 S3 例子和「AWS credentials come from…」那句；流式读取例子、code_transformation_patterns.md
+    里的 S3 例子改用 open_s3_public
+  - 正文开头加一句：其它文件用 ai4sci skill show 读
+- name: outlines
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 16-prompt-engineering/outlines
+  changes:
+  - 正文开头加了一句：本 skill 目录里的其它文件用 `ai4sci skill show outlines <相对路径>` 读
+  - 删掉 SKILL.md「Model Backends」里的「OpenAI (Limited Support)」示例（要 OpenAI key，P-27）
+  - 删掉 references/backends.md 的「OpenAI (Limited Support)」整节，以及目录里「API Models (OpenAI)」这一项
+  - 删掉 references/backends.md 环境变量示例里设 OpenAI key 的两行
+  - 删掉 references/backends.md 的「Docker with vLLM」部署示例（Docker 在平台里用不了）
+- name: pathml
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pathml
+  changes:
+  - 删除文末自引段
+  - _common.py 移到 scripts/_lib/，五个工具的 `from _common import` 改成 `from _lib._common import`
+  - 四个标准库脚本手写 PEP 723 头（>=3.10，dependencies = []）；slide_manifest.py 按它懒加载的 import 声明 openslide-python、pydicom，另加
+    openslide-bin（OpenSlide 原生库的 wheel，没有它 import openslide 找不到库）；五个都出了锁
+  - 「Reproducible installation」一节删掉 uv venv / source / uv pip 和 sudo apt-get / brew / vcpkg 装系统库的命令块，换成说明：实验环境经
+    ai4sci env 钉 pathml==3.0.5；OpenSlide、编译器、BLAS/LAPACK、JDK 17 要算力机本来就有
+  - 正文和 6 份 references 里的 `python scripts/x.py` 改成 `ai4sci skill run pathml --script x.py`
+  - 正文开头加一句：其它文件用 ai4sci skill show 读
+- name: peft
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 03-fine-tuning/peft
+  changes:
+  - frontmatter 的 name 由 peft-fine-tuning 改为目录名 peft
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show peft <相对路径> 读
+  - 删合并 adapter 之后 push_to_hub 推到 Hugging Face Hub 的两行（要账号 token，P-27）
+- name: pennylane
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pennylane
+  changes:
+  - 删「Citing Scientific Agent Skills」段
+  - 删云 QPU 与托管设备（IBM Quantum qiskit.remote、AWS Braket、带 api_key 的 IonQ、Rigetti、Xanadu）的安装行、代码与设备对比表里的行，改成本地模拟器（qiskit.aer、braket.local.qubit、cirq），并在
+    SKILL.md、getting_started.md、devices_backends.md 写一句：云硬件要账号，不在本 skill 范围
+  - devices_backends.md 的 select_device 去掉硬件分支，最佳实践删掉硬件报错与费用两条
+  - 正文开头加一句用 ai4sci skill show 读目录里其它文件
+- name: polars
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/polars
+  changes:
+  - 删「Citing Scientific Agent Skills」段
+  - references/io_guide.md 删云存储的凭据代码（AWS profile、Azure DefaultAzureCredential、GCS ADC），也删了要 Google Cloud
+    账号的 BigQuery 一节；SKILL.md 支持格式清单去掉 BigQuery
+  - 正文开头加一句用 ai4sci skill show 读目录里其它文件
+- name: polars-bio
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/polars-bio
+  changes:
+  - 删「Citing Scientific Agent Skills」段
+  - compatibility 删掉云 SDK 环境变量那句
+  - 正文 Best Practices 第 5 条删掉凭据环境变量（AWS_ACCESS_KEY_ID 等），只留公开桶匿名访问
+  - references/file_io.md 云存储一节删凭据说明与环境变量表，示例统一改成 allow_anonymous=True
+  - 正文开头加一句用 ai4sci skill show 读目录里其它文件
+- name: pufferlib
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pufferlib
+  changes:
+  - 删 K-Dense 的引用段「Citing Scientific Agent Skills」
+  - 删 W&B / Neptune 外部日志的凭据内容：SKILL.md 的 Logging 节和安全默认第 7、8 条，references/training.md 的 Credential rules，references/integration.md
+    的 Logging integration，两条 W&B / Neptune 文档链接
+  - 脚本删外部日志：_common.py 的 LOGGER_CREDENTIAL_ENV 换成 LOGGER_BACKENDS=("none",)；train_template.py 去掉 --logger、--enable-external-logging、--acknowledge-external-disclosure、--upload-checkpoints，输出里的
+    credential 和 external_logging_disclosure 字段也删了；validate_plan.py 只认 backend=none，删 neptune 分支和不再用的
+    profile 参数
+  - 凭据检测函数 secret_key_paths / _SECRET_KEY 改名为 credential_field_paths / _CREDENTIAL_FIELD（门禁按字面查 secret
+    key），行为不变
+  - 删 scripts/__init__.py；8 个 .py（含 _common.py）补 PEP 723 头（纯标准库，Python≥3.10）并出锁
+  - 正文与参考里的 python3 scripts/x.py 改成 ai4sci skill run pufferlib --script x.py；正文开头加读文件的说明
+- name: pydicom
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pydicom
+  changes:
+  - 删 K-Dense 的引用段
+  - 删 scripts/__init__.py；8 个 CLI 加 _common.py 补 PEP 723 头并出锁（pydicom==3.0.2；dicom_to_image.py 另加 numpy==2.5.1、pillow==12.3.0，因为
+    numpy 2.5.1 要 Python≥3.12）
+  - 正文、references/common_tags.md、references/transfer_syntaxes.md 和脚本 epilog 里的起法改成 ai4sci skill run pydicom
+    --script …；开头加读文件的说明
+  - 为过零 key 门禁改了三处字眼：本地假名化密钥的「secret key」改成「pseudonymization key」（SKILL.md 和 anonymize_dicom.py 的 help
+    各一处）；pixel_frame_planner.py 的正则变量 FRAME_TOKEN 改名为 FRAME_SPEC
+- name: pyhealth
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pyhealth
+  changes:
+  - 删 K-Dense 的引用段
+  - 正文开头加读文件的说明
+  - 其余照原样收（没有 scripts/；assets/starter_pipeline.py 是示例模板，留在 assets/）
+- name: pylabrobot
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pylabrobot
+  changes:
+  - 删 K-Dense 的引用段
+  - 删 scripts/__init__.py；5 个 CLI 加 _common.py 补 PEP 723 头并出锁（inspect_backends.py 依赖 pylabrobot==0.2.1，其余是纯标准库，Python≥3.11）
+  - 起法改成 ai4sci skill run pylabrobot --script …；开头加读文件的说明
+  - 把上游 tests/pylabrobot/fixtures 里的合成样例（protocol_manifest.json、collision_manifest.json、transfers.csv）拷进
+    assets/fixtures/；正文和 references 里的 tests/pylabrobot/fixtures/ 路径改成工作目录里的文件名，并说明从 assets/fixtures 读出来
+  - 删「Run from the repository root」，也删了 references/visualization.md 里跑上游 unittest 的那一段
+- name: pymatgen
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pymatgen
+  changes:
+  - 删 K-Dense 的引用段
+  - '删 Materials Project 查询（要 MP_API_KEY）：scripts/mp_query.py、references/materials_project_api.md、SKILL.md
+    的「Materials Project: plan before network」整节、references/transformations_workflows.md 的 Workflow 6，以及
+    description、compatibility、安装命令和来源列表里的 mp-api'
+  - artifact_manifest.py 和 _common.py 删掉 mp-api 的版本记录（MP_API_VERSION）
+  - 7 个 CLI 加 _common.py 补 PEP 723 头并出锁（5 个依赖 pymatgen==2026.5.4 + pymatgen-core==2026.7.16，Python≥3.11；io_conversion_plan.py
+    和 artifact_manifest.py 是纯标准库）
+  - 起法改成 ai4sci skill run pymatgen --script …；开头加读文件的说明
+- name: pymoo
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pymoo
+  changes:
+  - 删 K-Dense 的引用段
+  - scripts/ 下 5 个示例（不带参数，只做演示）挪到 references/；正文的 Run examples 改成用 ai4sci skill show 读示例，references/quick_start_workflows.md
+    里的路径跟着改
+  - 正文里用 grep 搜 references/ 的提示改成用 ai4sci skill show 读对应的文件
+  - 开头加读文件的说明
+- name: pyopenms
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pyopenms
+  changes:
+  - 删 K-Dense 的引用段
+  - 16 个 CLI 补 PEP 723 头并出锁（pyopenms==3.5.0，有的另加 pandas / numpy / matplotlib，Python≥3.10）
+  - 正文和脚本 docstring 里的起法改成 ai4sci skill run pyopenms --script …；开头加读文件的说明
+- name: pysam
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pysam
+  changes:
+  - 删 K-Dense 的引用段
+  - 4 个 CLI 补 PEP 723 头（pysam==0.24.0，Python≥3.10）并出锁
+  - 正文和 references/common_workflows.md 里的起法改成 ai4sci skill run pysam --script …；开头加读文件的说明
+- name: pytdc
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pytdc
+  changes:
+  - 删 K-Dense 的引用段
+  - references/oracles.md 删掉 askcos / ibm_rxn 远程合成服务的凭据处理步骤，改写成不在范围内；references/datasets.md 里一条「access
+    tokens」改成「registration, data-use agreements」
+  - 正文的 uv run --python 3.11 --with … python scripts/x.py 改成 ai4sci skill run pytdc --script x.py，并写明脚本自带
+    CPython 3.11 + setuptools 80.9.0 + PyTDC 1.1.15 的版本钉；删「From this skill directory」
+  - 4 个用到 tdc 的 CLI 的头写 requires-python ==3.11.*、setuptools==80.9.0、pytdc==1.1.15；cache_audit.py 和 _common.py
+    是纯标准库；全部出锁
+  - 开头加读文件的说明
+- name: pytorch-fsdp2
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 08-distributed-training/pytorch-fsdp2
+  changes:
+  - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show pytorch-fsdp2 <相对路径>` 读
+- name: pytorch-lightning
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/pytorch-lightning
+  changes:
+  - 删掉文末让 agent 往稿子里加上游论文引用的「Citing Scientific Agent Skills」段
+  - scripts/ 下三个文件（template_lightning_module.py、template_datamodule.py、quick_trainer_setup.py）都是示例模板，挪到
+    references/，正文里的路径跟着改
+  - 删 references/logging.md 的 CometLogger 段（代码里写死了 api_key）和 WandbLogger 段，并删掉其余各处 W&B 用法（都要账号）；多日志器示例改用
+    CSVLogger，quick_trainer_setup.py 里的 WandbLogger 换成 TensorBoardLogger
+  - description、compatibility、安装命令里的 wandb / comet-ml 去掉
+  - 正文开头加一句：其它文件用 ai4sci skill show pytorch-lightning <相对路径> 读
+- name: pytorch-lightning-airs
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 08-distributed-training/pytorch-lightning
+  changes:
+  - 和已收录的 K-Dense 版 pytorch-lightning 重名，目录名和 frontmatter 的 name 都改成 pytorch-lightning-airs
+  - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show pytorch-lightning-airs <相对路径>` 读
+  - references/hyperparameter-tuning.md 删去「WandB Sweeps」一节（要 W&B 账号，P-27 可选的也删）和 Resources 里的 WandB 链接，后面的
+    Hyperopt 一节编号改成 3
+  - 正文 Advanced topics 里「Optuna, Ray Tune, and WandB sweeps」改成「Optuna, Ray Tune, and Hyperopt」
+- name: pyvene
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 04-mechanistic-interpretability/pyvene
+  changes:
+  - frontmatter 的 name 从 pyvene-interventions 改成目录名 pyvene
+  - 删掉「Share on HuggingFace」推到 Hub 的两行（推送要 HF token）
+  - 正文开头加一句：其它文件用 ai4sci skill show pyvene <相对路径> 读
+- name: qiskit
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/qiskit
+  changes:
+  - 删 Citing 段
+  - 删 IBM 账号和真机 QPU 接入的内容：SKILL.md 删 IBM QPU Sampling、IBM QPU Estimation、Execution Modes 三节，选路表删两行，清单删两条（QPU
+    计费、API key）；setup.md 删 IBM Quantum Platform Setup 与 Confirm Access 两节；backends.md 删 Connect、Discover
+    Backends、Fractional Gates 三节，以及取回作业的 service 代码和账号相关的清单项、故障项；migration.md 删账号迁移一节；patterns.md 删 Pattern
+    2（IBM QPU Sampling），后面的依次重编号；transpilation.md 删 service.backend 代码块；testing.md 删掉凭据字眼
+  - 删 scripts/inspect_runtime.py（它要读本机存好的 IBM 凭据）
+  - primitives.md 的 Runtime Sampler 示例原来用 QiskitRuntimeService 挑机器，改成 FakeSherbrooke（本地测试模式，不要账号）
+  - check_environment.py 检查的是运行它的那个解释器，经 skill run 起只会查到脚本自己的 uv 环境，所以挪到 references/；正文和 setup、migration、testing
+    三份参考改成「拷进实验代码，用实验自己的 Python 跑」
+  - description、compatibility 去掉 IBM QPU 执行和 API key 的说法，参考索引里的说法跟着改
+  - run_local_primitives.py 补 PEP 723 头（qiskit==2.5.0、numpy，Python>=3.10）并出锁，各处起法改成 ai4sci skill run qiskit
+    --script …
+  - 正文开头加 ai4sci skill show 那句
+- name: qutip
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/qutip
+  changes:
+  - 删 Citing 段
+  - 7 个脚本补 PEP 723 头并出锁：two_level_simulation.py、convergence_sweep.py 依赖 qutip==5.3.0 和 numpy，其余 4 个工具和
+    _common.py 只用标准库；Python>=3.11
+  - 正文示例里的 python skills/qutip/scripts/x.py 改成 ai4sci skill run qutip --script x.py
+  - references 里的 `../scripts/` 改成 `scripts/`（相对 skill 根，ai4sci skill show 认这种写法）
+  - 正文开头加 ai4sci skill show 那句
+- name: ray-data
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 05-data-processing/ray-data
+  changes:
+  - 正文开头加一句：其它文件用 ai4sci skill show ray-data <相对路径> 读；其余照原样
+- name: ray-train
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 08-distributed-training/ray-train
+  changes:
+  - 正文开头加一句：本 skill 目录里的其它文件用 `ai4sci skill show ray-train <相对路径>` 读
+  - Advanced topics 删去两条链接，它们指向上游并不存在的 references/hyperparameter-tuning.md 和 references/custom-loops.md
+- name: rdkit
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/rdkit
+  changes:
+  - 删 Citing 段
+  - 3 个脚本补 PEP 723 头（rdkit，Python>=3.10）并出锁
+  - 正文的 scripts 节补三条 ai4sci skill run rdkit --script … 起法，取自脚本自带的用法
+  - 正文开头加 ai4sci skill show 那句
+- name: rwkv
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 01-model-architecture/rwkv
+  changes:
+  - frontmatter 的 name 由 rwkv-architecture 改为目录名 rwkv
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show rwkv <相对路径> 读
+- name: saelens
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 04-mechanistic-interpretability/saelens
+  changes:
+  - frontmatter 的 name 从 sparse-autoencoder-training 改成目录名 saelens
+  - 训练配置里 log_to_wandb=True 加 wandb_project 改成 log_to_wandb=False（W&B 要账号与 key），SKILL.md、references/api.md、references/tutorials.md
+    三处；检查清单与 api.md 注释里的 W&B 字样删掉
+  - references/api.md 删「Upload to HuggingFace」一节（要 HF token）
+  - 正文开头加一句：其它文件用 ai4sci skill show saelens <相对路径> 读
+- name: scanpy
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/scanpy
+  changes:
+  - 删 Citing 段
+  - 删 references/r_interop.md（教 agent 装 R 和 CRAN/Bioconductor 包，属于装系统软件）；description、「何时使用」、Rscript 代码块、资源节、convert.py
+    文档串里引用它的地方一并删，只留一句「先用 R 工具转成 .h5ad」
+  - 15 个脚本补 PEP 723 头并出锁：都依赖 scanpy[leiden]，另按 import 加 numpy/pandas，qc_analysis.py 和 run_pipeline.py
+    加 Scrublet 要的 scikit-image，batch_correct.py 和 run_pipeline.py 加 harmonypy（batch_correct.py 再加 bbknn）；_common.py
+    只用标准库；Python>=3.12
+  - SKILL.md 和 references/analysis_workflow.md 的 python scripts/x.py 起法改成 ai4sci skill run scanpy --script
+    x.py（共 24 处），删掉「从 skill 目录跑」的说法
+  - assets/ 下的模板和 JSON 配置改成用 ai4sci skill show 读出来、存进工作目录再用
+  - 正文开头加 ai4sci skill show 那句
+- name: scikit-bio
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/scikit-bio
+  changes:
+  - 删 Citing 自引用段
+  - 正文开头加读文件提示句
+- name: scikit-learn
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/scikit-learn
+  changes:
+  - scripts/ 下两个演示脚本 classification_pipeline.py、clustering_analysis.py（没有参数、用玩具数据集、往当前目录写 PNG，不是工具）挪到
+    references/
+  - 「Example Scripts」里两处 `uv run python scripts/x.py` 改成 `ai4sci skill show scikit-learn references/x.py`，并注明这是抄进实验代码改用的示例
+  - 删 Citing 自引用段
+  - 正文开头加读文件提示句
+- name: scvelo
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/scvelo
+  changes:
+  - scripts/rna_velocity_workflow.py（没有参数、会下载 pancreas 示例数据的演示）挪到 references/
+- name: scvi-tools
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/scvi-tools
+  changes:
+  - 删 Citing 自引用段
+  - 正文开头加读文件提示句
+- name: segment-anything
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 18-multimodal/segment-anything
+  changes:
+  - frontmatter 的 name 从 segment-anything-model 改成目录名 segment-anything
+  - 正文开头加一句：其它文件用 `ai4sci skill show segment-anything <相对路径>` 读
+  - '删 Workflow 1: Annotation tool（在 OpenCV 窗口里用鼠标点选，属于本机 GUI），后面两个 workflow 的编号往前顺一位'
+  - references/advanced-usage.md 删「Gradio interface」（本机 GUI）
+  - ONNX 导出命令前加一行注释，说明 scripts/export_onnx_model.py 是 segment-anything 仓库自带的脚本，不是本 skill 的
+- name: sentence-transformers
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 15-rag/sentence-transformers
+  changes:
+  - 照原样收
+- name: sentencepiece
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 02-tokenization/sentencepiece
+  changes:
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show sentencepiece <相对路径> 读
+- name: sglang
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 12-inference-serving/sglang
+  changes:
+  - 正文开头加 `ai4sci skill show` 读法句
+  - OpenAI SDK 示例（带 api_key 占位）改成 requests 直连本机端点
+  - references/deployment.md 删 Docker、Kubernetes、NGINX 负载均衡、扩缩容、鉴权（--api-key）五节，正文指向它的一句同步改
+- name: simpo
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 06-post-training/simpo
+  changes:
+  - frontmatter 的 name 从 simpo-training 改成目录名 simpo
+  - references/datasets.md 删掉 dataset.push_to_hub 一行，以及接在后面引用 Hub 数据集的「Use in config」一段（推送要 HF token）
+  - 正文开头加一句：其它文件用 ai4sci skill show simpo <相对路径> 读
+- name: simpy
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/simpy
+  changes:
+  - 删去文末「Citing Scientific Agent Skills」自引段落
+  - 标题下加一句：本 skill 目录里的其它文件用 ai4sci skill show simpy <相对路径> 读
+  - scripts/ 七个 .py 都补了 PEP 723 头与锁：五个依赖 simpy==4.1.2，_common.py 与 event_trace_summary.py 只用标准库；requires-python
+    统一为 >=3.10
+  - 正文与 references/cli-guide.md、monitoring.md 里的 python skills/simpy/scripts/x.py 起法改成 ai4sci skill run
+    simpy --script x.py
+  - 正文说明 scripts/_common.py 是 CLI 共用的辅助模块，不是单独的工具
+  - 删掉正文 Testing 节和 cli-guide.md「Exact pinned tests」节里跑上游 tests/simpy 的命令（测试没随包带来）
+  - cli-guide.md 的 pinned install 一句改成锁文件已钉 SimPy 4.1.2；作为库用时先用 ai4sci skill show 把 basic_simulation_template.py、resource_monitor.py、_common.py
+    存到代码旁边
+- name: slime
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 06-post-training/slime
+  changes:
+  - frontmatter 的 name 从 slime-rl-training 改成目录名 slime
+  - 删掉安装里的 Docker 段，留 From Source；前置清单改成「Megatron-LM + SGLang installed」
+  - 正文开头加一句：其它文件用 ai4sci skill show slime <相对路径> 读
+- name: speculative-decoding
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 19-emerging-techniques/speculative-decoding
+  changes:
+  - 正文开头加了一句：本 skill 目录里的其它文件用 `ai4sci skill show speculative-decoding <相对路径>` 读
+  - 删掉 See Also 里指向 references/draft_model.md 的一行（上游没有这个文件，是悬空引用）
+- name: stable-baselines3
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/stable-baselines3
+  changes:
+  - 删去文末 Citing 自引段落
+  - 标题下加一句 ai4sci skill show 读目录文件的说明
+  - scripts/ 里三个模板（train_rl_agent.py、evaluate_agent.py、custom_env_template.py）没有 argparse，是示例代码，挪到 references/，正文
+    Resources 节合并成一个 references/ 列表
+  - 正文与 references/custom_environments.md 里的 scripts/x.py 路径改成 references/x.py
+- name: stable-diffusion
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 18-multimodal/stable-diffusion
+  changes:
+  - frontmatter 的 name 从 stable-diffusion-image-generation 改成目录名 stable-diffusion
+  - 正文开头加一句：其它文件用 `ai4sci skill show stable-diffusion <相对路径>` 读
+  - 删「Use alternatives instead」整段（DALL-E 3、Midjourney、Imagen、Leonardo.ai 都是要账号或 key 的在线服务）
+  - references/troubleshooting.md 删「Access denied for gated models」（huggingface-cli login 和 token）
+  - references/advanced-usage.md 删「Docker deployment」和「Kubernetes deployment」
+- name: swanlab
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 13-mlops/swanlab
+  changes:
+  - frontmatter 的 name 从上游的 experiment-tracking-swanlab 改成目录名 swanlab
+  - 安装段删 `swanlab login`
+  - 第 5 节删 `swanlab.login(api_key=..., host=...)` 那段代码，没用了的 `import os` 一起删
+  - 删 `swanlab sync`（往云端同步要登录）
+  - Quick Start 开头加一句：在平台里给 swanlab.init 传 mode="local"，日志存本地，云端模式要登录
+  - 正文开头加一句：其它文件用 `ai4sci skill show swanlab <相对路径>` 读
+- name: sympy
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/sympy
+  changes:
+  - 删去文末 Citing 自引段落
+  - 标题下加一句 ai4sci skill show 读目录文件的说明
+- name: tensorboard
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 13-mlops/tensorboard
+  changes:
+  - Resources 里删掉 TensorBoard.dev 的链接（要账号的公开分享服务）
+  - 正文开头加一句：其它文件用 `ai4sci skill show tensorboard <相对路径>` 读
+- name: tensorrt-llm
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 12-inference-serving/tensorrt-llm
+  changes:
+  - 正文开头加 `ai4sci skill show` 读法句
+  - 删 Docker 安装那两行，只留 pip install tensorrt_llm
+  - references/serving.md 删 --api_key 参数、Kubernetes 探针、Production Deployment（Docker / K8s / 负载均衡）、Autoscaling、Security、NGINX
+    超时几处，正文指向它的一句同步改
+  - references/multi-gpu.md 删 Kubernetes 部署一节
+- name: timesfm-forecasting
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/timesfm-forecasting
+  changes:
+  - 标题下加一句 ai4sci skill show 读目录文件的说明
+  - examples/ 整个挪到 references/examples/；不带 PNG、GIF 图片和生成出来的 interactive_forecast.html，示例代码、输入 CSV 和 JSON/CSV
+    结果保留
+  - scripts/check_system.py 补 PEP 723 头（只用标准库）和锁；scripts/forecast_csv.py 用 uv add --script 加了 numpy、pandas、timesfm[torch]
+    并出锁，requires-python 定为 >=3.12（numpy 2.5 不支持 3.10）
+  - 正文和 references/workflows.md 里的 python scripts/check_system.py、python scripts/forecast_csv.py 起法改成
+    ai4sci skill run timesfm-forecasting --script …
+  - 正文补一段：通过 ai4sci skill run 运行时，检查脚本自己的环境里没有 torch，GPU 和包这两项会报 warn，forecast_csv.py 会在自带 torch 的环境里再检查一遍
+  - references/examples_and_validation.md 的示例路径改成 references/examples/，补一段怎么读出示例、存进工作目录再运行
+  - 示例 README 的 cd 路径改成存下来的副本，删掉指向未带图片的行；run_example.sh 删掉 SKILL_ROOT，检查命令改成 ai4sci skill run；forecast_csv.py
+    失败提示里的命令也同步改了
+- name: torch-geometric
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/torch-geometric
+  changes:
+  - 删去文末 Citing 自引段落
+  - 标题下加一句 ai4sci skill show 读目录文件的说明
+- name: torchdrug
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/torchdrug
+  changes:
+  - 删去文末 Citing 自引段落
+  - 标题下加一句 ai4sci skill show 读目录文件的说明
+- name: torchforge
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 06-post-training/torchforge
+  changes:
+  - frontmatter 的 name 从 torchforge-rl-training 改成目录名 torchforge
+  - 监控清单里的「Check W&B dashboard」改成「Check the training logs」
+  - 正文开头加一句：其它文件用 ai4sci skill show torchforge <相对路径> 读
+- name: torchtitan
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 01-model-architecture/torchtitan
+  changes:
+  - frontmatter 的 name 由 distributed-llm-pretraining-torchtitan 改为目录名 torchtitan
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show torchtitan <相对路径> 读
+  - 删 Quick start 与 Workflow 1 下载 tokenizer 命令里的 --hf_token 参数，以及「去 HF 拿 token」那行注释（P-27）
+- name: transformer-lens
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 04-mechanistic-interpretability/transformer-lens
+  changes:
+  - frontmatter 的 name 从 transformer-lens-interpretability 改成目录名 transformer-lens
+  - 删掉门控模型那段（设 HF_TOKEN 再加载 Llama-2），SKILL.md 与 references/api.md 各一处
+  - 正文开头加一句：其它文件用 ai4sci skill show transformer-lens <相对路径> 读
+- name: transformers
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/transformers
+  changes:
+  - 删去文末 Citing 自引段落
+  - 标题下加一句 ai4sci skill show 读目录文件的说明
+  - 整节删掉 Authentication（hf auth login、HF_TOKEN、token 作用域），compatibility 里删掉 gated 模型要 HF token 的那句
+  - 「Gated or custom architectures」改成只讲 trust_remote_code
+  - references/training.md 删掉 Hub 上传要认证那句、trainer.push_to_hub 示例和 wandb 的 report_to 与 Weights & Biases
+    段落
+  - references/models.md 删掉「Save to Hugging Face Hub」节和排错里的 huggingface_hub login
+  - references/tokenizers.md 删掉 tokenizer.push_to_hub 示例
+- name: trl-fine-tuning
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 06-post-training/trl-fine-tuning
+  changes:
+  - frontmatter 的 name 从 fine-tuning-with-trl 改成目录名 trl-fine-tuning
+  - 正文开头加一句：其它文件用 ai4sci skill show trl-fine-tuning <相对路径> 读
+- name: usfiscaldata
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/usfiscaldata
+  changes:
+  - 删除 SKILL.md 末尾的「Citing Scientific Agent Skills」段
+  - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show usfiscaldata <相对路径>` 读」
+  - description 与正文里的「No API key required / No API key or registration required」改写成「No account or registration
+    required」（零 key 门禁连「不用 key」的说法也拦）
+  - references/api-basics.md 的「No API key, no authentication, no registration required」改成「No authentication
+    or registration required」；references/response-format.md 的 403 行改成「Forbidden (not expected; the API
+    is public)」
+- name: vaex
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/vaex
+  changes:
+  - 删除 SKILL.md 末尾的「Citing Scientific Agent Skills」段
+  - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show vaex <相对路径>` 读」
+  - references/io_operations.md 删掉云存储的凭据示例：S3 的 key/secret 文件系统对象、AWS profile 的 fs_options、GCS 凭据文件，以及「default
+    credentials (~/.aws/credentials or env vars)」这句说明
+  - 'S3 显式 fs_options 的示例换成读公开桶的 `fs_options={''anon'': True}`；排查一节的「Verify credentials」改成用 `anon=True`
+    检查桶能不能访问'
+- name: verl
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 06-post-training/verl
+  changes:
+  - frontmatter 的 name 从 verl-rl-training 改成目录名 verl
+  - 删掉安装里的 Docker 选项，后面的从源码装改编号为 Option 2
+  - 监控清单里的「WandB/TensorBoard」改成「TensorBoard」
+  - 删掉「Multi-Turn Tool Calling」一节：它指向的 references/multi-turn.md 上游就没有这个文件
+  - 正文开头加一句：其它文件用 ai4sci skill show verl <相对路径> 读
+- name: vllm
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 12-inference-serving/vllm
+  changes:
+  - frontmatter 的 name 由 serving-llms-vllm 改为目录名 vllm
+  - 正文开头加 `ai4sci skill show` 读法句
+  - 快速上手的 OpenAI SDK 查询改成 curl，references/troubleshooting.md 与 references/quantization.md 的 OpenAI 客户端改成
+    requests，去掉 api_key 占位
+  - 删 Workflow 1 的 Docker 部署一步，后一步改号为 Step 4
+  - references/server-deployment.md 删 Docker、Kubernetes、NGINX、Prometheus / Grafana 几段，正文指向它的一句同步改
+  - 删 references/troubleshooting.md 里 huggingface-cli login 与 sudo ufw allow 两条
+- name: whisper
+  shelf: experiment
+  upstream: ai-research-skills
+  path: 18-multimodal/whisper
+  changes:
+  - 删「Use alternatives instead」（AssemblyAI、Deepgram、Google Speech-to-Text 都是要 key 的托管 API）
+  - 安装段删掉 brew、apt、choco 三种装 ffmpeg 的命令（装系统软件），保留一句 Requires ffmpeg on PATH
+  - 删「With LangChain」（向量库用 OpenAIEmbeddings，要 OpenAI key）
+- name: zarr-python
+  shelf: experiment
+  upstream: ai-research-skills
+  path: skills/zarr-python
+  changes:
+  - 删除 SKILL.md 末尾的「Citing Scientific Agent Skills」段
+  - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show zarr-python <相对路径>` 读」
+  - SKILL.md、references/storage_backends.md、references/v3_migration.md 删掉云凭据指引：IAM 角色、workload identity、gcloud
+    应用默认凭据、不许打印凭据、排查鉴权时读 .env 变量这几句与对应注释
+- name: clinical-decision-support
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/clinical-decision-support
+  changes:
+  - 删文末「Citing Scientific Agent Skills」自引用一节
+  - 正文开头加「其它文件用 ai4sci skill show clinical-decision-support <相对路径> 读」的提示
+  - 被导入的共用模块 scripts/_common.py 挪到 scripts/lib/，各脚本在 from _common import 前加一行 sys.path 指向 lib/
+  - 7 个脚本补 PEP 723 头（只用标准库；requires-python 按上游 compatibility 写 >=3.11）并出锁
+  - 正文和 references 里 python3 scripts/x.py 改成 ai4sci skill run clinical-decision-support --script x.py；示例参数
+    assets/<模板>.json 改成工作目录里的副本，正文补一句：先用 ai4sci skill show 读出模板、存到工作目录再填
+  - 删 Verification 一节（跑的是上游仓的 tests/ 和裸 python3），也删了上游的安全扫描记录 references/security_validation.md 及它在 Reference
+    Map、references/README.md 里的条目
+  - compatibility、references/README.md、references/sources.md 里的「no ... API keys」改写成「no credentials」
+- name: dhdna-profiler
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/dhdna-profiler
+  changes:
+  - 删掉末尾「Built By」那段（推广作者的商业平台 themindbook.app）
+- name: exploratory-data-analysis
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/exploratory-data-analysis
+  changes:
+  - 删了文末 Citing 段
+  - 删了 scripts/__init__.py
+  - 8 个 CLI 和 4 个辅助模块（_common、_capabilities、_tabular、_structured）都补了 PEP 723 头并出锁。依赖照 import 写，用上游钉的版本：eda_analyzer
+    带 numpy、h5py、biopython、pillow、tifffile；image_inspector 带 pillow、tifffile；sequence_inspector 带 biopython；_structured
+    带 numpy、h5py；其余只用标准库
+  - 正文和 proteomics_metabolomics_formats.md、spectroscopy_analytical_formats.md 里的 `python scripts/x.py`
+    都改成 `ai4sci skill run exploratory-data-analysis --script x.py`
+  - 「Version baseline」下面两段 `uv pip install` 换成一句话：脚本依赖写在 PEP 723 头和锁里，ai4sci skill run 第一次运行时建环境
+  - 正文开头加一句 ai4sci skill show 的说明
+- name: market-research-reports
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/market-research-reports
+  changes:
+  - 删了末尾引用段
+  - 正文开头加了 ai4sci skill show 的说明
+  - '`python3 scripts/x.py` 改成 `ai4sci skill run market-research-reports --script x.py`'
+  - 「Templates and CLIs」加一句：命令里的 assets/… 先用 skill show 读出来，存进工作区，再把路径传给脚本
+  - SKILL.md 删掉「Never put an API key…」一句
+  - references/official_data_sources.md 删掉 Census 要 key 的说明、BLS 注册版条目、BEA 要 UserID 的 API 段、FRED 要 key
+    的那条、ONS 的「no-key」字样，以及「Keep credentials…」规则
+  - references/sources.md 删掉 SRC-CENSUS-KEY、SRC-BEA-API 两行，另外三行改写掉 key 和注册的说法
+  - 7 个脚本和 _common.py 手写了 PEP 723 头（只用标准库，requires-python 照上游写 >=3.11）并出锁
+- name: networkx
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/networkx
+  changes:
+  - 删掉文末自引用一节
+  - 正文开头加一句 ai4sci skill show 读文件的说明
+- name: pathogen-variant-surveillance
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/pathogen-variant-surveillance
+  changes:
+  - 删除文末自引段
+  - lapis_client.py 移到 scripts/_lib/，四个工具的 import 改成 `from _lib.lapis_client import`；references 里两处路径跟着改
+  - 四个工具上游已经带 PEP 723 头（标准库），补了锁
+  - 正文里的 `cd skills/…/scripts` 和 `python3 x.py` 改成 `ai4sci skill run pathogen-variant-surveillance --script
+    x.py`；「`> out.tsv`」重定向的说法改成 stdout 只放数据
+  - compatibility 与 lapis-api.md 里的「No API key」改写
+  - 正文开头加一句：其它文件用 ai4sci skill show 读
+- name: pathway-enrichment
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/pathway-enrichment
+  changes:
+  - 删「Citing Scientific Agent Skills」段（让 agent 往稿子里引上游论文）
+  - 脚本起法 python scripts/run_enrichment.py 改成 ai4sci skill run pathway-enrichment --script run_enrichment.py（5
+    处）
+  - run_enrichment.py 补 PEP 723 头（gseapy、pandas、numpy）并出锁
+  - 正文开头加一句用 ai4sci skill show 读目录里其它文件
+- name: pkpd-modeling
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/pkpd-modeling
+  changes:
+  - 删「Citing Scientific Agent Skills」段
+  - 删 cd skills/pkpd-modeling/scripts 那段，换成一句 ai4sci skill run pkpd-modeling --script <script> 的起法
+  - 15 处 python3 x.py 起法改成 ai4sci skill run pkpd-modeling --script x.py
+  - 11 个脚本补 PEP 723 头并出锁（照 import 写：numpy/scipy 给要用的脚本，_common、check_popk_dataset、ddi_static 只用标准库；requires-python
+    >=3.11 照上游）
+  - 正文开头加一句用 ai4sci skill show 读目录里其它文件
+- name: pydeseq2
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/pydeseq2
+  changes:
+  - 删 K-Dense 的引用段
+  - run_deseq2_analysis.py 补 PEP 723 头（pydeseq2==0.5.4、pandas、numpy、matplotlib，Python≥3.11）并出锁；脚本 docstring
+    和 epilog 里的起法同步改了
+  - 正文的 python scripts/run_deseq2_analysis.py 改成 ai4sci skill run pydeseq2 --script run_deseq2_analysis.py，「Read
+    references/…」改成 ai4sci skill show；开头加读文件的说明
+- name: pymc
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/pymc
+  changes:
+  - 删 K-Dense 的引用段
+  - scripts/model_diagnostics.py 和 model_comparison.py 是给实验代码 import 的函数库，没有 CLI，挪到 references/
+  - 正文、references 和这两个模块 docstring 里的 from scripts.model_x import 改成 from model_x import，并说明先用 ai4sci
+    skill show 读出来、存到实验代码目录再 import
+  - 开头加读文件的说明
+- name: scikit-survival
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/scikit-survival
+  changes:
+  - scripts/_common.py 挪成 scripts/_common/__init__.py
+  - 5 个脚本补 PEP 723 头并出锁：4 个钉上游测过的那套（scikit-survival==0.28.0、scikit-learn==1.9.0、numpy==2.4.6、pandas==3.0.5、scipy==1.17.1），model_report.py
+    只用标准库
+  - 正文和 references/（competing-risks、data-handling、evaluation-metrics）里的 `python skills/scikit-survival/scripts/x.py`
+    改成 `ai4sci skill run scikit-survival --script x.py`
+  - 删 Citing 自引用段
+  - 正文开头加读文件提示句
+- name: shap
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/shap
+  changes:
+  - tabular_report.py 留在 scripts/（有 argparse 和 --output-dir、不交互），补 PEP 723 头（shap[plots]==0.52.0 加 scikit-learn、matplotlib、numpy、pandas）并出锁
+  - requires-python 定成 >=3.12,<3.14：shap 0.52.0 在 x86_64 macOS 上限制 numba<0.63，uv 跨平台统一选了 numba 0.62.1
+    / llvmlite 0.45.1，而 llvmlite 0.45.1 没有 3.14 的 wheel，在本机 3.14 上从源码编译会失败
+  - 「Bundled Script」的 `uv run … skills/shap/scripts/tabular_report.py --output-dir /tmp/shap-report` 改成
+    `ai4sci skill run shap --script tabular_report.py --output-dir shap-report`（输出改成相对路径）
+  - 「Read it as a template」后面补上读法 `ai4sci skill show shap scripts/tabular_report.py`
+  - 删 Citing 自引用段
+  - 正文开头加读文件提示句
+- name: statistical-analysis
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/statistical-analysis
+  changes:
+  - 删去文末 Citing 自引段落
+  - 标题下加一句 ai4sci skill show 读目录文件的说明
+  - scripts/assumption_checks.py 是给分析代码 import 的模块，不是 CLI，挪到 references/
+  - 「在 skill 目录里跑或把 scripts/ 加进 sys.path」改成用 ai4sci skill show 读出来、存到分析代码旁边再 import；Bundled Resources
+    的 Scripts 小节改名为 Helper module
+- name: statsmodels
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/statsmodels
+  changes:
+  - 删去文末 Citing 自引段落
+  - 标题下加一句 ai4sci skill show 读目录文件的说明
+- name: umap-learn
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/umap-learn
+  changes:
+  - 删除 SKILL.md 末尾的「Citing Scientific Agent Skills」段
+  - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show umap-learn <相对路径>` 读」
+- name: uncertainty-and-units
+  shelf: analysis
+  upstream: ai-research-skills
+  path: skills/uncertainty-and-units
+  changes:
+  - 删除 SKILL.md 末尾的「Citing Scientific Agent Skills」段
+  - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show uncertainty-and-units <相对路径>` 读」
+  - 7 个脚本补 PEP 723 头（requires-python >=3.12，照上游声明）：先手写头，再用 uv add 照 import 填依赖（propagate_uncertainty：numpy、scipy、uncertainties；uncertainty_budget：scipy；convert_units：pint；check_plausibility：pint、scipy；audit_units、format_result、_common
+    为空），各出 .lock
+  - 正文里 15 处 `python skills/uncertainty-and-units/scripts/x.py` 改成 `ai4sci skill run uncertainty-and-units
+    --script x.py`
+- name: clinical-reports
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/clinical-reports
+  changes:
+  - 删文末「Citing Scientific Agent Skills」自引用一节
+  - 正文开头加「其它文件用 ai4sci skill show clinical-reports <相对路径> 读」的提示
+  - 被导入的共用模块 scripts/_common.py 挪到 scripts/lib/，各脚本在 from _common import 前加一行 sys.path 指向 lib/
+  - 8 个脚本补 PEP 723 头（只用标准库；requires-python >=3.11）并出锁
+  - 正文里 PYTHONDONTWRITEBYTECODE=1 python3 scripts/x.py 的 9 处起法改成 ai4sci skill run clinical-reports --script
+    x.py
+  - 溯源清单模板那一句补上说明：用 ai4sci skill show 读模板、在工作目录存副本；报告模板由 generate_report_template.py 拷出来
+- name: ml-paper-writing
+  shelf: writing
+  upstream: ai-research-skills
+  path: 20-ml-paper-writing/ml-paper-writing
+  changes:
+  - 不带 templates/：6 个会议的 LaTeX 样式文件是第三方拷贝，上游没写明许可证，里面还有样例 PDF；正文改成列各会议官方模板的下载地址（取自上游 templates/README.md
+    与 sources.md），「从模板起一篇」「换会议格式」两处的 cp -r templates/... 改成下载官方模板
+  - 删掉「安装 Exa MCP」一节，以及引用流程里的「Step 0：用 Exa MCP」；Step 1 改成「网页搜索或 Semantic Scholar API」
+  - 引用流程 Step 1 / Step 3 的 Python 示范（semanticscholar、requests）改成三个用 web fetch 读的网址：Semantic Scholar 检索、CrossRef
+    transform、arXiv bibtex。2026-10-01 用 curl 实测：CrossRef 与 arXiv 两个能取到 BibTeX，Semantic Scholar 的公共池返回
+    429
+  - 删掉「Citing AI Research Skills」一节（这一节请研究者在论文里引用上游库）
+  - 「先原样编译模板」一步加一句：编译要 TeX Live 或 Overleaf，没有就把命令交给研究者
+  - 模板主文件名表前加一句：文件名取自上游的拷贝，官方包里可能不同
+  - 指向 ../systems-paper-writing/ 的链接改成按名字提 `systems-paper-writing` skill，正文与 checklists、reviewer-guidelines、sources
+    三个 reference 里都改了
+  - references/checklists.md 的 Template Locations 一节改成指向官方模板地址
+  - references/citation-workflow.md 去掉 key：CitationManager 删 api_key 参数，删「Use API key if available」，限流表去掉「free
+    key」，删推荐 SerpApi（付费、要 key）的那一句
+  - 正文开头加一句：目录里的其它文件用 `ai4sci skill show ml-paper-writing <相对路径>` 读
+- name: nature-data
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/nature-data
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-data <相对路径> 读
+  - 共享包里的 journal-formats/nature-machine-intelligence.md 拷进 references/shared/，连同它引用的 core/ethics.md、core/research-compliance.md；SKILL.md
+    与 manifest.yaml 里的 ../nature-shared/ 路径改成相对 skill 根的 references/shared/…
+- name: nature-paper-to-patent
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/nature-paper-to-patent
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/、tests/、evals/、requirements.txt
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-paper-to-patent <相对路径> 读
+  - 技术交底书的两种模式（technical-disclosure、disclosure-iteration）不带：定稿要 Node、mermaid-cli 加无头 Chrome 来渲染 Mermaid，查新首选
+    Playwright 爬国知局，这些都得装系统软件。因此删了 static/fragments/task 下的两个片段、references/disclosure/（含它的 MIT 第三方许可文件）和
+    scripts/disclosure/；SKILL.md 与 manifest 里这两种模式、description 里的 technical disclosures 和「技术交底书」也一并删掉
+  - 删了 scripts/init_patent_project.py：正文没有用到它，而且它默认把整个 skill 拷进用户项目，还要拷我们没带的 requirements.txt
+  - math_to_omml.py 是被 import 的库，挪到 scripts/lib/；render_patent_docx.py 加了一行，把 lib/ 放进 sys.path
+  - 六个脚本补了 PEP 723 头并出了锁：build_patent_package 会起另外两个渲染脚本，所以依赖要包含 python-docx、latex2mathml、pillow；extract_pdf_text
+    要 pypdf；render_flowchart_svg 要 pillow；render_patent_docx 要 python-docx 和 latex2mathml；其余两个只用标准库
+  - SKILL.md 第 5 节、static/core/workflow.md 里的两道门、static/fragments/source/pdf-text.md 的起法，都改成 ai4sci skill
+    run nature-paper-to-patent --script …
+- name: nature-paper2ppt
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/nature-paper2ppt
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-paper2ppt <相对路径> 读
+  - 共享包的 core/terminology-ledger.md 拷进 references/shared/，并改了 SKILL.md 与 manifest 的路径
+  - audit_pptx_quality.py 补了 PEP 723 头（只用标准库）并出了锁；SKILL.md、static/core/workflow.md、references/self-review.md
+    里的起法改成 ai4sci skill run nature-paper2ppt --script audit_pptx_quality.py
+- name: nature-polishing
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/nature-polishing
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-polishing <相对路径> 读
+  - 用到的 13 个共享文件拷进 references/shared/：core 里 10 个，journal-formats 里的 NMI 与 nat-comms，再加 research-compliance；manifest
+    的 always_load、on_demand、SKILL.md 和 static 下各片段里的 ../nature-shared/ 路径，全部改成 references/shared/…
+  - 删了 LaTeX 排版那一支（要编译 LaTeX 再渲染页面来看）：references/latex-layout.md、SKILL.md 里那段、manifest 条目，以及 description
+    里的 manuscript LaTeX layout fixes
+  - 共享包的 check_consistency.py 拷进 scripts/，补了头（只用标准库）并出了锁；consistency-sweep.md 里的起法改成 ai4sci skill run
+    nature-polishing --script check_consistency.py；SKILL.md 指向一致性扫描的那句补上了起法（平台要求有脚本的 skill 在正文里写怎么起）
+- name: nature-proposal-writer
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/nature-proposal-writer
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-proposal-writer <相对路径> 读
+  - frontmatter 和 manifest 的 name 从 researchwrite 改成目录名 nature-proposal-writer；同时删了 description 里「为兼容保留旧名」的说法、正文里「不要改
+    frontmatter 名称」那句；正文示例和 references/review-critique-methodology.md 里的 skill 名跟着改，工作目录 <outputs>/researchwrite/
+    照原样
+  - professor、avoid-ai-writing 这两个外部 skill 平台里没有：原则 5、Gate 1、「配置你的研究域」三处，改成按 references/professor-dispatch.md
+    分几轮专家视角审（这是上游自带的退路），以及按 references/research-anti-slop.md 手工扫读
+  - references/review-paper-framework.md 删了「经 nature-academic-search、nature-downloader」那半句，这两个都没收
+  - build_proposal_docx.py 补了 PEP 723 头（python-docx）并出了锁；它原来没有 argparse，--help 会被当成文件名报错，所以加了 -h/--help
+    和缺参数时的处理
+  - docstring、references/export-archive.md 的起法改成 ai4sci skill run nature-proposal-writer --script build_proposal_docx.py，SKILL.md
+    的参考索引表也补上了起法；删了 export-archive.md 里的「Load pdf only when PDF is requested」，因为平台的 pdf skill 是解析 PDF，不是生成
+- name: nature-response
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/nature-response
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/、tests/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-response <相对路径> 读
+  - 共享包的 core/main-text-discipline.md、core/consistency-sweep.md 拷进 references/shared/，并改了 SKILL.md、manifest、static/core/workflow.md、references/package-consistency-audit.md
+    里的路径
+  - 共享包的 check_consistency.py 拷进 scripts/，补了头并出了锁；consistency-sweep.md 的起法改成 ai4sci skill run nature-response
+    --script check_consistency.py
+  - check_package_consistency.py 补了 PEP 723 头（只用标准库）并出了锁；SKILL.md 与 package-consistency-audit.md 的起法改成
+    ai4sci skill run nature-response --script check_package_consistency.py
+  - templates/ 下的三个 .tex 照带：都是仓库自己写的，只用标准 article/letter 类，受仓库的 Apache-2.0 覆盖
+- name: nature-reviewer
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/nature-reviewer
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/、tests/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-reviewer <相对路径> 读
+  - 共享包的 core/consistency-sweep.md 拷进 references/shared/，并改了 SKILL.md、manifest 的路径；check_consistency.py
+    拷进 scripts/，补了头并出了锁，起法改成 ai4sci skill run nature-reviewer --script check_consistency.py；SKILL.md 相关文件表里那一行补上了起法
+  - 互盲审稿原来要求每位审稿人在独立的上下文或子代理里写，平台没有子代理：改成上游自带的退路——三份报告依次写、写完不回头改，并在 Review setup 里写明不能保证互盲（改了默认立场一条、工作流第
+    4、5 步）
+- name: nature-statistics
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/nature-statistics
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-statistics <相对路径> 读
+  - 共享包的 NMI 格式文件（连同 ethics、research-compliance）和 core/consistency-sweep.md 拷进 references/shared/，并改了
+    SKILL.md、manifest 的路径
+  - check_consistency.py 拷进 scripts/，补了头（只用标准库）并出了锁；consistency-sweep.md 的起法改成 ai4sci skill run nature-statistics
+    --script check_consistency.py；SKILL.md 相关文件表里那一行补上了起法
+- name: nature-writing
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/nature-writing
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/、tests/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-writing <相对路径> 读
+  - 用到的 13 个共享文件拷进 references/shared/：core 里 10 个，journal-formats 里的 nature、NMI、nat-comms；manifest、SKILL.md
+    和 static 下各片段里的 ../nature-shared/ 路径，全部改成 references/shared/…
+  - templates/submission 下的四个 .tex 照带：都是仓库自己写的，只用标准 article/letter 类，受仓库的 Apache-2.0 覆盖
+- name: peer-review
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/peer-review
+  changes:
+  - 删「Citing Scientific Agent Skills」段
+  - python3 scripts/x.py 起法改成 ai4sci skill run peer-review --script x.py（SKILL.md 与 references/tool_reference.md、reporting_standards.md、statistical_reproducibility.md）
+  - 「API keys」两处改写：SKILL.md 禁止清单改成「`.env` files, or credentials」，references/security_validation.md 改成「Credential
+    transmission」
+  - 8 个脚本补 PEP 723 头（全是标准库，requires-python 照上游 compatibility 写 >=3.11）并出锁
+  - 正文开头加一句用 ai4sci skill show 读目录里其它文件
+- name: pptx-posters
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/pptx-posters
+  changes:
+  - 删「Citing Scientific Agent Skills」段
+  - 安装一节的 uv venv / uv pip install 改成一句：依赖钉在 PEP 723 头里，经 ai4sci skill run 起；--help 那句也改成 ai4sci 的写法
+  - python -B scripts/x.py 起法改成 ai4sci skill run pptx-posters --script x.py（SKILL.md、references/manifest_spec.md、references/pptx_security.md、assets/poster_quality_checklist.md）
+  - 「API keys」「API key」两处改成 credentials / credential
+  - 10 个脚本补 PEP 723 头并出锁：generate_poster 钉 python-pptx==1.0.2、Pillow==12.3.0、lxml==6.1.1，inventory_images
+    钉 Pillow==12.3.0，其余只用标准库（requires-python >=3.10 照上游）
+  - 正文开头加一句用 ai4sci skill show 读目录里其它文件
+- name: presenting-conference-talks
+  shelf: writing
+  upstream: ai-research-skills
+  path: 20-ml-paper-writing/presenting-conference-talks
+  changes:
+  - description 改成「出 Beamer 源码（编出 PDF）和 python-pptx 脚本（生成可编辑 PPTX）」，不再承诺 agent 自己出 PDF / PPTX
+  - Step 4 的 latexmk 与 python3 generate_slides.py 两步注明分别要 TeX Live 和装了 python-pptx 的 Python，环境里没有就把命令交给讲者
+  - 正文开头加一句：目录里的其它文件用 `ai4sci skill show presenting-conference-talks <相对路径>` 读
+- name: research-grants
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/research-grants
+  changes:
+  - 删 Citing 段
+  - 删配图那部分里要 OPENROUTER_API_KEY 的做法：scientific-schematics 那条、起法代码块和外发声明，只留「用常规工具画图」；compatibility 跟着改
+  - SKILL.md 和 references/README.md 的「和其它 skill 配合」里，删 Scientific Schematics 与 Research Lookup 两行（后者默认要
+    Parallel 的 key，这批没收）
+  - 正文开头加 ai4sci skill show 那句
+- name: scholar-evaluation
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/scholar-evaluation
+  changes:
+  - 删 Citing 段
+  - 8 个脚本（含 _common.py）只用标准库，补 PEP 723 头（Python>=3.11）并出锁
+  - SKILL.md 和 references/local_tooling.md 里的 PYTHONDONTWRITEBYTECODE=1 python3 scripts/x.py 改成 ai4sci
+    skill run scholar-evaluation --script x.py（带环境变量前缀的命令过不了白名单）；命令里的 assets/… 改成工作目录里的副本，/tmp/ 下的输出改成写在工作目录
+  - 正文开头加 show 那句，并说明 assets 里的模板要先读出来存进工作目录；local_tooling.md 同样补一句；「只用 Bash 跑 python3 命令」改成「只用 Bash 跑
+    ai4sci skill run 命令」
+  - references/security_validation.md 的「API-key handling」改成「credential handling」（零 key 门禁的正则会命中）
+- name: scientific-writing
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/scientific-writing
+  changes:
+  - compatibility 删掉「require no API keys」（零 key 门禁的正则会命中）
+  - scripts/_common.py 挪成 scripts/_common/__init__.py（同 scientific-visualization）
+  - 8 个脚本补 PEP 723 头（纯标准库，dependencies = []，requires-python >=3.11）并出锁
+  - 正文和 references/（cli_reference、evidence_workflow、reporting_guidelines、authorship_ai_confidentiality）里的
+    `python3 scripts/x.py` 改成 `ai4sci skill run scientific-writing --script x.py`
+  - 删 Citing 自引用段
+  - 正文开头加读文件提示句
+- name: systems-paper-writing
+  shelf: writing
+  upstream: ai-research-skills
+  path: 20-ml-paper-writing/systems-paper-writing
+  changes:
+  - 不带 templates/：4 个会议的 main.tex、references.bib 和简化版 usenix-2020-09.sty，上游没写明许可证；正文 LaTeX Templates 一节改成
+    USENIX 与 ACM 官方模板地址（取自上游 references/systems-conferences.md 与模板文件头）
+  - description 里的「LaTeX templates」改成「official LaTeX template links」
+  - 正文开头加一句：目录里的其它文件用 `ai4sci skill show systems-paper-writing <相对路径>` 读
+- name: treatment-plans
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/treatment-plans
+  changes:
+  - 删除 SKILL.md 末尾的「Citing Scientific Agent Skills」段（让 agent 往稿子里引 K-Dense 的论文）
+  - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show treatment-plans <相对路径>` 读」
+  - 8 个脚本（含 _common.py）补 PEP 723 头（纯标准库，requires-python >=3.11，照上游的 compatibility）并各出 .lock
+  - SKILL.md 与 references/documentation_workflow.md 里 `python3 scripts/x.py` 的起法改成 `ai4sci skill run treatment-plans
+    --script x.py`；「From the skill directory:」改成「Run from the working directory that holds the package:」
+  - 删除「## Verification」段：它跑的是上游仓库的 tests/treatment-plans，这个目录没随 skill 发
+  - 不带 references/security_validation.md（上游自家仓库的安全扫描记录，有两行 API key 字眼，复现命令依赖没发布的测试与扫描工具）；SKILL.md 的 Reference
+    map 与 references/README.md 里指向它的条目一并删掉
+- name: venue-templates
+  shelf: writing
+  upstream: ai-research-skills
+  path: skills/venue-templates
+  changes:
+  - 删除 SKILL.md 末尾的「Citing Scientific Agent Skills」段
+  - 正文开头加一句「本 skill 目录里的其它文件用 `ai4sci skill show venue-templates <相对路径>` 读」
+  - 3 个脚本补 PEP 723 头（纯标准库，requires-python >=3.11）并各出 .lock
+  - 正文 7 处 `python scripts/x.py` 改成 `ai4sci skill run venue-templates --script x.py`；「Run scripts from
+    the skill directory.」改成说明模板在 skill 里找、输出路径相对工作目录
+  - LaTeX 模板照原样带上：Elsevier elsarticle 的 3 个 .tex 和 3 个 .bst 文件头写明 LPPL 1.3；其余 6 个 .tex 是上游自写的脚手架（文件头自注
+    not an official template），按 skill 的 MIT 带
+- name: ara-rigor-reviewer
+  shelf: verification
+  upstream: ai-research-skills
+  path: 22-agent-native-research-artifact/rigor-reviewer
+  changes:
+  - 名字用上游 frontmatter 里的 ara-rigor-reviewer：上游目录名是 rigor-reviewer
+  - 「native tools (Read, Write, Glob, Grep)」改成「file tools (read, write, search)」
+  - level2_report.json 写到 ARA 根目录，或调用者指定的目录：P-20 规定写在哪由调用者定，上游的产出被引用后会冻结
+  - 正文开头加一句：目录里的其它文件用 `ai4sci skill show ara-rigor-reviewer <相对路径>` 读
+- name: iso-standards-readiness
+  shelf: verification
+  upstream: ai-research-skills
+  path: skills/iso-standards-readiness
+  changes:
+  - 删自引段；正文开头加 ai4sci skill show 读目录文件的说明
+  - PYTHONDONTWRITEBYTECODE=1 python3 scripts/x.py 全部改成 ai4sci skill run iso-standards-readiness --script
+    x.py（SKILL.md 与 iso-14971 / iso-17025 / iso-15189）
+  - 正文命令里直接传 assets/templates/*-template.json 的参数，改成使用者自己的副本 /path/to/<名>.json（原文要求先把模板拷出去再填；在工作区里跑时，skill
+    目录里的相对路径找不到）
+  - scripts/ 10 个 .py（含辅助模块 _common.py、_catalog.py）补 PEP 723 头（>=3.11）并出锁
+- name: nature-ref-verifier
+  shelf: verification
+  upstream: ai-research-skills
+  path: skills/nature-ref-verifier
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-ref-verifier <相对路径> 读
+  - description 删了「支持与 Zotero 同步修正」；删了「传入 Zotero item key」这种输入方式和「Zotero 库定期健康检查」这个场景
+  - 来源表删了「Zotero 本地库（zotero-mcp）」那一行；CNKI/万方 原来经 kimi-datasource / webbridge，改成经 WebSearch
+  - 删了「超过 20 条就拆给并行子代理」的批量策略
+  - 删了「Zotero 更新指令」整段（其中 pyzotero Web 模式要 API key），以及「环境依赖」整节（pyzotero、zotero-mcp、kimi 工具）
+- name: scientific-critical-thinking
+  shelf: verification
+  upstream: ai-research-skills
+  path: skills/scientific-critical-thinking
+  changes:
+  - compatibility 删掉「可选配图要 OPENROUTER_API_KEY、要连 OpenRouter」那句
+  - 删「Visual Aids (Optional)」整节（首选做法是经 scientific-schematics 调 OpenRouter 出图，要 key）
+  - 「用 grep 搜 references/」一条改成用 `ai4sci skill show scientific-critical-thinking references/<file>` 读
+  - 删末尾「Citing Scientific Agent Skills」自引用段
+  - 正文开头（H1 后）加「本 skill 目录里的其它文件用 `ai4sci skill show scientific-critical-thinking <相对路径>` 读。」
+- name: academic-plotting
+  shelf: general
+  upstream: ai-research-skills
+  path: 20-ml-paper-writing/academic-plotting
+  changes:
+  - 删掉架构图走 Gemini 出图的整条工作流：四种风格提示词块、出图脚本模板、取 GEMINI_API_KEY 的步骤、出三次图再挑一张（P-27），架构图改用 references 里上游原有的
+    TikZ / Mermaid 写法
+  - description 与 frontmatter dependencies 里去掉 Gemini / google-genai
+  - references/diagram-generation.md 只留 TikZ 与 Mermaid 两节，删掉 Gemini 提示词工程与挑图打分表，Mermaid 一节里「之后写 Gemini
+    提示词」改成「之后写 TikZ」
+  - references/style-guide.md 的「For AI-generated architecture/system diagrams」改成「For architecture/system
+    diagrams」
+  - 常见问题表删掉两条 Gemini 的；替代方案表里不存在的 `latex-posters` skill 改成「—」；文件命名约定删掉 Gemini 多次出图留下的 attempt 文件，PNG 一行改成「raster
+    fallback」
+  - 正文开头加一句：目录里的其它文件用 `ai4sci skill show academic-plotting <相对路径>` 读
+- name: liteparse
+  shelf: general
+  upstream: ai-research-skills
+  path: skills/liteparse
+  changes:
+  - 删了末尾引用段
+  - 正文开头加了 ai4sci skill show 的说明
+  - Installation 段前加一句：批处理脚本经 `ai4sci skill run liteparse …` 起，自带环境；Python 写法放进实验代码，`lit` 命令要本机装了才能用
+  - '`python scripts/batch_parse_dir.py` 改成 `ai4sci skill run liteparse …`（只有一个脚本，不用写 --script），脚本 docstring
+    跟着改'
+  - LlamaParse（要注册的云服务）在 SKILL.md 和 references/choosing_a_parser.md 里的表格行、表格列、流程分支和整节都删了；「without API
+    keys」改写成「with no cloud service」；选型参考里 MarkItDown 的 Azure 说法也删了
+  - batch_parse_dir.py 补了 PEP 723 头（liteparse==2.0.0）并出锁
+- name: markdown-mermaid-writing
+  shelf: general
+  upstream: ai-research-skills
+  path: skills/markdown-mermaid-writing
+  changes:
+  - 正文开头加了 ai4sci skill show 的说明（正文要读 references/ 和 templates/）
+  - 为过零 key 门禁，改了示例图里的名字：class.md 的 `#apiKey` 改成 `#credential`，complex_examples.md 的 REFRESH_TOKEN 改成
+    REFRESH_GRANT，er.md 的 API_KEY 实体改成 SERVICE_CREDENTIAL（说明文字一起改）
+  - templates/pull_request.md 的检查清单里删掉「API keys」几个字
+- name: markitdown
+  shelf: general
+  upstream: ai-research-skills
+  path: skills/markitdown
+  changes:
+  - 删了末尾引用段
+  - 正文开头加了 ai4sci skill show 的说明
+  - description 和 compatibility 去掉 vision OCR、Azure、MCP
+  - 删掉 references/cloud_and_ocr.md（讲 OpenAI 兼容的视觉模型、两个 Azure 服务和它们的凭据）
+  - 删掉 scripts/inspect_installation.py：它只检查自己的锁定环境，在平台里没有意义，而且查的包一半是 OCR、MCP、OpenAI、Azure
+  - SKILL.md 删掉「OCR and Cloud Extraction」「MCP Server」两节，选择表里 OCR 插件、Azure、MCP 三行，Azure extras 和 OpenAI
+    客户端的说明，外部处理列表里 LLM 和 Azure 两条，两条排障，两个来源链接；扫描件改成指向本地 OCR 解析器（如 LiteParse）
+  - references：api_reference 删 llm_*、docintel_*、cu_* 参数和 Azure 命令行选项；file_formats 删两个 Azure 格式节和 LLM 描述的说法；mcp_and_plugins
+    删 MCP、容器、OCR 插件几节（标题改成 Plugin System，文件名没改）；security 删 Credentials、MCP Server 两节和相关表行；migration 删
+    OCR、Azure 两节和凭据、MCP 条目；workflows 删「Scanned-PDF Escalation」节，OCR 路由改成本地解析器
+  - '`python scripts/x.py` 改成 `ai4sci skill run markitdown --script x.py`'
+  - batch_convert.py 补 PEP 723 头（markitdown[pdf,docx,pptx,xlsx,xls,outlook,audio-transcription]==0.1.6），convert_literature.py
+    补 markitdown[pdf]==0.1.6；requires-python 都是 >=3.12,<3.14，出锁
+- name: matplotlib
+  shelf: general
+  upstream: ai-research-skills
+  path: skills/matplotlib
+  changes:
+  - 删掉文末「Citing Scientific Agent Skills」自引用一节
+  - 正文开头加一句：目录里的其它文件用 ai4sci skill show matplotlib <相对路径> 读
+  - 两个脚本的 uv run python scripts/x.py 起法改成 ai4sci skill run matplotlib --script x.py …
+  - style_configurator.py 的说明从「交互工具」改成用预设（--list / --preset … --output … --preview），并注明 --interactive
+    要等键盘输入
+  - plot_template.py、style_configurator.py 在 import pyplot 前加 mpl.use("Agg")，否则结尾的 plt.show() 在 macOS
+    上会弹 GUI 窗口卡住
+  - 两个脚本补 PEP 723 头（requires-python >=3.10，numpy、matplotlib）并出锁
+- name: nature-figure
+  shelf: general
+  upstream: ai-research-skills
+  path: skills/nature-figure
+  changes:
+  - 照搬目录，不带 README.md、README_EN.md、agents/、tests/、evals/、.gitignore、requirements.txt
+  - 正文 H1 后加了一句：其它文件用 ai4sci skill show nature-figure <相对路径> 读
+  - assets/ 整个不带：chart-atlas 与 gallery 都是 PNG，figures4papers 是 28 MB、没有许可证的第三方示例；同时删了给它做索引的 references/demos.md，以及
+    SKILL.md、static/core/stance.md、python 片段、manifest 里指向 demos.md 的地方
+  - 删了 OpenRouter 出示意图那条路（要 OPENROUTER_API_KEY）：scripts/generate_openrouter_schematic.py、references/openrouter-image-generation.md、SKILL.md
+    第 0 步那段、manifest 里的路由块与按需条目；description 改成「规划与审查 AI 辅助的图文摘要」
+  - 共享包的 core/nature-results-discussion.md 与 NMI 格式文件（连同它引用的 ethics、research-compliance）拷进 references/shared/，并改了路径
+  - figure_safety.py 是给绘图代码 import 的库，没有命令行入口，和 panel_alignment.R 一起挪到 references/，提到它们的地方改了路径；R 辅助函数里审计脚本的缺省路径原来相对仓库根，改成同目录
+  - 六个脚本补了 PEP 723 头并出了锁：audit_figure_collisions 要 pymupdf，plot_templates 要 numpy 和 matplotlib，其余四个只用标准库
+  - python skills/nature-figure/scripts/x.py、python scripts/x.py、scripts/nature_figure_backend.py set|get
+    这几种起法，全部改成 ai4sci skill run nature-figure --script x.py；原来「把 audit_panel_alignment.py 拷到绘图代码旁边或加 PYTHONPATH」，改成先用
+    ai4sci skill show 取出脚本文本再拷
+  - 原来让人 pip install requirements.txt 装 PyMuPDF，改成说明 ai4sci skill run 会按锁自动装
+- name: ontology-term-resolution
+  shelf: general
+  upstream: ai-research-skills
+  path: skills/ontology-term-resolution
+  changes:
+  - 删除文末的「Citing Scientific Agent Skills」自引段
+  - 三个被 import 的客户端模块（id_client、ols_client、zooma_client）移到 scripts/_lib/，四个工具里的 sys.path 改指 _lib
+  - 四个工具上游已经带 PEP 723 头（标准库），补了 .lock
+  - 正文里的 `cd skills/…/scripts` 和 `python3 x.py` 改成 `ai4sci skill run ontology-term-resolution --script
+    x.py`，表格里的脚本路径去掉 scripts/
+  - 正文开头加一句：其它文件用 ai4sci skill show 读
+  - compatibility 与 references（ols4-api.md、companion-apis.md）里的「No API key」改成「No registration」
+- name: scientific-visualization
+  shelf: general
+  upstream: ai-research-skills
+  path: skills/scientific-visualization
+  changes:
+  - scripts/_common.py 挪成 scripts/_common/__init__.py（它是被 import 的公共模块，不是工具；其它脚本的 `from _common import
+    …` 不用改，load_skill 也不会把它当脚本）
+  - 6 个脚本补 PEP 723 头并出锁，版本照上游钉的（matplotlib==3.11.1、pillow==12.3.0、pypdf==6.14.2；palette_audit.py 只用标准库）
+  - 正文和 references/matplotlib_examples.md、color_palettes.md、publication_guidelines.md、journal_requirements.md
+    里 `uv run --isolated … python scripts/x.py` 这类起法改成 `ai4sci skill run scientific-visualization --script
+    x.py`
+  - 「Pinned snapshot」里的 `uv run … python your_figure.py` 改成一份版本清单，「本 skill 故意不带锁」那句改成「CLI 各自带依赖头和锁、走 ai4sci
+    skill run」
+  - §4 代码片段后面加一段：style_presets / figure_export 要在实验代码里 import 时，用 show 读出 scripts/ 和 assets/，并排存进实验目录，再把那份
+    scripts/ 加进 sys.path（它们按相对路径读 assets/）
+  - 删 Citing 自引用段
+  - 正文开头加读文件提示句
+- name: seaborn
+  shelf: general
+  upstream: ai-research-skills
+  path: skills/seaborn
+  changes:
+  - 删 Citing 自引用段
+  - 正文开头加读文件提示句
+rejected:
+- upstream: ai-research-skills
+  path: 0-autoresearch-skill
+  reason: 平台里用不了：核心做法第一步强制开宿主 agent 的 /loop 或 cron.add 挂钟循环，要求「不征求许可、永不停止」并越过写作 skill 里要人确认的地方，靠读 77 个别的
+    skill 目录路由（其中 17 个不存在），文献检索默认走 Exa MCP；与平台「助理照流程走、人签」冲突，删掉这些就不剩东西了
+- upstream: ai-research-skills
+  path: 03-fine-tuning/unsloth
+  reason: 许可证：内容全是 docs.unsloth.ai（GitBook）站点文档的整站搬运，找不到这份文档的许可证（unslothai 组织下没有文档仓，代码仓的 Apache-2.0 不覆盖站点文档），按拿不准从保守不收；去掉这部分只剩一个空壳
+    SKILL.md，另外 llms-full.md 有 1.08 MB，超过 1 MB 上限
+- upstream: ai-research-skills
+  path: 07-safety-alignment/llamaguard
+  reason: 零 key：默认用法要从 Hugging Face 拉 meta-llama/LlamaGuard-7b，它是 gated 模型（2026-10-01 查 HF API：gated=manual，llama2
+    许可），得有账号、人工批准许可，再用 huggingface-cli login 填 token；正文自己也写了「Login to HuggingFace (required)」
+- upstream: ai-research-skills
+  path: 07-safety-alignment/nemo-guardrails
+  reason: '零 key：LLMRails 要包一个主模型，正文里的模型配置都是 engine: openai / gpt-4（要 OpenAI key），LlamaGuard 集成还要 gated
+    模型；全文没教不用 key 的跑法'
+- upstream: ai-research-skills
+  path: 07-safety-alignment/prompt-guard
+  reason: 零 key：唯一的用法是 from_pretrained("meta-llama/Prompt-Guard-86M")，它是 HF gated 模型（2026-10-01 查：gated=manual，Llama
+    3.1 社区许可），要账号和 token
+- upstream: ai-research-skills
+  path: 09-infrastructure/lambda-labs
+  reason: 零 key：默认用法要 Lambda 账号、付款方式和 API key（正文里有 access_token=os.environ["LAMBDA_API_KEY"]、curl -u $LAMBDA_API_KEY），开机还要走网页控制台；平台的算力走
+    P-23 的 SSH 机器
+- upstream: ai-research-skills
+  path: 09-infrastructure/modal
+  reason: 零 key 加上平台里用不了：默认用法要 Modal 账号，`modal setup` 要开浏览器登录拿 token，正文还要 HF_TOKEN 的 secret；任务全在 Modal
+    云上跑
+- upstream: ai-research-skills
+  path: 09-infrastructure/skypilot
+  reason: 零 key：默认用法要至少一家云的凭据（`sky check` 会校验 AWS/GCP/Azure 等），正文还让把 HF_TOKEN、WANDB_API_KEY 带进集群
+- upstream: ai-research-skills
+  path: 11-evaluation/nemo-evaluator
+  reason: 零 key 不过：默认用法要 NGC_API_KEY 调 NVIDIA Build 托管端点；平台里用不了：执行后端是 Docker 容器 / Slurm / Lepton 云，核心做法离不开
+    Docker 拉 nvcr.io 镜像
+- upstream: ai-research-skills
+  path: 13-mlops/weights-and-biases
+  reason: 零 key：默认用法就要 `wandb login` 或 WANDB_API_KEY 登 W&B 云账号，sweeps、artifacts、模型仓库都依赖云端；离线模式只在「网络不稳」时当备选，最后还要
+    sync 上云
+- upstream: ai-research-skills
+  path: 14-agents/a-evolve
+  reason: 零 key：进化算法靠 LLM 驱动，默认走 Anthropic 或 Bedrock 上的 Claude，要 ANTHROPIC_API_KEY 或 AWS 凭据
+- upstream: ai-research-skills
+  path: 14-agents/autogpt
+  reason: 零 key 加上平台里用不了：默认要 OpenAI / Anthropic 等模型的 API key（在网页里填或走 OAuth），安装和运行靠 docker compose，搭工作流靠网页可视化编辑器
+- upstream: ai-research-skills
+  path: 14-agents/crewai
+  reason: 零 key：默认 LLM 是 OpenAI（gpt-4o），示例与工具要多家 API key；本地模型只能走 Ollama，要装系统软件
+- upstream: ai-research-skills
+  path: 14-agents/langchain
+  reason: 零 key：示例和默认路径都调 OpenAI / Anthropic 等托管模型（dependencies 就写着 langchain-openai、langchain-anthropic），要各家
+    API key
+- upstream: ai-research-skills
+  path: 14-agents/llamaindex
+  reason: 零 key：默认 LLM 和嵌入都是 OpenAI（dependencies 写 openai、anthropic），示例里还有 Pinecone 的 key
+- upstream: ai-research-skills
+  path: 15-rag/pinecone
+  reason: 零 key：托管的向量数据库，默认用法 `Pinecone(api_key=...)` 就要账号和 key
+- upstream: ai-research-skills
+  path: 15-rag/qdrant
+  reason: 平台里用不了：整篇建在 Docker 起的 Qdrant 服务上（安装推荐 docker run，示例都连 localhost:6333，排障大多是 docker 命令），没讲 qdrant-client
+    不起服务的本地内嵌模式；Cloud 那段还要 api_key
+- upstream: ai-research-skills
+  path: 16-prompt-engineering/dspy
+  reason: 零 key（P-27）：默认路径要模型 key。Quick Start 和大部分示例都用 dspy.Claude / dspy.OpenAI，要 Anthropic / OpenAI
+    的 key；本地 Ollama 只是 LM 配置一节里的一个备选。
+- upstream: ai-research-skills
+  path: 16-prompt-engineering/guidance
+  reason: 零 key（P-27）：默认路径要模型 key。SKILL.md 和 references 里有 61 处模型示例写的是 models.Anthropic / models.OpenAI（要
+    key），本地的 Transformers / llama.cpp 只出现在后端配置一节。
+- upstream: ai-research-skills
+  path: 16-prompt-engineering/instructor
+  reason: 零 key（P-27）：instructor 本身就是 OpenAI / Anthropic 客户端的包装。Quick Start 和全部示例都是 instructor.from_anthropic(Anthropic())
+    / from_openai(OpenAI())，默认要模型 key；本地只能经 Ollama 的 OpenAI 兼容接口。
+- upstream: ai-research-skills
+  path: 17-observability/langsmith
+  reason: 零 key（P-27）：LangSmith 是要账号的托管服务，Quick Start 第一步就要设它的 key 环境变量；示例追踪的也是 OpenAI 调用。
+- upstream: ai-research-skills
+  path: 17-observability/phoenix
+  reason: 零 key（P-27），平台里也用不了。默认用法是给 OpenAI / Anthropic SDK 的调用打 trace，评测默认拿 OpenAIModel 判分，都要模型 key。其余功能要靠常驻的
+    Phoenix 服务加网页界面看 trace，生产部署走 Docker / Kubernetes。
+- upstream: ai-research-skills
+  path: 18-multimodal/cosmos-policy
+  reason: 核心做法离不开 Docker（规则 3）：两条安装流程的第一步都是照 SETUP.md 进官方 Docker 容器；Non-negotiable rules 的「Official runtime
+    first」、排错第一条、两份 references 的 setup 提醒和 gotchas，出问题都让退回容器。删掉容器只剩上游不保证能跑的宿主机路径
+- upstream: ai-research-skills
+  path: 22-agent-native-research-artifact/research-manager
+  reason: 平台里用不了：它的核心是挂在宿主 agent 会话上的常驻记录器（references/session-protocol.md 写的是会话开头自动读、每轮静默写、结尾自动收，而且「不问就不提记录的事」）。平台的
+    skill 是按需读的，执行层一步一个会话，会话记录归平台自己的 .ai4sci/；它还在项目根另起一套 ara/ 目录，和 P-19 / P-20 的阶段目录以及「skill 不开产出目录」冲突
+- upstream: ai-research-skills
+  path: skills/adaptyv
+  reason: 零 key：默认用法就要 Adaptyv Foundry 账号和 API key。这是付费云实验室，提交序列、取结果都要鉴权
+- upstream: ai-research-skills
+  path: skills/alphagenome
+  reason: 零 key：Atlas 查询和模型打分都要 ALPHAGENOME_API_KEY（DeepMind 发的非商用 key），三个脚本全走鉴权接口，没有不要 key 的用法
+- upstream: ai-research-skills
+  path: skills/arbor
+  reason: 平台里用不了：核心做法是协调者用 Agent 工具派执行子代理，在隔离的 git worktree 里并行验证假设（Dispatch 这一步是 HTR 的骨架，删不掉）；执行层手里只有
+    ai4sci skill
+- upstream: ai-research-skills
+  path: skills/autoskill
+  reason: 平台里用不了，也不满足零 key：唯一的数据源是本机的 screenpipe 录屏守护进程（要装系统软件、授权录屏、配 SCREENPIPE_TOKEN），生成 skill 草稿还要本机
+    LM Studio，或者 Anthropic / Foundry 的 key
+- upstream: ai-research-skills
+  path: skills/benchling-integration
+  reason: 零 key：Benchling 是要账号的商业 SaaS，SDK 和 REST 接口都要 tenant 地址加 API key 或 OAuth client secret
+- upstream: ai-research-skills
+  path: skills/bgpt-paper-search
+  reason: 平台里用不了：核心是调宿主里配好的 BGPT MCP 服务器的 search_papers 工具，两家适配器都不带 MCP；付费档还要 key
+- upstream: ai-research-skills
+  path: skills/bids
+  reason: 许可证：这个 skill 自己标的是 CC-BY-4.0（作者 Yaroslav Halchenko，里面有 813 KB 的 BIDS schema 和规范摘录），不在可收的 MIT
+    / Apache / BSD / ISC 里，按规则保守处理
+- upstream: ai-research-skills
+  path: skills/bioservices
+  reason: frontmatter 许可证写的是 GPLv3，不在可收的 MIT/Apache/BSD/ISC 里；上游没写清这个字段管的是 skill 文本还是被包装库，拿不准就从严（规则 1：许可证）
+- upstream: ai-research-skills
+  path: skills/bulk-rnaseq
+  reason: 核心做法（原始 FASTQ 到计数矩阵）离不开 nextflow + Docker，或者用 conda 装 STAR / Salmon / fastp / featureCounts
+    这类系统软件；剩下的计数矩阵桥接脚本只是这条链的一段，还要编排 nextflow、pydeseq2、pathway-enrichment 等别的 skill（规则 3：平台里用不了）
+- upstream: ai-research-skills
+  path: skills/cobrapy
+  reason: frontmatter 许可证写的是 GPL-2.0，不在可收的 MIT/Apache/BSD/ISC 里；上游没写清这个字段管的是 skill 文本还是被包装库，拿不准就从严（规则
+    1：许可证）
+- upstream: ai-research-skills
+  path: skills/datalad
+  reason: 平台里用不了：核心做法是在命令行跑 datalad / git-annex（clone、get、run、push），可两层 agent 都只能用 ai4sci 命令；run / rerun
+    记出处这件事和平台自己的 meta 与 git 重叠；发布要 GitHub / S3 凭据（P-27），containers-run 要 Docker
+- upstream: ai-research-skills
+  path: skills/deepspot-m
+  reason: 许可证不行：skill 是 PolyForm-Noncommercial-1.0.0（非商用）；另外权重是 CC-BY-NC-SA，下载要先登录 Hugging Face 申请访问（P-27）
+- upstream: ai-research-skills
+  path: skills/depmap
+  reason: 许可证拿不准：frontmatter 写的是 CC-BY-4.0，不在 MIT / Apache / BSD / ISC 之列；这个字段指 skill 文本还是 DepMap 数据也没写清，按保守原则不收
+- upstream: ai-research-skills
+  path: skills/dnanexus-integration
+  reason: 零 key 不过：默认用法就要 DNAnexus 账号，还要 dx login 或 API token（P-27）
+- upstream: ai-research-skills
+  path: skills/docx
+  reason: 许可证不行：Anthropic 专有条款（LICENSE.txt 禁止复制、做衍生和再分发）
+- upstream: ai-research-skills
+  path: skills/esm
+  reason: 零 key 不过：默认路径要账号或 key，ESM3-open 权重要登录 Hugging Face 接受许可，medium / large 和 ESMFold2 走 Forge /
+    Biohub，要 ESM_API_KEY；description 本身就把 Forge / Biohub 客户端写成触发条件（P-27）
+- upstream: ai-research-skills
+  path: skills/etetoolkit
+  reason: 许可证拿不准：frontmatter 写的是 GPL-3.0-or-later，不在可收之列；作者是 K-Dense，这个字段可能指的是 ete4 库，但两个脚本直接 import GPL
+    的 ete4，按保守原则不收
+- upstream: ai-research-skills
+  path: skills/exa-search
+  reason: 违反零 key（P-27）：默认用法就要 EXA_API_KEY（Exa 是付费检索服务），两个脚本都离不开它；联网搜索平台本来就自带
+- upstream: ai-research-skills
+  path: skills/folklore-variant-evidence
+  reason: 平台里用不了：核心做法是调 Folklore 托管的 MCP 服务（或者用 curl 发 JSON-RPC），而平台的两层 agent 都没有 MCP，也不能直接跑 curl
+- upstream: ai-research-skills
+  path: skills/generate-image
+  reason: 违反零 key（P-27）：出图必须有 OPENROUTER_API_KEY，而且按次计费，默认用法就要 key
+- upstream: ai-research-skills
+  path: skills/genomic-intelligence
+  reason: 零 key 和平台里用不了两条都不过：REST 接口必须有 GI_API_KEY；不要 key 的只有托管 MCP 的演示档，而平台没有 MCP
+- upstream: ai-research-skills
+  path: skills/ginkgo-cloud-lab
+  reason: 零 key 与平台里用不了：这是商业云实验室，默认用法要在 cloud.ginkgo.bio 开账号、在网页上传模板、加购物车付费下单；没有脚本，核心步骤都要人在网页里操作。
+- upstream: ai-research-skills
+  path: skills/glycoengineering
+  reason: '许可证：SKILL.md 自己写 license: Unknown，作者 Kuan-lin Huang 不是 K-Dense，目录里没有单独的许可证文件；说法含糊，按规则保守不收。'
+- upstream: ai-research-skills
+  path: skills/histolab
+  reason: 平台里用不了：核心的 Slide 读取离不开 OpenSlide 系统库。实测 histolab 0.7.0 钉死 openslide-python==1.3.1，用不了 openslide-bin
+    轮子，uv 环境里 import 报「Couldn't locate OpenSlide dylib」，只能装系统软件。
+- upstream: ai-research-skills
+  path: skills/hypogenic
+  reason: 零 key：真跑 HypoGeniC 时，缺省 wrapper 是 gpt / claude，要 OpenAI 或 Anthropic 的 key（本地 vllm / huggingface
+    wrapper 走 dev 依赖、要预先下载模型）；自带脚本只是围绕这次 LLM 调用做审计和成本规划，没有 key 就用不上。
+- upstream: ai-research-skills
+  path: skills/infographics
+  reason: 零 key：生成和质量评审都走 OpenRouter（Nano Banana Pro / Gemini），脚本找不到 OpenRouter 的 key 就直接退出，默认用法离不开 key。
+- upstream: ai-research-skills
+  path: skills/labarchive-integration
+  reason: 零 key（P-27）不过：默认用法就要机构发的 LabArchives Access Key ID / Access Password（企业版 API 权限），Inventory 还要另开权限
+- upstream: ai-research-skills
+  path: skills/latchbio-integration
+  reason: 零 key 不过：核心用法要 Latch 账号和 `latch login` 的 token。平台里也用不了：本地构建镜像要 Docker，发起和监控运行走 Latch MCP
+- upstream: ai-research-skills
+  path: skills/latex-posters
+  reason: 零 key 不过：SKILL.md 把用 OpenRouter key 生成 AI 图定为 STANDARD WORKFLOW（占海报面积 60–70%），配套的 generate_schematic*.py
+    就是干这个的。平台里也用不了：编译要系统装的 TeX（pdflatex/lualatex）
+- upstream: ai-research-skills
+  path: skills/literature-review
+  reason: 零 key 不过：检索主工具 parallel-cli 要 Parallel 账号，SKILL.md 还强制每篇综述都用 OpenRouter key 出 1–2 张 AI 图。平台里也用不了：出
+    PDF 要系统装的 pandoc + xelatex
+- upstream: ai-research-skills
+  path: skills/modal
+  reason: 零 key：默认用法就要 Modal 账号与 MODAL_TOKEN_ID / MODAL_TOKEN_SECRET（modal setup 或环境变量），平台不收要第三方账号的服务
+- upstream: ai-research-skills
+  path: skills/nature-academic-search
+  reason: '平台里用不了：六个 workflow 里有四个（多源检索、引文核验、MeSH 策略、文献管理）以 MCP 工具为前提，wf1 明写 Prerequisites: MCP tools
+    available，清单上的 PubMed 工具多数在仓库里根本不存在；去掉 MCP 等于重写主体。另外它默认建议配 Semantic Scholar / NCBI / Elsevier 的 key。'
+- upstream: ai-research-skills
+  path: skills/nature-downloader
+  reason: 平台里用不了，也不满足零 key：核心是 Node.js 22 的编排脚本，要接用户已登录的 Chrome（CDP 远程调试）走 CNKI 与机构访问，还要 Elsevier / Springer
+    Nature / IEEE 的出版商 API key。
+- upstream: ai-research-skills
+  path: skills/nature-image2ppt
+  reason: 零 key 与平台能力两条都不满足：重建图像要宿主自带的图像生成工具、OpenAI 兼容图像接口的 key 或 codex-oauth，OCR 要 PADDLE_OCR_TOKEN；另外还要
+    LibreOffice、TeX 渲染和按页派活的子代理，脚本是 8300 行的 CLI 包，不是 scripts/*.py。
+- upstream: ai-research-skills
+  path: skills/nature-literature-pipeline
+  reason: 平台里用不了：核心是靠宿主的定时任务（Hermes cron）每天触发，再把文献摘要推送到飞书或 Telegram 群（要 bot 凭据）；平台既没有定时任务，也没有消息推送。
+- upstream: ai-research-skills
+  path: skills/nature-shared
+  reason: 平台里用不了：它自己声明是给别的 nature skill 读的共享参考包，不能单独触发；平台要求每个 skill 自成一体，所以它被用到的文件已经拷进各引用方的 references/shared/，一致性脚本也拷进了各自的
+    scripts/。
+- upstream: ai-research-skills
+  path: skills/nextflow
+  reason: 平台里用不了：核心做法要装 Java 17+ 与 nextflow 启动器（curl 后 sudo mv 到 PATH，或 conda），在命令行跑 nextflow / nf-core，流程大多靠
+    Docker / Singularity 容器；这几样执行层都没有
+- upstream: ai-research-skills
+  path: skills/omero-integration
+  reason: 零 key：核心用法要连用户自己的 OMERO 服务器，用 OMERO_USER / OMERO_PASSWORD 或 OMERO_SESSION_KEY 登录（需要账号的服务）；装客户端还要手动挑匹配的
+    IcePy 3.6.5 wheel
+- upstream: ai-research-skills
+  path: skills/open-notebook
+  reason: 核心是用 docker-compose 自托管 Open Notebook 服务，而且至少要一家模型提供方的 API key：违反零 key，平台里也起不了 Docker
+- upstream: ai-research-skills
+  path: skills/pacsomatic
+  reason: 核心是启动 nf-core/pacsomatic 的 Nextflow 流水线，离不开 Nextflow、Java 17、Singularity/Docker 容器和 LSF/Slurm
+    调度器，要装系统软件，平台里用不了
+- upstream: ai-research-skills
+  path: skills/paperclip
+  reason: 默认用法要 PAPERCLIP_API_KEY 或浏览器 OAuth 登录（第三方账号凭据），还要 curl|bash 装二进制，Windows 上走 MCP 服务器：违反零 key，平台里也用不了
+- upstream: ai-research-skills
+  path: skills/paperzilla
+  reason: 要 `pz login` 登录 Paperzilla 账号，还要用 brew/scoop 装 pz CLI，读的是个人项目的推荐：违反零 key，平台里也装不了
+- upstream: ai-research-skills
+  path: skills/parallel-web
+  reason: '必需 PARALLEL_API_KEY（frontmatter 标的是 required: true）和 parallel-cli，是付费检索服务，违反零 key'
+- upstream: ai-research-skills
+  path: skills/pdf
+  reason: 许可证：Anthropic 专有条款（LICENSE.txt 禁止复制、做衍生、再分发），不在可收的许可证里；另与平台自带 pdf 重名
+- upstream: ai-research-skills
+  path: skills/phylogenetics
+  reason: '许可证：frontmatter 写 license: Unknown，说法含糊，按规矩保守不收；另外核心做法要用 conda 装 MAFFT / IQ-TREE / FastTree
+    这些系统程序（平台里用不了）'
+- upstream: ai-research-skills
+  path: skills/pi-agent
+  reason: 平台里用不了：教的是另一个终端 coding agent（Pi）怎么装、怎么扩展，要用 npm 全局装 Node 程序，还涉及 TUI、MCP、子代理；零 key：默认用法要配模型提供商的
+    key；本身也不属于任何科研阶段
+- upstream: ai-research-skills
+  path: skills/pptx
+  reason: 许可证：Anthropic 专有条款（LICENSE.txt 禁止复制、做衍生、再分发），不在可收的许可证里
+- upstream: ai-research-skills
+  path: skills/primekg
+  reason: '许可证：frontmatter 写 license: Unknown，说法含糊，按规矩保守不收；另外要先手动下载约 400 万条边的 kg.csv，正文写死了作者本机的 Windows
+    路径，脚本只是一组函数、没有命令行入口'
+- upstream: ai-research-skills
+  path: skills/protocolsio-integration
+  reason: 零 key：protocols.io 的 REST 读取默认要 bearer token（PROTOCOLS_IO_ACCESS_TOKEN），公开协议列表也要；唯一匿名的路径只有 PDF。离线校验和写请求计划离开这个
+    API 就没有单独的用处
+- upstream: ai-research-skills
+  path: skills/pyzotero
+  reason: '零 key：默认走 Zotero Web API，要 ZOTERO_API_KEY（metadata 里标的是 required: true）；不用 key 的 local 模式和
+    CLI/MCP 都要本机开着 Zotero 7 桌面端（本机 GUI），平台里用不了'
+- upstream: ai-research-skills
+  path: skills/relsa-severity-assessment
+  reason: 许可证说不清：脚本自述是 GPL-3 的 R 包 mytalbot/RELSA 的「faithful Python port… as coded in the R package」（scripts/relsa_score.py:2-5，references/relsa-method.md:5-7），照
+    GPL 代码逐路径移植可能算衍生作品，和上游标的 MIT 冲突，按规则保守不收
+- upstream: ai-research-skills
+  path: skills/research-lookup
+  reason: 零 key：默认检索走 Parallel（要 parallel-cli 登录或 PARALLEL_API_KEY），可选的 Chat 后端要 PARALLEL_API_KEY、Perplexity
+    后端要 OPENROUTER_API_KEY，脚本的主路径全是要账号的第三方检索服务
+- upstream: ai-research-skills
+  path: skills/rowan
+  reason: 许可证是 Proprietary (API key required)，不能再分发；而且默认要 ROWAN_API_KEY 才能用这个云服务（零 key）
+- upstream: ai-research-skills
+  path: skills/scientific-schematics
+  reason: 零 key：核心做法就是经 OpenRouter 调 Nano Banana 2 出图、Gemini 打分（generate_schematic*.py），默认用法必须有 OPENROUTER_API_KEY，删掉
+    key 部分就不剩东西了
+- upstream: ai-research-skills
+  path: skills/scientific-slides
+  reason: 零 key：正文的默认流程（推荐的 PDF 幻灯片）和 PPT 流程的配图都用 generate_slide_image.py 经 OpenRouter 调 Nano Banana Pro，要
+    OPENROUTER_API_KEY；另外还依赖不在包里的 pptx（Anthropic 专有条款）和要 key 的 research-lookup。删掉这些正文主体就没了，不是删几句能解决的
+- upstream: ai-research-skills
+  path: skills/tamarind
+  reason: 零 key：默认用法就要 Tamarind Bio 账号和 TAMARIND_API_KEY（每个请求都带 x-api-key 头），是付费云服务，可选路径还是 MCP 服务器；删掉
+    key 就没有可用的部分了。
+- upstream: ai-research-skills
+  path: skills/tiledbvcf
+  reason: 平台里用不了：tiledbvcf 不在 PyPI（pypi.org/pypi/tiledbvcf 返回 404），只能通过 conda（bioconda/tiledb 频道，要求 Python<3.10）或
+    Docker 安装，平台实验环境用 uv 装不上；另外近一半篇幅是 TileDB-Cloud 的推广和 TILEDB_REST_TOKEN 配置。拿不准，按规矩保守处理。
+- upstream: ai-research-skills
+  path: skills/waypoint-bio
+  reason: '零 key：模型与语料在 Hugging Face 的门控仓里，metadata 写明 HF_TOKEN required: true，默认用法就要 key；另外依赖 torch 和
+    transformers，预训练与基准建议用 GPU'
+- upstream: ai-research-skills
+  path: skills/what-if-oracle
+  reason: 许可证：frontmatter 写的是 CC BY-NC-SA 4.0（非商用、相同方式共享），不在可收的许可证里
+- upstream: ai-research-skills
+  path: skills/xlsx
+  reason: 许可证：目录里自带 LICENSE.txt，是 Anthropic 专有条款（不许复制、做衍生、再分发），frontmatter 写的是 Proprietary

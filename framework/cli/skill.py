@@ -81,15 +81,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     skill = _find(args.name)
     if isinstance(skill, int):
         return skill
+    script_args = list(args.script_args)
+    picked, script_args = _take(script_args, "--script", args.script, "脚本的文件名")
+    ws_name, script_args = _take(script_args, "--ws", args.ws, "工作区的名字")
+    if picked is None or ws_name is None:
+        return EXIT_USAGE
     try:
-        script = runner.pick_script(skill, args.script)
+        script = runner.pick_script(skill, picked or None)
     except skills.SkillInvalid as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
-    split = _split_ws(list(args.script_args), args.ws)
-    if split is None:
-        return EXIT_USAGE
-    script_args, ws_name = split
     cwd = None
     if ws_name:
         # 助理站在项目里（纲领 P-15），脚本写的相对路径（materials/…）要落到那个工作区，不是项目：
@@ -106,17 +107,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_INVALID
 
 
-def _split_ws(script_args: list[str], ws: str) -> tuple[list[str], str] | None:
-    """`--ws <名字>` 写在 skill 名后面也认（argparse 把名字后面的全当脚本参数）：从脚本参数里
-    摘出来，不递给脚本。写在名字前面的由 argparse 收进 args.ws。名字没给返回 None（用法错误）。"""
-    if "--ws" in script_args:
-        at = script_args.index("--ws")
-        if at + 1 >= len(script_args):
-            print("--ws 后面要跟工作区的名字", file=sys.stderr)
-            return None
-        ws = script_args[at + 1]
-        script_args = script_args[:at] + script_args[at + 2:]
-    return script_args, ws
+def _take(script_args: list[str], flag: str, given: str | None,
+          what: str) -> tuple[str | None, list[str]]:
+    """平台自己的选项（`--script`、`--ws`）写在 skill 名后面也认：argparse 把名字后面的全当脚本
+    参数，这里摘出第一个、不递给脚本。写在名字前面的由 argparse 收进 `given`。后面没跟值返回
+    (None, …)（用法错误）；没写就是 ("", …)。SKILL.md 里一律写 `run <name> --script <文件>`。"""
+    if flag not in script_args:
+        return given or "", script_args
+    at = script_args.index(flag)
+    if at + 1 >= len(script_args):
+        print(f"{flag} 后面要跟{what}", file=sys.stderr)
+        return None, script_args
+    return script_args[at + 1], script_args[:at] + script_args[at + 2:]
 
 
 def _loadout() -> Loadout | None:

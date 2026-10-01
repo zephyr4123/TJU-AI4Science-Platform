@@ -68,7 +68,7 @@ metadata:                                   # 可选：字符串到字符串；�
 
 ## 脚本
 
-- `scripts/` 里只放 `ai4sci skill run` 起得来的 Python 工具；示例代码、别的语言的脚本放 `references/`。
+- `scripts/` 里只放 `ai4sci skill run` 起得来的 Python 工具；示例代码、别的语言的脚本放 `references/`。下划线开头的（`_common.py`）是被工具 import 的模块，不算工具、不进清单、不用头与锁。
 - 非交互、有 `--help`；结果 JSON 一行到 stdout，诊断到 stderr；幂等；退出码 0 成、非 0 败且 stderr 说清。
 - 输入用参数点名，输出目录由调用方 `--out` 给（本地文件不给就写在它旁边的同名目录）；不猜路径、不写别处。
 - 依赖用 PEP 723 内联元数据，**不手写**：

@@ -234,7 +234,9 @@ def load_skill(directory: Path, library: str = RESIDENT, shelf: str = "") -> Ski
     except SkillInvalid as exc:
         raise SkillInvalid(f"{path}: {exc}") from exc
     problems = _frontmatter_problems(front, directory.name)
-    scripts = tuple(sorted((directory / SCRIPTS_DIRNAME).glob("*.py"))) \
+    # 下划线开头的是被工具 import 的模块（`_common.py`），不是能起的工具：不进清单、不要求头与锁
+    scripts = tuple(sorted(p for p in (directory / SCRIPTS_DIRNAME).glob("*.py")
+                           if not p.name.startswith("_"))) \
         if (directory / SCRIPTS_DIRNAME).is_dir() else ()
     for script in scripts:
         problems += script_problems(script)
