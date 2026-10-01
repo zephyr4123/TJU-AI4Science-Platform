@@ -43,7 +43,8 @@ from framework import paths
 from framework.skills.library import CURATED_SHELVES, SKILL_FILE, SkillInvalid, split_frontmatter
 
 LEDGER_FILE = "provenance.yaml"
-# 能随开源平台再分发、不附加使用限制的许可证（SPDX 名）。NC、专有、没有许可证的一律不收
+# 能随开源平台再分发、不附加使用限制的许可证（SPDX 名）。NC、专有、没有许可证的一律不收；
+# CC-BY 系列也不收（主人 2026-10-01 定，外层 #198）
 LICENSES = ("MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC")
 # skill frontmatter 里常见的写法 → SPDX 名（去掉结尾的 license、小写之后比）
 ALIASES = {

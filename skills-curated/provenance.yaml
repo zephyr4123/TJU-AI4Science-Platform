@@ -1,7 +1,7 @@
 # 收录台账（纲领 P-22）：skills-curated/ 里每个 skill 一行，不收的也一行带原因。
 # 生产者是收录的人，照内仓 docs/add-a-skill.md「收录社区 skill」做；framework/skills/provenance.py 对账，
 # make skills 守着：目录与台账一一对得上、许可证在可收的里、原文在 licenses/。
-# 2026-10-01 收录（外层 #198）：三个整合包 284 个 skill 逐个过筛，收 200、不收 84。之后定的约定：scripts/ 里
+# 2026-10-01 收录（外层 #198）：三个整合包 284 个 skill 逐个过筛，收 199、不收 85。之后定的约定：scripts/ 里
 # 下划线开头的是被 import 的模块、不是工具，它们收录时补的锁已删，changes 里提到的以此为准。
 upstreams:
   k-dense:
@@ -604,21 +604,6 @@ skills:
   path: 02-tokenization/huggingface-tokenizers
   changes:
   - 正文开头加一句：目录里的其它文件用 ai4sci skill show huggingface-tokenizers <相对路径> 读
-- name: imaging-data-commons
-  shelf: experiment
-  upstream: k-dense
-  path: skills/imaging-data-commons
-  license_note: skill 本身 MIT；IDC 的数据另有许可（多为 CC-BY，部分 CC-NC），平台不分发数据，用数据时照数据的许可
-  changes:
-  - 正文开头加 ai4sci skill show 读目录文件的说明（上游没有自引段）
-  - 删 IDC MCP 服务一节和 references/mcp_guide.md；正文、rest_api_guide、licensing_and_citation 里的 MCP 路线一并删
-  - 删 BigQuery（要 GCP 计费账号）和 Google Healthcare DICOMweb（要 GCP 认证）两条路线：references/bigquery_guide.md 整份删；dicomweb_guide
-    里的认证端点、覆盖对比、认证段和 403 排查删；cloud_storage_guide / sql_patterns / clinical_data_guide / rest_api_guide
-    里的对应句子和链接删掉或改写
-  - 删 scripts/check_version.py（检查 idc-index 与 skill 更新），各处「run check_version.py」改为「在实验环境依赖里钉 idc-index>=0.12.5」；删
-    Resources 里的「Skill updates / watch releases」
-  - 访问路径选择改写成两条（只读元数据走 REST，其余在实验代码里用 idc-index）；数据访问表删 MCP / Google Healthcare / SlicerIDCBrowser / BigQuery
-    四行；故障排查删 BigQuery 一条和 3D Slicer / QuPath 本机查看器的建议
 - name: knowledge-distillation
   shelf: experiment
   upstream: ai-research-skills
@@ -2188,8 +2173,8 @@ rejected:
   reason: 平台里用不了：核心是调宿主里配好的 BGPT MCP 服务器的 search_papers 工具，两家适配器都不带 MCP；付费档还要 key
 - upstream: k-dense
   path: skills/bids
-  reason: 许可证：这个 skill 自己标的是 CC-BY-4.0（作者 Yaroslav Halchenko，里面有 813 KB 的 BIDS schema 和规范摘录），不在可收的 MIT
-    / Apache / BSD / ISC 里，按规则保守处理
+  reason: 许可证：这个 skill 自己标的是 CC-BY-4.0（作者 Yaroslav Halchenko，里面有 813 KB 的 BIDS schema 和规范摘录）。主人 2026-10-01
+    定：CC-BY 一律不收，涉及它的 skill 也不收
 - upstream: k-dense
   path: skills/bioservices
   reason: frontmatter 许可证写的是 GPLv3，不在可收的 MIT/Apache/BSD/ISC 里；上游没写清这个字段管的是 skill 文本还是被包装库，拿不准就从严（规则 1：许可证）
@@ -2210,7 +2195,8 @@ rejected:
   reason: 许可证不行：skill 是 PolyForm-Noncommercial-1.0.0（非商用）；另外权重是 CC-BY-NC-SA，下载要先登录 Hugging Face 申请访问（P-27）
 - upstream: k-dense
   path: skills/depmap
-  reason: 许可证拿不准：frontmatter 写的是 CC-BY-4.0，不在 MIT / Apache / BSD / ISC 之列；这个字段指 skill 文本还是 DepMap 数据也没写清，按保守原则不收
+  reason: 许可证：frontmatter 写的是 CC-BY-4.0（指 skill 文本还是 DepMap 数据没写清）。主人 2026-10-01 定：CC-BY 一律不收，涉及它的 skill
+    也不收
 - upstream: k-dense
   path: skills/dnanexus-integration
   reason: 零 key 不过：默认用法就要 DNAnexus 账号，还要 dx login 或 API token（P-27）
@@ -2377,3 +2363,7 @@ rejected:
 - upstream: k-dense
   path: skills/xlsx
   reason: 许可证：目录里自带 LICENSE.txt，是 Anthropic 专有条款（不许复制、做衍生、再分发），frontmatter 写的是 Proprietary
+- upstream: k-dense
+  path: skills/imaging-data-commons
+  reason: 许可证：skill 本身 MIT，但它教的是下载与使用 IDC 数据，数据多为 CC-BY、部分 CC-NC。主人 2026-10-01 定：CC-BY 一律不收，涉及它的 skill
+    也不收
