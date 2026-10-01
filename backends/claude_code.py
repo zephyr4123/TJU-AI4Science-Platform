@@ -262,7 +262,13 @@ def final_report(events: list[dict]) -> str:
 
 
 class ClaudeCodeChat:
-    """协调层适配器：同一个 CLI，多轮靠 `--resume <session id>`，指南靠 `--append-system-prompt`。
+    """协调层适配器：同一个 CLI，多轮靠 `--resume <session id>`，指南靠开会话那一轮的
+    `--append-system-prompt`。
+
+    指南只在开会话时生效（外层 #200，实测 2026-10-01，2.1.286 + sonnet，三次一致）：首轮送「口令：
+    苹果」，`--resume` 时改送「口令：香蕉」，问它口令答「苹果」——续接时 CLI 沿用开会话那份，再送
+    也不生效。所以与 Codex 一样是 `guide_channel = "thread"`：只在开会话那轮送，中途指南变了（平台
+    加了命令、流程实例上新挂了 skill，纲领 P-26）由框架把新指南全文塞进那一轮的话里。
 
     实测（2026-09-16，haiku）：第一轮 init 事件给 session_id，第二轮 `--resume` 带上它，
     模型记得第一轮的内容，result 事件的 session_id 与第一轮相同；两轮共 $0.02。
@@ -279,7 +285,7 @@ class ClaudeCodeChat:
 
     name = NAME
     cost_reporting = "session"
-    guide_channel = "turn"  # 每轮 --append-system-prompt 整份送，指南变了下一轮就生效
+    guide_channel = "thread"  # 只在开会话时生效（见上），指南变了框架塞进话里
 
     def __init__(self, cli: str = "claude") -> None:
         self.cli = cli
@@ -330,10 +336,10 @@ class ClaudeCodeChat:
                 str(_env_num("AI4SCI_COORDINATOR_MAX_BUDGET_USD", 2.0, float))]
         if readable_paths:
             argv += ["--add-dir", *(str(Path(p).resolve()) for p in readable_paths)]
-        if system_prompt:
-            argv += ["--append-system-prompt", system_prompt]
         if session_id:
-            argv += ["--resume", session_id]
+            argv += ["--resume", session_id]  # 续接：开会话时那份指南还在，再送不生效（见类头）
+        elif system_prompt:
+            argv += ["--append-system-prompt", system_prompt]
         # 对话 meta 里记的具体值；没给用起点（P-25：从不让 CLI 自己猜）
         picked = KNOBS.fill(tuning)
         return [*argv, "--model", picked.model, "--effort", picked.effort]
