@@ -19,6 +19,7 @@ from framework import skills
 from framework.capabilities import discover
 from framework.contracts.capability import Capability
 from framework.contracts.workflows import KIND_SKILL, KIND_STEP
+from framework.skills import library
 from framework.skills.library import Skill
 
 __all__ = ["KIND_SKILL", "KIND_STEP", "AbilityNameClash", "check_disjoint", "skill_entries",
@@ -36,7 +37,7 @@ def steps() -> dict[str, Capability]:
 def skill_names() -> frozenset[str]:
     """三处库里所有 skill 的名字（不合格的也算：流程里挂的名字是不是 skill 看目录在不在）；
     流程校验认这一份。"""
-    return skills.everything().names()
+    return library.names()
 
 
 def check_disjoint(step_names: set[str] | frozenset[str], names: frozenset[str]) -> None:

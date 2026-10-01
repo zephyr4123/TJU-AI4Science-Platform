@@ -197,7 +197,7 @@ def test_scan_isolates_bad_and_duplicate_skills_without_dropping_the_rest(tmp_pa
     assert [s.name for s in found.skills] == ["dup", "good"]
     reasons = {i.name: i.problems for i in found.invalid}
     assert "缺 name" in reasons["bad"][0] and "重复" in reasons["dup"][0]
-    assert found.names() == {"dup", "good", "bad"}
+    assert {i.name for i in found.invalid} == {"dup", "bad"}
 
 
 def test_curated_library_is_sorted_onto_stage_shelves(libraries):

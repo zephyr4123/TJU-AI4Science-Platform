@@ -124,12 +124,10 @@ class Invalid:
 
 @dataclass(frozen=True)
 class Scan:
+    """扫一遍库的结果：合格的照常用，不合格的带原因隔离在一边。"""
+
     skills: tuple[Skill, ...]
     invalid: tuple[Invalid, ...]
-
-    def names(self) -> frozenset[str]:
-        """合格的与不合格的都算：流程里挂的名字是不是 skill，看目录在不在，不看它合不合格。"""
-        return frozenset(s.name for s in self.skills) | frozenset(i.name for i in self.invalid)
 
 
 @dataclass(frozen=True)
@@ -181,6 +179,13 @@ def resident() -> Scan:
 def everything(domains_root: Path | None = None) -> Scan:
     """三处库全部：门禁、查库（`ai4sci show skills`）、页面的能力库用它。"""
     return scan(roots(domains_root))
+
+
+def names(domains_root: Path | None = None) -> frozenset[str]:
+    """三处库里有哪些 skill 的名字：只看目录名、不解析（合格不合格都算）。流程里挂的名字是不是
+    skill 看目录在不在——每条 `cap` / `show flows` 都要问，几百个 SKILL.md 不能每次都读一遍。"""
+    return frozenset(d.name for root in roots(domains_root) if root.path.is_dir()
+                     for d in root.path.iterdir() if d.is_dir())
 
 
 def find(name: str, domains_root: Path | None = None) -> Skill:
