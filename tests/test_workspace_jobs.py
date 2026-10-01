@@ -174,3 +174,30 @@ def test_stop_also_cancels_whatever_runs_under_the_output_on_its_compute(tmp_pat
         jobs.stop(ws, "job-b", by="zephyr")
     again = jobs.load(ws.jobs, "job-b")
     assert again.status == "stopped" and "box 上的没停下来" in again.result
+
+
+def test_a_job_record_is_never_read_half_written(tmp_path):
+    """外层 #204：作业记录是子进程写、父进程与页面边跑边读的。写盘要原子——另一边任何时候读到的
+    都是完整的旧版或新版，不会是清空了还没写完的那一刻（发布门禁里真读到过空文件）。"""
+    import threading
+
+    job = jobs.Job(job_id="job-x", cap="design", stage="设计", argv=["cap", "design"],
+                   pid=os.getpid(), log="x.log", started_at="t", chat_id=None, result="长" * 20000)
+    jobs._save(tmp_path, job)
+    stop = threading.Event()
+
+    def keep_writing() -> None:
+        n = 0
+        while not stop.is_set():
+            n += 1
+            jobs._save(tmp_path, jobs.Job(**{**job.__dict__, "result": "长" * (20000 + n % 7)}))
+
+    writer = threading.Thread(target=keep_writing)
+    writer.start()
+    try:
+        for _ in range(3000):
+            assert jobs.load(tmp_path, "job-x").job_id == "job-x"
+    finally:
+        stop.set()
+        writer.join()
+    assert [p.name for p in tmp_path.iterdir()] == ["job-x.json"]  # 不留临时文件

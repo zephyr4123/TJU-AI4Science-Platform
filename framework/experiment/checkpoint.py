@@ -9,12 +9,12 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from framework.experiment import layout
+from framework.files import write_atomic
 
 
 def read_checkpoint(run_dir: Path) -> dict[str, Any]:
@@ -22,9 +22,6 @@ def read_checkpoint(run_dir: Path) -> dict[str, Any]:
 
 
 def write_checkpoint(run_dir: Path, data: dict[str, Any]) -> None:
-    """先写 tmp 再 os.replace：断电时要么是旧的完整版本，要么是新的，没有半截。"""
+    """原子写（`framework/files.py`）：断电时要么是旧的完整版本，要么是新的，没有半截。"""
     data = {**data, "updated_at": datetime.now(UTC).isoformat()}
-    path = layout.checkpoint(run_dir)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    write_atomic(layout.checkpoint(run_dir), json.dumps(data, ensure_ascii=False, indent=2))

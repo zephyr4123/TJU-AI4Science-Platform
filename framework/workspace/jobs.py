@@ -28,6 +28,7 @@ from typing import Any
 from compute import ComputeError
 from compute.procs import kill_tree
 from framework import computes
+from framework.files import write_atomic
 from framework.workspace import outputs
 from framework.workspace.root import Workspace
 
@@ -239,5 +240,5 @@ def _alive(pid: int) -> bool:
 
 def _save(jobs_dir: Path, job: Job) -> None:
     Path(jobs_dir).mkdir(parents=True, exist_ok=True)
-    _path(jobs_dir, job.job_id).write_text(
-        json.dumps(asdict(job), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_atomic(_path(jobs_dir, job.job_id),
+                 json.dumps(asdict(job), ensure_ascii=False, indent=2) + "\n")

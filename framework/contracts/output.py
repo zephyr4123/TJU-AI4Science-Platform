@@ -26,6 +26,7 @@ from typing import Any
 import yaml
 
 from framework.contracts.stages import STAGE_SLUGS, is_slug
+from framework.files import write_atomic
 
 META_NAME = "meta.yaml"
 SIGNED_NAME = "signed.json"
@@ -131,8 +132,8 @@ def now() -> str:
 
 def write_meta(output_dir: Path, meta: Meta) -> None:
     assert meta.status in STATUSES, f"产出状态只认 {STATUSES}，得到 {meta.status!r}"
-    meta_path(output_dir).write_text(
-        yaml.safe_dump(meta.to_dict(), allow_unicode=True, sort_keys=False), encoding="utf-8")
+    write_atomic(meta_path(output_dir),
+                 yaml.safe_dump(meta.to_dict(), allow_unicode=True, sort_keys=False))
 
 
 def read_meta(output_dir: Path) -> Meta:
@@ -176,8 +177,7 @@ def sign(output_dir: Path, *, by: str, note: str = "") -> dict[str, Any]:
         raise SignRefused(
             f"{meta.id} 已经签过了（{previous['by']} {previous['signed_at']}），内容没变")
     record = {"by": by, "signed_at": now(), "sha256": digest, "note": note.strip()}
-    signed_path(output_dir).write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n",
-                                       encoding="utf-8")
+    write_atomic(signed_path(output_dir), json.dumps(record, ensure_ascii=False, indent=2) + "\n")
     return record
 
 

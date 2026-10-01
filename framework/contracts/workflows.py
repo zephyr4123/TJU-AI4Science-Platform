@@ -46,6 +46,7 @@ import yaml
 
 from framework.contracts.capability import PARAM_TYPES, Capability
 from framework.contracts.stages import STAGE_NAMES as STAGES
+from framework.files import write_atomic
 
 STOP = "断点"
 # 格子上挂的名字的两种 tag（framework/capabilities/abilities.py 是出处；这里只是响应体里的两个词）
@@ -310,8 +311,7 @@ def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability
     if workflow.layout:
         doc["layout"] = [_Row((round(x), round(y))) for x, y in workflow.layout]
     Path(root).mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=100),
-                    encoding="utf-8")
+    write_atomic(path, yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=100))
     return workflow
 
 
