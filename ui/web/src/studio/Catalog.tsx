@@ -7,12 +7,15 @@
 import { ArrowLeft, Toolbox } from '@phosphor-icons/react'
 import { createElement, type ReactNode, useState } from 'react'
 
+import { api } from '@/api/client'
 import type { Capability, SkillEntry, StageInfo } from '@/api/types'
 import { useChatInset } from '@/chat/ChatPanel'
+import { ErrorNote, Skeleton } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
 import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
 import { Input } from '@/components/ui/input'
 import { groupByStage, stageIcon } from '@/lib/stages'
+import { useResource } from '@/lib/useResource'
 
 import { groupSkills, matchesSkill } from './model'
 
@@ -118,8 +121,9 @@ function Card({ title, brief, icon, onOpen }: { title: string; brief: string; ic
   )
 }
 
-/** skill 的详情：SKILL.md 就是它的说明书——名、一行、脚本名，正文原样排 */
+/** skill 的详情：SKILL.md 就是它的说明书——名、一行、脚本名，正文原样排（清单不带正文，按名字取） */
 function SkillDetail({ skill, onBack }: { skill: SkillEntry; onBack: () => void }) {
+  const doc = useResource(() => api.skill(skill.name), [skill.name], `skill:${skill.name}`)
   return (
     <article className="mx-auto my-3 max-w-[50rem] rounded-2xl bg-card shadow-[0_1px_2px_rgb(0_0_0/0.05),0_18px_44px_-22px_rgb(0_0_0/0.28)] ring-1 ring-foreground/[0.06]">
       <div className="sticky top-0 z-10 flex items-center gap-3 rounded-t-2xl bg-card/90 px-6 py-3 backdrop-blur-sm">
@@ -142,7 +146,8 @@ function SkillDetail({ skill, onBack }: { skill: SkillEntry; onBack: () => void 
         </p>
       </header>
       <div className="px-8 pt-2 pb-10">
-        <Markdown text={skill.body} />
+        {doc.data && <Markdown text={doc.data.body} />}
+        {!doc.data && (doc.error ? <ErrorNote text={doc.error} /> : <Skeleton lines={6} />)}
       </div>
     </article>
   )

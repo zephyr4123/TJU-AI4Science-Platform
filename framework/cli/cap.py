@@ -115,12 +115,15 @@ def cmd_cap(args: argparse.Namespace) -> int:
 def _not_loaded(ws: Workspace, descriptor: Capability) -> str:
     """项目只装载它各工作区流程实例上挂的能力（纲领 P-26）：这个步骤点了名、或它的阶段在流程里
     敞开着（没点名，用什么由助理看着办）才能跑；不然返回拒绝的那句话，说清先取流程或改实例。"""
-    if loadout.of(project.of(ws)).allows_step(descriptor.name, descriptor.stage):
+    loaded, steps = loadout.of(project.of(ws)), discover()
+    if loaded.allows_step(descriptor.name, descriptor.stage, steps):
         return ""
+    strays = "、".join(name for name, _ in loaded.strays(steps))
     return (f"这个项目没有装载步骤 {descriptor.name}（{descriptor.stage}）："
             f"项目只用流程实例上挂的能力。"
             f"先 ai4sci flow take <流程> 取一条，或在实例里加上「{descriptor.stage}」这个阶段"
-            f"（点名 {descriptor.name} 或不点名），ai4sci show flows 校验")
+            f"（点名 {descriptor.name} 或不点名），ai4sci show flows 校验"
+            + (f"。流程上还有对不上的名字：{strays}（拼错了？）" if strays else ""))
 
 
 def _close_failed_job(ws: Workspace, job_id: str | None, result: str) -> None:

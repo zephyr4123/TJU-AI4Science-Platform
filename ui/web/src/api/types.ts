@@ -397,9 +397,13 @@ export interface SkillEntry {
   shelf: string
   /** 给人看的出处：平台 / 收录·文献 / 收录·通用 / 领域包名 */
   where: string
-  body: string
   scripts: string[]
   used_by: string[]
+}
+
+/** 一个 skill 带 SKILL.md 正文（`GET /skills/<name>`）：清单里几百个不带正文，详情页按名字取 */
+export interface SkillDoc extends SkillEntry {
+  body: string
 }
 
 /** 流里的一项：一个阶段（可点名能力、带参数），或一个断点（前一项的产出要人签了下游才能读）。 */

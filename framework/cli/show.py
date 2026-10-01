@@ -238,30 +238,29 @@ def cmd_caps(args: argparse.Namespace) -> int:
 
 
 def cmd_skills(args: argparse.Namespace) -> int:
-    """查库：三处库的 skill，按词（名字与一句话里都要有）与架筛；在项目里标出本项目装了没有。"""
+    """查库：三处库的 skill，按词与架筛——词要都出现在名字、出处（「收录·写作」）或一句话里；
+    在项目里标出本项目装了没有。一句话多是上游的英文：中文词只认得出处里的阶段名。"""
     try:
         shelf = shelf_of(args.stage) if args.stage else ""
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
-    try:
-        loaded = {s.name for s in loadout.of(project.find()).skills}
-    except project.ProjectNotFound:
-        loaded = None
+    here = loadout.here()
+    loaded = None if here is None else {s.name for s in here.skills}
     found = skills.everything()
     words = [w.lower() for w in args.words]
 
-    def hit(name: str, text: str, skill_shelf: str) -> bool:
-        haystack = f"{name} {text}".lower()
+    def hit(name: str, where: str, text: str, skill_shelf: str) -> bool:
+        haystack = f"{name} {where} {text}".lower()
         return all(w in haystack for w in words) and (not shelf or skill_shelf == shelf)
 
     rows = [{"name": s.name, "where": s.where, "library": s.library, "shelf": s.shelf,
              "loaded": None if loaded is None else s.name in loaded,
              "description": s.description, "problems": []}
-            for s in found.skills if hit(s.name, s.description, s.shelf)]
+            for s in found.skills if hit(s.name, s.where, s.description, s.shelf)]
     rows += [{"name": i.name, "where": i.where, "library": i.library, "shelf": i.shelf,
               "loaded": False, "description": "", "problems": list(i.problems)}
-             for i in found.invalid if hit(i.name, "", i.shelf)]
+             for i in found.invalid if hit(i.name, i.where, "", i.shelf)]
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
         return EXIT_OK
@@ -270,8 +269,12 @@ def cmd_skills(args: argparse.Namespace) -> int:
                 else "已装载" if row["loaded"] else "未装载")
         text = row["problems"][0] if row["problems"] else row["description"]
         print(f"{row['name']}\t{row['where']}\t{mark}\t{text}")
-    print(f"（{len(rows)} 个；读一个先挂到流程实例上，再 ai4sci skill show <name>）"
-          if loaded is not None else f"（{len(rows)} 个）", file=sys.stderr)
+    if not rows:
+        print("（一个都没查到：一句话多是英文，换英文词；或按阶段翻 "
+              "ai4sci show skills --stage <阶段|通用>）", file=sys.stderr)
+    else:
+        print(f"（{len(rows)} 个；读一个先挂到流程实例上，再 ai4sci skill show <name>）"
+              if loaded is not None else f"（{len(rows)} 个）", file=sys.stderr)
     return EXIT_OK
 
 

@@ -173,7 +173,8 @@ def test_everything_named_in_the_page_api_carries_a_readable_name(tmp_path, monk
     monkeypatch.setenv("AI4SCI_HOME", str(tmp_path))
     spaces.make_project(tmp_path, "p")
     server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=serve_cli._catalog,
-                        skills=serve_cli._skills, skill_names=serve_cli._skill_names,
+                        skills=serve_cli._skills, skill=serve_cli._skill,
+                        skill_names=serve_cli._skill_names,
                         workflows=serve_cli._workflows, check_workflow=serve_cli._check_workflow,
                         descriptors=serve_cli._descriptor_map, stage_table=stage_table,
                         system_prompts=PROMPTS)
@@ -196,8 +197,13 @@ def test_everything_named_in_the_page_api_carries_a_readable_name(tmp_path, monk
         skills = {s["name"]: s for s in json.loads(body)}
         assert status == 200 and {"pdf", "download"} <= set(skills)
         assert skills["pdf"]["kind"] == "skill" and skills["pdf"]["title"] == "pdf"
-        assert skills["pdf"]["brief"] and skills["pdf"]["body"] and skills["pdf"]["scripts"]
+        assert skills["pdf"]["brief"] and skills["pdf"]["scripts"]
         assert skills["pdf"]["used_by"] == ["reproduce"]
+        assert all("body" not in s for s in skills.values())  # 几百个，正文按名字单取
+        status, _, body = call(base, "/skills/pdf")
+        one = json.loads(body)
+        assert status == 200 and one["body"].startswith("#") and one["used_by"] == ["reproduce"]
+        assert call(base, "/skills/no-such-skill")[0] == 404
         flows = {w["name"]: w for w in json.loads(call(base, "/workflows")[2])}
         assert flows["reproduce"]["stages"][0]["caps"] == [
             {"cap": "pdf", "with": {}, "kind": "skill"},

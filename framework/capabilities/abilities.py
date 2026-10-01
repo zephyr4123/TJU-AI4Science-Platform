@@ -22,8 +22,8 @@ from framework.contracts.workflows import KIND_SKILL, KIND_STEP
 from framework.skills import library
 from framework.skills.library import Skill
 
-__all__ = ["KIND_SKILL", "KIND_STEP", "AbilityNameClash", "check_disjoint", "skill_entries",
-           "skill_entry", "skill_names", "steps"]
+__all__ = ["KIND_SKILL", "KIND_STEP", "AbilityNameClash", "check_disjoint", "skill_detail",
+           "skill_entries", "skill_entry", "skill_names", "steps"]
 
 
 class AbilityNameClash(ValueError):
@@ -47,13 +47,21 @@ def check_disjoint(step_names: set[str] | frozenset[str], names: frozenset[str])
 
 
 def skill_entry(skill: Skill) -> dict[str, Any]:
-    """给 `GET /skills` 与页面：与步骤描述符同一层的字段（name / title / brief / kind），
-    另带出处（库、收录库的架、给人看的一句「收录·文献」）、SKILL.md 正文与脚本名。title 就是它的
-    名字：skill 的名字是 agent 叫它的词，页面照显示。"""
+    """清单里的一行（`GET /skills`、`show caps --json`）：与步骤描述符同一层的字段（name / title /
+    brief / kind），另带出处（库、收录库的架、给人看的一句「收录·文献」）与脚本名。不带正文：库有
+    几百个，整库带正文一次 2.5 MB；正文按名字单取（`skill_detail`），agent 在项目里读要过装载
+    （`ai4sci skill show`）。title 就是名字：skill 的名字是 agent 叫它的词，页面照显示。"""
     return {"name": skill.name, "kind": KIND_SKILL, "title": skill.name, "brief": skill.description,
             "library": skill.library, "shelf": skill.shelf, "where": skill.where,
-            "body": skill.body, "scripts": [script.name for script in skill.scripts]}
+            "scripts": [script.name for script in skill.scripts]}
 
 
 def skill_entries() -> list[dict[str, Any]]:
     return [skill_entry(skill) for skill in skills.everything().skills]
+
+
+def skill_detail(name: str) -> dict[str, Any]:
+    """一个 skill 的清单那一行加 SKILL.md 正文（`GET /skills/<name>`，编辑台翻库用）。
+    没有这个 skill 是 SkillNotFound，不合格是 SkillInvalid。"""
+    skill = skills.find(name)
+    return {**skill_entry(skill), "body": skill.body}

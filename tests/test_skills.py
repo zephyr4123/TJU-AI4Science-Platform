@@ -453,7 +453,7 @@ def test_cli_outside_a_project_sees_every_library(libraries, capfd, tmp_path, mo
 
     assert main(["skill", "show", "echo"]) == 0
     out = capfd.readouterr().out
-    assert out.startswith(f"# echo\t平台\t{(resident / 'echo').resolve()}\n")
+    assert out.startswith("# echo\t平台\n")
     assert "scripts: go.py" in out and "运行：`ai4sci skill run echo -- x`" in out
     assert main(["skill", "show", "nope"]) == 2
     assert "show skills" in capfd.readouterr().err

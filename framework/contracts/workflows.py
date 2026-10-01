@@ -351,8 +351,8 @@ def workflow_problems(workflow: Workflow, catalog: dict[str, Capability],
                     problems.append(f"{label} 是 skill，不带参数：它的参数在调用时给")
                 continue
             if cap is None:
-                problems.append(f"{label}：没有这个能力（步骤：{sorted(catalog)}；"
-                                f"skill：{sorted(skills)}）")
+                problems.append(f"{label}：没有这个能力，拼错了？（步骤：{sorted(catalog)}；"
+                                f"skill 用 ai4sci show skills <词> 查）")
                 continue
             if cap.stage != item.stage:
                 problems.append(

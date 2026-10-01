@@ -15,7 +15,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from framework import paths
+from framework import paths, skills
 from framework.capabilities import abilities, discover, stage_table
 from framework.chat import guide, settings
 from framework.chat.server import ChatServer
@@ -57,10 +57,20 @@ def _catalog() -> list[dict]:
 
 
 def _skills() -> list[dict]:
-    """能力库里 tag 为 skill 的那些：名字、一行、SKILL.md 正文、脚本名，加反查出来的 used_by。"""
+    """能力库里 tag 为 skill 的那些：名字、一行、出处、脚本名，加反查出来的 used_by。"""
     uses = workflows.used_by(library().load_valid())
     return [{**entry, "used_by": uses.get(entry["name"], [])}
             for entry in abilities.skill_entries()]
+
+
+def _skill(name: str) -> dict | None:
+    """一个 skill 带正文；没有是 None（404），不合格的 SkillInvalid 是 ValueError（422）。"""
+    try:
+        detail = abilities.skill_detail(name)
+    except skills.SkillNotFound:
+        return None
+    uses = workflows.used_by(library().load_valid())
+    return {**detail, "used_by": uses.get(name, [])}
 
 
 def _workflows() -> list[dict]:
@@ -110,7 +120,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     setup_logging()
     try:
         server = ChatServer((args.host, args.port), home=paths.home(), catalog=_catalog,
-                            skills=_skills, skill_names=_skill_names,
+                            skills=_skills, skill=_skill, skill_names=_skill_names,
                             workflows=_workflows, check_workflow=_check_workflow,
                             save_workflow=_save_workflow, descriptors=_descriptor_map,
                             stage_table=stage_table, add_compute=_add_compute, ui_dir=ui_dir)

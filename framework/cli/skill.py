@@ -19,6 +19,7 @@ import argparse
 import sys
 
 from framework import skills
+from framework.capabilities import discover
 from framework.cli._common import (
     EXIT_INVALID,
     EXIT_OK,
@@ -27,19 +28,18 @@ from framework.cli._common import (
     current_workspace,
 )
 from framework.skills import run as runner
-from framework.workspace import loadout, project
-from framework.workspace.loadout import Loadout
+from framework.workspace import loadout
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    loaded = _loadout()
+    loaded = loadout.here()
     if loaded is None:
         found = skills.everything()
         rows = [(s.name, s.where, s.description) for s in found.skills]
         bad = [(i.name, i.problems[0]) for i in found.invalid]
     else:
         rows = [(s.name, s.where, s.description) for s in loaded.skills]
-        bad = list(loaded.unavailable)
+        bad = [*loaded.unavailable, *loaded.strays(discover())]
     for name, where, description in rows:
         print(f"{name}\t{where}\t{description}")
     for name, reason in bad:
@@ -60,7 +60,8 @@ def cmd_show(args: argparse.Namespace) -> int:
             print(str(exc), file=sys.stderr)
             return EXIT_USAGE
         return EXIT_OK
-    print(f"# {skill.name}\t{skill.where}\t{skill.dir}")
+    # 不打库在盘上的路径：agent 拿到它就能绕过装载直接读库里别的 skill（Codex 的沙箱读盘不拦）
+    print(f"# {skill.name}\t{skill.where}")
     print(f"description: {skill.description}")
     if skill.compatibility:
         print(f"compatibility: {skill.compatibility}")
@@ -121,23 +122,15 @@ def _take(script_args: list[str], flag: str, given: str | None,
     return script_args[at + 1], script_args[:at] + script_args[at + 2:]
 
 
-def _loadout() -> Loadout | None:
-    """站在项目里就是本项目装载的那套；不在任何项目里（终端、门禁）是 None，看全库。"""
-    try:
-        return loadout.of(project.find())
-    except project.ProjectNotFound:
-        return None
-
-
 def _find(name: str):
-    """按名字取一个 skill；在项目里只认装载的（纲领 P-26）。"""
-    loaded = _loadout()
+    """按名字取一个 skill；在项目里只认装载的（纲领 P-26，站在哪见 `loadout.here`）。"""
+    loaded = loadout.here()
     if loaded is not None and not loaded.has_skill(name):
-        reason = dict(loaded.unavailable).get(name)
+        reason = dict([*loaded.unavailable, *loaded.strays(discover())]).get(name)
         print(f"skill {name!r} 挂在流程上，但用不了：{reason}" if reason else
               f"这个项目没有装载 skill {name!r}：要用先挂到工作区流程实例的格子上"
               f"（改 flows/<流程>.yaml，ai4sci show flows 校验）；"
-              f"库里有什么用 ai4sci show skills <词> 查",
+              f"库里有什么用 ai4sci show skills --stage <阶段> <英文词> 查",
               file=sys.stderr)
         return EXIT_INVALID
     try:

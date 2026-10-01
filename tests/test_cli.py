@@ -467,7 +467,7 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
         "design", "reproduction", "auto-research", "analysis", "reproducibility", "verify"}
     assert {"pdf", "download"} <= {n for n, c in doc.items() if c["kind"] == "skill"}
     assert doc["pdf"]["used_by"] == ["reproduce"] and doc["pdf"]["brief"]
-    assert "scripts" in doc["pdf"]
+    assert "scripts" in doc["pdf"] and "body" not in doc["pdf"]  # 正文只经 skill show（过装载）
     assert doc["auto-research"]["used_by"] == ["research"] and doc["verify"]["used_by"] == []
     assert doc["design"]["stage"] == "设计" and doc["design"]["stage_slug"] == "design"
     assert doc["auto-research"]["continuable"] is True

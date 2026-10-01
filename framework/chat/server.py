@@ -25,7 +25,9 @@
     POST /settings/computes/<name>/remove   删一台
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
     GET  /cap                               能力描述符清单：每个带 stage、五栏与 used_by
-    GET  /skills                            能力库里 tag 为 skill 的：名字、一行、正文、脚本名
+    GET  /skills                            能力库里 tag 为 skill 的：名字、一行、出处、脚本名、
+                                            used_by（不带正文）
+    GET  /skills/<name>                     一个 skill：同一行加 SKILL.md 正文；没有 404
     GET  /workflows                         库：出厂的 `workflows/*.yaml` + 人存的
                                             `studio/workflows/*.yaml`，每条带 shipped 与
                                             covers / remarks / problems
@@ -120,6 +122,7 @@ class ChatServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], *, home: Path,
                  catalog: Callable[[], list[dict[str, Any]]],
                  skills: Callable[[], list[dict[str, Any]]] = lambda: [],
+                 skill: Callable[[str], dict[str, Any] | None] = lambda name: None,
                  skill_names: Callable[[], frozenset[str]] = frozenset,
                  workflows: Callable[[], list[dict[str, Any]]],
                  stage_table: Callable[[], list[dict[str, Any]]] = stages.to_dicts,
@@ -135,6 +138,7 @@ class ChatServer(ThreadingHTTPServer):
         self.home = Path(home).resolve()
         self.catalog = catalog
         self.skills = skills
+        self.skill = skill
         self.skill_names = skill_names
         self.workflows = workflows
         # 阶段表：cli 注入带主文件与它页面上的名字的那份（主文件表在 capabilities，chat 层不认识它）
@@ -225,6 +229,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.server.catalog())
         if parts == ["skills"]:
             return self._json(self.server.skills())
+        if len(parts) == 2 and parts[0] == "skills":
+            found = self.server.skill(parts[1])
+            if found is None:
+                return self._error(HTTPStatus.NOT_FOUND, f"库里没有叫 {parts[1]!r} 的 skill")
+            return self._json(found)
         if parts == ["workflows"]:
             return self._json(self.server.workflows())
         if parts == ["templates"]:

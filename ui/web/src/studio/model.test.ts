@@ -149,7 +149,7 @@ describe('流程的血缘（P-15）', () => {
 
 const skill = (name: string, where: string, brief = name): SkillEntry => ({
   name, kind: 'skill', title: name, brief, library: where.startsWith('收录') ? '收录' : where, shelf: '', where,
-  body: '', scripts: [], used_by: [],
+  scripts: [], used_by: [],
 })
 
 describe('skill 怎么摆（P-22、P-26）', () => {

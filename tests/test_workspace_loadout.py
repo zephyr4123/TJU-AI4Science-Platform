@@ -10,6 +10,7 @@ import json
 import pytest
 
 from framework import paths
+from framework.capabilities import discover
 from framework.chat import guide
 from framework.cli import main
 from framework.executor import prompting
@@ -54,11 +55,14 @@ def _names(load: loadout.Loadout) -> list[str]:
     return [s.name for s in load.skills]
 
 
+STEPS = frozenset(discover())
+
+
 def test_a_project_without_flows_loads_only_the_resident_skills(lib):
     ws = spaces.make_workspace(lib, "w")
     load = loadout.of(project_mod.of(ws))
     assert _names(load) == ["pdf"] and load.unavailable == ()
-    assert not load.allows_step("design", "设计")
+    assert not load.allows_step("design", "设计", STEPS)
 
 
 def test_hung_skills_from_every_workspace_flow_are_loaded_and_nothing_else(lib):
@@ -69,10 +73,11 @@ def test_hung_skills_from_every_workspace_flow_are_loaded_and_nothing_else(lib):
     _flow(w2, "b", "  - 实验: [petab]\n  - 分析\n")
     load = loadout.of(project_mod.of(w1))
     assert _names(load) == ["pdf", "paper-lookup", "petab"]
-    assert load.allows_step("analysis", "分析")  # 分析敞开着：这个阶段的步骤都装
+    assert load.allows_step("analysis", "分析", STEPS)  # 分析敞开着：这个阶段的步骤都装
     # 一格只挂 skill 不算点名步骤（推荐的工具不是谁来跑这一步），阶段照样敞开
-    assert load.allows_step("auto-research", "实验") and load.allows_step("pdf-to-x", "文献")
-    assert not load.allows_step("design", "设计")  # 流程里没有设计
+    assert load.allows_step("auto-research", "实验", STEPS)
+    assert load.allows_step("pdf-to-x", "文献", STEPS)
+    assert not load.allows_step("design", "设计", STEPS)  # 流程里没有设计
     assert loadout.around(w2.root / "experiment") == load  # 执行层按产出目录所在的项目算
 
 
@@ -81,7 +86,7 @@ def test_the_loadout_follows_the_flow_files_on_every_call(lib):
     _flow(ws, "a", "  - 设计: [design]\n")
     project = project_mod.of(ws)
     assert _names(loadout.of(project)) == ["pdf"]
-    assert loadout.of(project).allows_step("design", "设计")
+    assert loadout.of(project).allows_step("design", "设计", STEPS)
     _flow(ws, "a", "  - 设计: [design]\n  - 写作: [polish]\n")
     assert _names(loadout.of(project)) == ["pdf", "polish"]
 
@@ -94,6 +99,46 @@ def test_hung_but_unusable_skills_and_broken_flows_are_reported_not_dropped(lib)
     assert _names(load) == ["pdf"]
     reasons = dict(load.unavailable)
     assert "缺 name" in reasons["broken"] and "读不出来" in reasons["w/flows/bad.yaml"]
+
+
+def test_misspelt_names_are_listed_and_do_not_close_their_stage(lib, capfd, monkeypatch):
+    """格子上的名字既不是 skill 也不是步骤（拼错、上游删了）：skill list 与 cap 的拒绝里摆出来，
+    不算点名步骤——那个阶段照样敞开，cap 不因一个错字被拒。"""
+    ws = pf.make_workspace(lib, "w", flow=False)
+    _flow(ws, "a", "  - 文献: [paper-lokup]\n  - 设计: [desing]\n")
+    load = loadout.of(project_mod.of(ws))
+    assert [name for name, _ in load.strays(STEPS)] == ["desing", "paper-lokup"]
+    assert "拼错了" in dict(load.strays(STEPS))["paper-lokup"]
+    assert load.allows_step("design", "设计", STEPS)
+    monkeypatch.chdir(ws.root)
+    assert main(["skill", "list"]) == 0
+    assert "paper-lokup\t不可用\t流程上挂着，可库里没有" in capfd.readouterr().out
+    assert main(["skill", "show", "paper-lokup"]) == 1
+    assert "拼错了" in capfd.readouterr().err
+    _flow(ws, "a", "  - 设计: [reproduction, desing]\n")
+    assert main(["cap", "design"]) == 1  # 那一格点了真步骤 reproduction，design 没点名
+    assert "对不上的名字：desing" in capfd.readouterr().err
+
+
+def test_commands_judge_the_loadout_by_the_project_they_stand_in(lib, capfd, monkeypatch):
+    """AI4SCI_PROJECT 指别的项目时，cwd 所在的项目说了算——与执行层清单（around）同一口径；
+    cwd 不在任何项目里才看环境变量。"""
+    wa = spaces.make_workspace(lib, "wa", project_id="pa")
+    wb = spaces.make_workspace(lib, "wb", project_id="pb")
+    _flow(wa, "a", "  - 写作: [polish]\n")
+    _flow(wb, "b", "  - 文献: [paper-lookup]\n")
+    monkeypatch.setenv(project_mod.PROJECT_ENV, str(project_mod.of(wa).root))
+    run_dir = wb.root / "design" / "1"
+    run_dir.mkdir(parents=True)
+    monkeypatch.chdir(run_dir)
+    assert _names(loadout.here()) == _names(loadout.around(run_dir)) == ["pdf", "paper-lookup"]
+    assert main(["skill", "show", "paper-lookup"]) == 0
+    assert main(["skill", "show", "polish"]) == 1
+    capfd.readouterr()
+    monkeypatch.chdir(lib)  # 不在任何项目里：环境变量指的那个
+    assert _names(loadout.here()) == ["pdf", "polish"]
+    monkeypatch.delenv(project_mod.PROJECT_ENV)
+    assert loadout.here() is None
 
 
 def test_research_assistant_prompt_carries_this_projects_loadout(lib, tmp_path):
@@ -137,6 +182,7 @@ def test_cli_inside_a_project_only_reaches_the_loadout(lib, capfd, monkeypatch):
     assert main(["skill", "show", "paper-lookup"]) == 0
     out = capfd.readouterr().out
     assert "files: references/api.md" in out and "ai4sci skill show paper-lookup <文件>" in out
+    assert out.startswith("# paper-lookup\t收录·文献\n") and str(lib) not in out  # 不给库的路径
     assert main(["skill", "show", "paper-lookup", "references/api.md"]) == 0
     assert capfd.readouterr().out == "接口手册\n"
     assert main(["skill", "show", "paper-lookup", "../../../skills/pdf/SKILL.md"]) == 2
@@ -166,6 +212,11 @@ def test_show_skills_searches_the_whole_library_and_marks_the_loadout(lib, capfd
     assert [r.split("\t")[0] for r in capfd.readouterr().out.splitlines()] == ["polish", "broken"]
     assert main(["show", "skills", "夹具", "LOOKUP"]) == 0  # 词都要有、不分大小写
     assert [r.split("\t")[0] for r in capfd.readouterr().out.splitlines()] == ["paper-lookup"]
+    assert main(["show", "skills", "写作"]) == 0  # 中文的阶段名认出处（「收录·写作」）
+    assert [r.split("\t")[0] for r in capfd.readouterr().out.splitlines()] == ["polish", "broken"]
+    assert main(["show", "skills", "nothing-like-this"]) == 0
+    captured = capfd.readouterr()
+    assert captured.out == "" and "换英文词" in captured.err and "--stage" in captured.err
     assert main(["show", "skills", "--stage", "杂项"]) == 2
     assert main(["show", "skills", "--json"]) == 0
     doc = json.loads(capfd.readouterr().out)

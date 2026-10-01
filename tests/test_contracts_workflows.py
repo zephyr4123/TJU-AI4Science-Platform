@@ -121,8 +121,9 @@ def test_a_capability_must_sit_in_its_own_room(tmp_path):
     problems = workflows.workflow_problems(wf, catalog())
     assert problems == [
         "第 3 项「设计」里的 verify 属于「验证」阶段，不能放在「设计」阶段里",
-        "第 3 项「设计」里的 nope：没有这个能力（步骤：['analysis', 'auto-research', 'design', "
-        "'reproducibility', 'reproduction', 'verify']；skill：[]）"]
+        "第 3 项「设计」里的 nope：没有这个能力，拼错了？（步骤：['analysis', 'auto-research', "
+        "'design', 'reproducibility', 'reproduction', 'verify']；"
+        "skill 用 ai4sci show skills <词> 查）"]
 
 
 def test_any_order_of_stages_is_fine_including_going_back(tmp_path):
@@ -214,16 +215,16 @@ def test_a_skill_hangs_on_any_stage_without_params_and_is_tagged(tmp_path):
     [described] = workflows.describe([wf], catalog(), SKILLS)
     assert described["stages"][2]["caps"] == [{"cap": "design", "with": {}, "kind": "步骤"},
                                               {"cap": "pdf", "with": {}, "kind": "skill"}]
-    # 不认 skill：既不是步骤也不是 skill，报错里两半都列出来
+    # 不认 skill：既不是步骤也不是 skill，报错列出步骤、skill 指去查（库有几百个，不整串打出来）
     [problem, *_] = workflows.workflow_problems(wf, catalog())
-    assert "没有这个能力" in problem and "skill：[]" in problem
+    assert "没有这个能力" in problem and "show skills" in problem
     # 存回文件还是最短写法，skill 与步骤混在一个清单里
     doc = {**yaml.safe_load(GOOD), "name": "w", "stages": ["文献", {"设计": ["design", "pdf"]}]}
     saved = workflows.save_workflow(tmp_path / "lib", doc, catalog(), skills=SKILLS)
     text = (tmp_path / "lib" / "w.yaml").read_text(encoding="utf-8")
     assert text.endswith("- 设计:\n  - design\n  - pdf\n")
     assert saved.caps == ["design", "pdf"]
-    with pytest.raises(workflows.WorkflowInvalid, match="skill：\\['pdf'\\]"):
+    with pytest.raises(workflows.WorkflowInvalid, match="nope：没有这个能力"):
         workflows.save_workflow(tmp_path / "lib2", {**yaml.safe_load(GOOD), "name": "w",
                                                     "stages": [{"文献": ["nope"]}]},
                                 catalog(), skills={"pdf"})
