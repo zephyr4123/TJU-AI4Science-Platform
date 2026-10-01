@@ -364,6 +364,65 @@ def test_page_saves_get_names_from_the_platform(tmp_path):
         lib.save({**doc, "from": "gone"}, catalog())
 
 
+def test_names_are_never_handed_out_twice(tmp_path):
+    """删掉的名字不再发（工作区实例的 from 还指着它）；序号取最大加一；按标题起名撞了加字母，
+    不落进 <家族名>-<序号>（那是派生的）。"""
+    lib = library(tmp_path)
+    for n in (2, 3):
+        doc = lib.derive("research")
+        doc["stages"] = doc["stages"][:-n]
+        assert lib.save(doc, catalog()).name == f"research-{n}"
+    lib.remove("research-2")
+    lib.remove("research-3")
+    assert lib.next_name("research") == "research-4"
+    for n in range(4, 11):
+        doc = lib.derive("research")
+        doc["stages"] = [*doc["stages"][:4], {"实验": {"auto-research": {"max_iters": n}}}]
+        lib.save(doc, catalog())
+    assert lib.next_name("research") == "research-11"  # 按数字比，不按字典序
+    titled = {**yaml.safe_load(GOOD), "title": "Research"}
+    titled.pop("name")
+    titled["stages"] = titled["stages"][:1]
+    assert lib.save(titled, catalog()).name == "research-b"
+    titled["stages"] = titled["stages"] + ["验证"]
+    assert lib.save(titled, catalog()).name == "research-c"
+
+
+def test_structure_and_diff_agree_on_what_counts_as_the_same(tmp_path):
+    """查重、hash 与差异同一个口径：一格里挂的先后不算、参数 2 与 2.0 是一个值；同一格挂两次拒。"""
+    base = workflows.parse_workflow("w.yaml", {**yaml.safe_load(GOOD), "stages": [
+        {"文献": ["pdf", "download"]}, {"实验": {"auto-research": {"max_iters": 2}}}]})
+    swapped = workflows.parse_workflow("w.yaml", {**yaml.safe_load(GOOD), "stages": [
+        {"文献": ["download", "pdf"]}, {"实验": {"auto-research": {"max_iters": 2.0}}}]})
+    assert swapped.structure() == base.structure()
+    assert swapped.content_hash() == base.content_hash()
+    assert workflow_library.diff(base, swapped, catalog()) == []
+    twice = workflows.parse_workflow("w.yaml", {**yaml.safe_load(GOOD), "stages": [
+        {"文献": ["pdf", "download", "pdf"]}]})
+    assert workflows.workflow_problems(twice, catalog(), SKILLS) == [
+        "第 1 项「文献」里 pdf 挂了不止一次：留一个"]
+
+
+def test_a_twin_pair_flags_the_child_not_the_parent(tmp_path):
+    """一对一模一样的只报后到的：有血缘的报子流程（序号到 10 以后也不报到父流程头上，
+    按名字的字典序 research-10 排在 research-2 前面）。"""
+    lib = library(tmp_path)
+    doc = lib.derive("research")
+    doc["stages"] = doc["stages"][:-1]
+    lib.save(doc, catalog())
+    for n in range(3, 10):
+        lib.save({**lib.derive("research-2"),
+                  "stages": [*doc["stages"][:4], {"实验": {"auto-research": {"max_iters": n}}}]},
+                 catalog())
+    copy = lib.derive("research-2")
+    assert copy["name"] == "research-10"
+    lib.save(copy, catalog(), draft=True)
+    problems = {row["name"]: row["problems"] for row in lib.describe(catalog())}
+    assert problems["research-2"] == []
+    assert problems["research-10"] == [
+        "与 research-2 一模一样（阶段、能力、参数、断点都相同）：删掉一条"]
+
+
 def test_a_flow_identical_to_one_in_the_library_is_refused(tmp_path):
     """结构一模一样的不存第二份；参数不同算不同；标题不同不算。"""
     lib = library(tmp_path)

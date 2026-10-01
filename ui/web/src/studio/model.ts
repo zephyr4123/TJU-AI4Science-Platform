@@ -211,12 +211,15 @@ export function groupSkills(skills: SkillEntry[]): { where: string; skills: Skil
 }
 
 // ── 流程库怎么排（P-15 血缘）────────────────────────────────────────────────
-/** 按家族排：出厂的与从零拼的各起一个家族，派生的紧跟在家族的头后面（家族里按名字排） */
+/** 派生的、家族的头还在库里：弹层里缩进挂在头后面。父流程删了的（孤儿）后端给的家族名就是它自己，不算 */
+export const inFamily = (wf: Workflow): boolean => Boolean(wf.from) && (wf.family ?? wf.name) !== wf.name
+
+/** 按家族排：出厂的与从零拼的各起一个家族，派生的紧跟在家族的头后面（序号按数字排，-10 在 -9 后面）；孤儿放最后 */
 export function byFamily(workflows: Workflow[]): Workflow[] {
-  const heads = workflows.filter((wf) => (wf.family ?? wf.name) === wf.name)
-  const rest = workflows.filter((wf) => !heads.includes(wf))
-  const out = heads.flatMap((head) => [head, ...rest.filter((wf) => wf.family === head.name).sort((a, b) => a.name.localeCompare(b.name))])
-  return [...out, ...rest.filter((wf) => !out.includes(wf))]  // 家族的头不在库里了（父流程删了）的放最后
+  const byName = (a: Workflow, b: Workflow) => a.name.localeCompare(b.name, undefined, { numeric: true })
+  const heads = workflows.filter((wf) => !wf.from)
+  const out = heads.flatMap((head) => [head, ...workflows.filter((wf) => inFamily(wf) && wf.family === head.name).sort(byName)])
+  return [...out, ...workflows.filter((wf) => !out.includes(wf)).sort(byName)]
 }
 
 /** 小字那一行：几项、出厂；派生的写改了什么，父流程改过要说 */

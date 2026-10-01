@@ -540,6 +540,14 @@ def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
     proc = run_cli("workflow", "new", "scratch", "--title", "从零", env=env)
     assert proc.returncode == EXIT_OK
     assert proc.stdout.startswith("ok scratch\tworkflows/scratch.yaml")
+    # 从零起的骨架也是草稿：连起两条（骨架一样）都起得来，改出不同之前标着「一模一样」
+    proc = run_cli("workflow", "new", "another", "--title", "又一条", env=env)
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert "与 scratch 一模一样" in run_cli("show", "workflows", env=env).stderr
+    (mine / "another.yaml").unlink()
+    # <库里已有的名字>-<数字> 留给派生：从零起的不许用
+    proc = run_cli("workflow", "new", "research-7", "--title", "冒名", env=env)
+    assert proc.returncode == EXIT_INVALID and "--from research" in proc.stderr
     assert run_cli("workflow", "new", "scratch2", env=env).returncode == EXIT_USAGE  # 缺标题
     (mine / "quick.yaml").write_text(
         "name: quick\ntitle: 快看\nsummary: 只看一眼\nstages:\n"

@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { stageIcon } from '@/lib/stages'
 import { cn } from '@/lib/utils'
 
-import { byFamily, lineageLine, type Seed, SEED_MIME } from './model'
+import { byFamily, inFamily, lineageLine, type Seed, SEED_MIME } from './model'
 
 export function Ladder({ stages, onAdd }: { stages: string[]; onAdd: (seed: Seed) => void }) {
   const tile = (seed: Seed, icon: typeof Signature, label: string, tone: 'stage' | 'stop') => (
@@ -61,7 +61,7 @@ export function Library({ workflows, onLoad, onRemoved }: {
         {failed && <p className="px-2 py-1.5 text-[0.75rem] text-bad">{failed}</p>}
         <ul className="max-h-[22rem] space-y-0.5 overflow-y-auto">
           {byFamily(workflows).map((wf) => (
-            <li key={wf.name} className={cn('group/row flex items-center gap-1 rounded-lg pr-1 transition-colors hover:bg-accent/60', wf.from && 'ml-3 border-l pl-1')}>
+            <li key={wf.name} className={cn('group/row flex items-center gap-1 rounded-lg pr-1 transition-colors hover:bg-accent/60', inFamily(wf) && 'ml-3 border-l pl-1')}>
               <button type="button" onClick={() => { onLoad(wf); setOpen(false) }} title={wf.problems[0] ?? wf.diff?.join('；') ?? wf.summary}
                       className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-ring">
                 <span className="min-w-0 flex-1">

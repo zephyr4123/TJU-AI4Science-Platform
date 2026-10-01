@@ -29,10 +29,14 @@
                                             used_by（不带正文）
     GET  /skills/<name>                     一个 skill：同一行加 SKILL.md 正文；没有 404
     GET  /workflows                         库：出厂的 `workflows/*.yaml` + 人存的
-                                            `studio/workflows/*.yaml`，每条带 shipped 与
-                                            covers / remarks / problems
-    POST /workflows                         {name, title, summary, stages[, overwrite]}
-                                            → 存进人存的那层（与出厂重名拒 409）
+                                            `studio/workflows/*.yaml`，每条带 shipped、
+                                            covers / remarks / problems 与 family / diff /
+                                            parent_changed（P-15 血缘）
+    POST /workflows                         {name?, from?, title, summary, stages[, overwrite]}
+                                            → 存进人存的那层。name 空着由平台起（带 from 的叫
+                                            <家族名>-<序号>，不带的按标题里的英文词）；from 给
+                                            父流程的名字（hash 平台填）或 {name, hash}。与出厂
+                                            重名、结构与库里某条一模一样都拒 409
     POST /workflows/check                   同一个 body，只查不存：covers / remarks / problems
     POST /workflows/<name>/remove           删人存的一条流程（出厂的拒 403）
     GET  /templates                         需求模板的库：名字、标题、一句说明、原文

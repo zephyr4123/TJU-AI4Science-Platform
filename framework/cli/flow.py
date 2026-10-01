@@ -96,14 +96,13 @@ def cmd_new_workflow(args: argparse.Namespace) -> int:
         doc = {"name": args.name, "title": args.title, "summary": args.title,
                "stages": ["设计"]}
     try:
-        saved = lib.save(doc, abilities.steps(), skills=abilities.skill_names(),
-                         draft=bool(args.parent))
+        saved = lib.save(doc, abilities.steps(), skills=abilities.skill_names(), draft=True)
     except (workflows.WorkflowInvalid, FileExistsError) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
     origin = f"\tfrom={saved.origin.name}" if saved.origin else ""
     print(f"ok {saved.name}\tworkflows/{saved.name}.yaml{origin}"
-          f"\tnext=改这个文件（阶段、能力、断点、标题、说明；派生的是照抄，改出不同之前"
+          f"\tnext=改这个文件（阶段、能力、断点、标题、说明；起点与库里某条一样，改出不同之前"
           f" show workflows 会标「一模一样」），ai4sci show workflows 校验")
     return EXIT_OK
 

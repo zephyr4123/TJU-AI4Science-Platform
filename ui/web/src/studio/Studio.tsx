@@ -1,8 +1,8 @@
 // 编辑台：两个镜头（P-21，外层 #112）——「流程」是一张画布铺满整页（React Flow，Dify 用的同一个引擎），一条线性的链：节点是
 // 研究阶段（装能力 + 参数）或断点，边只表示顺序（纲领 P-18；外层 #100 #101）；「能力」是按七个阶段陈列的能力清单与每个能力的
 // 详情页（`Catalog`）。两个镜头都常驻只切显示，雾景与对话窗挂在外面，切换不闪。画布：左上角阶段梯与题头（玻璃板），右上角流程库、
-// 保存与选中节点的配置；边拼边问后端有没有问题（POST /workflows/check），问题贴到节点上；存成 workflows/<name>.yaml，文件名由
-// 标题生成（不显示、不让填）。没摆过的按顺序自动排、放不下换行；人拖过的坐标存进文件的 `layout` 块（model.ts）。流程助理的对话是右下角的悬浮窗，默认开着；它每说完一轮
+// 保存与选中节点的配置；边拼边问后端有没有问题（POST /workflows/check），问题贴到节点上；存成 workflows/<name>.yaml，名字由
+// 平台起（P-15：派生的「家族名-序号」、从零拼的按标题里的英文词，不显示、不让填）。没摆过的按顺序自动排、放不下换行；人拖过的坐标存进文件的 `layout` 块（model.ts）。流程助理的对话是右下角的悬浮窗，默认开着；它每说完一轮
 // epoch 加一，流程库就重读。
 import {
   Background, BackgroundVariant, type Edge, MarkerType, type Node, type OnSelectionChangeFunc, Panel, ReactFlow,
@@ -159,7 +159,7 @@ function Editor({ stages, workflows, catalog, skills, onSaved, onOpenCap }: {
 }
 
 /** 题头：一块玻璃板（与门口的输入框同款），上面是宋体大标题、一行说明——文字直接写在板上，没有框没有线。
- *  文件名不在这儿：由标题生成，不显示、不让填（P-21） */
+ *  文件名不在这儿：由平台起，不显示、不让填（P-15、P-21） */
 const TEXT = 'w-full bg-transparent outline-none placeholder:text-muted-foreground/55'
 function Heading({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
   const field = (k: 'title' | 'summary') => (e: ChangeEvent<HTMLInputElement>) =>

@@ -121,11 +121,13 @@ class Workflow:
 
     def structure(self) -> tuple:
         """结构：阶段、点名的能力与参数、断点位置。标题、说明、断点那句话、画布坐标不算——
-        查重与 hash 都按它（纲领 P-15）。"""
+        查重与 hash 都按它（纲领 P-15）。与差异（`workflow_library.diff`）同一个口径：一格里挂的
+        先后不算（按名字排）、参数 2 与 2.0 是同一个值。"""
         return tuple(
-            ("stage", item.stage, tuple((p.cap, tuple(sorted((k, json.dumps(v, sort_keys=True))
-                                                             for k, v in p.with_.items())))
-                                        for p in item.picks))
+            ("stage", item.stage, tuple(sorted(
+                (p.cap, tuple(sorted((k, json.dumps(_plain(v), sort_keys=True))
+                                     for k, v in p.with_.items())))
+                for p in item.picks)))
             if isinstance(item, Stage) else ("stop",)
             for item in self.stages)
 
@@ -317,6 +319,11 @@ class _Row(list):
     """layout 里的一对坐标：写成一行 `[x, y]`，不拆成两行。"""
 
 
+def _plain(value: Any) -> Any:
+    """结构里参数值的口径：整数值的小数当整数（页面的 JS 把 2.0 存成 2，助理可能写 2.0）。"""
+    return int(value) if isinstance(value, float) and value.is_integer() else value
+
+
 def _represent_row(dumper: yaml.SafeDumper, data: _Row) -> yaml.Node:
     return dumper.represent_sequence("tag:yaml.org,2002:seq", list(data), flow_style=True)
 
@@ -343,6 +350,9 @@ def workflow_problems(workflow: Workflow, catalog: dict[str, Capability],
     for i, item in enumerate(workflow.stages, start=1):
         if not isinstance(item, Stage):
             continue
+        names = [p.cap for p in item.picks]
+        problems += [f"第 {i} 项「{item.stage}」里 {cap} 挂了不止一次：留一个"
+                     for cap in sorted({n for n in names if names.count(n) > 1})]
         for pick in item.picks:
             cap = catalog.get(pick.cap)
             label = f"第 {i} 项「{item.stage}」里的 {pick.cap}"

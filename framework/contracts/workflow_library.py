@@ -6,8 +6,10 @@
   为准：存与出厂重名的拒，手搬进用户库的在清单里标成问题。用户库可以还不存在，读到的就是空。
 - **名字是机器名，平台起**（外层 #199）：人只写中文 `title`。从一条派生的叫
   `<家族名>-<序号>`——家族名是顺着 `from` 走到底的那条（`reproduce` → `reproduce-2`、
-  `reproduce-3`，从 `reproduce-2` 再派生也是 `reproduce-<n>`）；从零拼的由流程助理起英文名，
-  页面存的按标题里的英文词起，都查重。
+  `reproduce-3`，从 `reproduce-2` 再派生也是 `reproduce-<n>`）；序号取家族里最大的加一，删掉的
+  名字记在用户库的 `.removed` 里不再发（工作区实例的 `from` 还指着它）。从零拼的由流程助理起
+  英文名，页面存的按标题里的英文词起，撞了加 `-b`、`-c`；`<库里已有的名字>-<数字>` 留给派生，
+  从零起的不许用。
 - **血缘**：文件里的 `from` 记直接父流程与派生那一刻它的结构 hash。差异不进名字：阶段、挂的
   能力、参数、断点的增删现算（`diff`）；父流程之后改过（hash 对不上）要提醒。
 - **查重**：存进库时，结构（阶段、点名的能力与参数、断点位置）与库里已有某条完全一样的拒；
@@ -43,6 +45,8 @@ from framework.contracts.workflows import (
 
 NAME_MAX = 40  # 从标题起的名字最长几个字符（不算序号）
 FRESH = "flow"  # 标题里没有英文词时的名字
+REMOVED_FILE = ".removed"  # 用户库里删掉过的名字，一行一个：平台不再把它们发给新流程
+SEQ_RE = re.compile(r"^(?P<family>.+)-(?P<seq>\d+)$")
 
 
 class DuplicateWorkflow(FileExistsError):
@@ -98,21 +102,34 @@ class Library:
             seen.add(current)
 
     def next_name(self, family: str) -> str:
-        """`<家族名>-<序号>`：从 2 起第一个没被占的（两层合起来）。"""
-        taken = set(self.names())
-        n = 2
-        while f"{family}-{n}" in taken:
-            n += 1
-        return f"{family}-{n}"
+        """`<家族名>-<序号>`：家族里最大的序号加一——库里在的、删掉过的、被 `from` 指着的都算，
+        不发一个曾经指过别的流程的名字。"""
+        seqs = [int(m["seq"]) for name in self._ever_named()
+                if (m := SEQ_RE.match(name)) and m["family"] == family]
+        return f"{family}-{max(seqs, default=1) + 1}"
 
     def suggest_name(self, title: str) -> str:
-        """从零拼、又没给名字的（页面存的）：标题里的英文词连起来，没有就是 flow；占了加序号。"""
+        """从零拼、又没给名字的（页面存的）：标题里的英文词连起来，没有就是 flow；占了加 -b、-c……
+        （数字序号留给派生，不让它看着像谁的后代）。"""
         plain = unicodedata.normalize("NFKD", title)
         plain = "".join(c for c in plain if not unicodedata.combining(c)).lower()
         base = "-".join(re.findall(r"[a-z0-9]+", plain))[:NAME_MAX].strip("-") or FRESH
         if not base[0].isalpha():
             base = f"{FRESH}-{base}"
-        return base if base not in set(self.names()) else self.next_name(base)
+        if SEQ_RE.match(base):
+            base = f"{base}-flow"
+        taken = self._ever_named()
+        for name in (base, *(f"{base}-{c}" for c in "bcdefghijklmnopqrstuvwxyz")):
+            if name not in taken:
+                return name
+        raise FileExistsError(f"从标题起的名字 {base}-b … {base}-z 都占了：换个标题")
+
+    def _ever_named(self) -> set[str]:
+        """发过的名字：两层库里在的、用户库删掉过的、库里被 `from` 指着的。"""
+        removed = self.user / REMOVED_FILE
+        gone = removed.read_text(encoding="utf-8").split() if removed.is_file() else []
+        parents = {wf.origin.name for wf in self.load_valid() if wf.origin}
+        return {*self.names(), *gone, *parents}
 
     def derive(self, parent: str) -> dict[str, Any]:
         """从库里的一条派生：照抄它（标题、说明、阶段、画布坐标），名字与 `from` 由平台填。"""
@@ -125,12 +142,12 @@ class Library:
         doc["from"] = Origin(parent, workflow.content_hash()).to_dict()
         return doc
 
-    def twin(self, workflow: Workflow) -> str | None:
+    def twin(self, workflow: Workflow) -> Workflow | None:
         """库里与它结构一模一样的另一条（不算它自己）；没有就是 None。"""
         mine = workflow.structure()
         for other in self.load_valid():
             if other.name != workflow.name and other.structure() == mine:
-                return other.name
+                return other
         return None
 
     # ── 给页面与终端 ────────────────────────────────────────────────────────
@@ -151,9 +168,9 @@ class Library:
             if workflow is None:
                 continue
             twin = self.twin(workflow)
-            # 一对一模一样的只报后到的那条：出厂的、名字靠前的不报
-            if twin and not row["shipped"] and (twin in taken or twin < row["name"]):
-                row["problems"].append(f"与 {twin} 一模一样（阶段、能力、参数、断点都相同）："
+            # 一对一模一样的只报后到的那条：出厂的不报；有血缘的报子流程，没有的报后写的那条
+            if twin and not row["shipped"] and (twin.name in taken or self._later(workflow, twin)):
+                row["problems"].append(f"与 {twin.name} 一模一样（阶段、能力、参数、断点都相同）："
                                        "删掉一条")
             row.update(lineage(workflow, self, catalog))
         return rows
@@ -163,8 +180,9 @@ class Library:
              draft: bool = False) -> Workflow:
         """存进用户库。名字不给就由平台起：带 `from`（父流程的名字）是派生，叫 `<家族名>-<序号>`；
         都不带按标题起。名字是出厂的拒、结构与库里另一条一样的拒（FileExistsError 一族，409）。
-        `draft`：流程助理 `workflow new --from` 先照抄落盘、再改文件——照抄出来的必然一模一样，
-        这一步不查重；没改出不同之前 `describe` 一直把它标成问题（`show workflows` 退 1）。"""
+        `draft`：流程助理 `workflow new` 先落盘一个起点（派生的照抄父流程、从零起的只有一个设计
+        阶段）、再改文件——起点必然与库里某条一模一样，这一步不查重；没改出不同之前 `describe`
+        一直把它标成问题（`show workflows` 退 1）。"""
         raw = dict(raw)
         origin = raw.get("from")
         if isinstance(origin, str):  # 页面只给父流程的名字：hash 由平台按它现在的样子填
@@ -178,11 +196,27 @@ class Library:
         name = raw["name"]
         if name in self.shipped_names():
             raise FileExistsError(f"{name} 是出厂的流程，不能改：换个名字另存")
+        family = SEQ_RE.match(str(name))
+        if not raw.get("from") and family and family["family"] in self._ever_named():
+            raise WorkflowInvalid(
+                f"{name} 看着像是 {family['family']} 派生的（<家族名>-<序号> 留给派生）："
+                f"从零起的换个名字；要在 {family['family']} 上改，用 --from {family['family']}")
         twin = None if draft else self.twin(_shape(raw))
         if twin:
-            raise DuplicateWorkflow(f"库里的 {twin} 和这条一模一样"
+            raise DuplicateWorkflow(f"库里的 {twin.name} 和这条一模一样"
                                     "（阶段、能力、参数、断点都相同）：直接用它，或改一处再存")
         return save_workflow(self.user, raw, catalog, skills=skills, overwrite=overwrite)
+
+    def _later(self, workflow: Workflow, other: Workflow) -> bool:
+        """一对一模一样的里，`workflow` 是不是后到的那条：有血缘的子流程后到；没有的看文件谁后写
+        （刚抄出来、刚改过的那条才是要动的），同时写的按名字。"""
+        if workflow.origin and workflow.origin.name == other.name:
+            return True
+        if other.origin and other.origin.name == workflow.name:
+            return False
+        mine, theirs = self.find(workflow.name), self.find(other.name)
+        stamp = (mine.stat().st_mtime_ns if mine else 0, workflow.name)
+        return stamp > (theirs.stat().st_mtime_ns if theirs else 0, other.name)
 
     def remove(self, name: str) -> Path:
         """删用户库里的一条：出厂的拒（WorkflowInvalid），没有的 FileNotFoundError。
@@ -194,6 +228,8 @@ class Library:
         if not path.is_file():
             raise FileNotFoundError(f"库里没有叫 {name!r} 的流程")
         path.unlink()
+        with (self.user / REMOVED_FILE).open("a", encoding="utf-8") as fh:
+            fh.write(f"{name}\n")
         return path
 
 

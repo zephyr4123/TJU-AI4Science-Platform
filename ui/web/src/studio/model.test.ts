@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import type { SkillEntry, Workflow } from '@/api/types'
 
 import {
-  append, autoLayout, byFamily, deriveFrom, dropAt, fromWorkflow, groupSkills, indexAt, insertAt, lineageLine, parseParam, place,
-  positions, problemIndices, ROW_PITCH, ROW_WIDTH, setParam, skillsFor, stageItem, stopItem, tidy, toDraft, toggleCap, WIDTH,
+  append, autoLayout, byFamily, deriveFrom, dropAt, fromWorkflow, groupSkills, inFamily, indexAt, insertAt, lineageLine, parseParam,
+  place, positions, problemIndices, ROW_PITCH, ROW_WIDTH, setParam, skillsFor, stageItem, stopItem, tidy, toDraft, toggleCap, WIDTH,
 } from './model'
 
 const strip = (draft: ReturnType<typeof fromWorkflow>) => draft.items.map((it) => (it.kind === 'stop' ? { note: it.note } : { stage: it.stage, caps: it.caps }))
@@ -129,15 +129,20 @@ describe('流程的血缘（P-15）', () => {
     expect(toDraft(fromWorkflow(own))).toMatchObject({ name: 'research-2', from: { name: 'research', hash: 'abcdef123456' } })
     expect(toDraft(fromWorkflow(flow('scratch'))).from).toBeUndefined()
   })
-  it('库按家族排：派生的跟在家族的头后面，父流程不在了的放最后', () => {
+  it('库按家族排：派生的跟在家族的头后面、序号按数字排，父流程不在了的放最后、不缩进', () => {
     const rows = [
       flow('research', { shipped: true }), flow('reproduce', { shipped: true }),
-      flow('research-3', { from: { name: 'research-2', hash: 'a'.repeat(12) }, family: 'research' }),
+      flow('research-10', { from: { name: 'research-2', hash: 'a'.repeat(12) }, family: 'research' }),
       flow('reproduce-2', { from: { name: 'reproduce', hash: 'b'.repeat(12) }, family: 'reproduce' }),
       flow('research-2', { from: { name: 'research', hash: 'c'.repeat(12) }, family: 'research' }),
-      flow('orphan-2', { from: { name: 'gone', hash: 'd'.repeat(12) }, family: 'gone' }),
+      flow('research-9', { from: { name: 'research', hash: 'e'.repeat(12) }, family: 'research' }),
+      // 后端真给的孤儿形状：父流程 reproduce-3 删了，家族走不上去，家族名就是它自己
+      flow('reproduce-4', { from: { name: 'reproduce-3', hash: 'd'.repeat(12) }, family: 'reproduce-4' }),
     ]
-    expect(byFamily(rows).map((wf) => wf.name)).toEqual(['research', 'research-2', 'research-3', 'reproduce', 'reproduce-2', 'orphan-2'])
+    const sorted = byFamily(rows)
+    expect(sorted.map((wf) => wf.name)).toEqual(
+      ['research', 'research-2', 'research-9', 'research-10', 'reproduce', 'reproduce-2', 'reproduce-4'])
+    expect(sorted.map(inFamily)).toEqual([false, true, true, true, false, true, false])
   })
   it('小字一行：派生的写改了什么，父流程改过先说', () => {
     expect(lineageLine(flow('research', { shipped: true }))).toBe('1 项，出厂')
