@@ -16,7 +16,7 @@
 domains/<id>/
 ├── profile.yaml            必有：id 与 display_name
 ├── prompts/experiment.md   可选：实验族的领域约定，随执行层提示的「领域约定」段注入
-└── skills/<name>/          可选：领域 skill，格式同 skills/（docs/add-a-skill.md）
+└── skills/<架>/<tag>/<name>/  可选：领域 skill，格式与摆法同 skills/（docs/add-a-skill.md）
 ```
 
 出厂两个：`generic/` 兜底（任何课题都能用）、`petab/` 参数估计（pyPESTO + petab + libroadrunner）。库的位置 `AI4SCI_DOMAINS_ROOT` 可指定（读取点只在 `framework/paths.py`）；装的包里在 `framework/shipped/domains/`。
@@ -47,7 +47,7 @@ display_name: PEtab 参数估计   # 给人看的名字
 ## 一步一步
 
 1. `mkdir domains/<id>`，写 `profile.yaml`。
-2. 要领域约定就写 `prompts/experiment.md`；要 skill 就照 `add-a-skill.md` 放进 `skills/<name>/`。
+2. 要领域约定就写 `prompts/experiment.md`；要 skill 就照 `add-a-skill.md` 放进 `skills/<架>/<tag>/<name>/`。
 3. `make skills`（领域 skill 也过门禁）、`make check`。
 4. 在一份需求里用：`scoring.yaml` 写 `domain: <id>`（设计阶段 `cap design --domain <id>` 会写进去）。
 5. 要用领域 skill：挂到工作区流程实例的格子上（`- 实验: [<name>]`），`ai4sci show flows` 校验，`ai4sci skill list` 里能看到它。

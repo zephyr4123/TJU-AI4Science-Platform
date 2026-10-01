@@ -20,19 +20,19 @@ skill 是 agent 随时能拿起来用的一套东西：一份说明（什么时�
 
 要产出目录、要被下游 `--from` 的做成步骤（`add-a-capability.md`）；只是读个文件、拉个仓库、教 agent 一套做法的做 skill 就够。
 
-## 三处库
+## 三处库，一种摆法
 
 ```
-skills/<name>/                         平台自带：常驻，项目里的会话一直装载（现在是 pdf、download）
-skills-curated/<架>/<name>/            收录的社区 skill：架是七个阶段的 slug（literature、hypothesis、design、
-                                       experiment、analysis、writing、verification）或 general（通用：画图、
-                                       格式转换这类）；挂到流程实例上才装载
-skills-curated/provenance.yaml         收录台账：一个 skill 一行，来源、提交、许可证、改了什么；不收的也记
-skills-curated/licenses/<上游>.txt      上游许可证原文
-domains/<包>/skills/<name>/            领域包自带的：挂到流程实例上才装载（docs/add-a-domain.md）
+skills/<架>/<tag>/<name>/                  平台自带：常驻，项目里的会话一直装载（现在是 general/materials/ 下的 pdf、download）
+skills-curated/<架>/<tag>/<name>/          收录的社区 skill：挂到流程实例上才装载
+skills-curated/provenance.yaml             收录台账：一个 skill 一行，来源、提交、许可证、改了什么；不收的也记
+skills-curated/licenses/<上游>.txt          上游许可证原文
+domains/<包>/skills/<架>/<tag>/<name>/      领域包自带的：挂到流程实例上才装载（docs/add-a-domain.md）
 ```
 
 名字 = 目录名，小写字母数字连字符；三处库合起来全局唯一。平台自己写的、每个项目都要的放 `skills/`；从开源整合包拿进来的放 `skills-curated/`（见下面「收录社区 skill」）；只给某个工具链用的放领域包。
+
+**放在哪一架、哪个 tag**（外层 #205）：分类表 `framework/skills/shelves.py` 只此一处，目录就是 skill 在编辑台能力镜头里的位置（一架一行、一个 tag 一组）。架按这个 skill 主要用在哪个研究阶段定：检索、读论文、综述、引用 → `literature`；出想法、查新、提假设 → `hypothesis`；实验设计、统计功效、模型评测 → `design`；写实验代码时用的学科工具库与框架 → `experiment`；统计分析、结果解读 → `analysis`；论文与基金写作、润色、排版、审稿回复 → `writing`；复现核对、事实核查 → `verification`；下载、读文档、画图这类哪个阶段都用的 → `general`（页面上叫「通用」）。tag 在架下面回答「干哪一行」（实验这一架有生物、化学与药物、模型训练……十几个）；表里没有合适的就在表里加一行（slug 英文、名字是不超过八个字的名词），不要硬塞进不对的 tag。摆错地方的（直接放在库根上、架下面不是表里的 tag）扫库时隔离成不合格的，`make skills` 不过。
 
 一个 skill 的目录：
 
@@ -91,7 +91,7 @@ metadata:                                   # 可选：字符串到字符串；�
 
 ## 一步一步（自己写一个）
 
-1. `mkdir skills/<name>`（平台自带）或 `domains/<包>/skills/<name>`，写 `SKILL.md`（上面的四件事）。
+1. 在分类表里找到它的架与 tag，`mkdir skills/<架>/<tag>/<name>`（平台自带）或 `domains/<包>/skills/<架>/<tag>/<name>`，写 `SKILL.md`（上面的四件事）。
 2. 要脚本就写 `scripts/<x>.py`，`uv add --script` 加依赖、`uv lock --script` 出锁。
 3. `make skills` 过门禁。
 4. 挂到一个工作区的流程实例上（`- 文献: [<name>]`），`ai4sci skill show <name>`、`ai4sci skill run <name> --help` 看一眼 agent 会看到什么。
@@ -100,7 +100,7 @@ metadata:                                   # 可选：字符串到字符串；�
 
 ## 收录社区 skill
 
-社区的 skill 整合包（几十上百个一包）拿进来，按阶段分拣进 `skills-curated/<架>/`，一个 skill 一个目录、台账一行。原则是**照原样收、只改平台跑不了的地方、改了什么记下来**：上游更新时照台账重做一遍。
+社区的 skill 整合包（几十上百个一包）拿进来，按分类表分拣进 `skills-curated/<架>/<tag>/`，一个 skill 一个目录、台账一行。原则是**照原样收、只改平台跑不了的地方、改了什么记下来**：上游更新时照台账重做一遍。
 
 ### 先判收不收
 
@@ -112,7 +112,7 @@ metadata:                                   # 可选：字符串到字符串；�
 
 ### 收进来要改的
 
-- **目录**：拷到 `skills-curated/<架>/<name>/`。架按这个 skill 主要用在哪个研究阶段定：检索、读论文、综述、引用 → `literature`；出想法、查新、提假设 → `hypothesis`；实验设计、统计功效、评分 → `design`；写实验代码时用的领域库与框架 → `experiment`；统计分析、结果解读 → `analysis`；论文与基金写作、润色、排版、审稿回复 → `writing`；复现核对、事实核查 → `verification`；画图、格式转换、文档转换这类哪个阶段都用的 → `general`。
+- **目录**：拷到 `skills-curated/<架>/<tag>/<name>/`，架与 tag 照上面「三处库，一种摆法」定。
 - **名字**：保留上游的名字；和平台自带的（`pdf` `download`）、领域包的（`petab`）、别的收录的重了，在后面加上游的短名（`-kdense`、`-nature`、`-airs`），台账记一笔。
 - **`scripts/`**：只留 `ai4sci skill run` 起得来的 Python 工具，每个补 PEP 723 头（照它的 import 写依赖）与锁；示例、别的语言的脚本挪到 `references/`。正文里 `python scripts/x.py …` 这类起法改成 `ai4sci skill run <name> --script x.py …`，提到挪走的文件的地方跟着改路径。
 - **删**：key 相关的段落与代码；让 agent 推广上游、往稿子里加某篇论文引用、上报使用情况、检查更新的段落；超过 1 MB 的文件、图片与二进制、没有授权的素材。
@@ -120,16 +120,16 @@ metadata:                                   # 可选：字符串到字符串；�
 
 ### 台账
 
-`skills-curated/provenance.yaml` 的形状在 `framework/skills/provenance.py` 文件头。收的一行：`name`、`shelf`、`upstream`、`path`（上游原路径）、`changes`（改了什么，一条一句）、按需 `license_note`；不收的一行：`upstream`、`path`、`reason`。上游的提交号、许可证与原文在 `upstreams` 里。`make skills` 对账：目录与台账一一对得上、每个上游都有行用到、许可证在可收的里（skill 自己写的认不出就要有 `license_note`）、原文在。
+`skills-curated/provenance.yaml` 的形状在 `framework/skills/provenance.py` 文件头。收的一行：`name`、`upstream`、`path`（上游原路径）、`changes`（改了什么，一条一句）、按需 `license_note`；不收的一行：`upstream`、`path`、`reason`。上游的提交号、许可证与原文在 `upstreams` 里。放在哪一架哪个 tag 不记在台账里，目录就是。`make skills` 对账：目录与台账一一对得上、每个上游都有行用到、许可证在可收的里（skill 自己写的认不出就要有 `license_note`）、原文在。
 
 ### 现在收了哪些
 
-见 `skills-curated/provenance.yaml`。按架数：`ai4sci show skills --stage <阶段>`。
+见 `skills-curated/provenance.yaml`。按架翻：`ai4sci show skills --stage <阶段>`；按 tag 翻：`ai4sci show skills <tag 名>`（`生物`、`绘图`）。
 
 ## 现在平台自带与领域包里的
 
 | skill | 库 | 做什么 |
 |---|---|---|
-| `pdf` | 平台 | 论文 PDF → `paper.md` + `images/` + `structured.json`；后端 pymupdf4llm 版面模式，两家后端的实测在 `skills/pdf/references/backends.md` |
+| `pdf` | 平台 | 论文 PDF → `paper.md` + `images/` + `structured.json`；后端 pymupdf4llm 版面模式，两家后端的实测在 `skills/general/materials/pdf/references/backends.md` |
 | `download` | 平台 | 把材料拉到工作区 `materials/`：git 仓库（可指定 commit）、单个文件（可校验 sha256）、Hugging Face 上公开的仓库；留收据 |
 | `petab` | `domains/petab` | PEtab 参数估计工具链的 API 约定，只有说明没有脚本 |

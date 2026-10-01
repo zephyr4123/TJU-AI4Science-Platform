@@ -73,7 +73,7 @@ def ws(tmp_path):
     workspace = pf.make_workspace(tmp_path, "toy")
     (workspace.materials / "val.json").write_text('{"y": [1.0]}', encoding="utf-8")
     domains = tmp_path / "domains"
-    skill = domains / "generic" / "skills" / "toy" / "SKILL.md"
+    skill = domains / "generic" / "skills" / "experiment" / "data" / "toy" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     (domains / "generic" / "profile.yaml").write_text("id: generic\n", encoding="utf-8")
     skill.write_text(SKILL_MD, encoding="utf-8")

@@ -18,27 +18,35 @@ from framework.workspace import loadout
 from framework.workspace import project as project_mod
 from tests.fixtures import packs_factory as pf
 from tests.fixtures import spaces
-from tests.test_skills import EMPTY_LEDGER, HELLO_PY, write_skill
+from tests.test_skills import (
+    BIOLOGY,
+    EMPTY_LEDGER,
+    HELLO_PY,
+    MANUSCRIPT,
+    MATERIALS,
+    SEARCH,
+    write_skill,
+)
 
 
 @pytest.fixture
 def lib(tmp_path, monkeypatch):
-    """三处库：平台自带 pdf；收录 literature/paper-lookup、writing/polish（带脚本）、一个坏的；
+    """三处库：平台自带 pdf；收录 文献·检索 paper-lookup、写作·论文 polish（带脚本）、一个坏的；
     领域包 petab。"""
     resident = tmp_path / "skills"
     curated = tmp_path / "skills-curated"
     domains = tmp_path / "domains"
-    write_skill(resident, "pdf")
-    write_skill(curated / "literature", "paper-lookup", "# 查论文\n\n参考 references/api.md\n")
-    (curated / "literature" / "paper-lookup" / "references").mkdir()
-    (curated / "literature" / "paper-lookup" / "references" / "api.md").write_text(
+    write_skill(resident / MATERIALS, "pdf")
+    write_skill(curated / SEARCH, "paper-lookup", "# 查论文\n\n参考 references/api.md\n")
+    (curated / SEARCH / "paper-lookup" / "references").mkdir()
+    (curated / SEARCH / "paper-lookup" / "references" / "api.md").write_text(
         "接口手册\n", encoding="utf-8")
-    write_skill(curated / "writing", "polish", "# 润色\n\n`ai4sci skill run polish`\n",
+    write_skill(curated / MANUSCRIPT, "polish", "# 润色\n\n`ai4sci skill run polish`\n",
                 scripts={"go.py": HELLO_PY})
-    write_skill(curated / "writing", "broken", front="---\ndescription: 少了 name\n---\n")
+    write_skill(curated / MANUSCRIPT, "broken", front="---\ndescription: 少了 name\n---\n")
     (curated / "provenance.yaml").write_text(EMPTY_LEDGER, encoding="utf-8")
     (domains / "petab").mkdir(parents=True)
-    write_skill(domains / "petab" / "skills", "petab")
+    write_skill(domains / "petab" / "skills" / BIOLOGY, "petab")
     monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(resident))
     monkeypatch.setenv(paths.CURATED_SKILLS_ROOT_ENV, str(curated))
     monkeypatch.setenv(paths.DOMAINS_ROOT_ENV, str(domains))
@@ -177,15 +185,16 @@ def test_cli_inside_a_project_only_reaches_the_loadout(lib, capfd, monkeypatch):
     _flow(ws, "a", "  - 文献: [paper-lookup]\n")
     monkeypatch.chdir(project_mod.of(ws).root)
     assert main(["skill", "list"]) == 0
-    assert capfd.readouterr().out.splitlines() == ["pdf\t平台\t夹具 pdf",
-                                                   "paper-lookup\t收录·文献\t夹具 paper-lookup"]
+    assert capfd.readouterr().out.splitlines() == ["pdf\t通用·资料\t夹具 pdf",
+                                                   "paper-lookup\t文献·检索\t夹具 paper-lookup"]
     assert main(["skill", "show", "paper-lookup"]) == 0
     out = capfd.readouterr().out
     assert "files: references/api.md" in out and "ai4sci skill show paper-lookup <文件>" in out
-    assert out.startswith("# paper-lookup\t收录·文献\n") and str(lib) not in out  # 不给库的路径
+    assert out.startswith("# paper-lookup\t文献·检索\n") and str(lib) not in out  # 不给库的路径
     assert main(["skill", "show", "paper-lookup", "references/api.md"]) == 0
     assert capfd.readouterr().out == "接口手册\n"
-    assert main(["skill", "show", "paper-lookup", "../../../skills/pdf/SKILL.md"]) == 2
+    outside = "../../../../skills/general/materials/pdf/SKILL.md"  # 从 paper-lookup 跳到别的 skill
+    assert main(["skill", "show", "paper-lookup", outside]) == 2
     assert "没有文件" in capfd.readouterr().err
     # 没挂的：读、跑都拒，说清先挂到流程上
     assert main(["skill", "show", "polish"]) == 1
@@ -212,16 +221,19 @@ def test_show_skills_searches_the_whole_library_and_marks_the_loadout(lib, capfd
     assert [r.split("\t")[0] for r in capfd.readouterr().out.splitlines()] == ["polish", "broken"]
     assert main(["show", "skills", "夹具", "LOOKUP"]) == 0  # 词都要有、不分大小写
     assert [r.split("\t")[0] for r in capfd.readouterr().out.splitlines()] == ["paper-lookup"]
-    assert main(["show", "skills", "写作"]) == 0  # 中文的阶段名认出处（「收录·写作」）
+    assert main(["show", "skills", "写作"]) == 0  # 中文词认位置里的阶段名（「写作·论文」）
     assert [r.split("\t")[0] for r in capfd.readouterr().out.splitlines()] == ["polish", "broken"]
+    assert main(["show", "skills", "检索"]) == 0  # 也认 tag 名
+    assert [r.split("\t")[0] for r in capfd.readouterr().out.splitlines()] == ["paper-lookup"]
     assert main(["show", "skills", "nothing-like-this"]) == 0
     captured = capfd.readouterr()
     assert captured.out == "" and "换英文词" in captured.err and "--stage" in captured.err
     assert main(["show", "skills", "--stage", "杂项"]) == 2
     assert main(["show", "skills", "--json"]) == 0
     doc = json.loads(capfd.readouterr().out)
-    assert {"name": "polish", "where": "收录·写作", "library": "收录", "shelf": "writing",
-            "loaded": False, "description": "夹具 polish", "problems": []} in doc
+    assert {"name": "polish", "where": "写作·论文", "library": "收录", "shelf": "writing",
+            "tag": "manuscript", "loaded": False, "description": "夹具 polish",
+            "problems": []} in doc
 
 
 def test_cap_refuses_steps_the_project_does_not_load(lib, capfd, monkeypatch):

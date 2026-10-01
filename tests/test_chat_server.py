@@ -198,6 +198,10 @@ def test_everything_named_in_the_page_api_carries_a_readable_name(tmp_path, monk
         assert status == 200 and {"pdf", "download"} <= set(skills)
         assert skills["pdf"]["kind"] == "skill" and skills["pdf"]["title"] == "pdf"
         assert skills["pdf"]["brief"] and skills["pdf"]["scripts"]
+        # 位置是能力镜头里的一行一组（外层 #205）；出处不给页面
+        assert (skills["pdf"]["stage"], skills["pdf"]["tag"]) == ("通用", "资料")
+        assert skills["scanpy"]["stage"] == "实验" and skills["scanpy"]["tag"] == "生物"
+        assert all("where" not in s and "library" not in s for s in skills.values())
         assert skills["pdf"]["used_by"] == ["reproduce"]
         assert all("body" not in s for s in skills.values())  # 几百个，正文按名字单取
         status, _, body = call(base, "/skills/pdf")

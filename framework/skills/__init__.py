@@ -3,8 +3,9 @@
 
 框架自己注入、自己起脚本，不靠任何 agent 的原生机制：
 
-- `library`：扫三处库（平台自带 `skills/`、收录 `skills-curated/<架>/`、领域包
-  `domains/<包>/skills/`），宽进地校验、不合格的隔离出去、按名字找。
+- `shelves`：分类表，架（七个阶段加通用）→ tag；三处库都按它摆成 `<架>/<tag>/<name>/`。
+- `library`：扫三处库（平台自带 `skills/`、收录 `skills-curated/`、领域包 `domains/<包>/skills/`），
+  宽进地校验、不合格与摆错地方的隔离出去、按名字找。
 - `provenance`：收录库的台账 `provenance.yaml`（来源、提交、许可证、改了什么）与目录对账。
 - `catalog`：把一个项目装载的那套（`workspace/loadout.py`，纲领 P-26）拼成 `<available_skills>`
   进 prompt。

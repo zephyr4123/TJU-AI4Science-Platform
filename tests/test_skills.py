@@ -21,7 +21,7 @@ import yaml
 from framework import paths, skills
 from framework.chat import guide
 from framework.cli import main
-from framework.skills import library, provenance, run
+from framework.skills import library, provenance, run, shelves
 from framework.workspace import project as project_mod
 from tests.fixtures import spaces
 
@@ -56,6 +56,12 @@ def _lock(script: Path) -> None:
 
 
 EMPTY_LEDGER = "upstreams: {}\nskills: []\nrejected: []\n"
+# 夹具常用的几格：skill 放在库的 <架>/<tag>/ 下面（分类表 framework/skills/shelves.py）
+MATERIALS = Path("general", "materials")
+PLOTTING = Path("general", "plotting")
+SEARCH = Path("literature", "search")
+MANUSCRIPT = Path("writing", "manuscript")
+BIOLOGY = Path("experiment", "biology")
 
 
 @pytest.fixture
@@ -84,7 +90,7 @@ def test_shipped_libraries_pass_the_gate_and_names_are_unique():
     names = [s.name for s in found.skills]
     assert len(names) == len(set(names))
     pdf = skills.find("pdf")
-    assert pdf.library == library.RESIDENT and pdf.where == "平台"
+    assert pdf.library == library.RESIDENT and pdf.where == "通用·资料"
     assert [p.name for p in pdf.scripts] == ["extract.py"]
     assert library.lock_path(pdf.scripts[0]).is_file()
     petab = skills.find("petab")
@@ -250,10 +256,10 @@ def test_scan_isolates_bad_and_duplicate_skills_without_dropping_the_rest(tmp_pa
     """一个坏的不拖垮整库：好的照常在，坏的与重名的（后到的那个）带原因隔离出去。"""
     resident = tmp_path / "skills"
     domain = tmp_path / "domain-skills"
-    write_skill(resident, "dup")
-    write_skill(resident, "good")
-    write_skill(domain, "dup")
-    write_skill(resident, "bad", front="---\ndescription: x\n---\n")
+    write_skill(resident / MATERIALS, "dup")
+    write_skill(resident / MATERIALS, "good")
+    write_skill(domain / BIOLOGY, "dup")
+    write_skill(resident / MATERIALS, "bad", front="---\ndescription: x\n---\n")
     found = library.scan([library.Root(library.RESIDENT, resident),
                           library.Root("petab", domain)])
     assert [s.name for s in found.skills] == ["dup", "good"]
@@ -262,31 +268,62 @@ def test_scan_isolates_bad_and_duplicate_skills_without_dropping_the_rest(tmp_pa
     assert {i.name for i in found.invalid} == {"dup", "bad"}
 
 
-def test_curated_library_is_sorted_onto_stage_shelves(libraries):
-    """收录库按阶段分架：架决定出处的说法；查找只看目录名，三处合起来唯一，重名就报。"""
+def test_three_libraries_are_laid_out_by_shelf_and_tag(libraries):
+    """三处库同一种摆法 <架>/<tag>/<name>/（外层 #205）：位置就是目录，清单按分类表的序（架 → tag →
+    库）排；查找只看目录名，三处合起来唯一，重名就报。"""
     resident, curated, domains = libraries
-    write_skill(resident, "pdf")
-    write_skill(curated / "literature", "paper-lookup")
-    write_skill(curated / "general", "plot-style")
-    write_skill(domains / "petab" / "skills", "petab")
+    write_skill(resident / MATERIALS, "pdf")
+    write_skill(curated / SEARCH, "paper-lookup")
+    write_skill(curated / PLOTTING, "plot-style")
+    write_skill(domains / "petab" / "skills" / BIOLOGY, "petab")
     found = skills.everything()
-    assert [(s.name, s.where) for s in found.skills] == [
-        ("pdf", "平台"), ("paper-lookup", "收录·文献"), ("plot-style", "收录·通用"),
-        ("petab", "petab")]
-    assert skills.find("paper-lookup").shelf == "literature"
-    assert library.shelf_of("文献") == "literature" and library.shelf_of("通用") == "general"
+    assert [(s.name, s.library, s.where) for s in found.skills] == [
+        ("paper-lookup", "收录", "文献·检索"), ("petab", "petab", "实验·生物"),
+        ("pdf", "平台", "通用·资料"), ("plot-style", "收录", "通用·绘图")]
+    assert found.invalid == ()
+    paper = skills.find("paper-lookup")
+    assert (paper.shelf, paper.tag) == ("literature", "search")
+    assert shelves.shelf_of("文献") == "literature" and shelves.shelf_of("通用") == "general"
     with pytest.raises(ValueError, match="不是阶段"):
-        library.shelf_of("杂项")
-    write_skill(curated / "writing", "pdf")
+        shelves.shelf_of("杂项")
+    write_skill(curated / MANUSCRIPT, "pdf")
     with pytest.raises(skills.SkillInvalid, match="重名"):
         skills.find("pdf")
     with pytest.raises(skills.SkillNotFound, match="show skills"):
         skills.find("nope")
 
 
+def test_a_skill_off_the_table_is_isolated_not_dropped(libraries):
+    """摆错地方的（直接放在库根上、架下面不是表里的 tag）不悄悄从清单里消失：隔离成不合格的、说清
+    该放哪；收录库根上的许可证原文目录与台账不算。"""
+    resident, curated, _ = libraries
+    write_skill(resident, "loose")
+    write_skill(curated / "writing", "flat")
+    write_skill(curated / "misc" / "x", "odd")
+    (curated / "licenses").mkdir()
+    found = skills.everything()
+    assert found.skills == ()
+    reasons = {i.name: i.problems[0] for i in found.invalid}
+    assert set(reasons) == {"loose", "flat", "misc"}
+    assert reasons["loose"].startswith("loose 不是架") and "shelves.py" in reasons["loose"]
+    assert reasons["flat"].startswith("writing/flat 不是这一架的 tag（有：manuscript、")
+    assert all(i.where == "" for i in found.invalid)  # 不在表里，就没有位置
+
+
+def test_every_shelf_has_tags_and_names_are_unique():
+    """分类表：每一架都有 tag，一架里 slug 与名字都不重；名字不超过八个字（标签一行放得下）。"""
+    assert tuple(shelves.TAGS) == shelves.SHELVES
+    for shelf, tags in shelves.TAGS.items():
+        assert tags, shelf
+        assert len({t.slug for t in tags}) == len(tags) == len({t.name for t in tags}), shelf
+        assert all(len(t.name) <= 8 for t in tags), shelf
+    assert shelves.place("experiment", "biology") == "实验·生物"
+    assert shelves.place("general", "materials") == "通用·资料"
+
+
 def test_skill_files_are_readable_but_never_outside_the_skill(libraries, tmp_path):
     resident, _, _ = libraries
-    directory = write_skill(resident, "router")
+    directory = write_skill(resident / MATERIALS, "router")
     (directory / "static").mkdir()
     (directory / "static" / "part.md").write_text("片段\n", encoding="utf-8")
     (tmp_path / "secret.txt").write_text("不许读\n", encoding="utf-8")
@@ -335,17 +372,17 @@ def test_ledger_wants_every_upstream_used_and_odd_skill_licenses_explained(tmp_p
     """上游声明了却一行没用（来源记错了）不过；skill 自己写的许可证认不出是宽松的，台账那行要写
     license_note 说明为什么能收（同一个包里个别 skill 可能是专有或非商用的，add-a-skill.md）。"""
     curated = tmp_path / "skills-curated"
-    write_skill(curated / "writing", "plain",
+    write_skill(curated / MANUSCRIPT, "plain",
                 front="---\nname: plain\ndescription: x\nlicense: BSD-3-Clause license\n---\n")
-    write_skill(curated / "writing", "odd",
+    write_skill(curated / MANUSCRIPT, "odd",
                 front="---\nname: odd\ndescription: x\nlicense: https://example.org/LICENSE\n---\n")
     (curated / "licenses").mkdir()
     for key in ("up", "idle"):
         (curated / "licenses" / f"{key}.txt").write_text("MIT\n", encoding="utf-8")
     ups = "".join(f"  {k}:\n    title: {k}\n    url: https://x/{k}\n    commit: abc\n"
                   f"    license: MIT\n    license_file: licenses/{k}.txt\n" for k in ("up", "idle"))
-    rows = ("  - {name: plain, shelf: writing, upstream: up, path: s/plain}\n"
-            "  - {name: odd, shelf: writing, upstream: up, path: s/odd}\n")
+    rows = ("  - {name: plain, upstream: up, path: s/plain}\n"
+            "  - {name: odd, upstream: up, path: s/odd}\n")
     (curated / "provenance.yaml").write_text(f"upstreams:\n{ups}skills:\n{rows}rejected: []\n",
                                              encoding="utf-8")
     with pytest.raises(provenance.LedgerInvalid) as exc:
@@ -363,8 +400,8 @@ def test_ledger_wants_every_upstream_used_and_odd_skill_licenses_explained(tmp_p
 def test_ledger_must_match_the_shelves(tmp_path):
     """收录台账（provenance.yaml）与目录一一对得上、许可证在可收的里、原文在 licenses/。"""
     curated = tmp_path / "skills-curated"
-    write_skill(curated / "literature", "paper-lookup")
-    write_skill(curated / "writing", "stray")
+    write_skill(curated / SEARCH, "paper-lookup")
+    write_skill(curated / MANUSCRIPT, "stray")
     (curated / "licenses").mkdir()
     (curated / "licenses" / "up.txt").write_text("MIT\n", encoding="utf-8")
     ledger = curated / "provenance.yaml"
@@ -373,15 +410,15 @@ def test_ledger_must_match_the_shelves(tmp_path):
         "    license: MIT\n    license_file: licenses/up.txt\n"
         "  nc:\n    title: NC\n    url: https://y\n    commit: def\n"
         "    license: CC-BY-NC-4.0\n    license_file: licenses/nc.txt\n"
-        "skills:\n  - {name: paper-lookup, shelf: writing, upstream: up, path: s/p}\n"
-        "  - {name: ghost, shelf: literature, upstream: up, path: s/g}\n"
+        "skills:\n  - {name: paper-lookup, upstream: up, path: s/p}\n"
+        "  - {name: ghost, upstream: up, path: s/g}\n"
         "rejected:\n  - {upstream: up, path: s/r}\n", encoding="utf-8")
     with pytest.raises(provenance.LedgerInvalid) as exc:
         provenance.check(curated)
     text = str(exc.value)
     for expected in ("CC-BY-NC-4.0", "licenses/nc.txt 不在",
-                     "writing/stray: 在收录库里但台账里没有", "ghost: 台账里有但收录库里没有",
-                     "paper-lookup: 台账写架 writing，目录在 literature", "rejected 第 1 行"):
+                     "writing/manuscript/stray: 在收录库里但台账里没有",
+                     "ghost: 台账里有但收录库里没有", "rejected 第 1 行"):
         assert expected in text, expected
 
 
@@ -389,7 +426,8 @@ def test_ledger_must_match_the_shelves(tmp_path):
 def test_catalog_is_xml_with_one_line_per_skill_and_lists_the_unusable(libraries):
     resident, _, _ = libraries
     assert skills.catalog_text([]) == ""
-    write_skill(resident, "pdf", front="---\nname: pdf\ndescription: 解析 <PDF> & 图\n---\n")
+    write_skill(resident / MATERIALS, "pdf",
+                front="---\nname: pdf\ndescription: 解析 <PDF> & 图\n---\n")
     text = skills.catalog_text(skills.resident().skills)
     assert text.startswith("## 工具包\n\n<available_skills>\n")
     line = "  <skill><name>pdf</name><description>解析 &lt;PDF&gt; &amp; 图</description></skill>"
@@ -439,20 +477,20 @@ def test_cli_outside_a_project_sees_every_library(libraries, capfd, tmp_path, mo
     test_workspace_loadout。"""
     resident, curated, domains = libraries
     monkeypatch.chdir(tmp_path)
-    write_skill(resident, "echo", "# echo\n\n运行：`ai4sci skill run echo -- x`\n",
+    write_skill(resident / MATERIALS, "echo", "# echo\n\n运行：`ai4sci skill run echo -- x`\n",
                 scripts={"go.py": HELLO_PY})
-    write_skill(curated / "writing", "polish")
-    write_skill(domains / "petab" / "skills", "petab")
-    write_skill(resident, "broken", front="---\ndescription: x\n---\n")
+    write_skill(curated / MANUSCRIPT, "polish")
+    write_skill(domains / "petab" / "skills" / BIOLOGY, "petab")
+    write_skill(resident / MATERIALS, "broken", front="---\ndescription: x\n---\n")
     assert main(["skill", "list"]) == 0
     out = capfd.readouterr().out.splitlines()
-    assert out[:3] == ["echo\t平台\t夹具 echo", "polish\t收录·写作\t夹具 polish",
-                       "petab\tpetab\t夹具 petab"]
+    assert out[:3] == ["petab\t实验·生物\t夹具 petab", "polish\t写作·论文\t夹具 polish",
+                       "echo\t通用·资料\t夹具 echo"]
     assert out[3].startswith("broken\t不可用\t") and "缺 name" in out[3]
 
     assert main(["skill", "show", "echo"]) == 0
     out = capfd.readouterr().out
-    assert out.startswith("# echo\t平台\n")
+    assert out.startswith("# echo\t通用·资料\n")
     assert "scripts: go.py" in out and "运行：`ai4sci skill run echo -- x`" in out
     assert main(["skill", "show", "nope"]) == 2
     assert "show skills" in capfd.readouterr().err
@@ -470,7 +508,7 @@ def test_cli_run_takes_script_before_or_after_the_skill_name(libraries, capfd, t
     不递给脚本（argparse 把名字后面的全当脚本参数，要自己摘出来，与 --ws 同一个做法）。"""
     resident, _, _ = libraries
     monkeypatch.chdir(tmp_path)
-    write_skill(resident, "two", "# two\n\n`ai4sci skill run two --script b.py`\n",
+    write_skill(resident / MATERIALS, "two", "# two\n\n`ai4sci skill run two --script b.py`\n",
                 scripts={"a.py": HELLO_PY, "b.py": HELLO_PY})
     assert main(["skill", "run", "two", "--script", "b.py", "--x", "1"]) == 0
     assert json.loads(capfd.readouterr().out.strip()) == {"args": ["--x", "1"]}
@@ -493,7 +531,7 @@ def test_cli_run_with_ws_starts_the_script_inside_that_workspace(libraries, capf
     里 download 拉到了项目 materials/，reproduction --code 却只找工作区的 materials/，两边对不上）。
     `--ws` 写在 skill 名前后都认，且不递给脚本。"""
     resident, _, _ = libraries
-    write_skill(resident, "where", "# where\n\n运行：`ai4sci skill run where`\n",
+    write_skill(resident / MATERIALS, "where", "# where\n\n运行：`ai4sci skill run where`\n",
                 scripts={"go.py": CWD_PY})
     ws = spaces.make_workspace(tmp_path, "w1")
     monkeypatch.chdir(project_mod.of(ws).root)
@@ -516,43 +554,44 @@ def _make_skills() -> subprocess.CompletedProcess:
 
 def test_make_skills_gates_all_libraries_and_warms_only_the_resident(libraries):
     resident, curated, _ = libraries
-    write_skill(resident, "echo", scripts={"go.py": HELLO_PY})
+    write_skill(resident / MATERIALS, "echo", scripts={"go.py": HELLO_PY})
     proc = _make_skills()
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.splitlines() == ["平台\t1 个 skill\t1 个脚本\t0 条提醒"]
     # 一个不合格就不过（出厂的三处库我们自己负责）
-    bad = write_skill(curated / "writing", "Bad_Name", front="---\nname: x\ndescription: y\n---\n")
+    bad = write_skill(curated / MANUSCRIPT, "Bad_Name", front="---\nname: x\ndescription: y\n---\n")
     proc = _make_skills()
     assert proc.returncode == 1 and "Bad_Name" in proc.stderr
     shutil.rmtree(bad)
     # 收录的进了目录却不在台账里也不过
-    write_skill(curated / "writing", "polish")
+    write_skill(curated / MANUSCRIPT, "polish")
     proc = _make_skills()
     assert proc.returncode == 1 and "台账里没有" in proc.stderr
-    shutil.rmtree(curated / "writing" / "polish")
+    shutil.rmtree(curated / MANUSCRIPT / "polish")
     # 零 key
-    write_skill(resident, "keyed", "# x\n\n先设 OPENAI_API_KEY\n")
+    write_skill(resident / MATERIALS, "keyed", "# x\n\n先设 OPENAI_API_KEY\n")
     proc = _make_skills()
     assert proc.returncode == 1 and "零 key" in proc.stderr
-    shutil.rmtree(resident / "keyed")
+    shutil.rmtree(resident / MATERIALS / "keyed")
     # 规范外的字段：收录的只提醒、照过；平台自带的要干净，算问题
-    write_skill(curated / "writing", "extra",
+    write_skill(curated / MANUSCRIPT, "extra",
                 front="---\nname: extra\ndescription: x\nversion: 1\n---\n")
     (curated / "licenses").mkdir()
     (curated / "licenses" / "up.txt").write_text("MIT\n", encoding="utf-8")
     (curated / "provenance.yaml").write_text(
         "upstreams:\n  up: {title: up, url: https://x/up, commit: abc, license: MIT,"
         " license_file: licenses/up.txt}\n"
-        "skills:\n  - {name: extra, shelf: writing, upstream: up, path: s/extra}\nrejected: []\n",
+        "skills:\n  - {name: extra, upstream: up, path: s/extra}\nrejected: []\n",
         encoding="utf-8")
     proc = _make_skills()
     assert proc.returncode == 0, proc.stderr
-    write_skill(resident, "loose", front="---\nname: loose\ndescription: x\nversion: 1\n---\n")
+    write_skill(resident / MATERIALS, "loose",
+                front="---\nname: loose\ndescription: x\nversion: 1\n---\n")
     proc = _make_skills()
     assert proc.returncode == 1 and "loose" in proc.stderr and "规范之外的字段" in proc.stderr
-    shutil.rmtree(resident / "loose")
+    shutil.rmtree(resident / MATERIALS / "loose")
     # 平台自带的声明了系统命令就要在 PATH 上
-    write_skill(resident, "needs", front="---\nname: needs\ndescription: x\nmetadata:\n"
+    write_skill(resident / MATERIALS, "needs", front="---\nname: needs\ndescription: x\nmetadata:\n"
                                          "  ai4sci-system-tools: definitely-not-a-command\n---\n")
     proc = _make_skills()
     assert proc.returncode == 1 and "definitely-not-a-command" in proc.stderr
@@ -563,7 +602,7 @@ def test_download_skill_clones_at_a_commit_and_checks_sha256(tmp_path):
     sha256，不对就删掉退 4；目录已存在退 2。不联网：上游是本地 git 仓，文件走 file://。"""
     import hashlib
 
-    fetch = REPO_ROOT / "skills" / "download" / "scripts" / "fetch.py"
+    fetch = next(p for p in skills.find("download").scripts if p.name == "fetch.py")
     up = tmp_path / "up"
     up.mkdir()
     subprocess.run(["git", "init", "-q", str(up)], check=True)

@@ -8,6 +8,13 @@
 
 ## [Unreleased]
 
+### 新增
+- skill 分类表 `framework/skills/shelves.py`：七个阶段加「通用」，每架再分 tag（实验分生物、化学与药物、模型训练等 18 个，共 37 个），202 个 skill 全部归位（#205）
+
+### 变更
+- skill 三处库同一种摆法 `<库>/<架>/<tag>/<name>/`，摆错地方的隔离成不合格、`make skills` 不过。迁移：自加的 skill 与领域包的 `skills/<name>/` 挪进分类表里的 `<架>/<tag>/`（#205）
+- `GET /skills` 去掉 `library` `shelf` `where`、加 `stage` `tag`；`show skills` 等的位置一列写「实验·生物」，中文词也认 tag 名；收录台账去掉 `shelf`，位置以目录为准（#205）
+
 ## [1.1.1] - 2026-10-01
 
 ### 修复
