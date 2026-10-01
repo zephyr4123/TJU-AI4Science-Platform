@@ -64,7 +64,6 @@ class ScriptedChat:
     # 顶着真适配器的名字：按人的设置按名字查这家用什么（P-25），剧本不在 `_BACKENDS` 里
     name = "claude_code"
     cost_reporting = "turn"
-    guide_channel = "turn"
 
     def __init__(self, turns: list[list[ChatEvent]], knobs: Knobs = KNOBS,
                  cost_reporting: str = "turn") -> None:

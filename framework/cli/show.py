@@ -1,12 +1,13 @@
 """`ai4sci show projects | project | workspace | outputs [<stage>] | output <stage>/<n> | jobs
 | job <id>
-| flows | caps | workflows | templates | template <name> | computes`
+| flows | caps | skills [词…] | workflows | templates | template <name> | computes`
 
 在 cli 层。这一组只看不做：不产出文件、不起会话、不改任何东西。与 `ai4sci serve` 的 GET
 端点读的是同一批函数（`chat.boards`）——页面和终端是同一份数据的两张脸。project 看的是当前项目
 （每个工作区一行，助理的全局视角就是它）；workspace / outputs / output / jobs / flows 看的是一个
 工作区
-（`--ws`，P-15）；caps / workflows / templates 看的是库。
+（`--ws`，P-15）；caps / skills / workflows / templates 看的是库（skills 在项目里标出本项目
+装了没有，纲领 P-26）。
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import argparse
 import json
 import sys
 
-from framework import computes, paths
+from framework import computes, paths, skills
 from framework.capabilities import abilities, discover
 from framework.chat import boards
 from framework.cli._common import (
@@ -28,10 +29,11 @@ from framework.cli._common import (
     library,
 )
 from framework.cli.workspace import read_template
-from framework.contracts import output, workflows
+from framework.contracts import output, workflow_library, workflows
 from framework.contracts.capability import COLUMNS
 from framework.contracts.stages import STAGE_SLUGS, STAGES
-from framework.workspace import jobs, outputs, project
+from framework.skills.library import shelf_of
+from framework.workspace import jobs, loadout, outputs, project
 
 
 def cmd_projects(args: argparse.Namespace) -> int:
@@ -225,10 +227,54 @@ def cmd_caps(args: argparse.Namespace) -> int:
                   f"\tused_by={','.join(uses.get(d.name, [])) or '-'}")
             for key, label in COLUMNS:
                 print(f"  {label}：{getattr(d, key)}")
-    # 能力库的另一半：tag 为 skill 的，哪个阶段都能挂、随手用（ai4sci skill show <name> 看全文）
-    for entry in abilities.skill_entries():
-        used = ",".join(uses.get(entry["name"], [])) or "-"
-        print(f"skill\t{entry['name']}\t{entry['brief']}\tused_by={used}")
+    # 能力库的另一半：tag 为 skill 的，几百个，这里只按出处计数；清单与一句话由 show skills 查
+    entries = abilities.skill_entries()
+    for where in dict.fromkeys(e["where"] for e in entries):
+        mine = [e for e in entries if e["where"] == where]
+        used = ",".join(dict.fromkeys(f for e in mine for f in uses.get(e["name"], []))) or "-"
+        print(f"skill\t{where}\t{len(mine)} 个\tused_by={used}")
+    print("skill 的清单与一句话：ai4sci show skills [词…] [--stage <阶段>]")
+    return EXIT_OK
+
+
+def cmd_skills(args: argparse.Namespace) -> int:
+    """查库：三处库的 skill，按词与架筛——词要都出现在名字、出处（「收录·写作」）或一句话里；
+    在项目里标出本项目装了没有。一句话多是上游的英文：中文词只认得出处里的阶段名。"""
+    try:
+        shelf = shelf_of(args.stage) if args.stage else ""
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_USAGE
+    here = loadout.here()
+    loaded = None if here is None else {s.name for s in here.skills}
+    found = skills.everything()
+    words = [w.lower() for w in args.words]
+
+    def hit(name: str, where: str, text: str, skill_shelf: str) -> bool:
+        haystack = f"{name} {where} {text}".lower()
+        return all(w in haystack for w in words) and (not shelf or skill_shelf == shelf)
+
+    rows = [{"name": s.name, "where": s.where, "library": s.library, "shelf": s.shelf,
+             "loaded": None if loaded is None else s.name in loaded,
+             "description": s.description, "problems": []}
+            for s in found.skills if hit(s.name, s.where, s.description, s.shelf)]
+    rows += [{"name": i.name, "where": i.where, "library": i.library, "shelf": i.shelf,
+              "loaded": False, "description": "", "problems": list(i.problems)}
+             for i in found.invalid if hit(i.name, i.where, "", i.shelf)]
+    if args.json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return EXIT_OK
+    for row in rows:
+        mark = ("不可用" if row["problems"] else "-" if row["loaded"] is None
+                else "已装载" if row["loaded"] else "未装载")
+        text = row["problems"][0] if row["problems"] else row["description"]
+        print(f"{row['name']}\t{row['where']}\t{mark}\t{text}")
+    if not rows:
+        print("（一个都没查到：一句话多是英文，换英文词；或按阶段翻 "
+              "ai4sci show skills --stage <阶段|通用>）", file=sys.stderr)
+    else:
+        print(f"（{len(rows)} 个；读一个先挂到流程实例上，再 ai4sci skill show <name>）"
+              if loaded is not None else f"（{len(rows)} 个）", file=sys.stderr)
     return EXIT_OK
 
 
@@ -253,7 +299,12 @@ def cmd_flows(args: argparse.Namespace) -> int:
     ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
-    return _print_flows(workflows.describe_dir(ws.flows, _catalog(), _skills()), args.json)
+    rows = workflows.describe_dir(ws.flows, _catalog(), _skills())
+    lib, readable = library(), {wf.name: wf for wf in workflows.load_valid(ws.flows)}
+    for row in rows:  # 实例也记了取自库里哪条：差异照算（P-15）
+        if row["name"] in readable:
+            row.update(workflow_library.lineage(readable[row["name"]], lib, _catalog()))
+    return _print_flows(rows, args.json)
 
 
 def _print_flows(found: list[dict], as_json: bool, *, source: bool = False) -> int:
@@ -265,6 +316,10 @@ def _print_flows(found: list[dict], as_json: bool, *, source: bool = False) -> i
             stages = " → ".join(_stage_word(item) for item in wf["stages"])
             where = ("\t出厂" if wf["shipped"] else "\t自定义") if source else ""
             print(f"{wf['name']}\t{wf['title']}{where}\t{stages or '-'}")
+            if wf.get("from"):
+                changed = "（它在派生之后改过）" if wf.get("parent_changed") else ""
+                print(f"  ← 派生自 {wf['from']['name']}{changed}：" + ("；".join(wf["diff"])
+                                                                   or "还没改"))
             for remark in wf["remarks"]:
                 print(f"  · {remark}")
             for problem in wf["problems"]:
@@ -338,6 +393,12 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
                            help="能力清单：七个研究阶段各有什么能力、每个五栏说明，带用在哪几条流程")
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     caps.set_defaults(func=cmd_caps)
+    found = what.add_parser(
+        "skills", help="查库里的 skill：名字、出处、本项目装了没有、一句话（按词、按阶段筛）")
+    found.add_argument("words", nargs="*", help="要有的词（名字、出处、一句话里都算，不分大小写）")
+    found.add_argument("--stage", default="", help="收录库的哪一架：七个阶段的名字，或「通用」")
+    found.add_argument("--json", action="store_true", help="打 JSON")
+    found.set_defaults(func=cmd_skills)
     wfs = what.add_parser("workflows",
                           help="库里的流程（出厂的 workflows/ 与人存的 studio/workflows/）："
                                "来源、经过哪些阶段、有无问题")

@@ -13,7 +13,7 @@
 - `tests/fixtures/packs_factory.py`：假工作区与设计那包（`make_workspace`、`make_pack`、`default_scoring`、各种 launcher 文本）；`runs_factory.py`：假实验目录；`spaces.py`：项目 + 工作区。
 - `tests/fixtures/scripted_backend.py`（`ScriptedRunner`）与 `scripted_chat.py`：**剧本后端**，形状与真 `Runner` / `Chat` 完全一致，「这一轮执行层干了什么」由剧本一条条给出（真改进、假改进、改坏、动 harness、崩溃、超时…），`changed_files` 走 `backends/_snapshot` 同一份快照 diff。框架的正确性不由模型的发挥证明（P-5）。
 - `tests/conftest.py` 的 autouse 夹具把按人的算力清单、底座清单、Codex 私有 home 都指到 tmp：测试绝不读开发机的配置（第一次就真的 ssh 到远端机器跑了起来）。
-- 测试不依赖仓里的样例项目（P-5）：夹具自带领域包与 skill；仓里的样例只在「在就校验」的用例里用（`test_experiment_pack.py::test_real_pack_*`）。出厂件目录（`workflows/` `templates/` `domains/` `skills/`）本身要在，`paths.py` 指不到目录会当场炸。
+- 测试不依赖仓里的样例项目（P-5）：夹具自带领域包与 skill；仓里的样例只在「在就校验」的用例里用（`test_experiment_pack.py::test_real_pack_*`）。出厂件目录（`workflows/` `templates/` `domains/` `skills/` `skills-curated/`）本身要在，`paths.py` 指不到目录会当场炸。
 - 不用 `unittest.mock` 去替换框架内部的函数；要换的是端口（传剧本后端进去）或环境变量（`monkeypatch.setenv`）。`monkeypatch.setattr("framework.cli._common.get_backend", …)` 这种只用来把剧本后端塞进 CLI。
 
 ## 3. 三种写法
@@ -36,7 +36,7 @@
 
 ## 5. 门禁
 
-`make check` = `changelog`（CHANGELOG 格式）→ `lint`（ruff，含 BLE 不吞异常）→ `skills`（SKILL.md 校验 + 脚本锁文件 + uv 预热，唯一联网的一步）→ `test`（pytest）→ `ui-check`（素材不进仓 + tsc + oxlint + vitest + 构建）。CI 跑的就是这一句。
+`make check` = `changelog`（CHANGELOG 格式）→ `lint`（ruff，含 BLE 不吞异常）→ `skills`（三处库的 SKILL.md 与脚本锁文件、零 key、收录台账对账、平台自带的 uv 预热）→ `test`（pytest）→ `ui-check`（素材不进仓 + tsc + oxlint + vitest + 构建）。CI 跑的就是这一句。
 
 - 提交前跑 `make check`，不接 `| tail`（管道会吞退出码）：`make check > /tmp/check.log 2>&1; echo $?`。
 - 没有覆盖率工具，也不设覆盖率门槛：判据是爆炸半径——改了行为的地方有测试，改了检查器的地方有反例。

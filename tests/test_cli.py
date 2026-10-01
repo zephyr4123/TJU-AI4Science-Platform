@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from compute.local import LocalCompute
 from framework.contracts import output, requirement
@@ -126,6 +127,7 @@ def test_outside_a_workspace_is_a_usage_error_that_says_what_to_do(tmp_path):
 def test_show_workspace_walks_requirement_outputs_flows_and_jobs(tmp_path):
     run_dir, pack = rf.make_run(tmp_path)
     rf.write_analysis(pack, rf.good_analysis(run_dir))
+    (pack.workspace.flows / "open.yaml").unlink()  # 夹具那条敞开的流程不是这里要看的
     (pack.workspace.flows / "research.yaml").write_text(
         (REPO_ROOT / "workflows" / "research.yaml").read_text(encoding="utf-8"), encoding="utf-8")
     proc = run_cli("show", "workspace", cwd=run_dir)  # 从产出目录里往上找得到工作区
@@ -239,7 +241,7 @@ def test_cap_auto_research_opens_an_output_and_continues_it(tmp_path, monkeypatc
     assert out.rstrip().endswith("output=experiment/1")
     meta = output.read_meta(run_dir)
     assert meta.status == "ok" and meta.by == "auto-research" and meta.input_ids == ["design/1"]
-    assert meta.requirement == 1 and meta.flow is None and meta.result.startswith("stop ")
+    assert meta.requirement == 1 and meta.flow == "open" and meta.result.startswith("stop ")
     assert (run_dir / "checkpoint.json").is_file() and (run_dir / "work" / ".git").is_dir()
     # 接着跑：同一个产出，不另开；换输入不行；不是它产的不行
     assert main(["cap", "auto-research", "--continue", "experiment/1"]) == EXIT_OK
@@ -465,7 +467,7 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
         "design", "reproduction", "auto-research", "analysis", "reproducibility", "verify"}
     assert {"pdf", "download"} <= {n for n, c in doc.items() if c["kind"] == "skill"}
     assert doc["pdf"]["used_by"] == ["reproduce"] and doc["pdf"]["brief"]
-    assert "scripts" in doc["pdf"]
+    assert "scripts" in doc["pdf"] and "body" not in doc["pdf"]  # 正文只经 skill show（过装载）
     assert doc["auto-research"]["used_by"] == ["research"] and doc["verify"]["used_by"] == []
     assert doc["design"]["stage"] == "设计" and doc["design"]["stage_slug"] == "design"
     assert doc["auto-research"]["continuable"] is True
@@ -514,6 +516,48 @@ def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
     assert (ws.flows / "quick.yaml").is_file()
     proc = run_cli("flow", "take", "nope", cwd=ws.root, env=env)
     assert proc.returncode == EXIT_USAGE and "有：quick, reproduce, research" in proc.stderr
+
+    taken = yaml.safe_load((ws.flows / "quick.yaml").read_text(encoding="utf-8"))
+    assert taken["from"]["name"] == "quick"  # 实例也记取自哪条（P-15）
+
+    # 派生：名字与 from 由平台填，先照抄落成草稿（不查重）；没改之前 show workflows 一直标着
+    # 「一模一样」，改出不同就好了（页面存是当场拒，那边草稿在内存里）
+    proc = run_cli("workflow", "new", "--from", "research", "--title", "研究二", env=env)
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert proc.stdout.startswith(f"ok research-2\t{mine / 'research-2.yaml'}\tfrom=research")
+    draft = yaml.safe_load((mine / "research-2.yaml").read_text(encoding="utf-8"))
+    assert draft["from"]["name"] == "research" and draft["title"] == "研究二"
+    proc = run_cli("show", "workflows", env=env)
+    assert proc.returncode == EXIT_INVALID and "与 research 一模一样" in proc.stderr
+    draft["stages"] = draft["stages"][:-1]
+    (mine / "research-2.yaml").write_text(yaml.safe_dump(draft, allow_unicode=True),
+                                          encoding="utf-8")
+    proc = run_cli("show", "workflows", env=env)
+    assert proc.returncode == EXIT_OK and "← 派生自 research：去掉断点「验收」" in proc.stdout
+    (mine / "research-2.yaml").unlink()
+    assert run_cli("workflow", "new", "--from", "nope", env=env).returncode == EXIT_USAGE
+    assert run_cli("workflow", "new", "x", "--from", "quick", env=env).returncode == EXIT_USAGE
+    proc = run_cli("workflow", "new", "scratch", "--title", "从零", env=env)
+    assert proc.returncode == EXIT_OK
+    assert proc.stdout.startswith(f"ok scratch\t{mine / 'scratch.yaml'}")
+    # 从零起的骨架也是草稿：连起两条（骨架一样）都起得来，改出不同之前标着「一模一样」
+    proc = run_cli("workflow", "new", "another", "--title", "又一条", env=env)
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert "与 scratch 一模一样" in run_cli("show", "workflows", env=env).stderr
+    (mine / "another.yaml").unlink()
+    # <库里已有的名字>-<数字> 留给派生：从零起的不许用
+    proc = run_cli("workflow", "new", "research-7", "--title", "冒名", env=env)
+    assert proc.returncode == EXIT_INVALID and "--from research" in proc.stderr
+    assert run_cli("workflow", "new", "scratch2", env=env).returncode == EXIT_USAGE  # 缺标题
+    (mine / "quick.yaml").write_text(
+        "name: quick\ntitle: 快看\nsummary: 只看一眼\nstages:\n"
+        "  - 实验: {auto-research: {max_iters: 2}}\n  - 分析\n  - 验证\n", encoding="utf-8")
+    child = yaml.safe_load((mine / "quick.yaml").read_text(encoding="utf-8"))
+    child |= {"name": "quick-2", "stages": child["stages"][:2],
+              "from": {"name": "quick", "hash": "0" * 12}}
+    (mine / "quick-2.yaml").write_text(yaml.safe_dump(child, allow_unicode=True), encoding="utf-8")
+    proc = run_cli("show", "workflows", env=env)
+    assert "  ← 派生自 quick（它在派生之后改过）：去掉阶段「验证」" in proc.stdout
 
     proc = run_cli("workflow", "remove", "research", env=env)
     assert proc.returncode == EXIT_INVALID and "出厂的流程，不能删" in proc.stderr
@@ -860,6 +904,12 @@ def test_serve_helpers_check_a_draft_and_list_the_catalog(tmp_path, monkeypatch)
     assert bad["problems"] == ["第 2 项与第 3 项都是断点：两个断点挨着等于一个"]
     bad = serve._check_workflow({"stages": [{"设计": ["verify"]}]})
     assert "属于「验证」阶段" in bad["problems"][0]
+    # 载入出厂的再改（派生）：页面带着父流程的名字，查的只是阶段，血缘存的时候才落（P-15）
+    derived = serve._check_workflow({"from": "reproduce", "stages": ["设计", "分析"]})
+    assert derived["problems"] == []
+    kept = serve._check_workflow({"from": {"name": "reproduce", "hash": "abcdef123456"},
+                                  "stages": ["设计"]})
+    assert kept["problems"] == []
     catalog = {c["name"]: c for c in serve._catalog()}
     assert catalog["auto-research"]["used_by"] == ["research"] and catalog["verify"]["does"]
     assert [w["name"] for w in serve._workflows()] == ["reproduce", "research"]

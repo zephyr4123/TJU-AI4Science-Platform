@@ -15,7 +15,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from framework import paths
+from framework import paths, skills
 from framework.capabilities import abilities, discover, stage_table
 from framework.chat import guide, settings
 from framework.chat.server import ChatServer
@@ -43,7 +43,7 @@ def _descriptors() -> dict[str, object]:
 
 
 def _skill_names() -> frozenset[str]:
-    """两处库里 skill 的名字；与步骤重名当场报，不让页面拿到分辨不出的清单。"""
+    """三处库里 skill 的名字；与步骤重名当场报，不让页面拿到分辨不出的清单。"""
     names = abilities.skill_names()
     abilities.check_disjoint(set(discover()), names)
     return names
@@ -57,10 +57,20 @@ def _catalog() -> list[dict]:
 
 
 def _skills() -> list[dict]:
-    """能力库里 tag 为 skill 的那些：名字、一行、SKILL.md 正文、脚本名，加反查出来的 used_by。"""
+    """能力库里 tag 为 skill 的那些：名字、一行、出处、脚本名，加反查出来的 used_by。"""
     uses = workflows.used_by(library().load_valid())
     return [{**entry, "used_by": uses.get(entry["name"], [])}
             for entry in abilities.skill_entries()]
+
+
+def _skill(name: str) -> dict | None:
+    """一个 skill 带正文；没有是 None（404），不合格的 SkillInvalid 是 ValueError（422）。"""
+    try:
+        detail = abilities.skill_detail(name)
+    except skills.SkillNotFound:
+        return None
+    uses = workflows.used_by(library().load_valid())
+    return {**detail, "used_by": uses.get(name, [])}
 
 
 def _workflows() -> list[dict]:
@@ -72,20 +82,22 @@ def _descriptor_map() -> dict[str, object]:
 
 
 def _save_workflow(doc: dict) -> dict:
-    """编辑台存流程：核对形状与通不通，写进用户库（出厂的名字拒），回它在清单里的样子。"""
+    """编辑台存流程：名字不给由平台起（派生的 `<家族名>-<序号>`，P-15），核对形状、通不通、
+    与库里有没有一模一样的，写进用户库（出厂的名字拒），回它在清单里的样子（带家族与差异）。"""
     catalog, skills = _descriptors(), _skill_names()
     overwrite = bool(doc.pop("overwrite", False))
-    saved = library().save(doc, catalog, skills=skills, overwrite=overwrite)
-    [described] = workflows.describe([saved], catalog, skills)
-    return described
+    lib = library()
+    saved = lib.save(doc, catalog, skills=skills, overwrite=overwrite)
+    return next(row for row in lib.describe(catalog, skills) if row["name"] == saved.name)
 
 
 def _check_workflow(doc: dict) -> dict:
     """编辑台拼着的那条流程有没有问题：与存流程同一套检查，只查不写；形状不对也当问题报，页面不该为此
-    拿 500。名字、标题、说明还没填是常态（人先排阶段），这里只查阶段那部分，三样空着的补个占位。"""
+    拿 500。名字、标题、说明还没填是常态（人先排阶段），这里只查阶段那部分，三样空着的补个占位；
+    `from`（载入出厂的再改时带着父流程的名字）是存的时候才落的血缘，不归这里查（P-15）。"""
     catalog = _descriptors()
     name = str(doc.get("name") or "").strip() or "draft"
-    doc = {k: v for k, v in doc.items() if k != "overwrite"}
+    doc = {k: v for k, v in doc.items() if k not in ("overwrite", "from")}
     doc = {**doc, "name": name, "title": str(doc.get("title") or "").strip() or "-",
            "summary": str(doc.get("summary") or "").strip() or "-"}
     try:
@@ -108,7 +120,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     setup_logging()
     try:
         server = ChatServer((args.host, args.port), home=paths.home(), catalog=_catalog,
-                            skills=_skills, skill_names=_skill_names,
+                            skills=_skills, skill=_skill, skill_names=_skill_names,
                             workflows=_workflows, check_workflow=_check_workflow,
                             save_workflow=_save_workflow, descriptors=_descriptor_map,
                             stage_table=stage_table, add_compute=_add_compute, ui_dir=ui_dir)

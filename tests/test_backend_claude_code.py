@@ -441,10 +441,13 @@ def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
     second = chat.build_argv("继续", tmp_path, session_id=SID, **common)
     assert "--resume" not in first
     assert second[second.index("--resume") + 1] == SID
+    # 指南只在开会话那一轮送：续接时 CLI 沿用开会话那份，再送也不生效（实测 2.1.286，见适配器
+    # 文件头），中途变了由框架把变了的几节塞进话里
+    assert first[first.index("--append-system-prompt") + 1] == "指南"
+    assert "--append-system-prompt" not in second
     for argv in (first, second):
         assert "--no-session-persistence" not in argv, "多轮靠 CLI 的会话持久化，不能关"
         assert all(flag in argv for flag in ISOLATION_ARGS if flag)
-        assert argv[argv.index("--append-system-prompt") + 1] == "指南"
         assert "--permission-mode" in argv and "dontAsk" in argv
         assert "--dangerously-skip-permissions" not in argv
         rules = argv[argv.index("--allowedTools") + 1: argv.index("--max-turns")]
@@ -454,10 +457,9 @@ def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
     assert picked[picked.index("--model") + 1] == "opus"
 
 
-def test_chat_tool_guide_and_guide_channel():
-    """P-25：协调层的「工具怎么用」是这家的（Read / Glob / Grep）；每轮整份送指南（turn）。"""
+def test_chat_tool_guide_is_this_clis_own():
+    """P-25：协调层的「工具怎么用」是这家的（Read / Glob / Grep）。"""
     chat = ClaudeCodeChat()
-    assert chat.guide_channel == "turn"
     text = chat.tool_guide(("ai4sci", ".venv/bin/ai4sci"))
     assert "Read / Glob / Grep" in text and "`ai4sci …`" in text and "Bash 只放行" in text
 

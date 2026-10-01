@@ -1,8 +1,8 @@
 # 接一个领域包
 
-给要往平台里加一个领域包的人。读完照做，不用问人。验收标准：**新建一个目录、放一份 `profile.yaml`，`cap design --domain <id>` 认它、执行层的 skill 清单里出现它的 skill。** 卡在哪一步，就是这份文档的 bug，请开 issue。
+给要往平台里加一个领域包的人。读完照做，不用问人。验收标准：**新建一个目录、放一份 `profile.yaml`，`cap design --domain <id>` 认它；它的 skill 挂到流程实例上之后，执行层的 skill 清单里出现它。** 卡在哪一步，就是这份文档的 bug，请开 issue。
 
-为什么是这套规矩，见外层纲领 P-5、P-11、P-18、P-22（`docs/architecture/README.md`）。这里只讲怎么做。
+为什么是这套规矩，见外层纲领 P-5、P-18、P-22、P-26（`docs/architecture/README.md`）。这里只讲怎么做。
 
 ## 领域包是什么、不是什么
 
@@ -40,9 +40,9 @@ display_name: PEtab 参数估计   # 给人看的名字
 
 ## skills/
 
-领域 skill 与平台通用的 `skills/` 同一种格式（agentskills.io：`SKILL.md` + `scripts/` + `references/`，脚本 PEP 723 自带依赖并锁进仓），接法见 `docs/add-a-skill.md`。两处库合起来名字唯一。
+领域 skill 与平台自带的 `skills/`、收录的 `skills-curated/` 同一种格式（agentskills.io：`SKILL.md` + `scripts/` + `references/`，脚本 PEP 723 自带依赖并锁进仓），接法见 `docs/add-a-skill.md`。三处库合起来名字唯一。
 
-只进**执行层**的清单：起执行层会话时框架把所选领域包的 skill 与通用 skill 一起拼成 `<available_skills>`（`framework/skills/library.py::for_executor`），执行层 `ai4sci skill show / run` 读与跑；研究助理只拿通用的（纲领 P-11 两层 skill 物理隔离）。不快照、不注入正文：清单里只有名字与一句话，执行层读的是库里的现版本，读了什么在那一轮的事件流里。
+**挂到流程实例上才装载**（纲领 P-26）：选了哪个领域包（`scoring.yaml` 的 `domain`）只决定实验族的「领域约定」，不决定装哪些 skill。要用领域 skill，把它挂到工作区流程实例的格子上（`- 实验: [petab]`）；挂上之后研究助理与执行层的 `<available_skills>` 里都有它（`framework/workspace/loadout.py`），`ai4sci skill show / run` 读与跑。不快照、不注入正文：清单里只有名字与一句话，读的是库里的现版本，读了什么在那一轮的事件流里。
 
 ## 一步一步
 
@@ -50,6 +50,7 @@ display_name: PEtab 参数估计   # 给人看的名字
 2. 要领域约定就写 `prompts/experiment.md`；要 skill 就照 `add-a-skill.md` 放进 `skills/<name>/`。
 3. `make skills`（领域 skill 也过门禁）、`make check`。
 4. 在一份需求里用：`scoring.yaml` 写 `domain: <id>`（设计阶段 `cap design --domain <id>` 会写进去）。
-5. CHANGELOG 的 Unreleased 加一行，commit message 引外层 issue。
+5. 要用领域 skill：挂到工作区流程实例的格子上（`- 实验: [<name>]`），`ai4sci show flows` 校验，`ai4sci skill list` 里能看到它。
+6. CHANGELOG 的 Unreleased 加一行，commit message 引外层 issue。
 
 不改 `framework/`。测试不依赖仓里的领域包（P-5，夹具自带）；`domains/` 目录本身要在，`paths.py` 指不到会当场炸。

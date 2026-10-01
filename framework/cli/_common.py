@@ -21,7 +21,7 @@ from backends import BackendNotFound, get_backend
 from compute import ComputeNotFound
 from framework import computes, paths
 from framework.contracts.capability import Ports
-from framework.contracts.workflows import Library
+from framework.contracts.workflow_library import Library
 from framework.workspace import jobs, project, root
 from framework.workspace.project import Project
 from framework.workspace.root import Workspace

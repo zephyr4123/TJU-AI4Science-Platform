@@ -1,10 +1,12 @@
 """流程：经过几个阶段、按什么顺序，哪几个阶段完了要人签（纲领 P-18、P-19）。
 
-一个流程一个 YAML。库是两层合起来看（`Library`）：出厂的在 `workflows/`（随代码走、只读），人在
-编辑台存的在数据根 `studio/workflows/`（流程助理与页面只写这里）；工作区 `flows/` 里的是取来改过
-参数的实例（研究助理用），三处同一套检查。它是预装的走法，不是平台本身：平台是七个研究阶段和每个阶段里的能力。
+一个流程一个 YAML。库是两层合起来看（`workflow_library.Library`：两层、起名、血缘、查重）：
+出厂的在 `workflows/`（随代码走、只读），人在编辑台存的在数据根 `studio/workflows/`（流程助理
+与页面只写这里）；工作区 `flows/` 里的是取来改过参数的实例（研究助理用），三处同一套检查。它是
+预装的走法，不是平台本身：平台是七个研究阶段和每个阶段里的能力。
 
-    name: research               # 目录里唯一，等于文件名去掉 .yaml
+    name: research               # 机器名：目录里唯一，等于文件名去掉 .yaml；由平台起（P-15）
+    from: {name: research, hash: 3f2a9c1e0b7d}  # 可选：派生自哪条、派生时它的结构 hash
     title: 从课题到验证
     summary: 一段人话
     stages:
@@ -27,11 +29,13 @@
 与 skill（任何阶段都能挂、不带参数——它的参数在调用时给）；`describe` 给每个名字标 `kind`，页面与
 `show flows` 照着分开画。
 阶段之间没有显式的输入输出接口：检查只看阶段名对不对、点名的能力在不在那个阶段、参数名与类型对不对、断点位置合不合法
-（不能开头就是断点、不能两个断点挨着）。一个阶段里要的东西盘上有没有，是那个能力开始执行时自己查的（P-7）。
+（不能开头就是断点、不能两个断点挨着）、一格里同一个能力只挂一次。一个阶段里要的东西盘上有没有，是那个能力开始执行时自己查的（P-7）。
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
@@ -44,7 +48,7 @@ from framework.contracts.capability import PARAM_TYPES, Capability
 from framework.contracts.stages import STAGE_NAMES as STAGES
 
 STOP = "断点"
-# 格子上挂的名字的两种 tag（framework/abilities.py 是出处；这里只是响应体里的两个词）
+# 格子上挂的名字的两种 tag（framework/capabilities/abilities.py 是出处；这里只是响应体里的两个词）
 KIND_STEP = "步骤"
 KIND_SKILL = "skill"
 # 文件名就是流程的名字（P-13）：小写英文加连字符，页面存流程时也按这个拒
@@ -94,6 +98,18 @@ class Stop:
 
 
 @dataclass(frozen=True)
+class Origin:
+    """派生自哪条（直接父流程的名字）与派生那一刻它的结构 hash：父流程之后改过，hash 对不上，
+    差异就知道该提醒（纲领 P-15）。"""
+
+    name: str
+    hash: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"name": self.name, "hash": self.hash}
+
+
+@dataclass(frozen=True)
 class Workflow:
     name: str
     title: str
@@ -101,6 +117,23 @@ class Workflow:
     stages: tuple[Stage | Stop, ...] = ()
     """页面画布上每一项的坐标（与 stages 一样长），人摆过才有；框架不读它。"""
     layout: tuple[tuple[float, float], ...] | None = None
+    origin: Origin | None = None  # 文件里的 `from`
+
+    def structure(self) -> tuple:
+        """结构：阶段、点名的能力与参数、断点位置。标题、说明、断点那句话、画布坐标不算——
+        查重与 hash 都按它（纲领 P-15）。与差异（`workflow_library.diff`）同一个口径：一格里挂的
+        先后不算（按名字排）、参数 2 与 2.0 是同一个值。"""
+        return tuple(
+            ("stage", item.stage, tuple(sorted(
+                (p.cap, tuple(sorted((k, json.dumps(_plain(v), sort_keys=True))
+                                     for k, v in p.with_.items())))
+                for p in item.picks)))
+            if isinstance(item, Stage) else ("stop",)
+            for item in self.stages)
+
+    def content_hash(self) -> str:
+        return hashlib.sha256(json.dumps(self.structure(), ensure_ascii=False)
+                              .encode("utf-8")).hexdigest()[:12]
 
     @property
     def caps(self) -> list[str]:
@@ -118,6 +151,7 @@ class Workflow:
 
     def to_dict(self, kinds: dict[str, str] | None = None) -> dict[str, Any]:
         return {"name": self.name, "title": self.title, "summary": self.summary,
+                "from": self.origin.to_dict() if self.origin else None,
                 "stages": [r.to_dict(kinds) if isinstance(r, Stage) else r.to_dict()
                            for r in self.stages],
                 "layout": [list(xy) for xy in self.layout] if self.layout else None}
@@ -178,7 +212,21 @@ def parse_workflow(filename: str, raw: Any) -> Workflow:
             raise WorkflowInvalid(
                 f"{filename}: 第 {i} 项与第 {i + 1} 项都是断点：两个断点挨着等于一个")
     return Workflow(name=name, title=title.strip(), summary=" ".join(summary.split()),
-                    stages=stages, layout=_layout(filename, raw.get("layout"), len(stages)))
+                    stages=stages, layout=_layout(filename, raw.get("layout"), len(stages)),
+                    origin=_origin(filename, raw.get("from")))
+
+
+HASH_RE = re.compile(r"[0-9a-f]{8,64}")
+
+
+def _origin(filename: str, raw: Any) -> Origin | None:
+    """`from: {name, hash}`：没有就是从零拼的。"""
+    if raw is None:
+        return None
+    if not (isinstance(raw, dict) and set(raw) == {"name", "hash"}
+            and NAME_RE.fullmatch(str(raw["name"])) and HASH_RE.fullmatch(str(raw["hash"]))):
+        raise WorkflowInvalid(f"{filename}: from 要是 {{name: 父流程的名字, hash: 它的结构 hash}}")
+    return Origin(str(raw["name"]), str(raw["hash"]))
 
 
 def _layout(filename: str, raw: Any, count: int) -> tuple[tuple[float, float], ...] | None:
@@ -254,9 +302,11 @@ def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability
     if path.exists() and not overwrite:
         raise FileExistsError(
             f"已经有一条叫 {workflow.name!r} 的流程：{path}；换个名字，或者明说覆盖")
-    doc: dict[str, Any] = {"name": workflow.name, "title": workflow.title,
-                           "summary": workflow.summary,
-                           "stages": [_item_doc(item) for item in workflow.stages]}
+    doc: dict[str, Any] = {"name": workflow.name}
+    if workflow.origin:
+        doc["from"] = workflow.origin.to_dict()
+    doc |= {"title": workflow.title, "summary": workflow.summary,
+            "stages": [_item_doc(item) for item in workflow.stages]}
     if workflow.layout:
         doc["layout"] = [_Row((round(x), round(y))) for x, y in workflow.layout]
     Path(root).mkdir(parents=True, exist_ok=True)
@@ -265,72 +315,13 @@ def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability
     return workflow
 
 
-@dataclass(frozen=True)
-class Library:
-    """流程库的两层：出厂的（随代码走，只读；平台的底，不能改不能删——主人 2026-09-22）与人自己
-    存的（在数据根，编辑台写它；外层 #149）。名字全库唯一、以出厂的为准：存与出厂重名的拒，手搬进
-    用户库的在清单里标成问题。用户库可以还不存在，读到的就是空。"""
-    shipped: Path
-    user: Path
-
-    def shipped_names(self) -> frozenset[str]:
-        return frozenset(_stems(self.shipped))
-
-    def names(self) -> list[str]:
-        return sorted({*_stems(self.shipped), *_stems(self.user)})
-
-    def find(self, name: str) -> Path | None:
-        """一条流程的文件，出厂的在前；没有就是 None。"""
-        for root in (self.shipped, self.user):
-            path = root / f"{name}.yaml"
-            if path.is_file():
-                return path
-        return None
-
-    def load_valid(self) -> list[Workflow]:
-        """两层里读得出来的流程，出厂在前；用户库里与出厂重名的不算（反查 used_by 用）。"""
-        taken = self.shipped_names()
-        mine = [wf for wf in load_valid(self.user) if wf.name not in taken]
-        return load_valid(self.shipped) + mine
-
-    def describe(self, catalog: dict[str, Capability],
-                 skills: Collection[str] = ()) -> list[dict[str, Any]]:
-        """给页面与 `show workflows` 的清单：出厂在前、每条标 `shipped`；重名的那条带一句问题。"""
-        rows = describe_dir(self.shipped, catalog, skills, shipped=True)
-        taken = self.shipped_names()
-        for row in describe_dir(self.user, catalog, skills):
-            if row["name"] in taken:
-                row["problems"].append(f"与出厂的流程 {row['name']} 重名：改名或删掉这份")
-            rows.append(row)
-        return rows
-
-    def save(self, raw: dict[str, Any], catalog: dict[str, Capability], *,
-             skills: Collection[str] = (), overwrite: bool = False) -> Workflow:
-        """存进用户库；名字是出厂的拒（FileExistsError，与同名不覆盖同一种拒法）。"""
-        name = raw.get("name")
-        if name in self.shipped_names():
-            raise FileExistsError(f"{name} 是出厂的流程，不能改：换个名字另存")
-        return save_workflow(self.user, raw, catalog, skills=skills, overwrite=overwrite)
-
-    def remove(self, name: str) -> Path:
-        """删用户库里的一条：出厂的拒（WorkflowInvalid），没有的 FileNotFoundError。
-        取到工作区的实例是拷贝，不受影响。"""
-        if name in self.shipped_names():
-            raise WorkflowInvalid(
-                f"{name} 是出厂的流程，不能删（出厂的：{sorted(self.shipped_names())}）")
-        path = self.user / f"{name}.yaml"
-        if not path.is_file():
-            raise FileNotFoundError(f"库里没有叫 {name!r} 的流程")
-        path.unlink()
-        return path
-
-
-def _stems(root: Path) -> list[str]:
-    return sorted(p.stem for p in Path(root).glob("*.yaml")) if Path(root).is_dir() else []
-
-
 class _Row(list):
     """layout 里的一对坐标：写成一行 `[x, y]`，不拆成两行。"""
+
+
+def _plain(value: Any) -> Any:
+    """结构里参数值的口径：整数值的小数当整数（页面的 JS 把 2.0 存成 2，助理可能写 2.0）。"""
+    return int(value) if isinstance(value, float) and value.is_integer() else value
 
 
 def _represent_row(dumper: yaml.SafeDumper, data: _Row) -> yaml.Node:
@@ -359,6 +350,9 @@ def workflow_problems(workflow: Workflow, catalog: dict[str, Capability],
     for i, item in enumerate(workflow.stages, start=1):
         if not isinstance(item, Stage):
             continue
+        names = [p.cap for p in item.picks]
+        problems += [f"第 {i} 项「{item.stage}」里 {cap} 挂了不止一次：留一个"
+                     for cap in sorted({n for n in names if names.count(n) > 1})]
         for pick in item.picks:
             cap = catalog.get(pick.cap)
             label = f"第 {i} 项「{item.stage}」里的 {pick.cap}"
@@ -367,8 +361,8 @@ def workflow_problems(workflow: Workflow, catalog: dict[str, Capability],
                     problems.append(f"{label} 是 skill，不带参数：它的参数在调用时给")
                 continue
             if cap is None:
-                problems.append(f"{label}：没有这个能力（步骤：{sorted(catalog)}；"
-                                f"skill：{sorted(skills)}）")
+                problems.append(f"{label}：没有这个能力，拼错了？（步骤：{sorted(catalog)}；"
+                                f"skill 用 ai4sci show skills <词> 查）")
                 continue
             if cap.stage != item.stage:
                 problems.append(

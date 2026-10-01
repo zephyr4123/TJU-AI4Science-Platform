@@ -25,12 +25,18 @@
     POST /settings/computes/<name>/remove   删一台
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
     GET  /cap                               能力描述符清单：每个带 stage、五栏与 used_by
-    GET  /skills                            能力库里 tag 为 skill 的：名字、一行、正文、脚本名
+    GET  /skills                            能力库里 tag 为 skill 的：名字、一行、出处、脚本名、
+                                            used_by（不带正文）
+    GET  /skills/<name>                     一个 skill：同一行加 SKILL.md 正文；没有 404
     GET  /workflows                         库：出厂的 `workflows/*.yaml` + 人存的
-                                            `studio/workflows/*.yaml`，每条带 shipped 与
-                                            covers / remarks / problems
-    POST /workflows                         {name, title, summary, stages[, overwrite]}
-                                            → 存进人存的那层（与出厂重名拒 409）
+                                            `studio/workflows/*.yaml`，每条带 shipped、
+                                            covers / remarks / problems 与 family / diff /
+                                            parent_changed（P-15 血缘）
+    POST /workflows                         {name?, from?, title, summary, stages[, overwrite]}
+                                            → 存进人存的那层。name 空着由平台起（带 from 的叫
+                                            <家族名>-<序号>，不带的按标题里的英文词）；from 给
+                                            父流程的名字（hash 平台填）或 {name, hash}。与出厂
+                                            重名、结构与库里某条一模一样都拒 409
     POST /workflows/check                   同一个 body，只查不存：covers / remarks / problems
     POST /workflows/<name>/remove           删人存的一条流程（出厂的拒 403）
     GET  /templates                         需求模板的库：名字、标题、一句说明、原文
@@ -95,7 +101,7 @@ from backends import (
 )
 from framework import agents, computes, paths
 from framework.chat import boards, conversation, guide, notify, removal, scope, settings
-from framework.contracts import output, requirement, stages, workflows
+from framework.contracts import output, requirement, stages, workflow_library, workflows
 from framework.contracts.capability import Capability
 from framework.workspace import jobs, outputs, project, root
 from framework.workspace import removal as ws_removal
@@ -120,6 +126,7 @@ class ChatServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], *, home: Path,
                  catalog: Callable[[], list[dict[str, Any]]],
                  skills: Callable[[], list[dict[str, Any]]] = lambda: [],
+                 skill: Callable[[str], dict[str, Any] | None] = lambda name: None,
                  skill_names: Callable[[], frozenset[str]] = frozenset,
                  workflows: Callable[[], list[dict[str, Any]]],
                  stage_table: Callable[[], list[dict[str, Any]]] = stages.to_dicts,
@@ -135,6 +142,7 @@ class ChatServer(ThreadingHTTPServer):
         self.home = Path(home).resolve()
         self.catalog = catalog
         self.skills = skills
+        self.skill = skill
         self.skill_names = skill_names
         self.workflows = workflows
         # 阶段表：cli 注入带主文件与它页面上的名字的那份（主文件表在 capabilities，chat 层不认识它）
@@ -153,21 +161,21 @@ class ChatServer(ThreadingHTTPServer):
         self.add_compute = add_compute or _no_add_compute
         # 页面构建目录；None 就是没构建，根路径回一句怎么构建，接口照常
         self.ui_dir = None if ui_dir is None else Path(ui_dir).resolve()
-        # 两份指南在起服务时各读一次：文件不在当场炸，不等第一条消息才发现。这里存的是不带
-        # 「工具怎么用」的那份；发消息时按这段对话那家适配器补上它自己的那段（`system_prompt_for`）
-        self.system_prompts = ({kind: guide.system_prompt(kind) for kind in guide.KINDS}
-                               if system_prompts is None else system_prompts)
-        self._injected_prompts = system_prompts is not None
+        # 两份指南在起服务时各读一次：文件不在当场炸，不等第一条消息才发现。真拼 system prompt 在
+        # 发消息时（研究助理那份带本项目装载的 skill 清单，每轮现算，纲领 P-26）；测试可以整份注入
+        if system_prompts is None:
+            for kind in guide.KINDS:
+                guide.system_prompt(kind)
+        self.system_prompts = system_prompts
 
-    def system_prompt_for(self, kind: str, chat: Chat) -> str:
-        """这个域的指南 + 这家 CLI 的「工具怎么用」。真指南由 guide 拼（那段插在前言之后）；
-        测试注入的
-        指南直接接在后面。"""
-        tool = chat.tool_guide(guide.bash_rules(kind))
-        if self._injected_prompts:
-            base = self.system_prompts[kind]
-            return base + ("\n\n" + tool.strip() + "\n" if tool.strip() else "")
-        return guide.system_prompt(kind, tool_guide=tool)
+    def system_prompt_for(self, where: scope.Scope, chat: Chat) -> str:
+        """这个域的指南 + 这家 CLI 的「工具怎么用」+（研究助理）本项目装载的 skill 清单，由 scope
+        拼；测试注入的指南直接接上「工具怎么用」。"""
+        if self.system_prompts is None:
+            return where.system_prompt(chat)
+        tool = chat.tool_guide(guide.bash_rules(where.kind))
+        return self.system_prompts[where.kind] + ("\n\n" + tool.strip() + "\n" if tool.strip()
+                                                  else "")
 
     @property
     def projects_root(self) -> Path:
@@ -225,6 +233,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.server.catalog())
         if parts == ["skills"]:
             return self._json(self.server.skills())
+        if len(parts) == 2 and parts[0] == "skills":
+            found = self.server.skill(parts[1])
+            if found is None:
+                return self._error(HTTPStatus.NOT_FOUND, f"库里没有叫 {parts[1]!r} 的 skill")
+            return self._json(found)
         if parts == ["workflows"]:
             return self._json(self.server.workflows())
         if parts == ["templates"]:
@@ -325,8 +338,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._post_settings(parts[1:], body)
         if len(parts) == 3 and parts[0] == "workflows" and parts[2] == "remove":
             try:
-                workflows.Library(paths.workflows_root(),
-                                  paths.user_workflows_root(self.server.home)).remove(parts[1])
+                workflow_library.Library(paths.workflows_root(), paths.user_workflows_root(
+                    self.server.home)).remove(parts[1])
             except FileNotFoundError as exc:
                 return self._error(HTTPStatus.NOT_FOUND, str(exc))
             except workflows.WorkflowInvalid as exc:  # 出厂的
@@ -503,7 +516,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream(self, where: scope.Scope, conv: conversation.Conversation, chat: Chat,
                 text: str, tuning: Tuning) -> None:
-        system_prompt = self.server.system_prompt_for(where.kind, chat)
+        system_prompt = self.server.system_prompt_for(where, chat)
         try:
             events = conversation.send(
                 conv, chat, text, system_prompt=system_prompt,

@@ -20,7 +20,9 @@ from framework.contracts.capability import CapabilityFailed, Inputs, Ports
 from framework.experiment import drafting as design
 from framework.experiment import pack as packs
 from framework.workspace import outputs
+from framework.workspace import project as project_mod
 from tests.fixtures import packs_factory as pf
+from tests.fixtures import spaces
 from tests.fixtures.scripted_backend import ScriptedRunner
 
 SKILL_MD = ("---\nname: toy\ndescription: 夹具 skill\n---\n\n"
@@ -112,6 +114,22 @@ def test_prepare_copies_materials_into_data_and_env_and_refuses_without_env(ws):
         design_cap._prepare(bare, workspace.root)
 
 
+def test_prepare_brings_the_projects_shared_materials_too(ws):
+    """外层 #201：项目共用的原件（几个工作区都要的那份数据）也进 data/，不然设计无据可依；
+    同名的以工作区自己的为准（更具体的那份）；共用原件里的 env/ 不进 data/。"""
+    workspace, _ = ws
+    shared = project_mod.of(workspace).materials
+    (shared / "env").mkdir(parents=True)
+    (shared / "spring.csv").write_text("x,f\n1,2\n", encoding="utf-8")
+    (shared / "val.json").write_text('{"y": [9.0]}', encoding="utf-8")
+    (shared / "env" / "python-version").write_text("3.9\n", encoding="utf-8")
+    pack = new_pack(workspace)
+    assert (pack / "data" / "spring.csv").read_text(encoding="utf-8") == "x,f\n1,2\n"
+    assert (pack / "data" / "val.json").read_text(encoding="utf-8") == '{"y": [1.0]}'
+    assert not (pack / "data" / "env").exists()
+    assert (pack / "env" / "python-version").read_text(encoding="utf-8") != "3.9\n"
+
+
 def test_good_draft_is_sealed_lint_clean_validates_and_gets_the_domain(ws):
     workspace, domains = ws
     pack = new_pack(workspace)
@@ -136,10 +154,12 @@ def test_good_draft_is_sealed_lint_clean_validates_and_gets_the_domain(ws):
 
 def test_prompt_carries_requirement_hypothesis_skills_rules_and_escaped_dollars(ws, monkeypatch,
                                                                                  tmp_path):
-    """领域 skill 只以清单进提示（名字 + 一句话），正文由执行层 `ai4sci skill show` 按需读（P-22）；
-    执行层的 Bash 白名单只有 `ai4sci skill *`。"""
-    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-generic-skills"))
-    (tmp_path / "no-generic-skills").mkdir()
+    """挂在流程上的领域 skill 只以清单进提示（名字 + 一句话，P-26），正文由执行层
+    `ai4sci skill show` 按需读（P-22）；执行层的 Bash 白名单只有 `ai4sci skill *`。"""
+    monkeypatch.setenv(paths.SKILLS_ROOT_ENV, str(tmp_path / "no-resident-skills"))
+    (tmp_path / "no-resident-skills").mkdir()
+    monkeypatch.setenv(paths.DOMAINS_ROOT_ENV, str(ws[1]))  # 装载按库找挂上的名字（P-26）
+    spaces.give_flow(ws[0], "  - 设计: [toy]\n")
     pack = new_pack(ws[0])
     runner, _ = run_design(ws, pack, GOOD_DRAFT, hypothesis="### hypothesis.md\n\n加一层会更好")
     prompt = runner.prompts[0]

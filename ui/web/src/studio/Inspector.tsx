@@ -1,8 +1,9 @@
 // 选中节点的配置。阶段：这个阶段有哪些能力，勾上就点名，参数按描述符逐个给输入框（能力参数在页面上的落点，外层 #101）；
 // 断点：写一句确认事项（上游产出经人确认后下游方可读取；几个、放哪由流程定，P-19）。
 // 能力这一行只有名字与参数（P-21 三层对三种动作）：一行 hover 看，详情点名字跳到「能力」镜头的详情页，这里不摊开。
+// skill 几百个（P-22 收录库）：默认只摆挂上的、平台自带的、收录在这个阶段那一架上的，其余查找全库再勾。
 import { CaretRight, Signature } from '@phosphor-icons/react'
-import { createElement } from 'react'
+import { createElement, useState } from 'react'
 
 import type { Capability, CapabilityParam, SkillEntry } from '@/api/types'
 import SquishSwitch from '@/components/reactbits/SquishSwitch'
@@ -11,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { stageIcon } from '@/lib/stages'
 import { cn } from '@/lib/utils'
 
-import { type Item, parseParam, setParam, type StageItem, type StopItem, toggleCap } from './model'
+import { type Item, parseParam, setParam, skillsFor, type StageItem, type StopItem, toggleCap } from './model'
 
 export function Inspector({ item, catalog, skills, onChange, onOpenCap }: {
   item: Item; catalog: Capability[]; skills: SkillEntry[]; onChange: (item: Item) => void; onOpenCap: (name: string) => void
@@ -24,6 +25,8 @@ export function Inspector({ item, catalog, skills, onChange, onOpenCap }: {
 function StagePanel({ item, caps, skills, onChange, onOpenCap }: {
   item: StageItem; caps: Capability[]; skills: SkillEntry[]; onChange: (item: StageItem) => void; onOpenCap: (name: string) => void
 }) {
+  const [query, setQuery] = useState('')
+  const shown = skillsFor(skills, item.stage, item.caps.map((p) => p.cap), query)
   return (
     <div>
       <h2 className="flex items-center gap-2 font-serif text-[1.0625rem] font-semibold">
@@ -47,11 +50,13 @@ function StagePanel({ item, caps, skills, onChange, onOpenCap }: {
           </ul>
         )}
       <h3 className="mt-4 text-[0.75rem] text-muted-foreground">skill</h3>
-      {skills.length === 0
+      <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="查找全库" aria-label="查找 skill"
+             className="mt-1.5 h-7 bg-card text-[0.8125rem]" />
+      {shown.length === 0
         ? <p className="mt-1.5 text-[0.8125rem] text-muted-foreground/70">无</p>
         : (
-          <ul className="mt-1.5 space-y-2">
-            {skills.map((skill) => (
+          <ul className="mt-1.5 max-h-[24rem] space-y-2 overflow-y-auto">
+            {shown.map((skill) => (
               <SkillRow key={skill.name} skill={skill} picked={item.caps.some((p) => p.cap === skill.name)}
                         onToggle={(on) => onChange(toggleCap(item, skill.name, on))} onOpen={() => onOpenCap(skill.name)} />
             ))}
@@ -70,7 +75,7 @@ function SkillRow({ skill, picked, onToggle, onOpen }: {
     <li className={cn('rounded-xl border', picked ? 'border-foreground/30 bg-card' : 'bg-card/60')}>
       <div className="flex items-center gap-2.5 px-3 py-2.5">
         <Checkbox id={id} checked={picked} onCheckedChange={(v) => onToggle(v === true)} aria-label={skill.title} />
-        <button type="button" onClick={onOpen} title={skill.brief}
+        <button type="button" onClick={onOpen} title={`${skill.where} · ${skill.brief}`}
                 className="group flex min-w-0 flex-1 items-center gap-1 text-left text-[0.9375rem] font-medium hover:text-primary focus-visible:outline-2 focus-visible:outline-ring">
           <span className="truncate">{skill.title}</span>
           <CaretRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />

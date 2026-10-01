@@ -90,6 +90,9 @@ def test_bash_rules_only_allow_bare_ai4sci():
     assert "去编辑台拼一条" in guide.PREAMBLES[guide.PROJECT]
     assert "不拼 `find`" in guide.PREAMBLES[guide.PROJECT]
     assert "去项目里找研究助理" in guide.PREAMBLES[guide.STUDIO]
+    # P-15：改出厂的流程走派生，名字与 from 由平台填；不教自己起名另存（那样血缘与差异都算不出）
+    assert "workflow new --from" in guide.PREAMBLES[guide.STUDIO]
+    assert "新名字" not in guide.PREAMBLES[guide.STUDIO]
     # 分权的机器判据之二（P-16）：流程助理连 cap / sign / requirement confirm 的前缀都不放行
     assert guide.bash_rules(guide.PROJECT) == guide.BASH_RULES
     assert guide.bash_rules(guide.STUDIO) == ("ai4sci show", "ai4sci workflow",
@@ -134,7 +137,9 @@ def test_research_guide_takes_flows_and_never_builds_them():
 
 def test_studio_guide_builds_flows_and_never_runs_experiments():
     text = guide.system_prompt(guide.STUDIO)
-    assert "workflows/<name>.yaml" in text and "ai4sci show workflows" in text
+    # 名字由平台起（P-15）：派生用 workflow new --from，从零起给英文名；改完 show workflows 校验
+    assert "ai4sci workflow new --from <名字>" in text and "ai4sci show workflows" in text
+    assert "ai4sci show skills" in text  # 几百个 skill 查着挂，不一次摊开（P-26）
     # 前言里两层库都写实路径：只能写人存的那层，出厂的只读
     assert (f"（`{paths.user_workflows_root()}`）。出厂的流程在 `{paths.workflows_root()}`，只读"
             in text)

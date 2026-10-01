@@ -5,8 +5,8 @@
 `capabilities/auto_research/prompt.md`），组装是执行层这一层的活。写死一个路径就等于把
 executor 焊在某个能力上，别的能力再想用同一套组装就得复制一份。
 
-通用段每个执行层会话都带：领域包的追加段（有才追加）、skill 清单（有才追加，纲领 P-22）、
-联网规矩（总是带）。
+通用段每个执行层会话都带：领域包的追加段（有才追加）、本项目装载的 skill 清单（有才追加，纲领 P-22、
+P-26：与研究助理那份是同一套）、联网规矩（总是带）。
 """
 
 from __future__ import annotations
@@ -14,7 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 from string import Template
 
-from framework.skills import Skill, catalog_text
+from framework.skills import catalog_text
+from framework.workspace.loadout import Loadout
 
 # 主人 2026-09-20：agent 要知道什么时候该联网、并且只用自带的工具——实测过它拿本机 curl 硬凑，效果差
 # 真跑时执行层拿 Bash 去 cd、mkdir、awk、串管道，dontAsk 下一条条被拒，每条白耗一轮（外层 #122）
@@ -27,13 +28,13 @@ WEB_RULE = """## 联网
 
 
 def build_prompt(template_path: Path, values: dict[str, object], domain_extra: str = "",
-                 skills: list[Skill] = ()) -> str:
+                 loadout: Loadout | None = None) -> str:
     """套模板；领域包的追加段存在才追加，缺了不追加也不回退到别的模板；再接工具包与联网两段。
     「工具怎么用」那段是这家 CLI 自己的事（`Runner.tool_guide`），起会话时由 session 接在最后。"""
     text = Template(Path(template_path).read_text(encoding="utf-8")).substitute(values)
     if domain_extra.strip():
         text += "\n\n## 领域约定\n\n" + domain_extra.strip() + "\n"
-    catalog = catalog_text(list(skills))
+    catalog = catalog_text(loadout.skills, loadout.unavailable) if loadout else ""
     if catalog:
         text += "\n\n" + catalog
     return text.rstrip() + "\n\n" + WEB_RULE

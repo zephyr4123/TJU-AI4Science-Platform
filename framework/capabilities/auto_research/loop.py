@@ -22,7 +22,6 @@ from typing import Any
 
 from backends import Runner
 from compute import Compute
-from framework import skills
 from framework.capabilities.auto_research import failures, gate
 from framework.capabilities.auto_research.judge import append_row, judge_run, read_job, settle
 from framework.executor import prompting, session
@@ -30,6 +29,7 @@ from framework.experiment import gitwork, layout, ledger, notebook
 from framework.experiment import prompting as ledger_prompting
 from framework.experiment.checkpoint import read_checkpoint, write_checkpoint
 from framework.experiment.context import DIRECTION_ZH, RunContext, load_context
+from framework.workspace import loadout
 
 LOGGER = logging.getLogger("ai4sci.experiment")
 
@@ -219,7 +219,7 @@ def _run_iteration(
 
     rows = ledger.read(ctx.ledger_path)
     prompt = prompting.build_prompt(PROMPT_TEMPLATE, _prompt_values(ctx, state, rows, iter_n),
-                                    ctx.domain_extra, skills.for_executor(ctx.domain))
+                                    ctx.domain_extra, loadout.around(ctx.run_dir))
     # 只许改 code/、日志按轮留档
     result = session.run_session(
         runner, prompt, cwd=ctx.work, allowed_paths=[layout.code(ctx.work)],

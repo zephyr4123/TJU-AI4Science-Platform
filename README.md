@@ -6,7 +6,7 @@
 
 科研全自动化平台的生产代码：一个研究者在页面上跟助理说清课题、确认需求，助理照流程调用框架的能力做设计、实验、分析、验证，人只在断点上确认。四层：协调层（人 + 助理）做科研判断；框架是零模型的诚实执行基底（开门、开产出目录、封评分脚本、跑打分、记账、判冻结与签字）；执行层 coding agent 是唯一写代码的；skill 脚本是确定性工具。
 
-产品纲领（P-1 到 P-25）、流程细则、未决问题与案例卡在外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 的 `docs/`（那边的 README 是产品侧的地图）；本仓由它的 `./repos clone all` 拉到 `platform/` 目录下。这份是代码侧的地图。
+产品纲领（P-1 到 P-27）、流程细则、未决问题与案例卡在外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 的 `docs/`（那边的 README 是产品侧的地图）；本仓由它的 `./repos clone all` 拉到 `platform/` 目录下。这份是代码侧的地图。
 
 ## 系统一眼看
 
@@ -32,7 +32,7 @@ flowchart TB
     MACH["算力<br/>本机 / 一台能 ssh 的 Linux"]
     DATA["数据根<br/>projects/… studio/"]
     CFG["按人的清单<br/>~/.config/ai4sci/<br/>agents.yaml computes.yaml"]
-    SHIP["出厂件<br/>workflows/ templates/ domains/<br/>skills/ coordinator/"]
+    SHIP["出厂件<br/>workflows/ templates/ domains/<br/>skills/ skills-curated/ coordinator/"]
   end
   UI --> SRV
   TERM --> CLI
@@ -77,7 +77,8 @@ platform/
 ├── compute/       算力适配器：local.py 本机、ssh.py 一台能 ssh 上去的 Linux（按人的清单 ~/.config/ai4sci/computes.yaml 选）
 ├── coordinator/   两位助理的指南（线上 prompt）：README.md 项目里的研究助理、studio.md 编辑台的流程助理
 ├── domains/       领域包：generic/ 兜底、petab/ 参数估计（docs/add-a-domain.md）
-├── skills/        skill 库：pdf/ 解析论文、download/ 拉材料（docs/add-a-skill.md）
+├── skills/        平台自带的 skill（常驻）：pdf/ 解析论文、download/ 拉材料（docs/add-a-skill.md）
+├── skills-curated/ 收录的社区 skill：按七个阶段加 general 分架，台账 provenance.yaml；挂到流程上才装载
 ├── workflows/     出厂的流程：research（改进）、reproduce（论文复现），只读；人在编辑台存的在数据根 studio/workflows/，两层合起来是库，工作区取实例
 ├── templates/     需求模板库：generic / ai / cs / materials / reproduce
 ├── projects/      数据根（源码模式）：一个项目一位助理，样例三个单工作区项目 mlp-regression、boehm-nll、rahman-nll
@@ -110,7 +111,7 @@ ai4sci serve                                # 起服务，浏览器开 http://12
 **改代码**：clone 仓库，前提是 uv + node 22 + git。
 
 ```bash
-make up                                     # 一行起：.venv（uv.lock）→ 页面 → skill 预热 → ai4sci check → ai4sci serve
+make up                                     # 一行起：.venv（uv.lock）→ 页面 → skill 门禁与预热 → ai4sci check → ai4sci serve
 make check                                  # 门禁：CHANGELOG + ruff + skills + pytest + 页面，与 CI 完全相同
 make lock                                   # 改了 pyproject 的依赖后重钉 uv.lock
 make clean                                  # 删仓里装出来的：.venv、node_modules、页面构建；不碰配置、登录、数据
@@ -123,12 +124,12 @@ make package VERSION=X.Y.Z                  # 出 wheel（含页面与出厂件�
 
 ## 在终端里走一遍
 
-样例项目已确认需求、已有 `design/1`。人在终端当协调层，框架不连跑，一条命令一步（下面省略 `.venv/bin/` 前缀）：
+样例项目已确认需求、已取流程实例 `flows/research.yaml`、已有 `design/1`。人在终端当协调层，框架不连跑，一条命令一步（下面省略 `.venv/bin/` 前缀）：
 
 ```bash
 cd projects/mlp-regression && ../../.venv/bin/ai4sci show project   # 每个工作区一行：需求状态、流程走到哪、在等谁
 cd workspaces/mlp-regression                                     # cd 进工作区就不用 --ws
-ai4sci flow take research                                        # 库里的流程取成实例 flows/research.yaml
+ai4sci show flows                                                # 取来的流程实例走到哪；项目只跑实例上挂的能力（P-26）
 ai4sci sign design/1 --note "评分脚本算的是我要的数"               # 断点：人签字，下游才能读它
 ai4sci cap auto-research --from design/1 --max-iters 5 --detach  # 开 experiment/1，一轮一轮改；后台作业，show job 看进度
 ai4sci cap analysis --from experiment/1                          # 执行层写 analysis/1/analysis.md
@@ -140,7 +141,7 @@ ai4sci show caps                                                 # 七个阶段�
 
 ## 版本与发布
 
-从 1.0.0 起承诺兼容（冻结的契约与判据在外层 `CONTRIBUTING.md`「版本与发布」）。
+从 1.0.0 起承诺兼容（冻结的契约与判据在外层 `CONTRIBUTING.md`「版本与发布」；内测期不兼容也走 MINOR，迁移办法写进 CHANGELOG，例外的条件也在那里）。
 
 1. 每个 PR 在 `CHANGELOG.md` 的 Unreleased 加一行。
 2. 正式版在 `main` 上 `make release VERSION=x.y.z`：轮转 CHANGELOG、提交、打 tag，不 push；预发布在 `release/X.Y` 上 `make release VERSION=x.y.z-rc.N`，只打 tag。

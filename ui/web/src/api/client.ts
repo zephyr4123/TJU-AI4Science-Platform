@@ -6,7 +6,7 @@
 
 import type {
   Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, Job, OutputDetail, ProjectDetail, ProjectSummary,
-  Removed, RequirementDetail, SettingsDoc, SkillEntry, StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft,
+  Removed, RequirementDetail, SettingsDoc, SkillDoc, SkillEntry, StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft,
   WorkspaceDetail, WorkspaceSummary,
 } from './types'
 
@@ -77,6 +77,7 @@ export const api = {
   templates: () => request<Template[]>('/templates'),
   capabilities: () => request<Capability[]>('/cap'),
   skills: () => request<SkillEntry[]>('/skills'),
+  skill: (name: string) => request<SkillDoc>(`/skills/${encodeURIComponent(name)}`),
   workflows: () => request<Workflow[]>('/workflows'),
   saveWorkflow: (doc: WorkflowDraft) => request<Workflow>('/workflows', post(doc)),
   checkWorkflow: (doc: WorkflowDraft) => request<WorkflowCheck>('/workflows/check', post(doc)),

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # package.sh X.Y.Z —— 出包：dist/ai4sci-<ver>-py3-none-any.whl + sdist + 各自的 .sha256。
-# 包里带页面与出厂件：先构建页面，把 workflows / templates / domains / skills / coordinator / 页面拷进
+# 包里带页面与出厂件：先构建页面，把 workflows / templates / domains / skills / skills-curated / coordinator / 页面拷进
 # framework/shipped/（不进 git，paths.py 在包模式下从这里读），再 uv build。版本号由 setuptools-scm 从 tag 读，
 # 与传进来的 X.Y.Z 对账：不是 tag 上出的包名字带 .dev，只当快照。
 set -euo pipefail
@@ -18,7 +18,7 @@ UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
 make ui
 rm -rf framework/shipped dist
 mkdir -p framework/shipped
-for d in workflows templates domains skills coordinator; do
+for d in workflows templates domains skills skills-curated coordinator; do
   cp -R "$d" "framework/shipped/$d"
 done
 cp -R ui/web/dist framework/shipped/ui

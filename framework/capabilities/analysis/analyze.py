@@ -14,7 +14,6 @@ import logging
 import math
 from pathlib import Path
 
-from framework import skills
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
 from framework.executor import prompting, session
 from framework.experiment import artifacts, gitwork, layout, ledger, notebook
@@ -23,12 +22,12 @@ from framework.experiment.checkpoint import read_checkpoint
 from framework.experiment.context import (
     DIRECTION_ZH,
     load_scoring,
-    read_domain,
     read_domain_extra,
     read_question,
 )
 from framework.experiment.pack import primary_metric
 from framework.experiment.results import read_metrics
+from framework.workspace import loadout
 
 LOGGER = logging.getLogger("ai4sci.analysis")
 DOC_NAME = "analysis.md"
@@ -48,8 +47,7 @@ def analyze(output_dir: Path, inputs: Inputs, ports: Ports) -> str:
         if not ledger.read(layout.ledger(run_dir)):
             raise CapabilityFailed(f"{oid} 还没有跑过任何一轮，没有可分析的账本")
     prompt = prompting.build_prompt(PROMPT_TEMPLATE, _prompt_values(runs),
-                                    read_domain_extra(runs[0][0]),
-                                    skills.for_executor(read_domain(runs[0][0])))
+                                    read_domain_extra(runs[0][0]), loadout.around(output_dir))
     result = session.run_session(
         ports.runner, prompt, cwd=output_dir, allowed_paths=[output_dir],
         log_dir=output_dir / LOG_DIRNAME,

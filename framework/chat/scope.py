@@ -31,9 +31,10 @@ class Scope:
     project: Project | None = None
 
     def system_prompt(self, chat: Chat | None = None) -> str:
-        """这个域的指南；给了适配器就带上它自己的「工具怎么用」那段。"""
+        """这个域的指南；给了适配器就带上它自己的「工具怎么用」那段；项目域带本项目装载的 skill 清单
+        （每次现算，纲领 P-26）。"""
         tool = chat.tool_guide(guide.bash_rules(self.kind)) if chat is not None else ""
-        return guide.system_prompt(self.kind, tool_guide=tool)
+        return guide.system_prompt(self.kind, tool_guide=tool, project=self.project)
 
 
 def for_project(project: Project) -> Scope:

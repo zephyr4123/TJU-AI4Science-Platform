@@ -4,7 +4,9 @@
                                               上次选的模型与思考深度（None 是后端缺省）
                           transcript.md       人一句 agent 一句，给人翻
                           inflight.json       正在跑的那一轮；在就拒绝再发
-                          turn-N/message.md   这一轮人说的
+                          guide.md            上一轮送到的指南全文（system prompt），下一轮比对用
+                          turn-N/message.md   这一轮人说的（原话）
+                          turn-N/guide-update.md 这一轮指南变了时，框架塞在话前面的那段（没变不写）
                           turn-N/events.jsonl 这一轮 CLI 的原生事件流，一行一个（证据，按后端的形）
                           turn-N/trace.jsonl  同一轮翻成框架事件（kind / text / tool …），不分后端；
                                               页面重开对话时靠它把工具调用原样摆回去
@@ -16,11 +18,15 @@
 
 会话内容存在 CLI 自己的目录里（`--resume` 靠它），我们只记 session id；但事件流自己留一份：
 它是"agent 那一轮到底按了什么"的唯一证据（P-3）。
+
+指南（system prompt）两家 CLI 都只在开会话那轮收，续接时再给不生效（Codex 的
+`developer_instructions`、Claude Code 的 `--append-system-prompt`，外层 #131 #200 实测）。指南中途
+变了——平台加了命令、流程实例上新挂了 skill（纲领 P-26）——框架把变了的那几节塞进这一轮的话前面
+（`_guide_update`）；人的原话照原样存，塞进去的另存，页面的历史里没有它。
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import math
@@ -28,6 +34,7 @@ import os
 import re
 import secrets
 import shutil
+from collections import Counter
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -92,9 +99,6 @@ class Conversation:
     # 当时的缺省；测试里的剧本后端。适配器遇到 None 用自己的起点
     model: str | None = None
     effort: str | None = None
-    # 上一轮塞给它的指南（system prompt）的指纹：指南中途更新了（平台加了命令）要提醒它——真跑时
-    # 平台刚加了 env add，助理照上一轮的记忆答「我做不了」，研究者追问它才重翻 --help（外层 #122）
-    guide_sha: str | None = None
 
     @property
     def dir(self) -> Path:
@@ -311,12 +315,7 @@ def _turn(
     if not Path(conv.cwd).is_dir():
         raise ConversationStale(f"这段对话的工作目录已不在（{conv.cwd}）：是搬家前的旧对话，"
                                 "能看不能续，开一段新的")
-    digest = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
-    if system_prompt and conv.guide_sha not in (None, digest):
-        message = GUIDE_CHANGED_NOTICE + message
-        if chat.guide_channel == "thread" and conv.session_id:
-            # 这家只在开线程时收指南（Codex 的 developer_instructions），变了只能塞进话里
-            message = GUIDE_REINJECT.format(guide=system_prompt.strip()) + message
+    update = _guide_update(conv, system_prompt)
     if tuning is not None:
         conv.tune(tuning)
     # 轮次编号取盘上下一个空号，不取 meta.turns + 1：半途放弃的一轮目录留着当证据，
@@ -325,6 +324,8 @@ def _turn(
     turn_dir = conv.dir / f"turn-{turn_n}"
     turn_dir.mkdir()
     (turn_dir / "message.md").write_text(message + "\n", encoding="utf-8")
+    if update:
+        (turn_dir / GUIDE_UPDATE_NAME).write_text(update, encoding="utf-8")
     inflight.write_text(json.dumps({"turn": turn_n, "pid": os.getpid(),
                                     "started_at": datetime.now(UTC).isoformat(timespec="seconds")}),
                         encoding="utf-8")
@@ -336,7 +337,8 @@ def _turn(
     prior_session = conv.session_id
     with events_path.open("a", encoding="utf-8") as fh, \
             trace_path.open("a", encoding="utf-8") as trace_fh:
-        for event in chat.turn(message, Path(conv.cwd), timeout, session_id=conv.session_id,
+        for event in chat.turn(update + message, Path(conv.cwd), timeout,
+                               session_id=conv.session_id,
                                system_prompt=system_prompt, allowed_paths=allowed_paths,
                                bash_rules=bash_rules, readable_paths=readable_paths,
                                chat_id=conv.chat_id, tuning=conv.tuning):
@@ -351,17 +353,58 @@ def _turn(
                 trace_fh.write(json.dumps(event_payload(event), ensure_ascii=False) + "\n")
                 trace_fh.flush()
             if event.kind in ("done", "error"):
-                conv.guide_sha = digest
+                if system_prompt:
+                    (conv.dir / GUIDE_NAME).write_text(system_prompt, encoding="utf-8")
                 _close_turn(conv, turn_n, message, event, origin)
             yield event
 
 
-# 指南变了就在这一轮的话前面加一句：模型每轮都拿到整份指南，但看不出哪儿变了
-GUIDE_CHANGED_NOTICE = ("（平台提示：你的指南自上一轮起更新了——能运行的命令可能多了或变了，"
-                        "拿不准就 ai4sci --help 重看一遍。）\n\n")
-# 只在开线程时收指南的 CLI（`Chat.guide_channel == "thread"`）：新指南全文附在话里，不然它照旧指南办
-GUIDE_REINJECT = ("（平台提示：这段对话开始后指南更新了；新指南全文在下面的 <guide> 里，"
-                  "之后照它办。）\n\n<guide>\n{guide}\n</guide>\n\n")
+GUIDE_NAME = "guide.md"
+GUIDE_UPDATE_NAME = "guide-update.md"
+GUIDE_UPDATE = ("（平台提示：这段对话开始后你的指南更新了——能运行的命令、装载的 skill 可能多了"
+                "或变了。下面 <guide-update> 里是变了的几节的新全文，替换你记着的同名那一节，"
+                "之后照它办。）\n\n<guide-update>\n{sections}\n</guide-update>\n\n")
+GUIDE_REMOVED = "（这几节删掉了，不再作数：{names}）"
+HEADING_RE = re.compile(r"#{1,6} \S")
+
+
+def _guide_update(conv: Conversation, system_prompt: str) -> str:
+    """续接的这一轮指南变了：塞在话前面的那段（变了的几节的新全文、删掉的节名）。比的是对话目录里
+    上一轮送到的那份（guide.md，每轮结束时写）：只塞变了的——挂一个 skill 只动「工具包」一节，整份
+    指南两万多字每次都塞是白花 token、还会淹没人的话（外层 #122 #200）。没有 guide.md 就是不知道
+    CLI 手里是哪份，整份都算变了。没变、没有会话可续（指南随开会话送到）都是空串。"""
+    if not (system_prompt and conv.session_id):
+        return ""
+    previous = conv.dir / GUIDE_NAME
+    sent = previous.read_text(encoding="utf-8") if previous.is_file() else ""
+    if sent == system_prompt:
+        return ""
+    old, new = _sections(sent), _sections(system_prompt)
+    changed = [body for key, body in new.items() if old.get(key) != body]
+    removed = [key[0] or "开头那段" for key in old if key not in new]
+    if removed:
+        changed.append(GUIDE_REMOVED.format(names="、".join(removed)))
+    return GUIDE_UPDATE.format(sections="\n\n".join(changed))
+
+
+def _sections(text: str) -> dict[tuple[str, int], str]:
+    """按标题行切节（代码块里的 # 不算）：键是（标题行, 第几次出现），开头没标题的那段标题是空串；
+    值是这一节连标题的全文。"""
+    out: dict[tuple[str, int], str] = {}
+    seen: Counter[str] = Counter()
+    key, lines, fenced = ("", 1), [], False
+    for line in text.strip().splitlines():
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+        elif not fenced and HEADING_RE.match(line):
+            if lines:
+                out[key] = "\n".join(lines).strip()
+            seen[line.strip()] += 1
+            key, lines = (line.strip(), seen[line.strip()]), []
+        lines.append(line)
+    if lines:
+        out[key] = "\n".join(lines).strip()
+    return out
 
 
 def _lock_holder_alive(inflight: Path) -> bool:

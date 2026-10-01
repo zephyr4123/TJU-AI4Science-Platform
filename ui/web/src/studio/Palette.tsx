@@ -1,5 +1,6 @@
 // 画布左边一根梯子：七个研究阶段按顺序竖排成方块（顺序本身就是信息），底下一块断点（拖进去写一句要人确认什么）。
-// 拖进画布落在哪就插在哪；点一下加到末尾（键盘也走得通）。流程库另在右上角：一个弹层，点一条载入画布（存回去就是覆盖它）。
+// 拖进画布落在哪就插在哪；点一下加到末尾（键盘也走得通）。流程库另在右上角：一个弹层，按家族分组（派生的缩在父流程底下、
+// 一行写改了什么，P-15），点一条载入画布（出厂的载入就是从它派生，自己存的载入是改它自己）。
 import { Books, CaretDown, Signature, Trash } from '@phosphor-icons/react'
 import { createElement, useState } from 'react'
 
@@ -10,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { stageIcon } from '@/lib/stages'
 import { cn } from '@/lib/utils'
 
-import { type Seed, SEED_MIME } from './model'
+import { byFamily, hoverLine, inFamily, lineageLine, type Seed, SEED_MIME } from './model'
 
 export function Ladder({ stages, onAdd }: { stages: string[]; onAdd: (seed: Seed) => void }) {
   const tile = (seed: Seed, icon: typeof Signature, label: string, tone: 'stage' | 'stop') => (
@@ -59,13 +60,13 @@ export function Library({ workflows, onLoad, onRemoved }: {
         {workflows.length === 0 && <p className="px-2 py-1.5 text-[0.8125rem] text-muted-foreground">空</p>}
         {failed && <p className="px-2 py-1.5 text-[0.75rem] text-bad">{failed}</p>}
         <ul className="max-h-[22rem] space-y-0.5 overflow-y-auto">
-          {workflows.map((wf) => (
-            <li key={wf.name} className="group/row flex items-center gap-1 rounded-lg pr-1 transition-colors hover:bg-accent/60">
-              <button type="button" onClick={() => { onLoad(wf); setOpen(false) }} title={wf.problems[0] ?? wf.summary}
+          {byFamily(workflows).map((wf) => (
+            <li key={wf.name} className={cn('group/row flex items-center gap-1 rounded-lg pr-1 transition-colors hover:bg-accent/60', inFamily(wf) && 'ml-3 border-l pl-1')}>
+              <button type="button" onClick={() => { onLoad(wf); setOpen(false) }} title={hoverLine(wf)}
                       className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-ring">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-serif text-[0.9375rem] font-semibold">{wf.title}</span>
-                  <span className="block truncate text-[0.6875rem] text-muted-foreground">{wf.stages.length} 项{wf.shipped ? '，出厂' : ''}</span>
+                  <span className="block truncate text-[0.6875rem] text-muted-foreground">{lineageLine(wf)}</span>
                 </span>
                 {wf.problems.length > 0 && <span role="img" aria-label="有问题" className="size-2 shrink-0 rounded-full bg-bad" />}
               </button>

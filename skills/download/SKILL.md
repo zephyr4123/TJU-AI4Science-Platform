@@ -1,7 +1,7 @@
 ---
 name: download
-description: 把论文的材料拉到工作区 materials/ 里：git 仓库（可指定 commit）、单个文件（可校验 sha256）、Hugging Face 上的数据集或权重。复现一篇论文时找到了官方代码、数据、权重就用它拉；它只下载、留收据，不判断该拉什么。
-compatibility: Python 3.12 以上（脚本自带，与平台 venv 无关）；系统要有 git；hf 子命令要联网到 huggingface.co（私有仓库读环境变量 HF_TOKEN，不收参数）
+description: 把论文的材料拉到工作区 materials/ 里：git 仓库（可指定 commit）、单个文件（可校验 sha256）、Hugging Face 上公开的数据集或权重。复现一篇论文时找到了官方代码、数据、权重就用它拉；它只下载、留收据，不判断该拉什么。
+compatibility: Python 3.12 以上（脚本自带，与平台 venv 无关）；系统要有 git；hf 子命令要联网到 huggingface.co，只拉公开的仓库
 metadata:
   ai4sci-system-tools: git
 ---
@@ -28,7 +28,7 @@ ai4sci skill run download hf <org>/<repo> --type dataset --out materials/<名字
 - `--out`：落到哪个目录，写哪里由你定；不给就是 `materials/<仓库名或文件名>`。相对路径相对起脚本的目录：助理站在项目里，带 `--ws <工作区>` 脚本就在那个工作区里起，材料落进它的 `materials/`（设计阶段的原码复现基线只在那里找）；人在终端 cd 进了工作区就不用带。目录已存在就退 2，不覆盖——换个名字或删掉再拉。
 - `git`：`--commit <sha 或 tag>` 拉完切到它（论文说的版本、或 sources.md 里记的）；不给就是默认分支最新。`.git/` 留着，收据记实际的 commit。
 - `file`：`--sha256 <hex>` 给了就校验，不对退 4 并删掉；`--name <文件名>` 改落盘的名字（缺省用链接末尾那段）。
-- `hf`：`--type dataset|model`（缺省 model），`--revision <分支或 commit>`；私有仓库读环境变量 `HF_TOKEN`，**不收 token 参数**。
+- `hf`：`--type dataset|model`（缺省 model），`--revision <分支或 commit>`；**只拉公开的**：平台不收任何第三方凭据（纲领 P-27），私有与门控的仓库拉不了。
 
 stdout 一行 JSON 收据：`{"kind": "git", "source": "…", "commit": "…", "out": "materials/…", "files": 123, "bytes": 4567890, "license": "LICENSE"}`（`file` 是 `sha256` 与 `bytes`，`hf` 是 `commit` 与 `type`）。同一份收据写在 `<out>/.ai4sci-download.json`，之后哪个能力拿到这个目录都知道它从哪来、是哪个 commit。诊断在 stderr。
 
@@ -47,5 +47,5 @@ stdout 一行 JSON 收据：`{"kind": "git", "source": "…", "commit": "…", "
 | 退 2「目录已存在」 | 之前拉过 | 看 `<out>/.ai4sci-download.json` 是不是同一个来源同一个 commit；是就直接用，不是就换名字 |
 | 退 3，clone 失败 | 私有仓库、网断了、地址写错 | 私有的让研究者把公钥加到那边或给公开镜像；地址复制原文 |
 | 退 4，commit 不存在 | sha 抄错、或在别的分支 | 去仓库页面核对；tag 也行 |
-| 退 3，HF 401 / 403 | 门控数据集要同意条款 | 让研究者登录 HF 同意条款，再把 `HF_TOKEN` 放进起服务的环境（不要贴进对话） |
-| `uv` 报 offline / 找不到包 | 环境没预热 | 起服务的人跑 `make skills` |
+| 退 3，HF 401 / 403 | 私有或门控的仓库 | 平台只拉公开的：请研究者自己在网页上下好，放进工作区的 `materials/` |
+| `uv` 报找不到包、网络错 | 环境没预热 | 起服务的人跑 `make skills` |

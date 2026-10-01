@@ -8,10 +8,12 @@
 
 驱动做的事，能力自己不知道：
   1. 需求没确认不开工（唯一内置的门，P-19）；
-  2. `--from` 的每个产出都得在、成了、没被改过（冻结，`workspace.outputs.resolve_inputs`）；
-  3. 照流程跑时查断点：流程说输入那个阶段完了要人签，签字不在或过期就拒；
-  4. 在自己的阶段下开一个产出目录、写 running 的 meta，跑完记 ok / failed；
-  5. `--detach` 把去掉它的同一条命令起成独立进程当作业，跑完回写记录、属于某段对话的去叫醒；
+  2. 项目没装载这个步骤不开工：流程实例上点了它的名、或它的阶段在实例里敞开着才行（P-26，
+     `workspace.loadout`）；
+  3. `--from` 的每个产出都得在、成了、没被改过（冻结，`workspace.outputs.resolve_inputs`）；
+  4. 照流程跑时查断点：流程说输入那个阶段完了要人签，签字不在或过期就拒；
+  5. 在自己的阶段下开一个产出目录、写 running 的 meta，跑完记 ok / failed；
+  6. `--detach` 把去掉它的同一条命令起成独立进程当作业，跑完回写记录、属于某段对话的去叫醒；
      返回之前等它过门、开了产出（都是本地几次读写），作业号旁边就有产出 id——起了又当场
      没开起来的（门没过、包不合约）直接报回来，不让协调层拿着作业号说「实验开了」。
 
@@ -49,7 +51,7 @@ from framework.contracts.capability import (
     Ports,
 )
 from framework.contracts.output import Meta
-from framework.workspace import jobs, outputs
+from framework.workspace import jobs, loadout, outputs, project
 from framework.workspace.root import Workspace
 
 FROM_HELP = ("读哪几个产出（<阶段目录>/<序号>，比如 design/1；同一项目里兄弟工作区的写 "
@@ -112,6 +114,20 @@ def cmd_cap(args: argparse.Namespace) -> int:
     return code
 
 
+def _not_loaded(ws: Workspace, descriptor: Capability) -> str:
+    """项目只装载它各工作区流程实例上挂的能力（纲领 P-26）：这个步骤点了名、或它的阶段在流程里
+    敞开着（没点名，用什么由助理看着办）才能跑；不然返回拒绝的那句话，说清先取流程或改实例。"""
+    loaded, steps = loadout.of(project.of(ws)), discover()
+    if loaded.allows_step(descriptor.name, descriptor.stage, steps):
+        return ""
+    strays = "、".join(name for name, _ in loaded.strays(steps))
+    return (f"这个项目没有装载步骤 {descriptor.name}（{descriptor.stage}）："
+            f"项目只用流程实例上挂的能力。"
+            f"先 ai4sci flow take <流程> 取一条，或在实例里加上「{descriptor.stage}」这个阶段"
+            f"（点名 {descriptor.name} 或不点名），ai4sci show flows 校验"
+            + (f"。流程上还有对不上的名字：{strays}（拼错了？）" if strays else ""))
+
+
 def _close_failed_job(ws: Workspace, job_id: str | None, result: str) -> None:
     """在作业里：作业记失败、它开的产出记失败、属于某段对话的去叫醒；不在作业里什么都不做。"""
     if not job_id:
@@ -134,12 +150,15 @@ def _fail_open_output(ws: Workspace, oid: str | None, line: str) -> None:
 
 def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports: Ports,
          job_id: str | None, agent: dict | None) -> tuple[int, str]:
-    """门 → 输入 → 断点 → 开产出 → 跑 → 记账。返回退出码与那一行话（成功是结论行，
-    失败是能力自己说的那一句）。"""
+    """门 → 装载 → 输入 → 断点 → 开产出 → 跑 → 记账。返回退出码与那一行话（成功是结论行，
+    失败是能力自己说的那一句）；在作业里，这一行由 cmd_cap 回写进作业记录。"""
     try:
         version = requirement.require_confirmed(ws.root)
     except requirement.NotConfirmed as exc:
         return EXIT_INVALID, str(exc)
+    refused = _not_loaded(ws, descriptor)
+    if refused:
+        return EXIT_INVALID, refused
     try:
         inputs = outputs.resolve_inputs(ws, list(args.inputs or []))
     except (ValueError, output.OutputNotFound) as exc:  # OutputChanged 是 ValueError
