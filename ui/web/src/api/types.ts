@@ -385,18 +385,16 @@ export interface Capability {
 }
 
 /** 能力库里 tag 为 skill 的一条（`GET /skills`）：名字就是页面上的名，一行是 SKILL.md 的 description，
- *  正文是 SKILL.md 去掉 frontmatter；哪个阶段都能挂到流程的格子上 */
+ *  正文是 SKILL.md 去掉 frontmatter；哪个阶段都能挂到流程的格子上。清单的顺序就是分类表的序（架 → tag） */
 export interface SkillEntry {
   name: string
   kind: 'skill'
   title: string
   brief: string
-  /** 哪处库：平台（自带、常驻）、收录（社区整合包分拣进来的）、领域包的名字（纲领 P-22） */
-  library: string
-  /** 收录库的架：七个阶段的 slug 或 general；另两处库是空串 */
-  shelf: string
-  /** 给人看的出处：平台 / 收录·文献 / 收录·通用 / 领域包名 */
-  where: string
+  /** 能力镜头里的哪一行：七个阶段之一，或「通用」（外层 #205） */
+  stage: string
+  /** 那一行里的哪一组：生物、检索、绘图…… */
+  tag: string
   scripts: string[]
   used_by: string[]
 }

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import type { SkillEntry, Workflow } from '@/api/types'
+import type { Capability, SkillEntry, Workflow } from '@/api/types'
 
 import {
-  append, autoLayout, byFamily, deriveFrom, dropAt, fromWorkflow, groupSkills, hoverLine, inFamily, indexAt, insertAt, lineageLine, parseParam,
-  place, positions, problemIndices, ROW_PITCH, ROW_WIDTH, setParam, skillsFor, stageItem, stopItem, tidy, toDraft, toggleCap, WIDTH,
+  append, autoLayout, byFamily, deriveFrom, dropAt, fromWorkflow, hoverLine, inFamily, indexAt, insertAt, lineageLine, parseParam,
+  place, positions, problemIndices, ROW_PITCH, ROW_WIDTH, setParam, shelfRows, skillGroupsFor, stageItem, stopItem, tidy, toDraft, toggleCap, WIDTH,
 } from './model'
 
 const strip = (draft: ReturnType<typeof fromWorkflow>) => draft.items.map((it) => (it.kind === 'stop' ? { note: it.note } : { stage: it.stage, caps: it.caps }))
@@ -157,25 +157,60 @@ describe('流程的血缘（P-15）', () => {
   })
 })
 
-const skill = (name: string, where: string, brief = name): SkillEntry => ({
-  name, kind: 'skill', title: name, brief, library: where.startsWith('收录') ? '收录' : where, shelf: '', where,
-  scripts: [], used_by: [],
+const skill = (name: string, stage: string, tag: string, brief = name): SkillEntry => ({
+  name, kind: 'skill', title: name, brief, stage, tag, scripts: [], used_by: [],
+})
+const step = (name: string, stage: string, brief = name): Capability => ({
+  name, kind: '步骤', stage, stage_slug: stage, title: `${name} 的活`, brief, does: 'd', does_not: 'n', brings: 'b', leaves: 'l',
+  stops: 's', params: [], needs_executor: false, needs_compute: false, continuable: false, used_by: [],
 })
 
-describe('skill 怎么摆（P-22、P-26）', () => {
-  const lib = [skill('pdf', '平台'), skill('paper-lookup', '收录·文献', '查论文 OpenAlex'), skill('polish', '收录·写作'),
-    skill('plot', '收录·通用'), skill('petab', 'petab')]
-  it('不查找时：挂上的在前，再是平台自带的与这个阶段那一架的', () => {
-    expect(skillsFor(lib, '文献', [], '').map((s) => s.name)).toEqual(['pdf', 'paper-lookup'])
-    expect(skillsFor(lib, '文献', ['polish'], '').map((s) => s.name)).toEqual(['polish', 'pdf', 'paper-lookup'])
+// 后端给的顺序就是分类表的序（架 → tag）
+const lib = [
+  skill('paper-lookup', '文献', '检索', '查论文 OpenAlex'), skill('nature-reader', '文献', '精读'),
+  skill('scanpy', '实验', '生物', 'single-cell'), skill('rdkit', '实验', '化学与药物'),
+  skill('polish', '写作', '论文'),
+  skill('download', '通用', '资料'), skill('pdf', '通用', '资料'), skill('plot', '通用', '绘图'),
+]
+const STAGES = ['文献', '假设', '设计', '实验', '分析', '写作', '验证']
+
+describe('能力镜头：一个阶段一行（外层 #205）', () => {
+  const steps = [step('design', '设计'), step('auto-research', '实验', '自动迭代')]
+  it('七个阶段按序、最后「通用」；步骤与按 tag 分组的 skill 挂在同一行，空着的阶段也占一行', () => {
+    const rows = shelfRows(STAGES, steps, lib, '')
+    expect(rows.map((r) => r.stage)).toEqual([...STAGES, '通用'])
+    const [literature, hypothesis, , experiment] = rows
+    expect(literature.steps).toEqual([])
+    expect(literature.tags.map((t) => [t.tag, t.skills.map((s) => s.name)])).toEqual([['检索', ['paper-lookup']], ['精读', ['nature-reader']]])
+    expect([hypothesis.steps, hypothesis.tags]).toEqual([[], []])
+    expect(experiment.steps.map((c) => c.name)).toEqual(['auto-research'])
+    expect(experiment.tags.map((t) => t.tag)).toEqual(['生物', '化学与药物'])
+    expect(rows[7].tags.map((t) => [t.tag, t.skills.length])).toEqual([['资料', 2], ['绘图', 1]])
+  })
+  it('描述符里出现了清单外的阶段就追加在「通用」前面，不丢步骤', () => {
+    expect(shelfRows(['设计'], [step('x', '写作')], [], '').map((r) => [r.stage, r.steps.length])).toEqual([['设计', 0], ['写作', 1], ['通用', 0]])
+  })
+  it('查找对所有行生效：名字、一行、tag 名、阶段名里有词就算；没对上的 tag 与行收起来', () => {
+    expect(shelfRows(STAGES, steps, lib, 'openalex').map((r) => [r.stage, r.tags.map((t) => t.tag)])).toEqual([['文献', ['检索']]])
+    expect(shelfRows(STAGES, steps, lib, '自动').map((r) => [r.stage, r.steps.length, r.tags.length])).toEqual([['实验', 1, 0]])
+    expect(shelfRows(STAGES, steps, lib, '绘图').flatMap((r) => r.tags.flatMap((t) => t.skills.map((s) => s.name)))).toEqual(['plot'])
+    expect(shelfRows(STAGES, steps, lib, '实验').map((r) => [r.stage, r.steps.length, r.tags.length])).toEqual([['实验', 1, 2]])
+    expect(shelfRows(STAGES, steps, lib, 'nope')).toEqual([])
+  })
+})
+
+describe('配置板里一个阶段给哪些 skill 勾（P-26）', () => {
+  const groups = (stage: string, picked: string[], query: string) =>
+    skillGroupsFor(lib, stage, picked, query).map((g) => [g.label, g.skills.map((s) => s.name), g.picked])
+  it('不查找时：本阶段的 tag，再是「通用」的；别处挂上的也在，组名带上阶段', () => {
+    expect(groups('文献', [], '')).toEqual([
+      ['检索', ['paper-lookup'], 0], ['精读', ['nature-reader'], 0], ['通用·资料', ['download', 'pdf'], 0], ['通用·绘图', ['plot'], 0]])
+    expect(groups('文献', ['polish', 'pdf'], '')).toEqual([
+      ['检索', ['paper-lookup'], 0], ['精读', ['nature-reader'], 0], ['通用·资料', ['pdf', 'download'], 1], ['通用·绘图', ['plot'], 0],
+      ['写作·论文', ['polish'], 1]])
   })
   it('查找时看全库：词都要有、不分大小写', () => {
-    expect(skillsFor(lib, '文献', [], 'openalex').map((s) => s.name)).toEqual(['paper-lookup'])
-    expect(skillsFor(lib, '写作', [], 'p').map((s) => s.name)).toEqual(['pdf', 'paper-lookup', 'polish', 'plot', 'petab'])
-    expect(skillsFor(lib, '写作', [], '查论文 nope')).toEqual([])
-  })
-  it('能力镜头按出处分架，照后端给的顺序', () => {
-    expect(groupSkills(lib).map((g) => [g.where, g.skills.length])).toEqual(
-      [['平台', 1], ['收录·文献', 1], ['收录·写作', 1], ['收录·通用', 1], ['petab', 1]])
+    expect(groups('文献', [], 'SINGLE')).toEqual([['实验·生物', ['scanpy'], 0]])
+    expect(groups('写作', [], '查论文 nope')).toEqual([])
   })
 })

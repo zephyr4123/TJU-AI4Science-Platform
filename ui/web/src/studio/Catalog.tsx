@@ -1,9 +1,11 @@
-// 编辑台的「能力」镜头（P-21，外层 #112）：平台现在能做什么。按七个阶段陈列步骤的名字——一个阶段挂再多也只是名字的清单，
-// 空着的阶段老实写「暂无」；skill（能力的另一个 tag，主人 2026-09-22）哪个阶段都能挂、几百个，不归在某一列下，在下面按出处分架、可查找（P-22）；每个名字是一张小卡（SpotlightCard，与画布上的节点同一种材料，一看就是个东西），hover 是一行，
+// 编辑台的「能力」镜头（P-21，外层 #112）：平台现在能做什么。一个阶段一行，七个阶段按序、最后「通用」一行（外层 #205）：
+// 行里先是「步骤」，再是「skill」——能力的两个 tag 挂在同一个阶段下面，行前的标签说明是哪一种；skill 几百个，按 tag 分组
+// （分类表在后端，`framework/skills/shelves.py`）。能力名横着排、满了折行，不横向滚（横着滚的一排后面的没人看）。空着的写「暂无」，
+// 顶上一个查找对所有行生效。每个名字是一张小卡（SpotlightCard，与画布上的节点同一种材料，一看就是个东西），hover 是一行，
 // 点了原地切成详情页：顶上一枚常驻的「能力」返回键，宋体大名与一行，底下参数与五栏，一列到底（主人：不要侧边目录）。
 // 流程镜头里节点上的小片与配置板里的名字点了也跳到这里，一个详情两处入口。
 // 层次与文件镜头同一做法：陈列印在雾景上不加框；详情才是一块抬起的面。对话窗浮在右边时（主人 2026-09-23：层级不能互相盖），
-// 这一面按 useChatInset() 在右边留出板的宽度，列自动折到下面、详情居中在剩下的地方；关了板又铺满。
+// 这一面按 useChatInset() 在右边留出板的宽度，详情居中在剩下的地方；关了板又铺满。
 import { ArrowLeft, Toolbox } from '@phosphor-icons/react'
 import { createElement, type ReactNode, useState } from 'react'
 
@@ -14,10 +16,11 @@ import { ErrorNote, Skeleton } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
 import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
 import { Input } from '@/components/ui/input'
-import { groupByStage, stageIcon } from '@/lib/stages'
+import { stageIcon } from '@/lib/stages'
 import { useResource } from '@/lib/useResource'
+import { cn } from '@/lib/utils'
 
-import { groupSkills, matchesSkill } from './model'
+import { GENERAL, type ShelfRow, shelfRows } from './model'
 
 /** 五栏的标题，顺序与后端 `COLUMNS` 一致（词表里的词） */
 const COLUMNS: [keyof Pick<Capability, 'does' | 'does_not' | 'brings' | 'leaves' | 'stops'>, string][] = [
@@ -41,79 +44,103 @@ export function Catalog({ stages, catalog, skills, focus, onFocus }: {
   )
 }
 
-/** 陈列：七列步骤（列头阶段图标 + 宋体阶段名），底下一张一张小卡；skill 在下面按出处分架、可查找；印在雾景上，不加框 */
+/** 陈列：一个阶段一行，标题是图标 + 宋体阶段名，底下「步骤」「skill」两行；印在雾景上，不加框 */
 function Shelf({ stages, catalog, skills, onOpen }: {
   stages: StageInfo[]; catalog: Capability[]; skills: SkillEntry[]; onOpen: (name: string) => void
 }) {
-  const groups = groupByStage(stages.map((s) => s.name), catalog)
   const [query, setQuery] = useState('')
-  const shelves = groupSkills(skills.filter((s) => matchesSkill(s, query)))
+  const rows = shelfRows(stages.map((s) => s.name), catalog, skills, query)
   return (
-    <div className="mx-auto max-w-[96rem] px-8 pt-10 pb-8">
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-4 gap-y-8" aria-label="能力">
-      {groups.map((group) => (
-        <section key={group.stage} aria-label={group.stage}>
-          <h2 className="flex items-center gap-2 font-serif text-[1.0625rem] font-semibold">
-            {createElement(stageIcon(group.stage), { weight: 'duotone', 'aria-hidden': true, className: 'size-[1.25rem] text-primary' })}
-            {group.stage}
-          </h2>
-          {group.caps.length === 0
-            ? <p className="mt-3 px-3 py-2.5 text-[0.9375rem] text-muted-foreground/70">暂无</p>
-            : (
-              <ul className="mt-3 space-y-2">
-                {group.caps.map((cap) => (
-                  <Card key={cap.name} title={cap.title} brief={cap.brief} onOpen={() => onOpen(cap.name)}
-                        icon={createElement(stageIcon(cap.stage), { weight: 'duotone', 'aria-hidden': true, className: 'size-4 shrink-0 text-primary' })} />
-                ))}
-              </ul>
-            )}
-        </section>
-      ))}
-    </div>
-    {/* skill：几百个，按出处分架（平台、收录各阶段、领域包），上面一个查找 */}
-    <div className="mt-12 flex items-center gap-3">
-      <h2 className="flex items-center gap-2 font-serif text-[1.25rem] font-semibold">
-        <Toolbox weight="duotone" aria-hidden className="size-[1.375rem] text-foreground/70" />
-        skill
-      </h2>
-      <span className="text-[0.8125rem] text-muted-foreground tabular-nums">{skills.length}</span>
-      <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="查找" aria-label="查找 skill"
-             className="ml-auto h-8 w-[16rem] bg-card/85 text-[0.875rem] backdrop-blur-sm" />
-    </div>
-    {shelves.length === 0
-      ? <p className="mt-3 px-3 py-2.5 text-[0.9375rem] text-muted-foreground/70">暂无</p>
-      : (
-        <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-4 gap-y-8">
-          {shelves.map((shelf) => (
-            <section key={shelf.where} aria-label={shelf.where}>
-              <h3 className="flex items-baseline gap-2 font-serif text-[1.0625rem] font-semibold">
-                {shelf.where}<span className="font-sans text-[0.75rem] font-normal text-muted-foreground tabular-nums">{shelf.skills.length}</span>
-              </h3>
-              <ul className="mt-3 space-y-2">
-                {shelf.skills.map((skill) => (
-                  <Card key={skill.name} title={skill.title} brief={skill.brief} onOpen={() => onOpen(skill.name)}
-                        icon={<Toolbox weight="duotone" aria-hidden className="size-4 shrink-0 text-foreground/60" />} />
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-      )}
+    <div className="mx-auto max-w-[72rem] px-8 pt-8 pb-10">
+      <div className="flex justify-end">
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="查找" aria-label="查找能力"
+               className="h-8 w-[16rem] bg-card/85 text-[0.875rem] backdrop-blur-sm" />
+      </div>
+      {rows.length === 0
+        ? <p className="mt-6 px-3 py-2.5 text-[0.9375rem] text-muted-foreground/70">没有对得上的</p>
+        : <div className="mt-2">{rows.map((row) => <Row key={row.stage} row={row} searching={query.trim() !== ''} onOpen={onOpen} />)}</div>}
     </div>
   )
 }
 
-/** 陈列里的一张小卡：图标 + 名，hover 一行 */
-function Card({ title, brief, icon, onOpen }: { title: string; brief: string; icon: ReactNode; onOpen: () => void }) {
+/** 一个阶段（或「通用」）一行。「通用」只有 skill：步骤都属于某个研究阶段 */
+function Row({ row, searching, onOpen }: { row: ShelfRow; searching: boolean; onOpen: (name: string) => void }) {
+  const icon = row.stage === GENERAL ? Toolbox : stageIcon(row.stage)
+  const showSteps = row.stage !== GENERAL && (!searching || row.steps.length > 0)
+  const showSkills = !searching || row.tags.length > 0
+  return (
+    <section aria-label={row.stage} className="py-5">
+      <h2 className="flex items-center gap-2 font-serif text-[1.125rem] font-semibold">
+        {createElement(icon, { weight: 'duotone', 'aria-hidden': true, className: 'size-[1.25rem] text-primary' })}
+        {row.stage}
+      </h2>
+      {/* 内容与标题的字对齐（图标 1.25rem + 间距 0.5rem），整行宽度都给卡 */}
+      <div className="mt-3 min-w-0 space-y-3 sm:pl-7">
+        {showSteps && (
+          <Line label="步骤">
+            {row.steps.length === 0
+              ? <Empty />
+              : (
+                <ul className="flex flex-wrap gap-2">
+                  {row.steps.map((cap) => (
+                    <Card key={cap.name} title={cap.title} brief={cap.brief} onOpen={() => onOpen(cap.name)}
+                          icon={createElement(stageIcon(cap.stage), { weight: 'duotone', 'aria-hidden': true, className: 'size-4 shrink-0 text-primary' })} />
+                  ))}
+                </ul>
+              )}
+          </Line>
+        )}
+        {showSkills && (
+          <Line label="skill">
+            {row.tags.length === 0
+              ? <Empty />
+              : (
+                <div className="space-y-2.5">
+                  {row.tags.map((group) => (
+                    <div key={group.tag} className="grid gap-x-3 gap-y-1.5 sm:grid-cols-[6.5rem_1fr]">
+                      <h3 className="flex items-baseline gap-1.5 text-[0.8125rem] text-muted-foreground sm:pt-1.5">
+                        {group.tag}<span className="text-[0.6875rem] tabular-nums text-muted-foreground/70">{group.skills.length}</span>
+                      </h3>
+                      <ul className="flex min-w-0 flex-wrap gap-1.5">
+                        {group.skills.map((skill) => <Card key={skill.name} title={skill.title} brief={skill.brief} onOpen={() => onOpen(skill.name)} small />)}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+          </Line>
+        )}
+      </div>
+    </section>
+  )
+}
+
+/** 行里的一行：前面是 tag 的名（步骤 / skill），后面是内容 */
+function Line({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[3rem_1fr] items-start gap-x-3">
+      <span className="t-label pt-2">{label}</span>
+      <div className="min-w-0">{children}</div>
+    </div>
+  )
+}
+
+function Empty() {
+  return <p className="py-1.5 text-[0.9375rem] text-muted-foreground/70">暂无</p>
+}
+
+/** 陈列里的一张小卡：名字（步骤带阶段图标），hover 一行；宽度跟着名字走，不截断。skill 多，卡小一号 */
+function Card({ title, brief, icon, small = false, onOpen }: { title: string; brief: string; icon?: ReactNode; small?: boolean; onOpen: () => void }) {
   return (
     <li>
       <button type="button" onClick={onOpen} title={brief}
-              className="group block w-full rounded-2xl text-left transition-transform hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-ring">
+              className="group block rounded-2xl text-left transition-transform hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-ring">
         <SpotlightCard spotlight="color-mix(in oklab, var(--primary) 16%, transparent)"
-                       className="border-transparent bg-card/85 shadow-sm ring-1 ring-foreground/[0.06] backdrop-blur-sm transition-[border-color,box-shadow] group-hover:border-primary/40">
-          <span className="flex items-center gap-2 px-3.5 py-2.5">
+                       className={cn('border-transparent bg-card/85 shadow-sm ring-1 ring-foreground/[0.06] backdrop-blur-sm transition-[border-color,box-shadow] group-hover:border-primary/40',
+                                     small && 'rounded-xl')}>
+          <span className={cn('flex items-center gap-2 whitespace-nowrap', small ? 'px-3 py-1.5 text-[0.875rem]' : 'px-3.5 py-2.5 text-[0.9375rem] font-medium')}>
             {icon}
-            <span className="min-w-0 flex-1 truncate text-[0.9375rem] font-medium">{title}</span>
+            {title}
           </span>
         </SpotlightCard>
       </button>
@@ -140,7 +167,7 @@ function SkillDetail({ skill, onBack }: { skill: SkillEntry; onBack: () => void 
         <h1 className="font-serif text-[2rem] leading-tight font-semibold tracking-tight">{skill.title}</h1>
         <p className="mt-2 text-[1.0625rem] text-muted-foreground">{skill.brief}</p>
         <p className="t-label mt-3 flex flex-wrap gap-x-4">
-          <span>{skill.where}</span>
+          <span>{skill.stage}·{skill.tag}</span>
           {skill.scripts.map((name) => <span key={name}>{name}</span>)}
           {skill.used_by.length > 0 && <span>用在 {skill.used_by.join('、')}</span>}
         </p>
