@@ -27,7 +27,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import math
@@ -100,9 +99,6 @@ class Conversation:
     # 当时的缺省；测试里的剧本后端。适配器遇到 None 用自己的起点
     model: str | None = None
     effort: str | None = None
-    # 上一轮塞给它的指南（system prompt）的指纹：指南中途更新了（平台加了命令）要提醒它——真跑时
-    # 平台刚加了 env add，助理照上一轮的记忆答「我做不了」，研究者追问它才重翻 --help（外层 #122）
-    guide_sha: str | None = None
 
     @property
     def dir(self) -> Path:
@@ -319,8 +315,7 @@ def _turn(
     if not Path(conv.cwd).is_dir():
         raise ConversationStale(f"这段对话的工作目录已不在（{conv.cwd}）：是搬家前的旧对话，"
                                 "能看不能续，开一段新的")
-    digest = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
-    update = _guide_update(conv, system_prompt, digest)
+    update = _guide_update(conv, system_prompt)
     if tuning is not None:
         conv.tune(tuning)
     # 轮次编号取盘上下一个空号，不取 meta.turns + 1：半途放弃的一轮目录留着当证据，
@@ -358,7 +353,6 @@ def _turn(
                 trace_fh.write(json.dumps(event_payload(event), ensure_ascii=False) + "\n")
                 trace_fh.flush()
             if event.kind in ("done", "error"):
-                conv.guide_sha = digest
                 if system_prompt:
                     (conv.dir / GUIDE_NAME).write_text(system_prompt, encoding="utf-8")
                 _close_turn(conv, turn_n, message, event, origin)
@@ -374,16 +368,18 @@ GUIDE_REMOVED = "（这几节删掉了，不再作数：{names}）"
 HEADING_RE = re.compile(r"#{1,6} \S")
 
 
-def _guide_update(conv: Conversation, system_prompt: str, digest: str) -> str:
-    """续接的这一轮指南变了：塞在话前面的那段（变了的几节的新全文、删掉的节名）。只塞变了的——挂一个
-    skill 只动「工具包」一节，整份指南两万多字每次都塞是白花 token、还会淹没人的话。上一份没存下来
-    （存这份文件之前开的对话）就整份塞。没变、没有会话可续（指南随开会话送到）都是空串。"""
-    if not (system_prompt and conv.session_id) or conv.guide_sha in (None, digest):
+def _guide_update(conv: Conversation, system_prompt: str) -> str:
+    """续接的这一轮指南变了：塞在话前面的那段（变了的几节的新全文、删掉的节名）。比的是对话目录里
+    上一轮送到的那份（guide.md，每轮结束时写）：只塞变了的——挂一个 skill 只动「工具包」一节，整份
+    指南两万多字每次都塞是白花 token、还会淹没人的话（外层 #122 #200）。没有 guide.md 就是不知道
+    CLI 手里是哪份，整份都算变了。没变、没有会话可续（指南随开会话送到）都是空串。"""
+    if not (system_prompt and conv.session_id):
         return ""
     previous = conv.dir / GUIDE_NAME
-    if not previous.is_file():
-        return GUIDE_UPDATE.format(sections=system_prompt.strip())
-    old, new = _sections(previous.read_text(encoding="utf-8")), _sections(system_prompt)
+    sent = previous.read_text(encoding="utf-8") if previous.is_file() else ""
+    if sent == system_prompt:
+        return ""
+    old, new = _sections(sent), _sections(system_prompt)
     changed = [body for key, body in new.items() if old.get(key) != body]
     removed = [key[0] or "开头那段" for key in old if key not in new]
     if removed:

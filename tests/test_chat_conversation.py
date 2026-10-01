@@ -193,17 +193,17 @@ def test_guide_change_mid_conversation_sends_only_the_changed_sections(tmp_path)
     assert "删掉了，不再作数：## 工具包" in chat.calls[3]["message"]
 
 
-def test_guide_change_in_an_old_conversation_sends_the_whole_guide(tmp_path):
-    """存 guide.md 之前开的对话只有指纹：比不出哪几节变了，整份塞；没开过会话（第一轮）不塞。"""
+def test_without_a_record_of_what_was_sent_the_whole_guide_counts_as_changed(tmp_path):
+    """对话目录里没有 guide.md（不知道 CLI 手里是哪份）而有会话可续：整份都算变了、整份塞；
+    没开过会话（第一轮）不塞——指南随开会话送到。"""
     conv, chat = start(tmp_path, reply("一"), reply("二"))
     drain(conv, chat, "第一句")
     (conv.dir / conv_mod.GUIDE_NAME).unlink()
-    list(conv_mod.send(conv, chat, "第二句", system_prompt=GUIDE + "\n新加了一条命令",
-                       allowed_paths=[], bash_rules=()))
+    drain(conv, chat, "第二句")
     sent = chat.calls[1]["message"]
-    assert "新加了一条命令" in sent and "你是协调 agent" in sent and sent.endswith("第二句")
+    assert "你是协调 agent" in sent and sent.endswith("第二句")
+    assert (conv.dir / conv_mod.GUIDE_NAME).read_text(encoding="utf-8") == GUIDE
     conv2, chat2 = start(tmp_path / "b", reply("一"))
-    conv2.guide_sha = "stale"
     drain(conv2, chat2, "第一句")
     assert chat2.calls[0]["message"] == "第一句"
 

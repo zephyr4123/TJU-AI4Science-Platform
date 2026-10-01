@@ -15,6 +15,7 @@
 - 环境变量 `AI4SCI_CURATED_SKILLS_ROOT` 指收录库；`GET /skills/<name>` 取一个 skill 带正文（#197）
 
 ### 变更
+- 升级：1.0.x 的数据根跑一次外层的 `scripts/oneoff/migrate-to-1.1.py <数据根>`（旧对话里塞进人话的指南挪出去、meta 去掉 `guide_sha`、续不上的会话改开新会话、流程实例补 `from`）（#200 #199）
 - 能力按项目装载：研究助理与执行层只装平台自带的 skill 加本项目流程实例上挂的能力，装载之外的 `skill show / run` 与 `cap` 拒，领域 skill 也要挂上。迁移：先 `ai4sci flow take <流程>`，要用的 skill 挂到实例的格子上（#197）
 - skill 宽进：规范外的 frontmatter 字段只提醒，不合格的单个隔离、不拖垮整库；收录与领域包的脚本首次运行时按锁建环境，`make skills` 只预热平台自带的（#197）
 - `show caps` 文本里 skill 按出处计数不逐个列；`show caps --json`、`GET /skills` 不带 SKILL.md 正文，`skill show` 不打库的路径。迁移：正文用 `ai4sci skill show <name>` 或 `GET /skills/<name>`（#197）
