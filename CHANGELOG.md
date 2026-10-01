@@ -15,9 +15,9 @@
 - 环境变量 `AI4SCI_CURATED_SKILLS_ROOT` 指收录库；`GET /skills/<name>` 取一个 skill 带正文（#197）
 
 ### 变更
-- 能力按项目装载：研究助理与执行层只装平台自带的 skill 加本项目流程实例上挂的能力，装载之外的 `skill show / run` 与 `cap` 拒；领域 skill 不再随领域包自动进执行层，要挂上（#197）
+- 能力按项目装载：研究助理与执行层只装平台自带的 skill 加本项目流程实例上挂的能力，装载之外的 `skill show / run` 与 `cap` 拒，领域 skill 也要挂上。迁移：先 `ai4sci flow take <流程>`，要用的 skill 挂到实例的格子上（#197）
 - skill 宽进：规范外的 frontmatter 字段只提醒，不合格的单个隔离、不拖垮整库；收录与领域包的脚本首次运行时按锁建环境，`make skills` 只预热平台自带的（#197）
-- `show caps` 文本里 skill 按出处计数不逐个列；`show caps --json`、`GET /skills` 不带 SKILL.md 正文；`skill show` 不打库的路径（#197）
+- `show caps` 文本里 skill 按出处计数不逐个列；`show caps --json`、`GET /skills` 不带 SKILL.md 正文，`skill show` 不打库的路径。迁移：正文用 `ai4sci skill show <name>` 或 `GET /skills/<name>`（#197）
 - `ai4sci skill` 与 `show skills` 按 cwd 所在的项目判装载，cwd 不在项目里才看 `AI4SCI_PROJECT`；流程上拼错的名字列为不可用、不再关掉那个阶段（#197）
 
 ### 修复
@@ -26,7 +26,7 @@
 - `ai4sci skill run <name> --script <文件>` 里写在名字后面的 `--script` 被当成脚本参数吞掉（#198）
 
 ### 移除
-- 一个第三方 key 都不要：`download` 不再读 Hugging Face 凭据，只拉公开的仓库；门禁查三处库里要凭据的用法，否定说法不算（#196）
+- 一个第三方 key 都不要：`download` 不再读 Hugging Face 凭据，只拉公开的仓库；门禁查三处库里要凭据的用法。迁移：门控仓库在网页上手动下好放进 `materials/`（#196）
 - 协调层端口的 `guide_channel`（两家都只在开会话时收指南，没有第二种了）；`RunContext.domain`（没有读取方）（#200）
 
 ## [1.0.1] - 2026-09-23
