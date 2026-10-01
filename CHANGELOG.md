@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-01
+
 ### 新增
 - 编辑台：能力镜头里的 skill 按出处分架、能查找；配置板默认只列已挂的、平台自带的、本阶段那一架的，其余「查找全库」（#197）
 - 收录社区 skill 库 `skills-curated/`：K-Dense、Nature Skills、AI Research SKILLs 按七个阶段加「通用」分拣，台账 `provenance.yaml` 记来源、提交、许可证、改动；`ai4sci show skills` 按词、按阶段查库（#198）
@@ -136,7 +138,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v0.1.0...v0.2.0
