@@ -30,7 +30,7 @@ include = ["framework*", "backends*", "compute*"]
 
 # 框架在运行时要读的文件都要随包带走，装出来的 ai4sci 才找得到（外层 #138）：
 #   experiment/pack.py::SCHEMA_DIR（scoring / results / report 三份 schema）
-#   capabilities/<能力>/prompt.md（每颗能力一份；tests/test_packaging.py 查这里有没有漏）
+#   capabilities/<能力>/*.md（提示模板，多数一份 prompt.md；tests/test_packaging.py 查这里有没有漏）
 #   framework/shipped/（make package 拷进来的出厂件：流程库、模板、领域、skill、指南、页面；paths.py 读）
 [tool.setuptools.package-data]
 "framework" = ["shipped/**/*"]
@@ -40,6 +40,7 @@ include = ["framework*", "backends*", "compute*"]
 "framework.capabilities.analysis" = ["prompt.md"]
 "framework.capabilities.reproduction" = ["prompt.md"]
 "framework.capabilities.reproducibility" = ["prompt.md"]
+"framework.capabilities.literature_search" = ["seed.md", "screen.md"]
 
 [tool.ruff]
 line-length = 100

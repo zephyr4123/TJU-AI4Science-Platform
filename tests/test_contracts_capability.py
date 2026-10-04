@@ -42,10 +42,10 @@ def _module(name: str, descriptor: object, entry: object) -> ModuleType:
     return module
 
 
-def test_discover_finds_the_six_capabilities_and_all_pass_the_checks():
+def test_discover_finds_the_seven_capabilities_and_all_pass_the_checks():
     found = discover()
-    assert set(found) == {"design", "reproduction", "auto-research", "analysis", "reproducibility",
-                          "verify"}
+    assert set(found) == {"literature-search", "design", "reproduction", "auto-research",
+                          "analysis", "reproducibility", "verify"}
     for name, module in found.items():
         assert module.DESCRIPTOR.name == name
         json.dumps(module.DESCRIPTOR.to_dict(), ensure_ascii=False)  # UI 后端要能直接吃
@@ -171,8 +171,9 @@ def test_param_label_is_required_short_and_clean():
 
 def test_every_shipped_capability_sits_in_a_stage_with_all_columns_filled():
     stages = {name: module.DESCRIPTOR.stage for name, module in discover().items()}
-    assert stages == {"design": "设计", "reproduction": "设计", "auto-research": "实验",
-                      "analysis": "分析", "reproducibility": "分析", "verify": "验证"}
+    assert stages == {"literature-search": "文献", "design": "设计", "reproduction": "设计",
+                      "auto-research": "实验", "analysis": "分析", "reproducibility": "分析",
+                      "verify": "验证"}
     for module in discover().values():
         d = module.DESCRIPTOR
         assert d.title and d.brief

@@ -39,7 +39,7 @@
 
 | 阶段 | 主文件 | 状态 |
 |---|---|---|
-| 文献 | `sources.md` | 已定（助理手写，`output new literature`；复现流程读它，P-24） |
+| 文献 | `sources.md` | 已定（`literature-search`；助理也能手写，`output new literature`；复现流程读它，P-24） |
 | 假设 | — | 待第一个能力定 |
 | 设计 | `scoring.yaml` | 已定（`design`、`reproduction`） |
 | 实验 | `ledger.tsv` + `iters/iter_N/results.json` | 已定（`auto-research`） |
@@ -85,7 +85,7 @@ writing/2/draft.md     meta: by: report-draft   from: [analysis/2]
 
 参数的 `label` 是页面上的名字（`max_iters` → 本次轮数），`help` 是 hover 的一句。协调层读的就是这份详情，不另写用户版；执行者的种类（`needs_executor`、能不能续跑）是机器读的，不上屏。字数、禁用词、CLI 参数这些规矩都在 `Capability.__post_init__` 与 `Param.__post_init__` 里断言（`framework/contracts/capability.py`），写错了 `discover()` 当场炸、信息说到哪一栏撞了哪个词。
 
-写成什么样，看出厂的：`ai4sci show caps` 把六个步骤的五栏原样打出来（出处是各子包 `__init__.py` 的 `DESCRIPTOR`），照 `auto_research/__init__.py` 那份的口吻写。
+写成什么样，看出厂的：`ai4sci show caps` 把七个步骤的五栏原样打出来（出处是各子包 `__init__.py` 的 `DESCRIPTOR`），照 `auto_research/__init__.py` 那份的口吻写。
 
 ## 写代码
 

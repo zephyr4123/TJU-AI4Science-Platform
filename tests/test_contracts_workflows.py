@@ -122,7 +122,7 @@ def test_a_capability_must_sit_in_its_own_room(tmp_path):
     assert problems == [
         "第 3 项「设计」里的 verify 属于「验证」阶段，不能放在「设计」阶段里",
         "第 3 项「设计」里的 nope：没有这个能力，拼错了？（步骤：['analysis', 'auto-research', "
-        "'design', 'reproducibility', 'reproduction', 'verify']；"
+        "'design', 'literature-search', 'reproducibility', 'reproduction', 'verify']；"
         "skill 用 ai4sci show skills <词> 查）"]
 
 
