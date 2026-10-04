@@ -42,9 +42,11 @@ def parse_seeds(text: str) -> tuple[Seeds | None, list[str]]:
 
 
 def parse_decisions(text: str, expected: list[str]) -> tuple[dict[str, tuple[str, str]], list[str]]:
-    """每行 `W号 | 收 或 不收 | 理由`。expected 里每个 W 号恰好一行；多的、少的、重复的、
-    结论不认的、没写理由的都进问题清单。"""
+    """每行 `W号 | 收 或 不收 | 理由`，返回拿到合格结论的与问题清单。不在 expected 里的号
+    （抄错的）、结论不认的、没写理由的、同一篇两条相反结论的进问题清单，这几篇不算有结论；
+    同一篇重复写了一样的结论不算错。漏写的列在最后。"""
     decided: dict[str, tuple[str, str]] = {}
+    conflicted: set[str] = set()
     problems: list[str] = []
     for number, raw in enumerate(text.splitlines(), start=1):
         line = BULLET_RE.sub("", raw).strip().strip("|").strip()
@@ -58,12 +60,17 @@ def parse_decisions(text: str, expected: list[str]) -> tuple[dict[str, tuple[str
         key, verdict, reason = match.group(0), parts[1], parts[2]
         if key not in expected:
             problems.append(f"第 {number} 行的 {key} 不在这一跳的候选里")
-        elif key in decided:
-            problems.append(f"{key} 写了不止一行")
         elif verdict not in VERDICTS:
             problems.append(f"{key} 的结论是「{verdict}」，只认「收」或「不收」")
         elif not reason:
             problems.append(f"{key} 没写理由")
+        elif key in conflicted:
+            continue
+        elif key in decided:
+            if decided[key][0] != verdict:
+                del decided[key]
+                conflicted.add(key)
+                problems.append(f"{key} 写了两条相反的结论")
         else:
             decided[key] = (verdict, reason)
     missing = [k for k in expected if k not in decided]

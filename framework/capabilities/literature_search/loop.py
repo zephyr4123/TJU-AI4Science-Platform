@@ -49,6 +49,7 @@ CANDIDATES_NAME = "candidates.jsonl"
 ROUNDS_DIRNAME = "rounds"
 LISTING_NAME = "candidates.md"
 DECISIONS_NAME = "decisions.md"
+REST_SUFFIX = "-rest"  # 补筛那次的清单与结论：candidates-rest.md、decisions-rest.md
 LOG_DIRNAME = "executor"
 
 CITING_PAGES = 2      # 「谁引用了它」：一跳的新收录合成一次查询，按被引数取前几页（每页 200）
@@ -165,26 +166,48 @@ def _expand(pool: Pool, client: OpenAlex, frontier: list[Paper], hop: int, per_h
 
 def _screen(output_dir: Path, runner: Runner, need: str, criteria: str, pool: Pool, hop: int,
             costs: list[float]) -> None:
+    """一跳一次筛选会话。没拿到合格结论的几篇（漏写、抄错号、同一篇两条相反的）单独补筛一次，
+    补完还缺才判失败：四十篇里抄错一个号就让整次检索作废，前面几分钟的检索全白费（外层 #216）。"""
     entries = pool.of_hop(hop)
+    decided = _ask(output_dir, runner, need, criteria, pool, hop, entries, "", costs)
+    rest = [e for e in entries if e.paper.key not in decided]
+    if rest:
+        decided |= _ask(output_dir, runner, need, criteria, pool, hop, rest, REST_SUFFIX, costs)
+        missing = [e.paper.key for e in rest if e.paper.key not in decided]
+        if missing:
+            raise CapabilityFailed(f"第 {hop} 跳补筛之后还有 {len(missing)} 篇没有结论："
+                                   + ", ".join(missing[:10]) + (" 等" if len(missing) > 10 else ""))
+    for key, (verdict, reason) in decided.items():
+        pool.decide(key, verdict, reason)
+
+
+def _ask(output_dir: Path, runner: Runner, need: str, criteria: str, pool: Pool, hop: int,
+         entries: list[Entry], suffix: str, costs: list[float]) -> dict[str, tuple[str, str]]:
+    """把 entries 交给执行层筛一次，返回拿到合格结论的那些；不合格的记日志，由调用方补筛。"""
     round_dir = output_dir / ROUNDS_DIRNAME / str(hop)
     round_dir.mkdir(parents=True, exist_ok=True)
     listing = "\n\n".join(_listing(entry, pool) for entry in entries)
-    (round_dir / LISTING_NAME).write_text(listing + "\n", encoding="utf-8")
-    decisions = f"{ROUNDS_DIRNAME}/{hop}/{DECISIONS_NAME}"
+    (round_dir / _suffixed(LISTING_NAME, suffix)).write_text(listing + "\n", encoding="utf-8")
+    decisions = f"{ROUNDS_DIRNAME}/{hop}/{_suffixed(DECISIONS_NAME, suffix)}"
     prompt = prompting.build_prompt(
         SCREEN_PROMPT, {"hop": hop, "count": len(entries), "requirement": need,
                         "criteria": criteria, "candidates": listing, "decisions": decisions},
         loadout=loadout.around(output_dir))
     result = session.run_session(runner, prompt, cwd=output_dir, allowed_paths=[output_dir],
-                                 log_dir=output_dir / LOG_DIRNAME / f"hop-{hop}")
+                                 log_dir=output_dir / LOG_DIRNAME / f"hop-{hop}{suffix}")
     costs.append(result.cost_usd)
     _check_outcome(result, decisions)
     decided, problems = parse_decisions(_read(output_dir / decisions),
                                         [e.paper.key for e in entries])
     if problems:
-        raise CapabilityFailed(f"{decisions} 不合形状：" + "；".join(problems[:8]))
-    for key, (verdict, reason) in decided.items():
-        pool.decide(key, verdict, reason)
+        LOGGER.warning("screen_problems hop=%d file=%s decided=%d/%d %s", hop, decisions,
+                       len(decided), len(entries), "；".join(problems[:8]))
+    return decided
+
+
+def _suffixed(name: str, suffix: str) -> str:
+    stem, dot, ext = name.rpartition(".")
+    return f"{stem}{suffix}{dot}{ext}"
 
 
 def _listing(entry: Entry, pool: Pool) -> str:

@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from framework.capabilities import literature_search
-from framework.capabilities.literature_search import fulltext, loop, openalex, papers, web
+from framework.capabilities.literature_search import fulltext, indexes, loop, openalex, papers, web
 from framework.capabilities.literature_search.fulltext import Fulltext
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
 from framework.workspace import outputs
@@ -262,11 +262,36 @@ def test_screening_prompt_carries_criteria_abstract_and_origin(ws):
     assert runner.bash_rules == ("ai4sci skill",)
 
 
-def test_missing_decision_fails_with_the_key(ws):
+def test_undecided_papers_are_rescreened_once_and_only_they(ws):
+    """一字抄错不该让整次检索作废（外层 #216）：漏写的、抄错号的、同一篇两条相反结论的，单独补筛
+    一次；不在候选里的号忽略；同一篇重复写了一样的结论不算错。"""
+    def sloppy(cwd: Path) -> None:
+        (cwd / "rounds" / "0" / "decisions.md").write_text(
+            "W1 | 收 | 相关\nW1 | 收 | 相关\nW9999 | 收 | 抄错的号\n"
+            "W2 | 收 | 相关\nW2 | 不收 | 无关\n")
+
+    def rest(cwd: Path) -> None:
+        listing = (cwd / "rounds" / "0" / "candidates-rest.md").read_text()
+        keys = re.findall(r"^### (W\d+)$", listing, re.M)
+        (cwd / "rounds" / "0" / "decisions-rest.md").write_text(
+            "".join(f"{k} | 不收 | 补筛 {k}\n" for k in keys))
+    out, runner, _ = _search(ws, [_seeds_move(), sloppy, rest], max_hops=0)
+    assert "### W1" not in runner.prompts[2]
+    assert "### W2" in runner.prompts[2] and "### W8" in runner.prompts[2]
+    pool = _pool(out)
+    assert pool["W1"]["verdict"] == "收"
+    assert (pool["W2"]["verdict"], pool["W2"]["reason"]) == ("不收", "补筛 W2")
+    assert pool["W8"]["reason"] == "补筛 W8"
+
+
+def test_still_undecided_after_the_rescreen_fails_with_the_key(ws):
     def half(cwd: Path) -> None:
         (cwd / "rounds" / "0" / "decisions.md").write_text("W1 | 收 | 相关\n")
-    with pytest.raises(CapabilityFailed, match="2 篇没有结论：W2, W8"):
-        _search(ws, [_seeds_move(), half])
+
+    def still_half(cwd: Path) -> None:
+        (cwd / "rounds" / "0" / "decisions-rest.md").write_text("W2 | 收 | 相关\n")
+    with pytest.raises(CapabilityFailed, match="补筛之后还有 1 篇没有结论：W8"):
+        _search(ws, [_seeds_move(), half, still_half])
 
 
 def test_writing_outside_the_decisions_file_fails(ws):
@@ -310,6 +335,21 @@ def test_client_retries_rate_limits_then_succeeds():
     client = openalex.OpenAlex(web.Web(get=flaky, sleep=waits.append))
     assert client.search("q", 5) == []
     assert waits == [2.0, 2.0] and client.remaining == 499 and client.requests == 1
+
+
+def test_arxiv_rate_limit_waits_long_enough_for_a_busy_neighbour():
+    """同一台机器上几次检索同时查 arXiv 会被 429，1 / 2 / 4 秒退避三次就放弃，一批检索词白丢
+    （外层 #216）。arXiv 不给 Retry-After，按它的限速退避得更久、多等一次。"""
+    calls, waits = [], []
+
+    def busy(url: str, headers: dict[str, str]):
+        calls.append(url)
+        if len(calls) <= 4:
+            raise urllib.error.HTTPError(url, 429, "slow down", {}, io.BytesIO(b""))
+        return b"<feed><entry><id>http://arxiv.org/abs/2003.06097v1</id></entry></feed>", {}
+    hits = indexes.arxiv(web.Web(get=busy, sleep=waits.append), "pinn inverse", 5)
+    assert [h.arxiv for h in hits] == ["2003.06097"]
+    assert [w for w in waits if w >= 5] == list(indexes.ARXIV_BACKOFF_S)
 
 
 def test_client_gives_up_after_retries():
