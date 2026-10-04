@@ -16,6 +16,7 @@ from __future__ import annotations
 import io
 import json
 import re
+import subprocess
 import urllib.error
 import urllib.parse
 from pathlib import Path
@@ -23,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from framework.capabilities import literature_search
-from framework.capabilities.literature_search import loop, openalex, papers
+from framework.capabilities.literature_search import fulltext, loop, openalex, papers
 from framework.capabilities.literature_search.fulltext import Fulltext
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
 from framework.workspace import outputs
@@ -310,3 +311,29 @@ def test_paper_from_openalex_rebuilds_abstract_and_arxiv_pdf():
     assert paper.abstract == "b a c"
     assert paper.arxiv == "2504.05248"
     assert paper.pdf_url == "https://arxiv.org/pdf/2504.05248"
+
+
+def test_fulltext_falls_back_to_arxiv_when_the_publisher_refuses(tmp_path, monkeypatch):
+    """出版社的 PDF 被人机验证拦住（真跑：IOP 返回 Radware 的页面），有 arXiv 版本就换它再试。"""
+    tried = []
+
+    def fake_capture(script, args, timeout_s):
+        url = args[args.index("--input") + 1]
+        tried.append(url)
+        if "arxiv" not in url:
+            return subprocess.CompletedProcess(args, 3, "", "链接返回的不是 PDF：captcha\n")
+        return subprocess.CompletedProcess(args, 0, '{"pages": 9}\n', "")
+    monkeypatch.setattr(fulltext, "capture_script", fake_capture)
+    work = _work("W10", "t", doi="10.1088/2632-2153/ac3712", pdf="https://iopscience.iop.org/x/pdf",
+                 landings=("http://arxiv.org/abs/2107.00940",))
+    got = fulltext.fetch(papers.from_openalex(work), tmp_path)
+    assert tried == ["https://iopscience.iop.org/x/pdf", "https://arxiv.org/pdf/2107.00940"]
+    assert got == Fulltext("papers/W10/paper.md", 9)
+
+
+def test_fulltext_reports_the_last_failure_when_every_link_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(fulltext, "capture_script", lambda script, args, timeout_s:
+                        subprocess.CompletedProcess(args, 3, "", "HTTP Error 403: Forbidden\n"))
+    work = _work("W11", "t", pdf="https://publisher.org/x.pdf")
+    got = fulltext.fetch(papers.from_openalex(work), tmp_path)
+    assert got.path is None and "403" in got.why

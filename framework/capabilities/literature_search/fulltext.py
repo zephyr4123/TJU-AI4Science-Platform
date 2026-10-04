@@ -35,25 +35,38 @@ Fetch = Callable[[Paper, Path], Fulltext]
 
 
 def fetch(paper: Paper, output_dir: Path) -> Fulltext:
-    if not paper.pdf_url:
+    """先试开放获取的 PDF，不成且有 arXiv 版本再试 arXiv 的：出版社常拦程序下载（403、人机验证），
+    arXiv 不拦（外层 #212 真跑：IOP 返回人机验证页的那篇有 arXiv 版本）。"""
+    links = list(dict.fromkeys(u for u in (
+        paper.pdf_url, f"https://arxiv.org/pdf/{paper.arxiv}" if paper.arxiv else None) if u))
+    if not links:
         return Fulltext(None, None, "没有开放获取的 PDF")
     target = Path(PAPERS_DIRNAME) / paper.key
     script = pick_script(skills.find(PDF_SKILL), None)
-    args = ["--input", paper.pdf_url, "--out", str(output_dir / target)]
+    for url in links:
+        got = _one(script, paper.key, url, output_dir, target)
+        if got.path:
+            return got
+    return got  # 每个链接都没成：报最后一个的原因
+
+
+def _one(script: Path, key: str, url: str, output_dir: Path, target: Path) -> Fulltext:
+    """下一个链接并解析；没成的 Fulltext 带原因。"""
     try:
-        proc = capture_script(script, args, TIMEOUT_S)
+        proc = capture_script(script, ["--input", url, "--out", str(output_dir / target)],
+                              TIMEOUT_S)
     except subprocess.TimeoutExpired:
-        LOGGER.warning("fulltext_timeout key=%s url=%s", paper.key, paper.pdf_url)
+        LOGGER.warning("fulltext_timeout key=%s url=%s", key, url)
         return Fulltext(None, None, f"下载与解析超过 {TIMEOUT_S:.0f} 秒")
     if proc.returncode != 0:
         last = (proc.stderr.strip().splitlines() or ["无输出"])[-1][:200]
-        LOGGER.warning("fulltext_failed key=%s code=%d url=%s why=%s", paper.key,
-                       proc.returncode, paper.pdf_url, last)
+        LOGGER.warning("fulltext_failed key=%s code=%d url=%s why=%s", key, proc.returncode, url,
+                       last)
         return Fulltext(None, None, f"{last}（退出码 {proc.returncode}）")
     try:
         summary = json.loads(proc.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError):
-        LOGGER.error("fulltext_bad_stdout key=%s stdout=%r", paper.key, proc.stdout[-300:])
+        LOGGER.error("fulltext_bad_stdout key=%s stdout=%r", key, proc.stdout[-300:])
         return Fulltext(None, None, "pdf 的输出不是一行 JSON（skill 的契约坏了，见日志）")
-    LOGGER.info("fulltext_ok key=%s pages=%s", paper.key, summary.get("pages"))
+    LOGGER.info("fulltext_ok key=%s pages=%s url=%s", key, summary.get("pages"), url)
     return Fulltext((target / "paper.md").as_posix(), summary.get("pages"))

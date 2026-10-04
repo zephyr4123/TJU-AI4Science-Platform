@@ -140,9 +140,13 @@ def _fetch(raw_input: str, out: Path) -> Source | int:
     request = urllib.request.Request(raw_input, headers={"User-Agent": "ai4sci-pdf-skill/1"})
     try:
         with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_S) as resp:
-            data = resp.read(DOWNLOAD_MAX_BYTES + 1)
+            data, declared = _read_all(resp), resp.headers.get("Content-Length")
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         print(f"下载失败：{raw_input}：{exc}", file=sys.stderr)
+        return EXIT_DOWNLOAD
+    if declared and declared.isdigit() and len(data) < int(declared):
+        print(f"下载不完整：只收到 {len(data)} / {declared} 字节，连接中途断了：{raw_input}",
+              file=sys.stderr)
         return EXIT_DOWNLOAD
     if len(data) > DOWNLOAD_MAX_BYTES:
         print(f"下载的文件超过 {DOWNLOAD_MAX_BYTES // 2**20} MB，不像一篇论文：{raw_input}",
@@ -156,6 +160,20 @@ def _fetch(raw_input: str, out: Path) -> Source | int:
     path.write_bytes(data)
     print(f"已下载 {len(data)} 字节到 {path}", file=sys.stderr)
     return Source(path, raw_input)
+
+
+def _read_all(resp) -> bytes:
+    """读到结尾（或超上限）。一次 read(n) 拿不全是常态，连接中途断了它也不报错，只是短：
+    外层 #212 真跑时两篇 arXiv 的 PDF 停在正好 1 MiB 与 8 MiB，解析报 `not a dict (null)`。"""
+    chunks: list[bytes] = []
+    total = 0
+    while total <= DOWNLOAD_MAX_BYTES:
+        chunk = resp.read(1 << 20)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+    return b"".join(chunks)
 
 
 def _is_url(text: str) -> bool:
