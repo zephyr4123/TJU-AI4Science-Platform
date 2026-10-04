@@ -27,6 +27,7 @@ import pytest
 from framework.capabilities import literature_search
 from framework.capabilities.literature_search import fulltext, indexes, loop, openalex, papers, web
 from framework.capabilities.literature_search.fulltext import Fulltext
+from framework.capabilities.literature_search.pool import Entry
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
 from framework.workspace import outputs
 from tests.fixtures import packs_factory as pf
@@ -255,11 +256,23 @@ def test_screening_prompt_carries_criteria_abstract_and_origin(ws):
     _, runner, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
     prompt = runner.prompts[1]
     for token in ("用 PINN 做参数反演", "We solve inverse problems with PINNs",
-                  "种子（联网搜索找到）", "检索词「pinn inverse」（OpenAlex）",
-                  "rounds/0/decisions.md",
+                  "- 怎么找到的：种子", "检索词 1 条", "rounds/0/decisions.md",
                   "（OpenAlex 没有摘要）"):
         assert token in prompt
     assert runner.bash_rules == ("ai4sci skill",)
+
+
+def test_screening_listing_counts_origins_and_cuts_long_abstracts():
+    """给筛选看的清单只数每种来路几条、摘要截到 500 字：清单砍掉六成，筛得一样准（外层 #219）。"""
+    paper = papers.Paper("W1", "A PINN study", 2024, (), "J", None, None, None, "x" * 900, 3, (),
+                         None, None)
+    entry = Entry(paper, 1, ["query:OpenAlex:pinn", "query:arXiv:pinn", "ref:W7", "ref:W8",
+                             "cites:W9"])
+    listing = loop._listing(entry)
+    assert "- 怎么找到的：检索词 2 条；被 2 篇已收录的引用；引用了 1 篇已收录的" in listing
+    assert "- 摘要：" + "x" * 500 + "…" in listing
+    assert "x" * 501 not in listing
+    assert "《" not in listing and "「" not in listing
 
 
 def test_undecided_papers_are_rescreened_once_and_only_they(ws):

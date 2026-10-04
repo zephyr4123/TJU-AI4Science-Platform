@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,7 +55,9 @@ LOG_DIRNAME = "executor"
 
 CITING_PAGES = 2      # 「谁引用了它」：一跳的新收录合成一次查询，按被引数取前几页（每页 200）
 FETCH_CAP = 1000      # 一跳最多给多少条线索取元数据：50 篇一批，扣 1 积分
-ABSTRACT_MAX = 1500   # 给模型筛的摘要截到这么长：够判相关，不让一跳的提示无限长
+# 给模型筛的摘要截到这么长。钱跟读进去的字数走：从 1500 降到 500、来路只数个数，清单砍掉六成、
+# 筛选省三分之一，判得和原来一样准（外层 #219 的重放实验）
+ABSTRACT_MAX = 500
 
 
 @dataclass(frozen=True)
@@ -186,7 +189,7 @@ def _ask(output_dir: Path, runner: Runner, need: str, criteria: str, pool: Pool,
     """把 entries 交给执行层筛一次，返回拿到合格结论的那些；不合格的记日志，由调用方补筛。"""
     round_dir = output_dir / ROUNDS_DIRNAME / str(hop)
     round_dir.mkdir(parents=True, exist_ok=True)
-    listing = "\n\n".join(_listing(entry, pool) for entry in entries)
+    listing = "\n\n".join(_listing(entry) for entry in entries)
     (round_dir / _suffixed(LISTING_NAME, suffix)).write_text(listing + "\n", encoding="utf-8")
     decisions = f"{ROUNDS_DIRNAME}/{hop}/{_suffixed(DECISIONS_NAME, suffix)}"
     prompt = prompting.build_prompt(
@@ -210,7 +213,7 @@ def _suffixed(name: str, suffix: str) -> str:
     return f"{stem}{suffix}{dot}{ext}"
 
 
-def _listing(entry: Entry, pool: Pool) -> str:
+def _listing(entry: Entry) -> str:
     paper = entry.paper
     facts = " · ".join(x for x in (str(paper.year or "年份不详"), paper.venue,
                                    f"被引 {paper.cited_by}") if x)
@@ -219,9 +222,18 @@ def _listing(entry: Entry, pool: Pool) -> str:
         f"### {paper.key}",
         f"- 题目：{paper.title or '（没有题目）'}",
         f"- 年份 · 出处 · 被引：{facts}",
-        f"- 怎么找到的：{'；'.join(pool.describe(m) for m in entry.found)}",
+        f"- 怎么找到的：{_origins(entry.found)}",
         f"- 摘要：{abstract or '（OpenAlex 没有摘要）'}",
     ])
+
+
+def _origins(marks: list[str]) -> str:
+    """来路只数每种几条，不列检索词与父论文题目：原来那样写占清单四分之一，筛得并不更准（外层
+    #219）。给人看的 sources.md 照旧写全（pool.describe）。"""
+    kinds = Counter(mark.partition(":")[0] for mark in marks)
+    says = (("seed", "种子"), ("query", "检索词 {n} 条"), ("ref", "被 {n} 篇已收录的引用"),
+            ("cites", "引用了 {n} 篇已收录的"))
+    return "；".join(say.format(n=kinds[kind]) for kind, say in says if kinds[kind])
 
 
 def _fulltexts(output_dir: Path, pool: Pool, fetch: Fetch) -> dict[str, Fulltext]:
