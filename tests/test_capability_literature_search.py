@@ -1,7 +1,8 @@
 """文献检索：零模型的部分（查接口、去重、多跳排序、停的条件、核执行层交回的文件、写清单）用
 假 OpenAlex 与剧本执行层测全，不连网、不连模型。
 
-假 OpenAlex 走真客户端的 URL 拼法（`OpenAlex(get=...)`），按查询参数从一份小语料里答：
+假网络（`FakeWeb`）走真客户端的 URL 拼法，OpenAlex 按查询参数从一份小语料里答，Crossref、
+arXiv、Europe PMC 按检索词从 `FREE` 里答（缺省什么都没查到）：
 
     W1 种子（DOI 10.1016/j.seed.2022），引用 W3 W4 W9
     W2、W8 是检索词「pinn inverse」的结果，W2 引用 W5
@@ -24,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from framework.capabilities import literature_search
-from framework.capabilities.literature_search import fulltext, loop, openalex, papers
+from framework.capabilities.literature_search import fulltext, loop, openalex, papers, web
 from framework.capabilities.literature_search.fulltext import Fulltext
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
 from framework.workspace import outputs
@@ -34,10 +35,11 @@ from tests.fixtures.scripted_backend import ScriptedRunner
 
 def _work(key: str, title: str, *, doi: str | None = None, refs: tuple[str, ...] = (),
           cited: int = 0, abstract: str = "", pdf: str | None = None,
-          landings: tuple[str, ...] = ()) -> dict:
+          landings: tuple[str, ...] = (), pmid: str | None = None) -> dict:
     words = abstract.split()
     return {
         "id": f"https://openalex.org/{key}", "doi": f"https://doi.org/{doi}" if doi else None,
+        "ids": {"pmid": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"} if pmid else {},
         "display_name": title, "publication_year": 2022,
         "authorships": [{"author": {"display_name": "A. Author"}}],
         "primary_location": {"source": {"display_name": "J. Comput. Phys."},
@@ -59,7 +61,7 @@ CORPUS = {w["id"].rsplit("/", 1)[1]: w for w in (
     _work("W8", "Unrelated fluid simulation", cited=500),
     _work("W3", "Classic inverse PDE method", cited=300),
     _work("W4", "Unrelated optimizer", cited=900),
-    _work("W5", "Bayesian PINN", cited=40),
+    _work("W5", "Bayesian PINN", doi="10.1016/j.bpinn.2021", cited=40, pmid="31415"),
     _work("W6", "PINN inverse follow-up on both", refs=("W1", "W2"), cited=10),
     _work("W7", "Unrelated citing paper", refs=("W1",), cited=5),
     # 期刊版的 DOI 是主 DOI，arXiv 只挂在 locations 里：按 arXiv 的 DOI 查不到（实测 B-PINNs 就是）
@@ -67,37 +69,65 @@ CORPUS = {w["id"].rsplit("/", 1)[1]: w for w in (
           landings=("http://arxiv.org/abs/2003.06097",)),
 )}
 SEARCHES = {"pinn inverse": ["W2", "W8"]}
+# 不扣额度的三家：（哪家, 检索词）→ 命中的编号
+FREE: dict[tuple[str, str], list[str]] = {}
 RELEVANT = {"W1", "W2", "W3", "W5", "W6"}
 HIDDEN = {"W9"}
 
 
-class FakeOpenAlex:
-    """按 URL 的查询参数答；记下每个 URL，测试对账查了什么。"""
+class FakeWeb:
+    """按主机与查询参数答；记下每个 URL，测试对账查了什么。`fail` 里的主机一律回 500。"""
 
-    def __init__(self) -> None:
+    def __init__(self, fail: tuple[str, ...] = ()) -> None:
         self.urls: list[str] = []
+        self.fail = fail
 
-    def __call__(self, url: str) -> tuple[dict, dict[str, str]]:
+    def __call__(self, url: str) -> tuple[bytes, dict[str, str]]:
         self.urls.append(url)
-        query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
-        assert query["select"] == [openalex.SELECT]
-        if "search" in query:
-            keys = SEARCHES.get(query["search"][0], [])
-        else:
-            field, _, value = query["filter"][0].partition(":")
-            wanted = value.split("|")
-            if field == "doi":
-                keys = [k for k, w in CORPUS.items() if w["doi"] and w["doi"][16:] in wanted]
-            elif field == "openalex_id":
-                keys = [k for k in wanted if k in CORPUS and k not in HIDDEN]
-            elif field == "locations.landing_page_url":
-                keys = [k for k, w in CORPUS.items()
-                        if any(loc["landing_page_url"] in wanted for loc in w["locations"])]
-            else:
-                assert field == "cites"
-                keys = [k for k, w in CORPUS.items()
-                        if f"https://openalex.org/{value}" in w["referenced_works"]]
-        return {"results": [CORPUS[k] for k in keys]}, {"x-ratelimit-remaining": "900"}
+        parts = urllib.parse.urlsplit(url)
+        query = {k: v[0] for k, v in urllib.parse.parse_qs(parts.query).items()}
+        if parts.netloc in self.fail:
+            raise urllib.error.HTTPError(url, 500, "boom", {}, io.BytesIO(b""))
+        if parts.netloc == "api.crossref.org":
+            items = [{"DOI": d, "type": "journal-article"}
+                     for d in FREE.get(("Crossref", query["query"]), [])]
+            return json.dumps({"message": {"items": items}}).encode(), {}
+        if parts.netloc == "export.arxiv.org":
+            q = query["search_query"].replace("all:", "").replace(" AND ", " ")
+            entries = "".join(f"<entry><id>http://arxiv.org/abs/{a}v1</id></entry>"
+                              for a in FREE.get(("arXiv", q), []))
+            return f"<feed><id>http://arxiv.org/api/x</id>{entries}</feed>".encode(), {}
+        if parts.netloc == "www.ebi.ac.uk":
+            rows = [{"pmid": m} for m in FREE.get(("Europe PMC", query["query"]), [])]
+            return json.dumps({"resultList": {"result": rows}}).encode(), {}
+        assert parts.netloc == "api.openalex.org" and query["select"] == openalex.SELECT
+        return json.dumps({"results": [CORPUS[k] for k in _openalex(query)]}).encode(), {
+            "x-ratelimit-remaining": "900"}
+
+
+def _openalex(query: dict[str, str]) -> list[str]:
+    if "search" in query:
+        return SEARCHES.get(query["search"], [])
+    field, _, value = query["filter"].partition(":")
+    wanted = value.split("|")
+    if field == "doi":
+        return [k for k, w in CORPUS.items() if w["doi"] and w["doi"][16:] in wanted]
+    if field == "openalex_id":
+        return [k for k in wanted if k in CORPUS and k not in HIDDEN]
+    if field == "pmid":
+        return [k for k, w in CORPUS.items() if w["ids"].get("pmid", "").rsplit("/", 1)[-1]
+                in wanted]
+    if field == "locations.landing_page_url":
+        return [k for k, w in CORPUS.items()
+                if any(loc["landing_page_url"] in wanted for loc in w["locations"])]
+    assert field == "cites"
+    return [k for k, w in CORPUS.items()
+            if f"https://openalex.org/{value}" in w["referenced_works"]]
+
+
+def _client(get) -> openalex.OpenAlex:
+    ticks = iter(range(10**6))
+    return openalex.OpenAlex(web.Web(get=get, sleep=lambda s: None, clock=lambda: next(ticks)))
 
 
 def _seeds_move(extra: str = "") -> dict[str, str]:
@@ -137,7 +167,7 @@ def _out(ws) -> tuple[Path, Inputs]:
 def _search(ws, moves, *, max_hops=2, per_hop=10, min_new=1, get=None, **kw):
     out, inputs = _out(ws)
     runner = ScriptedRunner(list(moves))
-    client = openalex.OpenAlex(get=get or FakeOpenAlex(), sleep=lambda s: None)
+    client = _client(get or FakeWeb())
     line = loop.search(out, inputs, runner, loop.Limits(max_hops, per_hop, min_new),
                          fulltext=True, client=client, fetch=_fake_fetch, **kw)
     return out, runner, line
@@ -159,7 +189,8 @@ def test_hops_expand_from_included_papers_and_stop_when_nothing_is_left(ws):
     assert "W9" not in pool  # OpenAlex 不返回的线索不进池
     assert {k for k, r in pool.items() if r["verdict"] == "收"} == RELEVANT
     assert sorted(pool["W6"]["found"]) == ["cites:W1", "cites:W2"]
-    assert pool["W1"]["found"] == ["seed"] and pool["W8"]["found"] == ["query:pinn inverse"]
+    assert pool["W1"]["found"] == ["seed"]
+    assert pool["W8"]["found"] == ["query:OpenAlex:pinn inverse"]
     sources = (out / "sources.md").read_text()
     assert "停在：没有可筛的候选了" in sources
     assert "引用了收录的《Seed paper on PINN inverse problems》" in sources
@@ -207,7 +238,7 @@ def test_nothing_included_at_hop_zero_stops_without_expanding(ws):
         current = cwd / "rounds" / "0"
         keys = re.findall(r"^### (W\d+)$", (current / "candidates.md").read_text(), re.M)
         (current / "decisions.md").write_text("".join(f"{k} | 不收 | 无关\n" for k in keys))
-    fake = FakeOpenAlex()
+    fake = FakeWeb()
     out, runner, line = _search(ws, [_seeds_move(), reject_all], get=fake)
     assert "included=0" in line and runner.calls == 2
     assert not any("cites" in u for u in fake.urls)
@@ -223,7 +254,8 @@ def test_screening_prompt_carries_criteria_abstract_and_origin(ws):
     _, runner, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
     prompt = runner.prompts[1]
     for token in ("用 PINN 做参数反演", "We solve inverse problems with PINNs",
-                  "种子（联网搜索找到）", "检索词「pinn inverse」", "rounds/0/decisions.md",
+                  "种子（联网搜索找到）", "检索词「pinn inverse」（OpenAlex）",
+                  "rounds/0/decisions.md",
                   "（OpenAlex 没有摘要）"):
         assert token in prompt
     assert runner.bash_rules == ("ai4sci skill",)
@@ -273,8 +305,8 @@ def test_client_retries_rate_limits_then_succeeds():
         if len(calls) < 3:
             raise urllib.error.HTTPError(url, 429, "slow down", {"Retry-After": "2",
                                          "x-ratelimit-remaining": "500"}, io.BytesIO(b""))
-        return {"results": []}, {"x-ratelimit-remaining": "499"}
-    client = openalex.OpenAlex(get=flaky, sleep=waits.append)
+        return b'{"results": []}', {"x-ratelimit-remaining": "499"}
+    client = openalex.OpenAlex(web.Web(get=flaky, sleep=waits.append))
     assert client.search("q", 5) == []
     assert waits == [2.0, 2.0] and client.remaining == 499 and client.requests == 1
 
@@ -282,14 +314,41 @@ def test_client_retries_rate_limits_then_succeeds():
 def test_client_gives_up_after_retries():
     def down(url: str):
         raise urllib.error.HTTPError(url, 503, "down", {}, io.BytesIO(b""))
-    client = openalex.OpenAlex(get=down, sleep=lambda s: None)
-    with pytest.raises(openalex.OpenAlexError, match="返回 503（第 4 次）"):
+    client = _client(down)
+    with pytest.raises(web.FetchError, match="返回 503（第 4 次）"):
         client.by_keys(["W1"])
 
 
+def test_short_read_is_retried():
+    """比 Content-Length 短：连接中途断了，按网络错误重试（pdf skill 就吃过这个亏）。"""
+    replies = [ConnectionResetError("cut"), (b'{"results": []}', {})]
+
+    def flaky(url: str):
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    assert _client(flaky).by_keys(["W1"]) == []
+
+
+def test_same_host_requests_are_spaced():
+    """arXiv 要求两次请求隔 3 秒：同一站点按调用方给的间隔等，别的站点不受影响。"""
+    now, waits = [0.0], []
+
+    def sleep(s: float) -> None:
+        waits.append(s)
+        now[0] += s
+    w = web.Web(get=lambda url: (b"", {}), sleep=sleep, clock=lambda: now[0])
+    w.get("https://export.arxiv.org/a", spacing_s=3)
+    now[0] += 1
+    w.get("https://export.arxiv.org/b", spacing_s=3)
+    w.get("https://api.crossref.org/c")
+    assert waits == [2.0]
+
+
 def test_batches_split_at_fifty():
-    fake = FakeOpenAlex()
-    openalex.OpenAlex(get=fake).by_keys([f"W{i}" for i in range(120)])
+    fake = FakeWeb()
+    _client(fake).by_keys([f"W{i}" for i in range(120)])
     assert len(fake.urls) == 3
 
 
@@ -304,8 +363,7 @@ def test_ids_are_read_from_seed_lines():
 def test_arxiv_seed_resolves_through_locations_when_the_main_doi_is_the_journal(ws):
     seeds = {"seeds.md": "## 检索词\n- nothing\n\n## 纳入标准\n- x\n\n## 种子\n"
                          "- https://arxiv.org/abs/2003.06097v3 贝叶斯 PINN\n"}
-    fake = FakeOpenAlex()
-    out, _, _ = _search(ws, [seeds, _screen], max_hops=0, get=fake)
+    out, _, _ = _search(ws, [seeds, _screen], max_hops=0)
     pool = _pool(out)
     assert pool["W10"]["found"] == ["seed"] and pool["W10"]["paper"]["arxiv"] == "2003.06097"
     assert pool["W10"]["paper"]["pdf_url"] == "https://arxiv.org/pdf/2003.06097"
@@ -345,3 +403,43 @@ def test_fulltext_reports_the_last_failure_when_every_link_fails(tmp_path, monke
     work = _work("W11", "t", pdf="https://publisher.org/x.pdf")
     got = fulltext.fetch(papers.from_openalex(work), tmp_path)
     assert got.path is None and "403" in got.why
+
+
+def test_queries_fan_out_to_free_indexes_and_resolve_through_openalex(ws, monkeypatch):
+    """检索词过 Crossref、arXiv、Europe PMC：命中的 DOI / arXiv 号 / PMID 回 OpenAlex 取元数据；
+    OpenAlex 里没有的命中不算；同一篇被几路查到，来源都记上。"""
+    monkeypatch.setitem(FREE, ("Crossref", "pinn inverse"), ["10.1016/j.bpinn.2021",
+                                                              "10.9999/not-in-openalex"])
+    monkeypatch.setitem(FREE, ("arXiv", "pinn inverse"), ["2003.06097"])
+    monkeypatch.setitem(FREE, ("Europe PMC", "pinn inverse"), ["31415"])
+    out, _, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
+    pool = _pool(out)
+    assert {k for k, r in pool.items() if r["hop"] == 0} == {"W1", "W2", "W8", "W5", "W10"}
+    assert sorted(pool["W5"]["found"]) == ["query:Crossref:pinn inverse",
+                                           "query:Europe PMC:pinn inverse"]
+    sources = (out / "sources.md").read_text()
+    assert "命中 Crossref 2 条、Europe PMC 1 条、OpenAlex 2 条、arXiv 1 条" in sources
+    assert "OpenAlex 里取不到的 1 条不算" in sources
+    assert "检索词「pinn inverse」（Europe PMC）" in sources
+
+
+def test_a_free_index_failing_is_recorded_not_fatal(ws):
+    out, _, line = _search(ws, [_seeds_move(), _screen], max_hops=0,
+                           get=FakeWeb(fail=("api.crossref.org",)))
+    assert line.startswith("literature ok")
+    sources = (out / "sources.md").read_text()
+    assert "## 没查成的检索" in sources and "Crossref「pinn inverse」" in sources
+
+
+def test_hop_zero_keeps_the_best_ranked_query_hits(ws, monkeypatch):
+    """第 0 跳取每跳筛选数的两倍：W2 被两家查到排第一；W8 与 W5 都只一家，W5 的题目沾检索词。"""
+    monkeypatch.setitem(FREE, ("Crossref", "pinn inverse"), ["10.1016/j.bpinn.2021"])
+    monkeypatch.setitem(FREE, ("Europe PMC", "pinn inverse"), [])
+    w2 = CORPUS["W2"]["doi"]
+    monkeypatch.setitem(CORPUS["W2"], "doi", "https://doi.org/10.1016/j.w2.2020")
+    monkeypatch.setitem(FREE, ("Crossref", "pinn inverse"), ["10.1016/j.bpinn.2021",
+                                                              "10.1016/j.w2.2020"])
+    out, _, _ = _search(ws, [_seeds_move(), _screen], max_hops=0, per_hop=1)
+    assert w2 is None
+    hop0 = [k for k, r in _pool(out).items() if r["hop"] == 0]
+    assert hop0 == ["W1", "W2", "W5"]  # 种子不占名额，检索命中取前 2

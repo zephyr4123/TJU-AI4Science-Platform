@@ -52,7 +52,7 @@ workspaces/<名字>/    一份需求的家：
 
 | 阶段 | 能力（命令） | 读什么 | 一句话 |
 |---|---|---|---|
-| 文献 | `literature-search` 文献检索 | 需求 | 执行层写检索词与纳入标准、用自带搜索找种子论文；框架查 OpenAlex、顺着引用往外扩几跳，每跳执行层看摘要筛，收录的有开放获取 PDF 就下载解析，写 sources.md |
+| 文献 | `literature-search` 文献检索 | 需求 | 执行层写检索词与纳入标准、用自带搜索找种子论文；框架拿检索词查四家学术库（OpenAlex、Crossref、arXiv、Europe PMC）、顺着引用往外扩几跳，每跳执行层看摘要筛，收录的有开放获取 PDF 就下载解析，写 sources.md |
 | 设计 | `design` 评分脚本与基线 | 需求 + 原件（+ `--from hypothesis/<n>`） | 执行层写 scoring.yaml、harness/ 与 code/，框架封 harness、跑基线出 baseline/、算预检 |
 | 设计 | `reproduction` 原码复现基线 | 需求 + 原件里论文的代码（`--code <目录名>`）+ `--from literature/<n>` | 论文的代码搬进 code/，执行层只写起它的 launcher、算论文那几个数的 evaluate、目标 = 论文值的 scoring；框架跑一次，论文值与我们的值并排（复现那条流程，见下） |
 | 实验 | `auto-research` AutoResearch | `--from design/<n>` | 开一次实验，一轮一轮改代码：过统计门才 keep，否则回退到 best |

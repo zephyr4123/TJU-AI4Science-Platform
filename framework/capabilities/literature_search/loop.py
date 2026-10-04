@@ -27,14 +27,11 @@ from framework.capabilities.literature_search.exchange import (
     parse_seeds,
 )
 from framework.capabilities.literature_search.fulltext import Fetch, Fulltext
+from framework.capabilities.literature_search.gather import MAX_QUERIES, MAX_SEEDS, gather
 from framework.capabilities.literature_search.openalex import OpenAlex, OpenAlexError
-from framework.capabilities.literature_search.papers import (
-    Paper,
-    arxivs_in,
-    dois_in,
-    from_openalex,
-)
+from framework.capabilities.literature_search.papers import Paper, from_openalex
 from framework.capabilities.literature_search.pool import INCLUDE, Entry, Pool
+from framework.capabilities.literature_search.web import FetchError
 from framework.contracts import requirement
 from framework.contracts.capability import CapabilityFailed, Inputs
 from framework.executor import prompting, session
@@ -53,9 +50,6 @@ LISTING_NAME = "candidates.md"
 DECISIONS_NAME = "decisions.md"
 LOG_DIRNAME = "executor"
 
-MAX_QUERIES = 5       # 关键词检索一次扣 10 积分（每天 1000），一次检索最多花 50
-QUERY_RESULTS = 10    # 每条检索词取前几篇
-MAX_SEEDS = 20
 CITING_N = 25         # 每篇新收录的取多少篇引用它的（按被引数）
 FETCH_CAP = 1000      # 一跳最多给多少条线索取元数据：50 篇一批，扣 1 积分
 ABSTRACT_MAX = 1500   # 给模型筛的摘要截到这么长：够判相关，不让一跳的提示无限长
@@ -71,8 +65,9 @@ class Limits:
 def search(output_dir: Path, inputs: Inputs, runner: Runner, limits: Limits, *, fulltext: bool,
            client: OpenAlex | None = None, fetch: Fetch = fulltext_mod.fetch,
            excluded: frozenset[str] = frozenset()) -> str:
-    """跑完整个检索，写 sources.md，返回一行结论。`client` / `fetch` 给测试换成不连网的；
-    `excluded` 给召回实测挡住当标准答案的那篇综述。"""
+    """跑完整个检索，写 sources.md，返回一行结论。`client` / `fetch` 给测试换成不连网的（四家
+    接口共用 `client.web`）；`excluded` 给召回实测挡住当标准答案的那篇综述。第 0 跳取每跳筛选数
+    的两倍：它要铺开题目的各个侧面。"""
     output_dir = Path(output_dir).resolve()
     _check_limits(limits)
     need = requirement.read(inputs.workspace).strip()
@@ -81,15 +76,15 @@ def search(output_dir: Path, inputs: Inputs, runner: Runner, limits: Limits, *, 
     seeds = _seed_session(output_dir, runner, need, costs)
     pool = Pool(excluded, seeds.queries[:MAX_QUERIES])
     try:
-        unresolved = _hop_zero(pool, client, seeds)
+        gathered = gather(pool, client, seeds, 2 * limits.per_hop)
         hop, stop = _hops(output_dir, runner, need, seeds, pool, client, limits, costs)
-    except OpenAlexError as err:
+    except (OpenAlexError, FetchError) as err:
         pool.save(output_dir / CANDIDATES_NAME)
         raise CapabilityFailed(f"查 OpenAlex 失败，检索停在半路：{err}") from err
     texts = _fulltexts(output_dir, pool, fetch) if fulltext else {}
     write_atomic(output_dir / SOURCES_NAME, report.render(
         title=requirement.title(need, "文献检索"), seeds=seeds, pool=pool, stop=stop,
-        texts=texts, fulltext=fulltext, unresolved=unresolved))
+        texts=texts, fulltext=fulltext, gathered=gathered))
     included = pool.included()
     got = sum(1 for t in texts.values() if t.path)
     cost = sum(costs)
@@ -120,31 +115,6 @@ def _seed_session(output_dir: Path, runner: Runner, need: str, costs: list[float
     if seeds is None:
         raise CapabilityFailed(f"{SEEDS_NAME} 不合形状：" + "；".join(problems))
     return seeds
-
-
-def _hop_zero(pool: Pool, client: OpenAlex, seeds: Seeds) -> list[str]:
-    """种子按 DOI 与 arXiv 号各批量取一次，检索词一条一条查；返回认不出编号、或 OpenAlex 里
-    查不到的种子行。"""
-    lines = list(seeds.seeds[:MAX_SEEDS])
-    wanted = {line: (dois_in(line), arxivs_in(line)) for line in lines}
-    found = [from_openalex(w) for w in
-             client.by_dois(sorted({d for dois, _ in wanted.values() for d in dois}))
-             + client.by_arxiv(sorted({a for _, ids in wanted.values() for a in ids}))]
-    by_doi = {p.doi: p for p in found if p.doi}
-    by_arxiv = {p.arxiv: p for p in found if p.arxiv}
-    unresolved: list[str] = []
-    for line, (dois, ids) in wanted.items():
-        hits = [by_doi[d] for d in dois if d in by_doi] + [by_arxiv[a] for a in ids
-                                                            if a in by_arxiv]
-        unresolved += [] if hits else [line]
-        for paper in hits:
-            pool.admit(paper, 0, "seed")
-    for query in seeds.queries[:MAX_QUERIES]:
-        for work in client.search(query, QUERY_RESULTS):
-            pool.admit(from_openalex(work), 0, f"query:{query}")
-    LOGGER.info("hop_zero seeds=%d unresolved=%d queries=%d candidates=%d", len(lines),
-                len(unresolved), min(len(seeds.queries), MAX_QUERIES), len(pool.entries))
-    return unresolved
 
 
 # ── 一跳一跳 ──────────────────────────────────────────────────────────────

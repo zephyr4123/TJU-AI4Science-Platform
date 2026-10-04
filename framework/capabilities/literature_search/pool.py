@@ -3,14 +3,15 @@
 只是数据，不发请求、不起会话：查接口与起会话是 `loop.py` 的事，这里只管记账与排序，所以能
 脱开网与模型单测。
 
-线索怎么排（外层 #212 两道召回实测定的）：关联到几篇已收录的 ×（1 + 2 × 字面相关度），同分看被引数。
+线索怎么排（外层 #212 两道召回实测定的）：证据数 ×（1 + 2 × 字面相关度），同分看被引数。证据数是
+关联到几篇已收录的，加被几个「哪家 × 检索词」查到（第 0 跳只有后者）。
 只按关联数排分不开——线索池里关联 1 篇的上千条，答案就混在里面；字面相关度是题目加摘要命中
 检索词的程度，词按在这批线索里的稀有度加权（「neural」「network」人人有，几乎不算分），零模型。
 单用字面相关度更差（关联数才是「这篇在这个领域里被用到」的证据），乘上去最好；系数 1 到 3 结果
 差不多，取 2：第 1 跳前 30 篇里的答案，生理信号那道 11→15，PINN 方法那道 6→7。
 
 来源记成短标记，给人看时由 `report.py` 翻成话：
-- `seed` 种子（执行层用自带搜索找来的）；`query:<检索词>` 关键词检索；
+- `seed` 种子（执行层用自带搜索找来的）；`query:<哪家>:<检索词>` 关键词检索；
 - `ref:<W>` 收录的 W 引用了它（向后）；`cites:<W>` 它引用了收录的 W（向前）。
 """
 
@@ -87,6 +88,17 @@ class Pool:
         for ref in paper.refs:
             self._lead(ref, f"ref:{paper.key}")
 
+    def note_query(self, paper: Paper, source: str, query: str) -> None:
+        """一条检索命中记成线索：第 0 跳也照线索排，被几家、几条检索词同时查到的在前。已经进池的
+        （种子）只补一条来源。"""
+        mark = f"query:{source}:{query}"
+        if paper.key in self.entries:
+            if mark not in self.entries[paper.key].found:
+                self.entries[paper.key].found.append(mark)
+            return
+        self.cache[paper.key] = paper
+        self._lead(paper.key, mark)
+
     def note_citing(self, key: str, citing: list[Paper]) -> None:
         """引用了收录的 key 的论文记向前的线索；元数据顺手进缓存，省一次批量取。"""
         for paper in citing:
@@ -99,7 +111,8 @@ class Pool:
                       key=lambda k: (-self.links(k), k))
 
     def links(self, key: str) -> int:
-        """一条线索关联到几篇收录的论文：同一篇既引用它又被它引用只算一篇。"""
+        """一条线索有几条独立的证据：关联到几篇收录的论文（同一篇既引用它又被它引用只算一篇），
+        加上被几个「哪家 × 检索词」查到。"""
         return len({mark.split(":", 1)[1] for mark in self.leads[key]})
 
     def next_batch(self, n: int) -> list[Paper]:
@@ -131,7 +144,8 @@ class Pool:
         if kind == "seed":
             return "种子（联网搜索找到）"
         if kind == "query":
-            return f"检索词「{value}」"
+            source, _, query = value.partition(":")
+            return f"检索词「{query}」（{source}）"
         title = self.entries[value].paper.title if value in self.entries else value
         return f"被收录的《{title}》引用" if kind == "ref" else f"引用了收录的《{title}》"
 

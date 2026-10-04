@@ -10,7 +10,7 @@ $requirement
 
 ## 要做的三件事
 
-1. **检索词**：写 3 到 $max_queries 条英文检索词。每条是学术库里能直接搜的一个短语，比如 `physics-informed neural networks inverse problem`；几条之间覆盖需求的不同侧面（方法、研究对象、同义说法）。不写布尔表达式，不写引号。
+1. **检索词**：写 8 到 $max_queries 条英文检索词，每条 2 到 6 个词，是学术库里能直接搜的一个短语，比如 `physics-informed neural networks inverse problem`。最要紧、最概括的 3 到 5 条写在最前面；后面的往细里铺，需求里提到的每个具体对象、子方向、同义说法各写一条（比如需求说到心电、血压、脑电，就各写一条 `physics-informed ECG`、`physics-informed blood pressure estimation`……）——冷门的小方向论文被引少，顺着引用找不到，只能靠这些细的检索词查到。不写布尔表达式，不写引号。
 2. **纳入标准**：3 到 6 条，说清一篇论文满足什么才算相关、哪些情况不收。之后每一批都照这几条判，所以要具体到能逐篇判断。
 3. **种子**：用你自带的联网搜索找 5 到 $max_seeds 篇最相关的论文（综述也可以），一篇一行，写它的 DOI 链接（`https://doi.org/...`）或 arXiv 链接（`https://arxiv.org/abs/...`），后面跟一句为什么相关。搜索结果只给了出版社页面的，打开页面找到 DOI 再写。教程、博客、论坛帖子、百科不算种子。没有联网搜索工具就把这一节留空，**不要凭记忆写 DOI**——编错的 DOI 比没有更糟。
 

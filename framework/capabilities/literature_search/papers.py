@@ -18,6 +18,7 @@ ARXIV_RE = re.compile(
     r"(?:arxiv\.org/(?:abs|pdf|html)/|arxiv:\s*)"
     r"(\d{4}\.\d{4,5}|[a-z\-]+(?:\.[a-z]{2})?/\d{7})(?:v\d+)?", re.IGNORECASE)
 WORK_KEY_RE = re.compile(r"W\d+")
+PMID_RE = re.compile(r"(\d+)\s*$")  # OpenAlex 给的是 https://pubmed.ncbi.nlm.nih.gov/<号>
 ARXIV_DOI_PREFIX = "10.48550/arxiv."
 AUTHORS_KEPT = 8  # 给人看与给模型筛都用不着全部作者，几百人的合作论文只留前几位
 
@@ -31,6 +32,7 @@ class Paper:
     venue: str                # 期刊、会议或预印本服务器的名字；不知道是空串
     doi: str | None           # 裸 DOI（10.xxx/...），小写
     arxiv: str | None         # arXiv 号，不带版本
+    pmid: str | None          # PubMed 号（Europe PMC 的命中按它对回来）
     abstract: str             # OpenAlex 没有摘要是空串
     cited_by: int
     refs: tuple[str, ...]     # 它引用的论文（W 号）
@@ -47,12 +49,13 @@ class Paper:
 
 def from_openalex(work: dict[str, Any]) -> Paper:
     """OpenAlex 的一条 work（按 `openalex.SELECT` 取的字段）→ Paper。缺的字段给空，不编。"""
-    doi = _bare_doi(work.get("doi"))
+    doi = bare_doi(work.get("doi"))
     primary = work.get("primary_location") or {}
     source = primary.get("source") or {}
     landing = primary.get("landing_page_url")
     arxiv = arxiv_of(doi, [landing, *(loc.get("landing_page_url")
                                       for loc in work.get("locations") or [])])
+    pubmed = PMID_RE.search((work.get("ids") or {}).get("pmid") or "")
     best = work.get("best_oa_location") or {}
     pdf = best.get("pdf_url") or (f"https://arxiv.org/pdf/{arxiv}" if arxiv else None)
     return Paper(
@@ -65,6 +68,7 @@ def from_openalex(work: dict[str, Any]) -> Paper:
         venue=(source.get("display_name") or "").strip(),
         doi=doi,
         arxiv=arxiv,
+        pmid=pubmed.group(1) if pubmed else None,
         abstract=abstract_text(work.get("abstract_inverted_index")),
         cited_by=int(work.get("cited_by_count") or 0),
         refs=tuple(work_key(r) for r in work.get("referenced_works") or []),
@@ -102,19 +106,19 @@ def arxiv_of(doi: str | None, landings: list[str | None]) -> str | None:
 
 def dois_in(text: str) -> list[str]:
     """一行种子里认出的 DOI（arXiv 的 DOI 不算，归 `arxivs_in`），按出现顺序、去重。"""
-    found = [_bare_doi(m.group(0)) for m in DOI_RE.finditer(text)]
+    found = [bare_doi(m.group(0)) for m in DOI_RE.finditer(text)]
     return list(dict.fromkeys(d for d in found if d and not d.startswith(ARXIV_DOI_PREFIX)))
 
 
 def arxivs_in(text: str) -> list[str]:
     """一行种子里认出的 arXiv 号：arxiv.org 链接、`arXiv:` 写法、arXiv 的 DOI，按出现顺序、去重。"""
     found = [m.group(1).lower() for m in ARXIV_RE.finditer(text)]
-    found += [d[len(ARXIV_DOI_PREFIX):] for d in map(_bare_doi, (m.group(0) for m in
+    found += [d[len(ARXIV_DOI_PREFIX):] for d in map(bare_doi, (m.group(0) for m in
               DOI_RE.finditer(text))) if d and d.startswith(ARXIV_DOI_PREFIX)]
     return list(dict.fromkeys(found))
 
 
-def _bare_doi(value: str | None) -> str | None:
+def bare_doi(value: str | None) -> str | None:
     """`https://doi.org/10.1/ABC.` → `10.1/abc`：去掉链接前缀与句末标点；
     DOI 不分大小写，一律小写。"""
     if not value:
