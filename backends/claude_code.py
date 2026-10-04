@@ -34,8 +34,9 @@ __all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "KNOBS", "MODELS", "EFFORTS", "
 
 NAME = "claude_code"
 # 不读 user/project/local 任何设置源：会话因此不继承本机的 CLAUDE.md、hook、plugin、
-# 自定义 agent（P-11）。执行层再加 --no-session-persistence（一次性会话，不留）；协调层
-# 不加：多轮靠 --resume 续接，靠的就是 CLI 自己的会话持久化
+# 自定义 agent（P-11）；自动记忆不归设置源管，靠环境变量关（build_env，外层 #222）。执行层再加
+# --no-session-persistence（一次性会话，不留）；协调层不加：多轮靠 --resume 续接，靠的就是
+# CLI 自己的会话持久化
 ISOLATION_ARGS = ("--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands")
 # CLI 自带的联网工具，两层都放行（端口要求）。实测 2026-09-20：dontAsk 下不在白名单就被拒，
 # 拒绝信息还说「可以用别的工具试」，agent 于是拿 Bash 里的 curl 硬凑；白名单加上后搜索与读页都通
@@ -114,13 +115,19 @@ def build_env(timeout_s: float, chat_id: str | None = None) -> dict[str, str]:
     挪到后台，一轮结束后台子进程约 5 秒后被杀；所以 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` 关掉
     全部后台机制，并把 Bash 超时抬到与本轮超时一样长——唯一会杀它的只有我们自己的定时器。
     `chat_id` 只有协调层有：agent 调用的命令从环境里知道自己属于哪段对话，`--detach` 的作业记下它，
-    跑完叫醒（外层 #63）；不给就不留上一段的。"""
+    跑完叫醒（外层 #63）；不给就不留上一段的。
+    关自动记忆（外层 #222）：`--setting-sources ""` 挡得住 CLAUDE.md，挡不住 CLI 的自动记忆——会话
+    所在仓库若被这个人用 Claude Code 开过，他的记忆索引
+    （`~/.claude/projects/<仓库>/memory/MEMORY.md`）连同记忆的用法说明整段进了平台的会话：
+    别人的个人记忆成了执行层的上下文，一次文献筛选会话实测多读 7700 token、多花三成。
+    2.1.289 实测：探针问「上下文里有没有 MEMORY.md」，关前抄得出第一行、关后没有。"""
     millis = str(int(timeout_s * 1000))
     bin_dir = str(Path(sys.executable).parent)
     inherited = os.environ.get("PATH", "")
     path = f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir
     env = {**os.environ, "PATH": path, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
-           "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis}
+           "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis,
+           "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
     env.pop(CHAT_ID_ENV, None)
     if chat_id:
         env[CHAT_ID_ENV] = chat_id

@@ -366,6 +366,13 @@ def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
     assert env["KEEP_ME"] == "1"  # 继承本进程环境（AI4SCI_EXECUTOR_MODEL 等要传给协调 agent）
 
 
+def test_sessions_do_not_carry_the_persons_auto_memory():
+    """外层 #222：`--setting-sources ""` 挡不住 CLI 的自动记忆，会话所在仓库的 MEMORY.md
+    整段进上下文（实测一次筛选会话多读 7700 token、多花三成）。两层会话都关。"""
+    assert build_env(1.0)["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+    assert build_env(1.0, "chat-1")["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+
+
 def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatch):
     """纲领 P-14：agent 敲裸 `ai4sci`，服务把自己 venv 的 bin 追加到 PATH 末尾（不遮系统命令）。
 
