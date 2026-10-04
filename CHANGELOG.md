@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-04
+
 ### 新增
 - 文献阶段的第一个步骤 `literature-search`：执行层写检索词与纳入标准、用自带搜索找种子，框架拿检索词查四家不要 key 的学术库（OpenAlex、Crossref、arXiv、Europe PMC）、顺着引用往外扩几跳、每跳交执行层看摘要筛，收录的下原文解析，写 `sources.md`；不要 key 也能跑，设 `OPENALEX_API_KEY` 额度大十倍（#212）
 
@@ -159,7 +161,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.0.1...v1.1.0
