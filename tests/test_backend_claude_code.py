@@ -366,6 +366,13 @@ def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
     assert env["KEEP_ME"] == "1"  # 继承本进程环境（AI4SCI_EXECUTOR_MODEL 等要传给协调 agent）
 
 
+def test_sessions_do_not_carry_the_persons_auto_memory():
+    """外层 #222：`--setting-sources ""` 挡不住 CLI 的自动记忆，会话所在仓库的 MEMORY.md
+    整段进上下文（实测一次筛选会话多读 7700 token、多花三成）。两层会话都关。"""
+    assert build_env(1.0)["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+    assert build_env(1.0, "chat-1")["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+
+
 def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatch):
     """纲领 P-14：agent 敲裸 `ai4sci`，服务把自己 venv 的 bin 追加到 PATH 末尾（不遮系统命令）。
 
@@ -457,11 +464,15 @@ def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
     assert picked[picked.index("--model") + 1] == "opus"
 
 
-def test_chat_tool_guide_is_this_clis_own():
-    """P-25：协调层的「工具怎么用」是这家的（Read / Glob / Grep）。"""
+def test_tool_guides_teach_only_tools_this_cli_has():
+    """P-25：「工具怎么用」是这家的。2.1.289 起没有 Glob / Grep 工具，照旧指南找文件白耗几轮
+    （外层 #219）：读文件用 Read，找文件、搜内容用单条的只读命令（dontAsk 下自动放行）。"""
     chat = ClaudeCodeChat()
-    text = chat.tool_guide(("ai4sci", ".venv/bin/ai4sci"))
-    assert "Read / Glob / Grep" in text and "`ai4sci …`" in text and "Bash 只放行" in text
+    for text in (chat.tool_guide(("ai4sci", ".venv/bin/ai4sci")),
+                 ClaudeCodeRunner().tool_guide(("ai4sci skill",))):
+        assert "Glob" not in text and "Grep" not in text
+        assert "Read" in text and "find" in text and "grep" in text
+        assert "Bash 里会改东西的只放行" in text
 
 
 def test_chat_knobs_list_models_and_efforts_with_a_concrete_start():

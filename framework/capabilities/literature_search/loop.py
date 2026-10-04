@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -49,11 +50,14 @@ CANDIDATES_NAME = "candidates.jsonl"
 ROUNDS_DIRNAME = "rounds"
 LISTING_NAME = "candidates.md"
 DECISIONS_NAME = "decisions.md"
+REST_SUFFIX = "-rest"  # 补筛那次的清单与结论：candidates-rest.md、decisions-rest.md
 LOG_DIRNAME = "executor"
 
 CITING_PAGES = 2      # 「谁引用了它」：一跳的新收录合成一次查询，按被引数取前几页（每页 200）
 FETCH_CAP = 1000      # 一跳最多给多少条线索取元数据：50 篇一批，扣 1 积分
-ABSTRACT_MAX = 1500   # 给模型筛的摘要截到这么长：够判相关，不让一跳的提示无限长
+# 给模型筛的摘要截到这么长。钱跟读进去的字数走：从 1500 降到 500、来路只数个数，清单砍掉六成、
+# 筛选省三分之一，判得和原来一样准（外层 #219 的重放实验）
+ABSTRACT_MAX = 500
 
 
 @dataclass(frozen=True)
@@ -165,29 +169,52 @@ def _expand(pool: Pool, client: OpenAlex, frontier: list[Paper], hop: int, per_h
 
 def _screen(output_dir: Path, runner: Runner, need: str, criteria: str, pool: Pool, hop: int,
             costs: list[float]) -> None:
+    """一跳一次筛选会话。没拿到合格结论的几篇（漏写、抄错号、同一篇两条相反的）单独补筛一次，
+    补完还缺才判失败：四十篇里抄错一个号就让整次检索作废，前面几分钟的检索全白费（外层 #216）。"""
     entries = pool.of_hop(hop)
+    decided = _ask(output_dir, runner, need, criteria, pool, hop, entries, "", costs)
+    rest = [e for e in entries if e.paper.key not in decided]
+    if rest:
+        decided |= _ask(output_dir, runner, need, criteria, pool, hop, rest, REST_SUFFIX, costs)
+        missing = [e.paper.key for e in rest if e.paper.key not in decided]
+        if missing:
+            raise CapabilityFailed(f"第 {hop} 跳补筛之后还有 {len(missing)} 篇没有结论："
+                                   + ", ".join(missing[:10]) + (" 等" if len(missing) > 10 else ""))
+    for key, (verdict, reason) in decided.items():
+        pool.decide(key, verdict, reason)
+
+
+def _ask(output_dir: Path, runner: Runner, need: str, criteria: str, pool: Pool, hop: int,
+         entries: list[Entry], suffix: str, costs: list[float]) -> dict[str, tuple[str, str]]:
+    """把 entries 交给执行层筛一次，返回拿到合格结论的那些；不合格的记日志，由调用方补筛。"""
     round_dir = output_dir / ROUNDS_DIRNAME / str(hop)
     round_dir.mkdir(parents=True, exist_ok=True)
-    listing = "\n\n".join(_listing(entry, pool) for entry in entries)
-    (round_dir / LISTING_NAME).write_text(listing + "\n", encoding="utf-8")
-    decisions = f"{ROUNDS_DIRNAME}/{hop}/{DECISIONS_NAME}"
+    listing = "\n\n".join(_listing(entry) for entry in entries)
+    (round_dir / _suffixed(LISTING_NAME, suffix)).write_text(listing + "\n", encoding="utf-8")
+    decisions = f"{ROUNDS_DIRNAME}/{hop}/{_suffixed(DECISIONS_NAME, suffix)}"
     prompt = prompting.build_prompt(
         SCREEN_PROMPT, {"hop": hop, "count": len(entries), "requirement": need,
-                        "criteria": criteria, "candidates": listing, "decisions": decisions},
+                        "criteria": criteria, "candidates": listing,
+                        "decisions": str(output_dir / decisions)},
         loadout=loadout.around(output_dir))
     result = session.run_session(runner, prompt, cwd=output_dir, allowed_paths=[output_dir],
-                                 log_dir=output_dir / LOG_DIRNAME / f"hop-{hop}")
+                                 log_dir=output_dir / LOG_DIRNAME / f"hop-{hop}{suffix}")
     costs.append(result.cost_usd)
     _check_outcome(result, decisions)
     decided, problems = parse_decisions(_read(output_dir / decisions),
                                         [e.paper.key for e in entries])
     if problems:
-        raise CapabilityFailed(f"{decisions} 不合形状：" + "；".join(problems[:8]))
-    for key, (verdict, reason) in decided.items():
-        pool.decide(key, verdict, reason)
+        LOGGER.warning("screen_problems hop=%d file=%s decided=%d/%d %s", hop, decisions,
+                       len(decided), len(entries), "；".join(problems[:8]))
+    return decided
 
 
-def _listing(entry: Entry, pool: Pool) -> str:
+def _suffixed(name: str, suffix: str) -> str:
+    stem, dot, ext = name.rpartition(".")
+    return f"{stem}{suffix}{dot}{ext}"
+
+
+def _listing(entry: Entry) -> str:
     paper = entry.paper
     facts = " · ".join(x for x in (str(paper.year or "年份不详"), paper.venue,
                                    f"被引 {paper.cited_by}") if x)
@@ -196,9 +223,18 @@ def _listing(entry: Entry, pool: Pool) -> str:
         f"### {paper.key}",
         f"- 题目：{paper.title or '（没有题目）'}",
         f"- 年份 · 出处 · 被引：{facts}",
-        f"- 怎么找到的：{'；'.join(pool.describe(m) for m in entry.found)}",
+        f"- 怎么找到的：{_origins(entry.found)}",
         f"- 摘要：{abstract or '（OpenAlex 没有摘要）'}",
     ])
+
+
+def _origins(marks: list[str]) -> str:
+    """来路只数每种几条，不列检索词与父论文题目：原来那样写占清单四分之一，筛得并不更准（外层
+    #219）。给人看的 sources.md 照旧写全（pool.describe）。"""
+    kinds = Counter(mark.partition(":")[0] for mark in marks)
+    says = (("seed", "种子"), ("query", "检索词 {n} 条"), ("ref", "被 {n} 篇已收录的引用"),
+            ("cites", "引用了 {n} 篇已收录的"))
+    return "；".join(say.format(n=kinds[kind]) for kind, say in says if kinds[kind])
 
 
 def _fulltexts(output_dir: Path, pool: Pool, fetch: Fetch) -> dict[str, Fulltext]:

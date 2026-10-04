@@ -79,7 +79,7 @@ class Runner(Protocol):
     就被拒，拒绝信息还教它「用别的工具试试」（主人 2026-09-20）。
     `tool_guide` 是塞进执行层提示末尾的「工具怎么用」一段：读文件、改文件、跑命令各用什么，
     是这家 CLI
-    自己的事（Claude Code 有 Read / Glob / Grep，Codex 只有 shell 与补丁），框架不替它写。
+    自己的事（Claude Code 有 Read 与只读命令，Codex 只有 shell 与补丁），框架不替它写。
     """
 
     name: str
@@ -199,7 +199,7 @@ class Chat(Protocol):
     由框架把变了的几节塞进那一轮的话里（`framework/chat/conversation.py`），适配器不用管。
     `tool_guide` 是塞进指南前言之后的「工具怎么用」一段：看文件、列目录用什么、能跑什么命令，
     是这家 CLI
-    自己的事（Claude Code 有 Read / Glob / Grep；Codex 只有 shell，看文件得 ls / cat，沙箱管着写）。
+    自己的事（Claude Code 有 Read 与只读命令；Codex 只有 shell，看文件得 ls / cat，沙箱管着写）。
     真跑时 Codex 的助理照「只能运行 ai4sci」办，连 materials/ 里有什么都不敢看（2026-09-22）。
     """
 

@@ -4,7 +4,7 @@ Europe PMC）共用这一份，各家只管拼 URL 与解析。
 - 读到结尾：一次 `read` 拿不全是常态，连接中途断了它也不报错（外层 #212 真跑，pdf skill 就这样把两篇
   PDF 截在 1 MiB 与 8 MiB）；比 Content-Length 短按失败重试。
 - 重试：429、5xx、断网、读不全，退避 1 / 2 / 4 秒，`Retry-After` 优先；调用方可以先看一眼错误
-  （OpenAlex 据响应头判额度用完，用完就不重试）。
+  （OpenAlex 据响应头判额度用完，用完就不重试），也可以给自己的退避表（arXiv 被限速时要等得更久）。
 - 限速：同一站点两次请求之间至少隔多久由调用方给（arXiv 要求 3 秒）；一律串行，不并发
   （Crossref、PubMed 实测并发就 429）。
 - 如实报身份：伪装浏览器的 UA 有的站直接 403（Zenodo 实测）。标准库 urllib：不为几个 GET 加库。
@@ -66,10 +66,10 @@ class Web:
 
     def get(self, url: str, *, spacing_s: float = 0.0, headers: dict[str, str] | None = None,
             on_error: Callable[[urllib.error.HTTPError], None] | None = None,
-            ) -> tuple[bytes, dict[str, str]]:
+            backoff_s: tuple[float, ...] = BACKOFF_S) -> tuple[bytes, dict[str, str]]:
         """请求头里放凭据（OpenAlex 的 key），不拼进 URL：URL 要进日志。"""
         host = urllib.parse.urlsplit(url).netloc
-        for attempt, backoff in enumerate((*BACKOFF_S, None), start=1):
+        for attempt, backoff in enumerate((*backoff_s, None), start=1):
             self._space(host, spacing_s)
             try:
                 body, got = self._get(url, headers or {})

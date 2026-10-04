@@ -8,7 +8,9 @@
 - Crossref 全学科，单次约 1.5 秒；并发就 429，串行没事。只要期刊论文、会议论文与预印本，
   书的章节、数据集这类不要。
 - arXiv 的检索式里空格是「或」（`all:a b` 查的是 a OR b，命中几十万条），要拼成
-  `all:a AND all:b`；官方要求两次请求隔 3 秒。返回的是 Atom XML，只用正则取每条 entry 的 id，
+  `all:a AND all:b`；官方要求两次请求隔 3 秒。同一台机器上几次检索同时跑会被 429，不带
+  Retry-After，1 / 2 / 4 秒退避三次就放弃，三个并行时丢了 5~10 条检索词（外层 #216），所以 arXiv
+  按自己的退避表等得更久、多等一次。返回的是 Atom XML，只用正则取每条 entry 的 id，
   不起 XML 解析器（这里只要编号，用不着整棵树）。
 - Europe PMC 生物医学为主，按相关度排；非生物医学的题目命中的多是不相关的，交给排序与筛选。
 """
@@ -27,6 +29,7 @@ CROSSREF_URL = "https://api.crossref.org/works"
 CROSSREF_TYPES = ("journal-article", "proceedings-article", "posted-content")
 ARXIV_URL = "https://export.arxiv.org/api/query"
 ARXIV_SPACING_S = 3.0
+ARXIV_BACKOFF_S = (5.0, 15.0, 30.0, 60.0)
 EUROPE_PMC_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 ENTRY_ID_RE = re.compile(r"<entry>.*?<id>\s*(\S+?)\s*</id>", re.DOTALL)
 
@@ -53,7 +56,8 @@ def arxiv(web: Web, query: str, n: int) -> list[Hit]:
     terms = [t for t in re.split(r"\s+", query.replace('"', " ").strip()) if t]
     search = " AND ".join(f"all:{t}" for t in terms)
     params = {"search_query": search, "max_results": str(n)}
-    body, _ = web.get(f"{ARXIV_URL}?{urllib.parse.urlencode(params)}", spacing_s=ARXIV_SPACING_S)
+    body, _ = web.get(f"{ARXIV_URL}?{urllib.parse.urlencode(params)}", spacing_s=ARXIV_SPACING_S,
+                      backoff_s=ARXIV_BACKOFF_S)
     ids = [m.group(1).lower() for m in map(ARXIV_RE.search,
                                            ENTRY_ID_RE.findall(body.decode("utf-8"))) if m]
     return [Hit("arXiv", arxiv=i) for i in dict.fromkeys(ids)]

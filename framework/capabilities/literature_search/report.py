@@ -56,7 +56,8 @@ def render(*, title: str, seeds: Seeds, pool: Pool, stop: str, texts: dict[str, 
                   "认不出 DOI 或 arXiv 号，或 OpenAlex 里没有这一篇：", ""]
         lines += [f"- {line}" for line in gathered.unresolved_seeds]
     if gathered.failures:
-        lines += ["", "## 没查成的检索", "", "重试三次仍失败，这一路少了：", ""]
+        lines += ["", "## 没查成的检索", "",
+                  "重试用完仍失败，这一路少了（429 是被限速：同一台机器上别同时跑几个检索）：", ""]
         lines += [f"- {failure}" for failure in gathered.failures]
     return "\n".join(lines) + "\n"
 

@@ -34,8 +34,9 @@ __all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "KNOBS", "MODELS", "EFFORTS", "
 
 NAME = "claude_code"
 # 不读 user/project/local 任何设置源：会话因此不继承本机的 CLAUDE.md、hook、plugin、
-# 自定义 agent（P-11）。执行层再加 --no-session-persistence（一次性会话，不留）；协调层
-# 不加：多轮靠 --resume 续接，靠的就是 CLI 自己的会话持久化
+# 自定义 agent（P-11）；自动记忆不归设置源管，靠环境变量关（build_env，外层 #222）。执行层再加
+# --no-session-persistence（一次性会话，不留）；协调层不加：多轮靠 --resume 续接，靠的就是
+# CLI 自己的会话持久化
 ISOLATION_ARGS = ("--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands")
 # CLI 自带的联网工具，两层都放行（端口要求）。实测 2026-09-20：dontAsk 下不在白名单就被拒，
 # 拒绝信息还说「可以用别的工具试」，agent 于是拿 Bash 里的 curl 硬凑；白名单加上后搜索与读页都通
@@ -56,22 +57,23 @@ MIN_VERSION = (2, 1, 276)
 _TAIL_CHARS = 4000
 # tool_result 进事件的正文上限：页面与 CLI 打印只要开头，全文在 raw 里落盘
 _RESULT_CHARS = 4000
-# 执行层提示末尾「工具怎么用」：这家 CLI 有 Read / Glob / Grep，Bash 只放行框架给的前缀（真跑时
-# cd &&、mkdir、awk 三条被拒白耗三轮，外层 #122）
+# 执行层提示末尾「工具怎么用」：读文件用 Read；2.1.289 起这家 CLI 没有 Glob / Grep 工具，
+# 找文件、搜内容得用 Bash 的 ls / find / grep——dontAsk 下单条的只读命令自动放行，会改东西的
+# 只放行框架给的前缀（真跑时 cd &&、mkdir、awk 三条被拒白耗三轮，外层 #122；照旧指南找 Glob
+# 白耗、带管道的 ls 被拒，外层 #219）
 TOOL_GUIDE = """## 工具怎么用
 
-- 读文件、找文件、搜内容用 Read / Glob / Grep 工具；不要用 Bash 去 cat、find、awk。
-- Bash 只放行 {commands} 一类命令；cd、mkdir、管道、`&&` 串起来的命令都会被拒，
-  拒一次白耗一轮。建目录不用 mkdir：Write 会自己建。
+- 读文件用 Read 工具。列目录、找文件、搜内容用 ls、find、grep，一条命令单独跑：接管道、
+  用 `&&` 串起来、cd 到别处的都会被拒，拒一次白耗一轮。
+- Bash 里会改东西的只放行 {commands} 一类命令；建目录不用 mkdir：Write 会自己建。
 - 写完不用自己查行宽、跑 lint：框架会跑 ruff 与校验，问题喂回给你。
 """
-# 协调层的同一段：助理看文件、找文件用自带的工具，跑动作只有放行的命令
+# 协调层的同一段：助理看文件、找文件用自带的工具与只读命令，跑动作只有放行的命令
 CHAT_TOOL_GUIDE = """## 工具怎么用
 
-- 看文件、列目录、搜内容用你自带的 Read / Glob / Grep 工具（原件在 `materials/`，要看就直接看）；
-  不要用 Bash 去 cat、find、awk。
-- Bash 只放行 {commands} 一类命令；cd、管道、`&&` 串起来的都会被拒。改文件用 Edit / Write，
-  只在工作区里。
+- 看文件用 Read 工具；列目录、找文件、搜内容用 ls、find、grep，一条命令单独跑（原件在 `materials/`，
+  要看就直接看）。接管道、用 `&&` 串起来、cd 到别处的都会被拒。
+- Bash 里会改东西的只放行 {commands} 一类命令。改文件用 Edit / Write，只在工作区里。
 """
 
 
@@ -114,13 +116,19 @@ def build_env(timeout_s: float, chat_id: str | None = None) -> dict[str, str]:
     挪到后台，一轮结束后台子进程约 5 秒后被杀；所以 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` 关掉
     全部后台机制，并把 Bash 超时抬到与本轮超时一样长——唯一会杀它的只有我们自己的定时器。
     `chat_id` 只有协调层有：agent 调用的命令从环境里知道自己属于哪段对话，`--detach` 的作业记下它，
-    跑完叫醒（外层 #63）；不给就不留上一段的。"""
+    跑完叫醒（外层 #63）；不给就不留上一段的。
+    关自动记忆（外层 #222）：`--setting-sources ""` 挡得住 CLAUDE.md，挡不住 CLI 的自动记忆——会话
+    所在仓库若被这个人用 Claude Code 开过，他的记忆索引
+    （`~/.claude/projects/<仓库>/memory/MEMORY.md`）连同记忆的用法说明整段进了平台的会话：
+    别人的个人记忆成了执行层的上下文，一次文献筛选会话实测多读 7700 token、多花三成。
+    2.1.289 实测：探针问「上下文里有没有 MEMORY.md」，关前抄得出第一行、关后没有。"""
     millis = str(int(timeout_s * 1000))
     bin_dir = str(Path(sys.executable).parent)
     inherited = os.environ.get("PATH", "")
     path = f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir
     env = {**os.environ, "PATH": path, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
-           "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis}
+           "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis,
+           "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
     env.pop(CHAT_ID_ENV, None)
     if chat_id:
         env[CHAT_ID_ENV] = chat_id
@@ -321,7 +329,7 @@ class ClaudeCodeChat:
         for path in allowed_paths:
             rules += [f"Edit({_abs_glob(path)})", f"Write({_abs_glob(path)})"]
         rules.append(f"Read({_abs_glob(cwd)})")
-        # 工作目录之外能读不能写的目录（研究助理看流程库）：`--add-dir` 让 Read / Glob / Grep 在
+        # 工作目录之外能读不能写的目录（研究助理看流程库）：`--add-dir` 让 Read 与只读命令在
         # dontAsk 下不被拒；Edit / Write 的白名单没有它，写照旧被拒
         for path in readable_paths:
             rules.append(f"Read({_abs_glob(path)})")
