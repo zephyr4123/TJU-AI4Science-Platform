@@ -40,10 +40,10 @@ ENTRYPOINT = "run"
 # 前三个参数：产出目录、输入、端口（纲领 P-19：能力是纯函数，显式输入 → 一个产出目录）
 LEADING_PARAMS = ("output_dir", "inputs", "ports")
 # 阶段主文件（P-20）：进这个阶段的能力都得留下它，「产出」栏里要写到它的名字。
-# 文献、假设、写作三个阶段还没有能力，等第一个进来再填；设计那一行是实验族定的名，第二个族进设计
+# 假设、写作两个阶段还没有能力，等第一个进来再填；设计那一行是实验族定的名，第二个族进设计
 # 阶段那天要么沿用、要么改成族无关的，是一次决策。
 MAIN_FILES: dict[str, tuple[str, ...]] = {
-    # 文献格的主文件由助理手写（output new literature），不是能力产的：纲领 P-24 定名
+    # 文献格的主文件：纲领 P-24 定名（助理手写，output new literature），literature-search 照用
     "文献": ("sources.md",),
     "设计": ("scoring.yaml",),
     "实验": ("ledger.tsv", "results.json"),

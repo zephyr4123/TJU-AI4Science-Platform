@@ -8,6 +8,7 @@ tmp_path 里的假 skill 验，删掉真库照样过。平台自带的脚本 `uv
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import shutil
@@ -117,6 +118,55 @@ def test_shipped_pdf_script_runs_locked(tmp_path):
                            "--input", str(tmp_path / "nope.pdf")],
                           capture_output=True, text=True, env=run.uv_env(), check=False)
     assert proc.returncode == 2 and "不存在" in proc.stderr and not list(tmp_path.iterdir())
+
+
+class _Dribble:
+    """假的 HTTP 响应：每次 read 最多给 1 MiB（真连接就会这样给短读），Content-Length 照报。"""
+
+    def __init__(self, body: bytes, length: int | None = None) -> None:
+        self.body, self.at = body, 0
+        self.headers = {"Content-Length": str(len(body) if length is None else length)}
+
+    def read(self, n: int = -1) -> bytes:
+        size = min(n if n >= 0 else len(self.body), 1 << 20)
+        chunk, self.at = self.body[self.at:self.at + size], self.at + size
+        return chunk
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        return None
+
+
+def _pdf_script_module(monkeypatch):
+    """平台自带的 pdf 脚本当模块载进来：pymupdf 在函数里才 import，下载那段只用标准库。
+    dataclass 要在 sys.modules 里找得到自己的模块，先登记上（测完由 monkeypatch 撤掉）。"""
+    path = skills.find("pdf").scripts[0]
+    spec = importlib.util.spec_from_file_location("pdf_extract", path)
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, module)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_pdf_download_reads_until_the_end(tmp_path, monkeypatch):
+    """一次 read 拿不全是常态：外层 #212 真跑时两篇 arXiv 的 PDF 停在正好 1 MiB 与 8 MiB，
+    解析时报 `not a dict (null)`。下载要读到结尾。"""
+    extract = _pdf_script_module(monkeypatch)
+    body = b"%PDF-1.5\n" + b"x" * (3 * (1 << 20))
+    monkeypatch.setattr(extract.urllib.request, "urlopen", lambda req, timeout: _Dribble(body))
+    source = extract._fetch("https://arxiv.org/pdf/1811.04026", tmp_path)
+    assert (tmp_path / "source.pdf").read_bytes() == body and source.url
+
+
+def test_pdf_download_cut_short_is_a_download_failure(tmp_path, monkeypatch):
+    extract = _pdf_script_module(monkeypatch)
+    body = b"%PDF-1.5\n" + b"x" * 100
+    monkeypatch.setattr(extract.urllib.request, "urlopen",
+                        lambda req, timeout: _Dribble(body, length=len(body) * 10))
+    assert extract._fetch("https://x.org/a.pdf", tmp_path) == extract.EXIT_DOWNLOAD
+    assert not (tmp_path / "source.pdf").exists()
 
 
 def test_shipped_skills_with_scripts_say_how_to_run_them():
