@@ -82,8 +82,9 @@ class FakeWeb:
         self.urls: list[str] = []
         self.fail = fail
 
-    def __call__(self, url: str) -> tuple[bytes, dict[str, str]]:
+    def __call__(self, url: str, headers: dict[str, str]) -> tuple[bytes, dict[str, str]]:
         self.urls.append(url)
+        self.headers = headers
         parts = urllib.parse.urlsplit(url)
         query = {k: v[0] for k, v in urllib.parse.parse_qs(parts.query).items()}
         if parts.netloc in self.fail:
@@ -120,9 +121,9 @@ def _openalex(query: dict[str, str]) -> list[str]:
     if field == "locations.landing_page_url":
         return [k for k, w in CORPUS.items()
                 if any(loc["landing_page_url"] in wanted for loc in w["locations"])]
-    assert field == "cites"
+    assert field == "cites" and query["per-page"] == "200" and query["cursor"] == "*"
     return [k for k, w in CORPUS.items()
-            if f"https://openalex.org/{value}" in w["referenced_works"]]
+            if any(f"https://openalex.org/{v}" in w["referenced_works"] for v in wanted)]
 
 
 def _client(get) -> openalex.OpenAlex:
@@ -283,7 +284,7 @@ def test_seeds_without_queries_fail(ws):
 
 
 def test_quota_exhausted_fails_and_keeps_what_was_seen(ws):
-    def broke(url: str):
+    def broke(url: str, headers: dict[str, str]):
         raise urllib.error.HTTPError(url, 429, "Too Many Requests",
                                      {"x-ratelimit-remaining": "0"}, io.BytesIO(b""))
     with pytest.raises(CapabilityFailed, match="额度用完"):
@@ -300,7 +301,7 @@ def test_run_without_an_executor_is_refused(ws):
 def test_client_retries_rate_limits_then_succeeds():
     calls, waits = [], []
 
-    def flaky(url: str):
+    def flaky(url: str, headers: dict[str, str]):
         calls.append(url)
         if len(calls) < 3:
             raise urllib.error.HTTPError(url, 429, "slow down", {"Retry-After": "2",
@@ -312,7 +313,7 @@ def test_client_retries_rate_limits_then_succeeds():
 
 
 def test_client_gives_up_after_retries():
-    def down(url: str):
+    def down(url: str, headers: dict[str, str]):
         raise urllib.error.HTTPError(url, 503, "down", {}, io.BytesIO(b""))
     client = _client(down)
     with pytest.raises(web.FetchError, match="返回 503（第 4 次）"):
@@ -323,7 +324,7 @@ def test_short_read_is_retried():
     """比 Content-Length 短：连接中途断了，按网络错误重试（pdf skill 就吃过这个亏）。"""
     replies = [ConnectionResetError("cut"), (b'{"results": []}', {})]
 
-    def flaky(url: str):
+    def flaky(url: str, headers: dict[str, str]):
         reply = replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
@@ -338,7 +339,7 @@ def test_same_host_requests_are_spaced():
     def sleep(s: float) -> None:
         waits.append(s)
         now[0] += s
-    w = web.Web(get=lambda url: (b"", {}), sleep=sleep, clock=lambda: now[0])
+    w = web.Web(get=lambda url, headers: (b"", {}), sleep=sleep, clock=lambda: now[0])
     w.get("https://export.arxiv.org/a", spacing_s=3)
     now[0] += 1
     w.get("https://export.arxiv.org/b", spacing_s=3)
@@ -346,10 +347,29 @@ def test_same_host_requests_are_spaced():
     assert waits == [2.0]
 
 
-def test_batches_split_at_fifty():
+def test_batches_split_at_a_hundred():
     fake = FakeWeb()
     _client(fake).by_keys([f"W{i}" for i in range(120)])
-    assert len(fake.urls) == 3
+    assert len(fake.urls) == 2
+
+
+def test_key_goes_in_the_header_never_the_url(monkeypatch):
+    """P-27：不要 key 也能用，有 key 用得更多。key 只从环境变量读，放请求头：URL 要进日志。"""
+    fake = FakeWeb()
+    monkeypatch.setenv(openalex.KEY_ENV, "sekrit")
+    openalex.OpenAlex(web.Web(get=fake), key=openalex.api_key()).by_keys(["W1"])
+    assert fake.headers == {"Authorization": "Bearer sekrit"}
+    assert "sekrit" not in fake.urls[0]
+    monkeypatch.setenv(openalex.KEY_ENV, " ")
+    openalex.OpenAlex(web.Web(get=fake), key=openalex.api_key()).by_keys(["W1"])
+    assert fake.headers == {}
+
+
+def test_citing_is_one_query_per_hop_not_one_per_paper(ws):
+    """「谁引用了它」原来一篇一次，占一次检索花费的三分之一；改成一跳合成一次 OR 查询。"""
+    fake = FakeWeb()
+    _search(ws, [_seeds_move(), _screen, _screen], max_hops=1, get=fake)
+    assert sum("cites%3A" in u for u in fake.urls) == 1
 
 
 def test_ids_are_read_from_seed_lines():

@@ -172,6 +172,7 @@ sequenceDiagram
 | `AI4SCI_PYTHON` `AI4SCI_BUDGET_S` `AI4SCI_INNER_K` `AI4SCI_START_EPOCH` | `experiment/env.py`（框架**保证**给 harness） | harness 拿不到必须停，写默认值判不合法；`AI4SCI_SEED` 是唯一允许缺省的 |
 | `AI4SCI_CODEX_HOME` | `backends/codex.py` | Codex 的私有 home |
 | `UV_CACHE_DIR` | `paths.py` | uv 缓存（skill 脚本的环境在这） |
+| `OPENALEX_API_KEY` | `capabilities/literature_search/openalex.py` | 可选：文献检索查 OpenAlex 的 key，设了每天额度 10000 积分、不设 1000（纲领 P-27：不要 key 也能用，有 key 用得更多）；放请求头，不进 URL 与日志 |
 
 模型、思考深度、哪家 agent 归 `~/.config/ai4sci/agents.yaml`（`ai4sci agent use`），算力归 `computes.yaml`（`ai4sci compute add`）；两份都不进 git、不进数据根。测试里两份都指到 tmp（`tests/conftest.py`）。
 

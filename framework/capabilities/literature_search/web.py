@@ -29,8 +29,8 @@ RETRY_AFTER_MAX_S = 30.0
 RETRIED_STATUS = frozenset({429, 500, 502, 503, 504})
 READ_CHUNK = 1 << 20
 
-# 拿 URL 发 GET，返回（正文, 小写键的响应头）；测试换成查表的假函数，不连网
-Get = Callable[[str], tuple[bytes, dict[str, str]]]
+# 拿 URL 与额外的请求头发 GET，返回（正文, 小写键的响应头）；测试换成查表的假函数，不连网
+Get = Callable[[str, dict[str, str]], tuple[bytes, dict[str, str]]]
 
 
 class FetchError(RuntimeError):
@@ -41,18 +41,18 @@ class ShortRead(OSError):
     """收到的比 Content-Length 短：连接中途断了。按网络错误重试。"""
 
 
-def http_get(url: str) -> tuple[bytes, dict[str, str]]:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+def http_get(url: str, headers: dict[str, str]) -> tuple[bytes, dict[str, str]]:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **headers})
     with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:
-        headers = {k.lower(): v for k, v in response.headers.items()}
+        got = {k.lower(): v for k, v in response.headers.items()}
         chunks = []
         while chunk := response.read(READ_CHUNK):
             chunks.append(chunk)
     body = b"".join(chunks)
-    declared = headers.get("content-length", "")
+    declared = got.get("content-length", "")
     if declared.isdigit() and len(body) < int(declared):
         raise ShortRead(f"只收到 {len(body)} / {declared} 字节")
-    return body, headers
+    return body, got
 
 
 class Web:
@@ -64,14 +64,15 @@ class Web:
         self._last: dict[str, float] = {}
         self.requests: Counter[str] = Counter()  # 每个站点成功了几次，收尾记日志
 
-    def get(self, url: str, *, spacing_s: float = 0.0,
+    def get(self, url: str, *, spacing_s: float = 0.0, headers: dict[str, str] | None = None,
             on_error: Callable[[urllib.error.HTTPError], None] | None = None,
             ) -> tuple[bytes, dict[str, str]]:
+        """请求头里放凭据（OpenAlex 的 key），不拼进 URL：URL 要进日志。"""
         host = urllib.parse.urlsplit(url).netloc
         for attempt, backoff in enumerate((*BACKOFF_S, None), start=1):
             self._space(host, spacing_s)
             try:
-                body, headers = self._get(url)
+                body, got = self._get(url, headers or {})
             except urllib.error.HTTPError as err:
                 if on_error is not None:
                     on_error(err)  # 调用方要停（额度用完）就在这里抛
@@ -88,7 +89,7 @@ class Web:
                                wait, url)
             else:
                 self.requests[host] += 1
-                return body, headers
+                return body, got
             self._sleep(wait)
         raise AssertionError("重试循环不会走到这里")  # 最后一次失败在循环里已经抛了
 

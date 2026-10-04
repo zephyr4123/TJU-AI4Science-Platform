@@ -9,7 +9,7 @@
 ## [Unreleased]
 
 ### 新增
-- 文献阶段的第一个步骤 `literature-search`：执行层写检索词与纳入标准、用自带搜索找种子，框架拿检索词查四家不要 key 的学术库（OpenAlex、Crossref、arXiv、Europe PMC）、顺着引用往外扩几跳、每跳交执行层看摘要筛，收录的下原文解析，写 `sources.md`（#212）
+- 文献阶段的第一个步骤 `literature-search`：执行层写检索词与纳入标准、用自带搜索找种子，框架拿检索词查四家不要 key 的学术库（OpenAlex、Crossref、arXiv、Europe PMC）、顺着引用往外扩几跳、每跳交执行层看摘要筛，收录的下原文解析，写 `sources.md`；不要 key 也能跑，设 `OPENALEX_API_KEY` 额度大十倍（#212）
 
 ### 修复
 - 平台自带的 `pdf` skill 下载链接时只读一次，连接中途断了也不报错：真跑里两篇 arXiv 的 PDF 停在正好 1 MiB 与 8 MiB、解析报 `not a dict (null)`；改成读到结尾，比 Content-Length 短就按下载失败退 3（#212）

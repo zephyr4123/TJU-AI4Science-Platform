@@ -29,6 +29,7 @@ from framework.capabilities.literature_search.exchange import (
 from framework.capabilities.literature_search.fulltext import Fetch, Fulltext
 from framework.capabilities.literature_search.gather import MAX_QUERIES, MAX_SEEDS, gather
 from framework.capabilities.literature_search.openalex import OpenAlex, OpenAlexError
+from framework.capabilities.literature_search.openalex import api_key as openalex_key
 from framework.capabilities.literature_search.papers import Paper, from_openalex
 from framework.capabilities.literature_search.pool import INCLUDE, Entry, Pool
 from framework.capabilities.literature_search.web import FetchError
@@ -50,7 +51,7 @@ LISTING_NAME = "candidates.md"
 DECISIONS_NAME = "decisions.md"
 LOG_DIRNAME = "executor"
 
-CITING_N = 25         # 每篇新收录的取多少篇引用它的（按被引数）
+CITING_PAGES = 2      # 「谁引用了它」：一跳的新收录合成一次查询，按被引数取前几页（每页 200）
 FETCH_CAP = 1000      # 一跳最多给多少条线索取元数据：50 篇一批，扣 1 积分
 ABSTRACT_MAX = 1500   # 给模型筛的摘要截到这么长：够判相关，不让一跳的提示无限长
 
@@ -71,7 +72,7 @@ def search(output_dir: Path, inputs: Inputs, runner: Runner, limits: Limits, *, 
     output_dir = Path(output_dir).resolve()
     _check_limits(limits)
     need = requirement.read(inputs.workspace).strip()
-    client = client or OpenAlex()
+    client = client or OpenAlex(key=openalex_key())
     costs: list[float] = []
     seeds = _seed_session(output_dir, runner, need, costs)
     pool = Pool(excluded, seeds.queries[:MAX_QUERIES])
@@ -144,9 +145,12 @@ def _hops(output_dir: Path, runner: Runner, need: str, seeds: Seeds, pool: Pool,
 
 def _expand(pool: Pool, client: OpenAlex, frontier: list[Paper], hop: int, per_hop: int,
             asked: set[str]) -> None:
+    keys = {paper.key for paper in frontier}
     for paper in frontier:
         pool.note_refs(paper)
-        pool.note_citing(paper.key, [from_openalex(w) for w in client.citing(paper.key, CITING_N)])
+    for work in client.citing(sorted(keys), CITING_PAGES):
+        citer = from_openalex(work)
+        pool.note_citing(citer, keys & set(citer.refs))
     missing = [k for k in pool.open_leads() if k not in pool.cache and k not in asked][:FETCH_CAP]
     asked.update(missing)
     for work in client.by_keys(missing):

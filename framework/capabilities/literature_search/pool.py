@@ -105,10 +105,10 @@ class Pool:
         self.cache[paper.key] = paper
         self._lead(paper.key, mark)
 
-    def note_citing(self, key: str, citing: list[Paper]) -> None:
-        """引用了收录的 key 的论文记向前的线索；元数据顺手进缓存，省一次批量取。"""
-        for paper in citing:
-            self.cache[paper.key] = paper
+    def note_citing(self, paper: Paper, cited: set[str]) -> None:
+        """paper 引用了收录的 cited 里的这几篇：记向前的线索；元数据顺手进缓存，省一次批量取。"""
+        self.cache[paper.key] = paper
+        for key in cited:
             self._lead(paper.key, f"cites:{key}")
 
     def open_leads(self) -> list[str]:
