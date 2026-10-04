@@ -443,3 +443,21 @@ def test_hop_zero_keeps_the_best_ranked_query_hits(ws, monkeypatch):
     assert w2 is None
     hop0 = [k for k, r in _pool(out).items() if r["hop"] == 0]
     assert hop0 == ["W1", "W2", "W5"]  # 种子不占名额，检索命中取前 2
+
+
+def test_opening_batch_alternates_fresh_and_classic():
+    """第 0 跳两种排法轮流取：按命中与相关度（新论文多在这头），与再乘被引数（经典论文）。
+    召回实测：只按前者，前 60 篇里 2026 年的新论文占一半、答案 4 篇；只按后者答案 9 篇但新论文
+    只剩 15 篇；轮流取 6 篇、新论文 26 篇。"""
+    from framework.capabilities.literature_search.pool import Pool
+
+    def paper(key, title, cited, year):
+        return papers.from_openalex({**_work(key, title, cited=cited), "publication_year": year})
+    pool = Pool(queries=("pinn blood pressure",))
+    fresh = paper("W1", "PINN for cuffless blood pressure", 0, 2026)
+    middle = paper("W2", "PINN for blood flow", 3, 2025)
+    classic = paper("W3", "Physics-informed neural networks", 9000, 2019)
+    for p in (fresh, middle, classic):
+        pool.note_query(p, "Crossref", "pinn blood pressure")
+    assert [p.key for p in pool.next_batch(2)] == ["W1", "W2"]
+    assert [p.key for p in pool.opening_batch(2)] == ["W1", "W3"]

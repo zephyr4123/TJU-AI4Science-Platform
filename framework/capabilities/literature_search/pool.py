@@ -10,6 +10,12 @@
 单用字面相关度更差（关联数才是「这篇在这个领域里被用到」的证据），乘上去最好；系数 1 到 3 结果
 差不多，取 2：第 1 跳前 30 篇里的答案，生理信号那道 11→15，PINN 方法那道 6→7。
 
+第 0 跳另有一处（`opening_batch`）：候选全是检索命中，没有「被谁用到」的证据，排在前面的多是
+刚出来的新论文（生理信号那道前 60 篇里一半是 2026 年的）。两种排法轮流取：上面那种（新论文多），
+与再乘 1 + ln(1 + 被引数)（经典论文多）。只用后者答案更多（前 60 篇 4→9 篇），可答案取自一篇
+2025 年的综述，天然不含新论文，而研究者两头都要；轮流取答案 6 篇、2025 年后的仍有 26 篇。
+第 1 跳不乘被引数：候选本来就是收录的论文引用的，再乘反而更差（生理信号那道前 30 篇 15→9）。
+
 来源记成短标记，给人看时由 `report.py` 翻成话：
 - `seed` 种子（执行层用自带搜索找来的）；`query:<哪家>:<检索词>` 关键词检索；
 - `ref:<W>` 收录的 W 引用了它（向后）；`cites:<W>` 它引用了收录的 W（向前）。
@@ -123,6 +129,23 @@ class Pool:
         ready.sort(key=lambda k: (-self.links(k) * (1 + LEXICAL_WEIGHT * relevance[k]),
                                   -self.cache[k].cited_by, k))
         return [self.cache[k] for k in ready[:n]]
+
+    def opening_batch(self, n: int) -> list[Paper]:
+        """第 0 跳的 n 篇：「新」与「经典」两种排法轮流取，重复的跳过。"""
+        ready = [k for k in self.open_leads() if k in self.cache]
+        relevance = self._lexical(ready)
+
+        def base(k: str) -> float:
+            return self.links(k) * (1 + LEXICAL_WEIGHT * relevance[k])
+        fresh = sorted(ready, key=lambda k: (-base(k), -self.cache[k].cited_by, k))
+        classic = sorted(ready, key=lambda k: (
+            -base(k) * (1 + math.log1p(self.cache[k].cited_by)), k))
+        picked: list[str] = []
+        for pair in zip(fresh, classic, strict=True):
+            for key in pair:
+                if key not in picked and len(picked) < n:
+                    picked.append(key)
+        return [self.cache[k] for k in picked]
 
     def _lexical(self, keys: list[str]) -> dict[str, float]:
         """每条线索的题目加摘要命中检索词的程度（0~1），词按在这批线索里的稀有度（idf）加权。"""

@@ -2,8 +2,8 @@
 
 - 种子按 DOI / arXiv 号批量回 OpenAlex 取，直接进第 0 跳（执行层挑的，不再排）。
 - 检索词：前几条在 OpenAlex 检索（一次扣 10 积分），全部逐条过 Crossref、arXiv、Europe PMC
-  （不扣额度）。命中的编号回 OpenAlex 批量取元数据，记成线索，与之后几跳同一套排法：被几个
-  「哪家 × 检索词」查到 ×（1 + 2 × 字面相关度），取前若干篇进第 0 跳。
+  （不扣额度）。命中的编号回 OpenAlex 批量取元数据，记成线索：被几个「哪家 × 检索词」查到 ×
+  （1 + 2 × 字面相关度），新论文与经典论文两种排法轮流取前若干篇进第 0 跳（`Pool.opening_batch`）。
 - 不扣额度的三家某条没查成（重试用完）不算这一步失败：记下来写进 sources.md，少一路而已；
   OpenAlex 查不成才是失败，由调用方判。
 
@@ -77,7 +77,7 @@ def gather(pool: Pool, client: OpenAlex, seeds: Seeds, cap: int) -> Gathered:
         else:
             pool.note_query(paper, hit.source, query)
     got.distinct = len(pool.open_leads())
-    for paper in pool.next_batch(cap):
+    for paper in pool.opening_batch(cap):
         for mark in pool.found_of(paper.key):
             pool.admit(paper, 0, mark)
     LOGGER.info("gather seeds=%d unresolved=%d queries=%d hits=%s unmatched=%d distinct=%d "
