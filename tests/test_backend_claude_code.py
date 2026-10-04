@@ -464,11 +464,15 @@ def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
     assert picked[picked.index("--model") + 1] == "opus"
 
 
-def test_chat_tool_guide_is_this_clis_own():
-    """P-25：协调层的「工具怎么用」是这家的（Read / Glob / Grep）。"""
+def test_tool_guides_teach_only_tools_this_cli_has():
+    """P-25：「工具怎么用」是这家的。2.1.289 起没有 Glob / Grep 工具，照旧指南找文件白耗几轮
+    （外层 #219）：读文件用 Read，找文件、搜内容用单条的只读命令（dontAsk 下自动放行）。"""
     chat = ClaudeCodeChat()
-    text = chat.tool_guide(("ai4sci", ".venv/bin/ai4sci"))
-    assert "Read / Glob / Grep" in text and "`ai4sci …`" in text and "Bash 只放行" in text
+    for text in (chat.tool_guide(("ai4sci", ".venv/bin/ai4sci")),
+                 ClaudeCodeRunner().tool_guide(("ai4sci skill",))):
+        assert "Glob" not in text and "Grep" not in text
+        assert "Read" in text and "find" in text and "grep" in text
+        assert "Bash 里会改东西的只放行" in text
 
 
 def test_chat_knobs_list_models_and_efforts_with_a_concrete_start():
