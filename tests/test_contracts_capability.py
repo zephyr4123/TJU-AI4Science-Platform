@@ -169,6 +169,14 @@ def test_param_label_is_required_short_and_clean():
     assert Param("max_iters", "int", None, "本次最多跑几轮", "本次轮数").label == "本次轮数"
 
 
+def test_bool_param_defaults_off():
+    """bool 在 CLI 上是开关（带上才是真）：缺省为真的参数在命令行上关不掉也开不了，等于没有。
+    外层 #212：文献检索的「下载原文」缺省写成真，命令行跑出来一篇原文都没下。"""
+    with pytest.raises(AssertionError, match="缺省只能是 False"):
+        Param("fetch", "bool", True, "h", "下载")
+    assert Param("skip", "bool", False, "h", "跳过").default is False
+
+
 def test_every_shipped_capability_sits_in_a_stage_with_all_columns_filled():
     stages = {name: module.DESCRIPTOR.stage for name, module in discover().items()}
     assert stages == {"literature-search": "文献", "design": "设计", "reproduction": "设计",

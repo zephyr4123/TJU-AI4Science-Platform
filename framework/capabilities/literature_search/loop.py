@@ -28,7 +28,12 @@ from framework.capabilities.literature_search.exchange import (
 )
 from framework.capabilities.literature_search.fulltext import Fetch, Fulltext
 from framework.capabilities.literature_search.openalex import OpenAlex, OpenAlexError
-from framework.capabilities.literature_search.papers import Paper, dois_in, from_openalex
+from framework.capabilities.literature_search.papers import (
+    Paper,
+    arxivs_in,
+    dois_in,
+    from_openalex,
+)
 from framework.capabilities.literature_search.pool import INCLUDE, Entry, Pool
 from framework.contracts import requirement
 from framework.contracts.capability import CapabilityFailed, Inputs
@@ -118,14 +123,19 @@ def _seed_session(output_dir: Path, runner: Runner, need: str, costs: list[float
 
 
 def _hop_zero(pool: Pool, client: OpenAlex, seeds: Seeds) -> list[str]:
-    """种子按 DOI 一次批量取，检索词一条一条查；返回认不出编号、或 OpenAlex 里查不到的种子行。"""
+    """种子按 DOI 与 arXiv 号各批量取一次，检索词一条一条查；返回认不出编号、或 OpenAlex 里
+    查不到的种子行。"""
     lines = list(seeds.seeds[:MAX_SEEDS])
-    wanted = {line: dois_in(line) for line in lines}
-    works = client.by_dois(sorted({d for dois in wanted.values() for d in dois}))
-    by_doi = {p.doi: p for p in map(from_openalex, works) if p.doi}
+    wanted = {line: (dois_in(line), arxivs_in(line)) for line in lines}
+    found = [from_openalex(w) for w in
+             client.by_dois(sorted({d for dois, _ in wanted.values() for d in dois}))
+             + client.by_arxiv(sorted({a for _, ids in wanted.values() for a in ids}))]
+    by_doi = {p.doi: p for p in found if p.doi}
+    by_arxiv = {p.arxiv: p for p in found if p.arxiv}
     unresolved: list[str] = []
-    for line, dois in wanted.items():
-        hits = [by_doi[d] for d in dois if d in by_doi]
+    for line, (dois, ids) in wanted.items():
+        hits = [by_doi[d] for d in dois if d in by_doi] + [by_arxiv[a] for a in ids
+                                                            if a in by_arxiv]
         unresolved += [] if hits else [line]
         for paper in hits:
             pool.admit(paper, 0, "seed")

@@ -1,8 +1,9 @@
 """一篇论文在文献检索里的样子：从 OpenAlex 的记录取出要用的字段，以及从种子文字里认 DOI / arXiv 号。
 
 键用 OpenAlex 的 W 号：参考文献表与「谁引用了它」给的都是 W 号，去重与多跳的连线都按它算。
-DOI 与 arXiv 号只用来进门（种子）和给人看。arXiv 预印本在 OpenAlex 里的 DOI 是
-`10.48550/arxiv.<号>`，所以 arXiv 链接一律换成这个 DOI 去查，不另接 arXiv 的接口。
+DOI 与 arXiv 号只用来进门（种子）和给人看。arXiv 号不换成 `10.48550/arxiv.<号>` 去按 DOI 查：
+论文后来发了期刊的，OpenAlex 的主 DOI 是期刊的，arXiv 只挂在 `locations` 里，按 DOI 查是 404
+（2026-10-04 真跑，B-PINNs 等三篇种子就这样丢了）；改按落地页 `http://arxiv.org/abs/<号>` 查。
 """
 
 from __future__ import annotations
@@ -50,7 +51,8 @@ def from_openalex(work: dict[str, Any]) -> Paper:
     primary = work.get("primary_location") or {}
     source = primary.get("source") or {}
     landing = primary.get("landing_page_url")
-    arxiv = arxiv_of(doi, landing)
+    arxiv = arxiv_of(doi, [landing, *(loc.get("landing_page_url")
+                                      for loc in work.get("locations") or [])])
     best = work.get("best_oa_location") or {}
     pdf = best.get("pdf_url") or (f"https://arxiv.org/pdf/{arxiv}" if arxiv else None)
     return Paper(
@@ -87,18 +89,29 @@ def abstract_text(inverted: dict[str, list[int]] | None) -> str:
     return " ".join(word for _, word in positions)
 
 
-def arxiv_of(doi: str | None, landing: str | None) -> str | None:
+def arxiv_of(doi: str | None, landings: list[str | None]) -> str | None:
+    """arXiv 号：DOI 是 arXiv 的就从它取，否则看各个落地页里有没有 arxiv.org 的。"""
     if doi and doi.startswith(ARXIV_DOI_PREFIX):
         return doi[len(ARXIV_DOI_PREFIX):]
-    match = ARXIV_RE.search(landing or "")
-    return match.group(1).lower() if match else None
+    for landing in landings:
+        match = ARXIV_RE.search(landing or "")
+        if match:
+            return match.group(1).lower()
+    return None
 
 
 def dois_in(text: str) -> list[str]:
-    """一行种子里认出的 DOI（arXiv 链接换成它在 OpenAlex 里的 DOI），按出现顺序、去重。"""
+    """一行种子里认出的 DOI（arXiv 的 DOI 不算，归 `arxivs_in`），按出现顺序、去重。"""
     found = [_bare_doi(m.group(0)) for m in DOI_RE.finditer(text)]
-    found += [ARXIV_DOI_PREFIX + m.group(1).lower() for m in ARXIV_RE.finditer(text)]
-    return list(dict.fromkeys(d for d in found if d))
+    return list(dict.fromkeys(d for d in found if d and not d.startswith(ARXIV_DOI_PREFIX)))
+
+
+def arxivs_in(text: str) -> list[str]:
+    """一行种子里认出的 arXiv 号：arxiv.org 链接、`arXiv:` 写法、arXiv 的 DOI，按出现顺序、去重。"""
+    found = [m.group(1).lower() for m in ARXIV_RE.finditer(text)]
+    found += [d[len(ARXIV_DOI_PREFIX):] for d in map(_bare_doi, (m.group(0) for m in
+              DOI_RE.finditer(text))) if d and d.startswith(ARXIV_DOI_PREFIX)]
+    return list(dict.fromkeys(found))
 
 
 def _bare_doi(value: str | None) -> str | None:

@@ -26,8 +26,8 @@ LOGGER = logging.getLogger("ai4sci.literature")
 BASE_URL = "https://api.openalex.org/works"
 # 如实报身份：伪装浏览器的 UA 有的站直接 403（Zenodo 实测）
 USER_AGENT = "ai4sci (+https://github.com/zephyr4123/TJU-AI4Science)"
-SELECT = ("id,doi,display_name,publication_year,authorships,primary_location,cited_by_count,"
-          "abstract_inverted_index,referenced_works,best_oa_location")
+SELECT = ("id,doi,display_name,publication_year,authorships,primary_location,locations,"
+          "cited_by_count,abstract_inverted_index,referenced_works,best_oa_location")
 BATCH = 50          # filter 里一次 OR 的个数：OpenAlex 上限 100，留一半余量给 URL 长度
 TIMEOUT_S = 30
 BACKOFF_S = (1.0, 2.0, 4.0)
@@ -70,6 +70,12 @@ class OpenAlex:
 
     def by_keys(self, keys: list[str]) -> list[dict[str, Any]]:
         return self._batched("openalex_id", keys)
+
+    def by_arxiv(self, ids: list[str]) -> list[dict[str, Any]]:
+        """按 arXiv 号批量取：查落地页。OpenAlex 里存的多是 http 的，https 的也带上，不漏。"""
+        return self._batched("locations.landing_page_url",
+                             [f"{scheme}://arxiv.org/abs/{i}" for i in ids
+                              for scheme in ("http", "https")])
 
     def citing(self, key: str, n: int) -> list[dict[str, Any]]:
         """引用了 key 的论文，按被引数取前 n 篇（扣 1）。"""

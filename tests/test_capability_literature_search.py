@@ -32,7 +32,8 @@ from tests.fixtures.scripted_backend import ScriptedRunner
 
 
 def _work(key: str, title: str, *, doi: str | None = None, refs: tuple[str, ...] = (),
-          cited: int = 0, abstract: str = "", pdf: str | None = None) -> dict:
+          cited: int = 0, abstract: str = "", pdf: str | None = None,
+          landings: tuple[str, ...] = ()) -> dict:
     words = abstract.split()
     return {
         "id": f"https://openalex.org/{key}", "doi": f"https://doi.org/{doi}" if doi else None,
@@ -44,6 +45,7 @@ def _work(key: str, title: str, *, doi: str | None = None, refs: tuple[str, ...]
         "abstract_inverted_index": {w: [i] for i, w in enumerate(words)} if words else None,
         "referenced_works": [f"https://openalex.org/{r}" for r in refs],
         "best_oa_location": {"pdf_url": pdf} if pdf else None,
+        "locations": [{"landing_page_url": u, "pdf_url": None} for u in landings],
     }
 
 
@@ -59,6 +61,9 @@ CORPUS = {w["id"].rsplit("/", 1)[1]: w for w in (
     _work("W5", "Bayesian PINN", cited=40),
     _work("W6", "Follow-up on both", refs=("W1", "W2"), cited=10),
     _work("W7", "Unrelated citing paper", refs=("W1",), cited=5),
+    # 期刊版的 DOI 是主 DOI，arXiv 只挂在 locations 里：按 arXiv 的 DOI 查不到（实测 B-PINNs 就是）
+    _work("W10", "Journal version of an arXiv preprint", doi="10.1016/j.jcp.2020.109913",
+          landings=("http://arxiv.org/abs/2003.06097",)),
 )}
 SEARCHES = {"pinn inverse": ["W2", "W8"]}
 RELEVANT = {"W1", "W2", "W3", "W5", "W6"}
@@ -84,6 +89,9 @@ class FakeOpenAlex:
                 keys = [k for k, w in CORPUS.items() if w["doi"] and w["doi"][16:] in wanted]
             elif field == "openalex_id":
                 keys = [k for k in wanted if k in CORPUS and k not in HIDDEN]
+            elif field == "locations.landing_page_url":
+                keys = [k for k, w in CORPUS.items()
+                        if any(loc["landing_page_url"] in wanted for loc in w["locations"])]
             else:
                 assert field == "cites"
                 keys = [k for k, w in CORPUS.items()
@@ -278,10 +286,21 @@ def test_batches_split_at_fifty():
 
 def test_ids_are_read_from_seed_lines():
     line = ("见 https://doi.org/10.1016/J.JCP.2022.111402. 与 https://arxiv.org/abs/2504.05248v2，"
-            "还有 arXiv:2209.03276")
-    assert papers.dois_in(line) == ["10.1016/j.jcp.2022.111402", "10.48550/arxiv.2504.05248",
-                                    "10.48550/arxiv.2209.03276"]
+            "还有 arXiv:2209.03276 和 https://doi.org/10.48550/arXiv.2304.12541")
+    assert papers.dois_in(line) == ["10.1016/j.jcp.2022.111402"]
+    assert papers.arxivs_in(line) == ["2504.05248", "2209.03276", "2304.12541"]
     assert papers.dois_in("https://www.sciencedirect.com/science/article/pii/S0021999") == []
+
+
+def test_arxiv_seed_resolves_through_locations_when_the_main_doi_is_the_journal(ws):
+    seeds = {"seeds.md": "## 检索词\n- nothing\n\n## 纳入标准\n- x\n\n## 种子\n"
+                         "- https://arxiv.org/abs/2003.06097v3 贝叶斯 PINN\n"}
+    fake = FakeOpenAlex()
+    out, _, _ = _search(ws, [seeds, _screen], max_hops=0, get=fake)
+    pool = _pool(out)
+    assert pool["W10"]["found"] == ["seed"] and pool["W10"]["paper"]["arxiv"] == "2003.06097"
+    assert pool["W10"]["paper"]["pdf_url"] == "https://arxiv.org/pdf/2003.06097"
+    assert "查不到的种子" not in (out / "sources.md").read_text()
 
 
 def test_paper_from_openalex_rebuilds_abstract_and_arxiv_pdf():

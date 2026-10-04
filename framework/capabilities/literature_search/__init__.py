@@ -55,15 +55,16 @@ DESCRIPTOR = Capability(
         Param("per_hop", "int", 30, "每一跳交给模型看摘要筛的篇数", "每跳筛选数"),
         Param("min_new", "int", 3, "某一跳新收录的少于这个数就停：再扩也扩不出新东西了",
               "停止下限"),
-        Param("fulltext", "bool", True, "收录的论文有开放获取的 PDF 就下载并解析", "下载原文"),
+        Param("abstracts_only", "bool", False,
+              "只看摘要筛，收录的不下载原文；缺省是有开放获取的 PDF 就下载并解析", "只看摘要"),
     ),
     needs_executor=True,
 )
 
 
 def run(output_dir: Path, inputs: Inputs, ports: Ports, *, max_hops: int = 2, per_hop: int = 30,
-        min_new: int = 3, fulltext: bool = True) -> str:
+        min_new: int = 3, abstracts_only: bool = False) -> str:
     if ports.runner is None:
         raise CapabilityFailed("文献检索要执行层：写检索词、找种子、看摘要筛都靠它")
     return search(output_dir, inputs, ports.runner, Limits(max_hops, per_hop, min_new),
-                  fulltext=fulltext)
+                  fulltext=not abstracts_only)
