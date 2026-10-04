@@ -445,9 +445,9 @@ def test_show_caps_lists_stages_with_empty_stages_visible_and_five_columns():
     proc = run_cli("show", "caps")
     assert proc.returncode == EXIT_OK, proc.stderr
     lines = proc.stdout.splitlines()
-    assert lines[0].startswith("文献\t-\t这个阶段还没有能力")
-    assert "output new literature" in lines[0]
-    assert lines[1].startswith("假设\t-\t")
+    assert lines[0].startswith("文献\tliterature-search\t文献检索\t")
+    empty = next(line for line in lines if line.startswith("假设\t"))
+    assert empty.startswith("假设\t-\t这个阶段还没有能力") and "output new hypothesis" in empty
     design = next(line for line in lines if line.startswith("设计\tdesign\t"))
     # 一行上屏，执行者种类不上屏
     assert "评分脚本与基线\t按需求写评分契约" in design and "助理" not in design
@@ -464,7 +464,8 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
     doc = {c["name"]: c for c in json.loads(proc.stdout)}
     # 能力库的两半：步骤（描述符）与 skill（SKILL.md），每条带 kind
     assert {n for n, c in doc.items() if c["kind"] == "步骤"} == {
-        "design", "reproduction", "auto-research", "analysis", "reproducibility", "verify"}
+        "literature-search", "design", "reproduction", "auto-research", "analysis",
+        "reproducibility", "verify"}
     assert {"pdf", "download"} <= {n for n, c in doc.items() if c["kind"] == "skill"}
     assert doc["pdf"]["used_by"] == ["reproduce"] and doc["pdf"]["brief"]
     assert "scripts" in doc["pdf"] and "body" not in doc["pdf"]  # 正文只经 skill show（过装载）
@@ -914,8 +915,9 @@ def test_serve_helpers_check_a_draft_and_list_the_catalog(tmp_path, monkeypatch)
     catalog = {c["name"]: c for c in serve._catalog()}
     assert catalog["auto-research"]["used_by"] == ["research"] and catalog["verify"]["does"]
     assert [w["name"] for w in serve._workflows()] == ["reproduce", "research"]
-    assert set(serve._descriptor_map()) == {"design", "reproduction", "auto-research", "analysis",
-                                            "reproducibility", "verify"}
+    assert set(serve._descriptor_map()) == {"literature-search", "design", "reproduction",
+                                            "auto-research", "analysis", "reproducibility",
+                                            "verify"}
 
 
 def test_env_resolve_writes_a_complete_lock_into_materials(tmp_path, monkeypatch, capsys):

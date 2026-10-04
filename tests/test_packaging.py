@@ -1,6 +1,6 @@
-"""装出来的包得带齐运行时要读的文件（外层 #138）：每颗能力的 prompt.md 都要在 pyproject 的
-package-data 里，出厂件由 package.sh 拷进 framework/shipped/ 随包走。漏一样，装的包第一次用到
-才炸。"""
+"""装出来的包得带齐运行时要读的文件（外层 #138）：每颗能力的提示模板（子包里的 .md：多数是
+一份 prompt.md，文献检索有种子与筛选两份）都要在 pyproject 的 package-data 里，出厂件由
+package.sh 拷进 framework/shipped/ 随包走。漏一样，装的包第一次用到才炸。"""
 
 from __future__ import annotations
 
@@ -12,9 +12,10 @@ from framework import paths
 def test_every_capability_prompt_is_shipped():
     doc = tomllib.loads((paths.REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     data = doc["tool"]["setuptools"]["package-data"]
-    for prompt in sorted((paths.REPO_ROOT / "framework" / "capabilities").glob("*/prompt.md")):
+    for prompt in sorted((paths.REPO_ROOT / "framework" / "capabilities").glob("*/*.md")):
         package = f"framework.capabilities.{prompt.parent.name}"
-        assert "prompt.md" in data.get(package, []), f"{package} 的 prompt.md 没进 package-data"
+        assert prompt.name in data.get(package, []), (
+            f"{package} 的 {prompt.name} 没进 package-data")
     assert any(p.startswith("shipped/") for p in data["framework"])
 
 

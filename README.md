@@ -106,7 +106,7 @@ ai4sci check                                # 底座（哪家 CLI 装了、登�
 ai4sci serve                                # 起服务，浏览器开 http://127.0.0.1:8765
 ```
 
-包里自带页面、流程、模板、skill、领域包、指南；数据落在 `~/ai4sci`（要放别处设 `AI4SCI_HOME`）；接机器、换底座都在页面「设置」里或对话里跟助理说。
+包里自带页面、流程、模板、skill、领域包、指南；数据落在 `~/ai4sci`（要放别处设 `AI4SCI_HOME`）；接机器、换底座都在页面「设置」里或对话里跟助理说。文献检索不要 key 也能跑；常用的话去 [openalex.org/settings/api](https://openalex.org/settings/api) 领一个免费 key，起服务前设 `OPENALEX_API_KEY`，额度大十倍（纲领 P-27）。
 
 **改代码**：clone 仓库，前提是 uv + node 22 + git。
 

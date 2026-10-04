@@ -1,7 +1,8 @@
 """起一个 skill 的脚本：`uv run --locked --script <脚本> <参数…>`（纲领 P-22）。
 
 只做一件事：找到脚本、按锁起环境、把参数原样递过去；不解析脚本的输出，不替脚本猜路径。
-stdout / stderr 直通调用方（agent 读 stdout 的那行 JSON），退出码原样返回。
+stdout / stderr 直通调用方（agent 读 stdout 的那行 JSON），退出码原样返回；框架自己起脚本时
+（`capture_script`，文献检索解析原文）收下输出交给调用方。
 
 `--locked`：锁文件与头部的依赖对不上就报错，不静默重解析。环境在 uv 的全机缓存里：平台自带的由
 `make skills` 预热过，运行时不用联网；收录的与领域包的几百个不全量预热（一个项目只用到其中几个，
@@ -66,6 +67,15 @@ def run_script(script: Path, args: list[str], cwd: Path | None = None) -> int:
     argv = [*uv_argv(), *UV_RUN_ARGS, str(script), *args]
     proc = subprocess.run(argv, cwd=None if cwd is None else str(cwd), env=uv_env(), check=False)
     return proc.returncode
+
+
+def capture_script(script: Path, args: list[str], timeout_s: float) -> subprocess.CompletedProcess:
+    """框架自己起脚本时用（文献检索解析原文）：收下 stdout / stderr 交给调用方，不直通——命令行的
+    stdout 只留给结论那一行。超时抛 `subprocess.TimeoutExpired`，由调用方记成这一篇的失败。"""
+    assert lock_path(script).is_file(), f"{script} 没有锁文件，load_skill 该已经拦下"
+    argv = [*uv_argv(), *UV_RUN_ARGS, str(script), *args]
+    return subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", env=uv_env(),
+                          timeout=timeout_s, check=False)
 
 
 def warm_script(script: Path) -> None:

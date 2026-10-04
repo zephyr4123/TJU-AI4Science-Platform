@@ -97,6 +97,9 @@ class Param:
         assert self.type in PARAM_TYPES, (
             f"参数 {self.name} 的类型只认 {tuple(PARAM_TYPES)}，得到 {self.type!r}")
         assert self.name.isidentifier(), f"参数名要是合法标识符：{self.name!r}"
+        # bool 在 CLI 上是开关（带上才是真），缺省为真的在命令行上就选不到了（外层 #212）
+        assert self.type != "bool" or self.default is False, (
+            f"bool 参数 {self.name} 的缺省只能是 False：CLI 上它是开关；要缺省开就把意思反过来起名")
         assert self.label.strip(), f"参数 {self.name} 要有页面上的名字 label（P-21）"
         assert _cjk_length(self.label) <= LABEL_MAX, (
             f"参数 {self.name} 的 label 超过 {LABEL_MAX} 字：名词，不写句子（P-21）")
