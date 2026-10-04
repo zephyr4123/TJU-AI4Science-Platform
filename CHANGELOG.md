@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-04
+
 ### 变更
 - 文献检索交给筛选会话的清单砍短：摘要截到 500 字，「怎么找到的」只数每种几条（给人看的 `sources.md` 照旧写全）；连同关掉自动记忆，一次检索约 0.78 → 0.60 美元，三个分不变（#219）
 
@@ -172,7 +174,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.0...v1.1.1
