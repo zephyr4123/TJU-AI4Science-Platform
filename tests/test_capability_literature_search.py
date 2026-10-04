@@ -253,10 +253,12 @@ def test_excluded_paper_never_enters_the_pool(ws):
 
 
 def test_screening_prompt_carries_criteria_abstract_and_origin(ws):
-    _, runner, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
+    """结论文件给绝对路径：给相对的，执行层拼路径时丢了 rounds/2/、写到产出目录根上，
+    整次作废（外层 #219）。"""
+    out, runner, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
     prompt = runner.prompts[1]
     for token in ("用 PINN 做参数反演", "We solve inverse problems with PINNs",
-                  "- 怎么找到的：种子", "检索词 1 条", "rounds/0/decisions.md",
+                  "- 怎么找到的：种子", "检索词 1 条", f"`{out / 'rounds' / '0' / 'decisions.md'}`",
                   "（OpenAlex 没有摘要）"):
         assert token in prompt
     assert runner.bash_rules == ("ai4sci skill",)

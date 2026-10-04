@@ -194,7 +194,8 @@ def _ask(output_dir: Path, runner: Runner, need: str, criteria: str, pool: Pool,
     decisions = f"{ROUNDS_DIRNAME}/{hop}/{_suffixed(DECISIONS_NAME, suffix)}"
     prompt = prompting.build_prompt(
         SCREEN_PROMPT, {"hop": hop, "count": len(entries), "requirement": need,
-                        "criteria": criteria, "candidates": listing, "decisions": decisions},
+                        "criteria": criteria, "candidates": listing,
+                        "decisions": str(output_dir / decisions)},
         loadout=loadout.around(output_dir))
     result = session.run_session(runner, prompt, cwd=output_dir, allowed_paths=[output_dir],
                                  log_dir=output_dir / LOG_DIRNAME / f"hop-{hop}{suffix}")
