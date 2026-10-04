@@ -79,7 +79,7 @@ def search(output_dir: Path, inputs: Inputs, runner: Runner, limits: Limits, *, 
     client = client or OpenAlex()
     costs: list[float] = []
     seeds = _seed_session(output_dir, runner, need, costs)
-    pool = Pool(excluded)
+    pool = Pool(excluded, seeds.queries[:MAX_QUERIES])
     try:
         unresolved = _hop_zero(pool, client, seeds)
         hop, stop = _hops(output_dir, runner, need, seeds, pool, client, limits, costs)

@@ -60,7 +60,7 @@ CORPUS = {w["id"].rsplit("/", 1)[1]: w for w in (
     _work("W3", "Classic inverse PDE method", cited=300),
     _work("W4", "Unrelated optimizer", cited=900),
     _work("W5", "Bayesian PINN", cited=40),
-    _work("W6", "Follow-up on both", refs=("W1", "W2"), cited=10),
+    _work("W6", "PINN inverse follow-up on both", refs=("W1", "W2"), cited=10),
     _work("W7", "Unrelated citing paper", refs=("W1",), cited=5),
     # 期刊版的 DOI 是主 DOI，arXiv 只挂在 locations 里：按 arXiv 的 DOI 查不到（实测 B-PINNs 就是）
     _work("W10", "Journal version of an arXiv preprint", doi="10.1016/j.jcp.2020.109913",
@@ -179,6 +179,14 @@ def test_next_hop_takes_the_most_linked_leads_first(ws):
     assert [k for k, r in pool.items() if r["hop"] == 1] == ["W6"]
     prompt = runner.prompts[2]
     assert "### W6" in prompt and "### W4" not in prompt
+
+
+def test_leads_with_query_words_outrank_more_cited_ones_at_equal_links(ws):
+    """同样只关联一篇收录的：W3（题目有 inverse，被引 300）、W5（有 PINN，被引 40）排在 W4（检索词
+    一个都不沾，被引 900）前面。外层 #212 两道召回实测：乘上字面相关度，第 1 跳前 30 篇的答案
+    11→15、6→7。"""
+    out, _, _ = _search(ws, [_seeds_move(), _screen, _screen], max_hops=1, per_hop=3)
+    assert [k for k, r in _pool(out).items() if r["hop"] == 1] == ["W6", "W3", "W5"]
 
 
 def test_stops_when_a_hop_adds_fewer_than_the_floor(ws):
