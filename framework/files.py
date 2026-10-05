@@ -6,14 +6,24 @@
 的临时文件，再 `os.replace` 换过去——同一个文件系统上是原子的，读的一方任何时候看到的都是完整的
 旧版或新版；写到一半出错，临时文件删掉，原文件不动。
 
+边跑边追加的进度（能力的 `progress.jsonl`，外层 #242）也在这里：一行一个事件，能力的 Python 程序
+在它本来就打日志的地方顺手写一行，页面边跑边读、照这个能力自己的面板画。只追加、不改写，所以不走
+临时文件：整行一次写进去，进程内一把锁挡住几个线程交错；读的一方碰上正在写的最后一行，丢掉它就是。
+
 在 framework 顶层、不属于任何一层：哪一层写状态文件都用它，它只依赖标准库。
 """
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
+import threading
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+
+_APPEND = threading.Lock()
 
 
 def write_atomic(path: Path, text: str) -> None:
@@ -31,3 +41,11 @@ def write_atomic(path: Path, text: str) -> None:
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+def append_event(path: Path, **fields: Any) -> None:
+    """往 path 末尾追加一行事件：`at` 是此刻（UTC，到秒），其余是调用方给的字段。"""
+    line = json.dumps({"at": datetime.now(UTC).isoformat(timespec="seconds"), **fields},
+                      ensure_ascii=False) + "\n"
+    with _APPEND, Path(path).open("a", encoding="utf-8") as handle:
+        handle.write(line)

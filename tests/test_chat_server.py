@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import getpass
 import json
 import threading
 import urllib.error
@@ -72,7 +73,7 @@ def served(tmp_path):
         # 自检不跑真 CLI：claude_code 过、codex 没登录
         if name == "codex":
             return AgentProbe(items=[("装了没", True, "/x"), ("登录", False, "没登录")],
-                              installed=True, version="codex-cli 0.147.0")
+                              installed=True, version="codex-cli 0.160.0")
         return AgentProbe(items=[("装了没", True, "/x"), ("说话", True, "pong")],
                           installed=True, version="2.1.278", logged_in=True, spoke_s=0.8)
 
@@ -432,7 +433,7 @@ def test_error_status_codes(served, tmp_path):
     status, _, body = call(base, f"/projects/p/chats/{chat_id}/messages", {"text": "插队"})
     assert status == 409 and "在跑" in json.loads(body)["error"]
     assert call(base, "/studio/requirement")[0] == 404  # 编辑台下只有对话
-    assert call(base, "/studio/requirement/confirm", {"by": "x"})[0] == 404
+    assert call(base, "/studio/requirement/confirm", {})[0] == 404
 
 
 def test_bad_json_body_is_400(served):
@@ -461,20 +462,20 @@ def test_requirement_board_and_confirm(served, tmp_path):
     assert status == 200 and doc["text"] == REQUIREMENT
     assert [s["heading"] for s in doc["sections"]] == ["问题", "怎么算好"]
 
-    # 不署名不确认
-    assert call(base, "/projects/p/workspaces/toy/requirement/confirm", {})[0] == 400
-    status, _, body = call(base, "/projects/p/workspaces/toy/requirement/confirm", {"by": "张三"})
+    # 不用署名：本地部署，按的就是跑服务的这个人，记登录名（与 CLI 的缺省一样）
+    status, _, body = call(base, "/projects/p/workspaces/toy/requirement/confirm", {})
     doc = json.loads(body)
-    assert status == 201 and doc["confirmed"] and doc["version"] == 1 and doc["by"] == "张三"
+    assert status == 201 and doc["confirmed"] and doc["version"] == 1
+    assert doc["by"] == getpass.getuser()
     assert doc["dirty"] is False and requirement.lock_path(ws.root).is_file()
     # 改了：dirty，页面拿 confirmed_text 做 diff；再确认成 v2
     ws.requirement.write_text(REQUIREMENT + "\n## 预算\n\n一天。\n", encoding="utf-8")
     doc = json.loads(call(base, "/projects/p/workspaces/toy/requirement")[2])
     assert doc["dirty"] and doc["confirmed_text"] == REQUIREMENT
-    status, _, body = call(base, "/projects/p/workspaces/toy/requirement/confirm", {"by": "张三"})
+    status, _, body = call(base, "/projects/p/workspaces/toy/requirement/confirm", {})
     assert status == 201 and json.loads(body)["version"] == 2
     # 内容没变再确认：422 一句话
-    status, _, body = call(base, "/projects/p/workspaces/toy/requirement/confirm", {"by": "张三"})
+    status, _, body = call(base, "/projects/p/workspaces/toy/requirement/confirm", {})
     assert status == 422 and "内容没变" in json.loads(body)["error"]
     # 盘上的东西不合约：回 422 一句话，不是断连接让页面「Failed to fetch」
     (ws.flows / "boom.yaml").write_text("name: boom\n", encoding="utf-8")
@@ -510,13 +511,11 @@ def test_output_board_and_sign(served, tmp_path):
     assert call(base, "/projects/p/workspaces/toy/outputs/analysis/9")[0] == 404
     assert call(base, "/projects/p/workspaces/toy/outputs/runs/1")[0] == 404
 
-    assert call(base, "/projects/p/workspaces/toy/outputs/analysis/1/sign", {"by": ""})[0] == 400
-    status, _, body = call(base, "/projects/p/workspaces/toy/outputs/analysis/1/sign",
-                           {"by": "李四", "note": "看过了"})
+    status, _, body = call(base, "/projects/p/workspaces/toy/outputs/analysis/1/sign", {})
     doc = json.loads(body)
-    assert status == 201 and doc["signed"]["by"] == "李四" and doc["signed"]["stale"] is False
-    status, _, body = call(base, "/projects/p/workspaces/toy/outputs/analysis/1/sign",
-                           {"by": "李四"})
+    assert status == 201 and doc["signed"]["stale"] is False
+    assert doc["signed"]["by"] == getpass.getuser()
+    status, _, body = call(base, "/projects/p/workspaces/toy/outputs/analysis/1/sign", {})
     assert status == 422 and "已经签过了" in json.loads(body)["error"]
     (doc_dir / "analysis.md").write_text("改了", encoding="utf-8")
     doc = json.loads(call(base, "/projects/p/workspaces/toy/outputs/analysis/1")[2])
@@ -635,13 +634,12 @@ def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     record = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=proc.pid,
                       started_at="t", output="design/1")
     (ws.jobs / "job-s.json").write_text(json.dumps(record.__dict__), encoding="utf-8")
-    assert call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {"by": ""})[0] == 400
-    status, _, body = call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {"by": "李四"})
+    status, _, body = call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {})
     doc = json.loads(body)
-    assert status == 201 and doc["status"] == "stopped" and "李四" in doc["result"]
+    assert status == 201 and doc["status"] == "stopped" and getpass.getuser() in doc["result"]
     proc.wait(timeout=5)
-    assert call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {"by": "李四"})[0] == 422
-    assert call(base, "/projects/p/workspaces/w1/jobs/nope/stop", {"by": "李四"})[0] == 404
+    assert call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {})[0] == 422
+    assert call(base, "/projects/p/workspaces/w1/jobs/nope/stop", {})[0] == 404
     status, _, body = call(base, "/projects/p/workspaces/w1/outputs/design/1")
     assert json.loads(body)["status"] == "failed"
 

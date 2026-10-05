@@ -65,11 +65,10 @@ export interface OutputBrief {
   signed: Signature | null
 }
 
-/** 产出目录里的一个文件：小文本带正文（页面按种类渲染），大的与二进制只给名字。 */
+/** 产出目录里的一个文件（全部列出，不带正文；正文走文件镜头）。 */
 export interface OutputFile {
   path: string
   size: number
-  text?: string
 }
 
 export interface OutputDetail extends OutputBrief {
@@ -77,8 +76,8 @@ export interface OutputDetail extends OutputBrief {
   jobs: Job[]
 }
 
-/** 一个阶段一格：名字、目录名、这个阶段的全部产出。 */
-export interface StageBoard extends StageInfo {
+/** 一个阶段一格：名字、目录名、这个阶段的全部产出（主文件只在 `GET /stages` 里有，这里不带）。 */
+export interface StageBoard extends Omit<StageInfo, 'main_files'> {
   outputs: OutputBrief[]
 }
 

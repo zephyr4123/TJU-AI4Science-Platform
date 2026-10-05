@@ -34,7 +34,7 @@ const TONE: Record<Tone, string> = {
   neutral: 'text-muted-foreground', ok: 'text-ok', warn: 'text-wait', bad: 'text-bad', primary: 'text-primary',
 }
 
-export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorkspace, onCreatedWorkspace, onRemove, menu }: {
+export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorkspace, onCreatedWorkspace, onRemove, menu, running }: {
   project: ProjectDetail
   chats: ReturnType<typeof useChats>
   backends: Backend[] | null
@@ -45,6 +45,8 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
   onRemove: () => Promise<void>
   /** 窄屏时地方清单的入口 */
   menu?: ReactNode
+  /** 输入框上方的「运行中」（外层 #243） */
+  running?: ReactNode
 }) {
   const still = useReducedMotion() === true
   // 两个样子：正中间输入框的那页（shown 为 null，第一句开新的一段），和整屏的对话（看 shown 那段）
@@ -71,7 +73,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
   const composer = (className?: string) => (
     <motion.div layoutId={`composer-${project.id}`} layout={still ? false : 'position'} className={cn('w-full max-w-[44rem]', className)}>
       <Composer busy={conv.busy} placeholder={talking ? 'Enter 发送，Shift + Enter 换行' : '要做什么？'}
-                thinking={t.thinking} knobs={t.knobs} tuning={t.tuning} onTune={t.onTune} className="px-0 pt-0 pb-0"
+                thinking={t.thinking} knobs={t.knobs} tuning={t.tuning} onTune={t.onTune} className="px-0 pt-0 pb-0" above={running}
                 who={shown || !backends ? undefined : { options: backends, value: t.backendName ?? '', onChange: t.choose }}
                 onSend={(text) => { setTalking(true); void conv.send(text) }} />
     </motion.div>

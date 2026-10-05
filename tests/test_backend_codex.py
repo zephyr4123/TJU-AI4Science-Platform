@@ -45,10 +45,12 @@ def test_codex_is_a_registered_backend_with_both_ports():
     assert isinstance(runner, Runner) and isinstance(chat, Chat)
     assert runner.name == "codex" and chat.name == "codex" and chat.cost_reporting == "turn"
     knobs = chat.knobs()
-    assert knobs.model == "gpt-5.6-terra" and knobs.effort == "medium"
+    assert knobs.model == "gpt-6.1-sol" and knobs.effort == "medium"
+    assert [c.id for c in knobs.models] == ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna",
+                                            "gpt-5.6-terra"]
     assert [c.id for c in knobs.efforts] == ["low", "medium", "high", "xhigh"]
     with pytest.raises(ValueError, match="思考深度 'ultra' 不在清单上"):
-        knobs.check(Tuning(effort="ultra"))  # sol / terra 另有 max、ultra，清单不收：luna 没有
+        knobs.check(Tuning(effort="ultra"))  # sol / astra 另有 max、ultra，清单不收：luna 没有
 
 
 # --- 私有 CODEX_HOME 与要关的 skill ------------------------------------------------
@@ -122,7 +124,7 @@ def test_runner_argv_is_ephemeral_sandboxed_and_lists_writable_roots(home: Path,
     cwd = tmp_path / "pack"
     (cwd / "harness").mkdir(parents=True)
     argv = cx.CodexRunner().build_argv(cwd, [cwd / "harness"], ("ai4sci skill",),
-                                       Tuning(model="gpt-5.6-luna", effort="low"), home=home)
+                                       Tuning(model="gpt-6-luna", effort="low"), home=home)
     assert argv[:2] == ["codex", "exec"] and argv[-1] == "-"  # prompt 走 stdin
     for flag in ("--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config"):
         assert flag in argv
@@ -130,7 +132,7 @@ def test_runner_argv_is_ephemeral_sandboxed_and_lists_writable_roots(home: Path,
     rules = (home / "rules" / cx.RULES_NAME).read_text(encoding="utf-8")
     assert 'prefix_rule(pattern=["ai4sci", "skill"], decision="allow"' in rules
     assert argv[argv.index("-C") + 1] == str(cwd.resolve())
-    assert argv[argv.index("-m") + 1] == "gpt-5.6-luna"
+    assert argv[argv.index("-m") + 1] == "gpt-6-luna"
     config = _config(argv)
     assert config["approval_policy"] == '"never"' and config["project_doc_max_bytes"] == "0"
     assert config["web_search"] == '"live"' and config["sandbox_mode"] == '"workspace-write"'
@@ -149,7 +151,7 @@ def test_chat_argv_opens_with_the_guide_and_resumes_by_thread_id(home: Path, tmp
     chat = cx.CodexChat()
     common = dict(system_prompt="你是研究助理。\n一条命令一行。", allowed_paths=[tmp_path],
                   bash_rules=("ai4sci", ".venv/bin/ai4sci"),
-                  tuning=Tuning(model="gpt-5.5", effort="high"), home=home)
+                  tuning=Tuning(model="gpt-5.6-terra", effort="high"), home=home)
     first = chat.build_argv(tmp_path, session_id=None, **common)
     second = chat.build_argv(tmp_path, session_id="01a0-thread", **common)
     assert "--ephemeral" not in first and "--ephemeral" not in second  # 续接要 rollout 落盘
@@ -166,7 +168,7 @@ def test_chat_argv_opens_with_the_guide_and_resumes_by_thread_id(home: Path, tmp
         config = _config(argv)
         assert config["sandbox_mode"] == '"workspace-write"'
         assert str(tmp_path.resolve()) in config["sandbox_workspace_write.writable_roots"]
-        assert argv[argv.index("-m") + 1] == "gpt-5.5"
+        assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
         assert config["model_reasoning_effort"] == '"high"'
 
 
@@ -292,7 +294,7 @@ def test_parse_events_and_final_report():
 
 
 def _fake_codex(directory: Path, *, logged_in: bool = True,
-                version: str = "codex-cli 0.147.0") -> Path:
+                version: str = "codex-cli 0.160.0") -> Path:
     """一个装成 codex 的脚本：`--version`、`login status`、`exec`（读完 stdin、往 cwd 写一个文件、
     吐事件，JSON 一行一个）。"""
     directory.mkdir(parents=True, exist_ok=True)
@@ -335,7 +337,7 @@ def test_runner_run_reports_changed_files_report_and_nan_cost(home: Path, tmp_pa
     cwd = tmp_path / "pack"
     (cwd / "out").mkdir(parents=True)
     result = cx.CodexRunner(cli=str(cli)).run("写点东西", cwd, 30, [cwd / "out"], ("ai4sci skill",),
-                                            tuning=Tuning(model="gpt-5.6-luna"))
+                                            tuning=Tuning(model="gpt-6-luna"))
     assert result.exit_code == 0 and not result.timed_out
     assert result.changed_files == ["out/hello.txt"]  # 框架自己的快照 diff，不信 CLI 自报
     assert result.report == "pong" and math.isnan(result.cost_usd) and result.duration_s > 0
@@ -349,17 +351,17 @@ def test_probe_walks_the_four_questions(home: Path, tmp_path):
     cli = _fake_codex(tmp_path / "bin")
     result = cx.probe(cli=str(cli))
     assert isinstance(result, AgentProbe) and result.ok and result.installed and result.logged_in
-    assert result.version == "codex-cli 0.147.0" and result.spoke_s > 0
+    assert result.version == "codex-cli 0.160.0" and result.spoke_s > 0
     assert math.isnan(result.cost_usd)
     assert [n for n, _, _ in result.items] == ["装了没", "版本", "登录", "说话"]
     assert "15 tokens" in result.items[-1][2]
     doc = result.to_dict()
     assert doc["ok"] and doc["cost_usd"] is None and doc["items"][3]["name"] == "说话"
 
-    stale = _fake_codex(tmp_path / "old", version="codex-cli 0.140.2")
+    stale = _fake_codex(tmp_path / "old", version="codex-cli 0.147.0")
     result = cx.probe(cli=str(stale))
     assert not result.ok and [ok for _, ok, _ in result.items] == [True, False]
-    assert "要 ≥ 0.147.0" in result.items[1][2]
+    assert "要 ≥ 0.160.0" in result.items[1][2]
 
     logged_out = _fake_codex(tmp_path / "out", logged_in=False)
     result = cx.probe(cli=str(logged_out))
@@ -392,11 +394,11 @@ def test_live_probe_runner_and_two_turn_chat(tmp_path: Path, monkeypatch):
     (ws / "out").mkdir(parents=True)
     ask = "Write the single word hello into out/hello.txt, then reply exactly: wrote"
     run = cx.CodexRunner().run(ask, ws, 180, [ws / "out"], ("ai4sci skill",),
-                               tuning=Tuning(model="gpt-5.6-luna", effort="low"))
+                               tuning=Tuning(model="gpt-6-luna", effort="low"))
     assert run.exit_code == 0 and run.changed_files == ["out/hello.txt"] and run.report == "wrote"
     chat = cx.CodexChat()
     common = dict(allowed_paths=[ws], bash_rules=("ai4sci",),
-                  tuning=Tuning(model="gpt-5.6-luna", effort="low"))
+                  tuning=Tuning(effort="low"))  # 模型用起点那款（6.1 Sol），真打一遍它的 slug
     first = list(chat.turn("Remember the word: kiwi. Reply only: ok", ws, 180, session_id=None,
                            system_prompt="你是海盗，每句结尾加 arr。", **common))
     sid = first[0].session_id

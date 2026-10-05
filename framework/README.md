@@ -71,7 +71,7 @@ flowchart TB
 | 静态检查 | ruff：`E F W B I BLE UP`，行宽 100（`BLE` 是「不吞异常」的机器判据） | |
 | 测试 | pytest，剧本后端代替 mock（见 `tests/README.md`） | |
 | 外部命令 | git、ssh / rsync、ruff（查执行层写的 harness）、pgrep | |
-| agent CLI | Claude Code ≥ 2.1.276（隔离参数 `--setting-sources "" --strict-mcp-config --disable-slash-commands`）、Codex 按 0.147.0 实测（私有 `CODEX_HOME` 隔离）；实测清单只记在各自适配器的文件头 | |
+| agent CLI | Claude Code ≥ 2.1.276（隔离参数 `--setting-sources "" --strict-mcp-config --disable-slash-commands`）、Codex ≥ 0.160.0（0.147.0 上逐条实测、0.160.0 上 live 复测）（私有 `CODEX_HOME` 隔离）；实测清单只记在各自适配器的文件头 | |
 
 ## 2b. 两条主路径
 
@@ -132,7 +132,7 @@ sequenceDiagram
 - **用户输入错误返回问题清单，程序缺陷照常抛**：盘上东西不合约（坏 yaml、缺文件）→ 一行一条、带文件与「期望 vs 实际」的清单（`experiment/pack.py::validate_pack`、`contracts/workflows.py::workflow_problems`）；代码 bug → 异常带栈。
 - **CLI 与 HTTP 调同一个函数**（`chat/boards.py` 同时服务 `show` 与端点），页面是端点的客户端，换界面后端不改。
 - **人的动作只有人能做**：`requirement confirm` 与 `sign` 在带 `AI4SCI_CHAT_ID` 的环境里（助理的会话）一律拒（`cli/_common.py::refuse_if_assistant`）；流程助理连 `cap` 的命令前缀都不放行（`chat/guide.py::bash_rules`）。
-- **原子写与锁**：一边写一边有人读的状态文件（作业记录、对话 meta、产出 meta 与签字、需求的锁、流程文件、checkpoint）一律走 `framework/files.py::write_atomic`（同目录临时文件 + `os.replace`，外层 #204）；对话忙锁用 `O_EXCL` 并记 pid（`chat/conversation.py`）。
+- **原子写与锁**：一边写一边有人读的状态文件（作业记录、对话 meta、产出 meta 与签字、需求的锁、流程文件、checkpoint）一律走 `framework/files.py::write_atomic`（同目录临时文件 + `os.replace`，外层 #204）；能力边跑边追加的进度（产出目录的 `progress.jsonl`，页面画进度面板用，外层 #242）走同一处的 `append_event`（整行一次写、进程内一把锁，每行带 `at`）；对话忙锁用 `O_EXCL` 并记 pid（`chat/conversation.py`）。
 - **执行层改了什么只信前后快照 diff**（`backends/_snapshot.py`），不采信 CLI 自报；越界在事后判。
 - **回调注入代替反向 import**（见 §1）。
 - **有第二个用例才抽象**：两个能力或两个端口要共用小工具时先各写一份（`kill_tree` 有两份）；共用的读写只在族包（`experiment/`）里。

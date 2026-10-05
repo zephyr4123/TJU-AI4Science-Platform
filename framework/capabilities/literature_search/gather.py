@@ -57,10 +57,12 @@ class Gathered:
     queries: int = 0
 
 
-def gather(pool: Pool, client: OpenAlex, seeds: Seeds, cap: int) -> Gathered:
+def gather(pool: Pool, client: OpenAlex, seeds: Seeds, cap: int,
+           progress: Callable[..., None]) -> Gathered:
+    """`progress` 记进度（loop.py 的 progress.jsonl）：三家各自查完的那一刻报一行。"""
     got = Gathered(queries=min(len(seeds.queries), MAX_QUERIES))
     queries = seeds.queries[:MAX_QUERIES]
-    lanes = _start_lanes(client.web, queries, pool.since)
+    lanes = _start_lanes(client.web, queries, pool.since, progress)
     _seeds(pool, client, seeds, got)
     for query in queries[:OPENALEX_QUERIES]:
         works = client.search(query, QUERY_RESULTS, pool.since)
@@ -118,17 +120,20 @@ class _Lane:
     thread: threading.Thread | None = None
 
 
-def _start_lanes(web: Web, queries: tuple[str, ...], since: int) -> list[_Lane]:
+def _start_lanes(web: Web, queries: tuple[str, ...], since: int,
+                 progress: Callable[..., None]) -> list[_Lane]:
     """三家各起一个线程（daemon：到点没查完就不等它，进程退出时不被它拖住）。"""
     lanes = [_Lane(name, search) for name, search in indexes.SOURCES]
     for lane in lanes:
-        lane.thread = threading.Thread(target=_run_lane, args=(lane, web, queries, since),
+        lane.thread = threading.Thread(target=_run_lane, args=(lane, web, queries, since, progress),
                                        name=f"index-{lane.name}", daemon=True)
         lane.thread.start()
     return lanes
 
 
-def _run_lane(lane: _Lane, web: Web, queries: tuple[str, ...], since: int) -> None:
+def _run_lane(lane: _Lane, web: Web, queries: tuple[str, ...], since: int,
+              progress: Callable[..., None]) -> None:
+    """一家逐条查；查完或放弃时报一行进度。到时限被截的不报：它查到的算不算，由主线程那份快照定。"""
     for i, query in enumerate(queries):
         if lane.cut.is_set():
             return
@@ -137,7 +142,9 @@ def _run_lane(lane: _Lane, web: Web, queries: tuple[str, ...], since: int) -> No
         except FetchError as err:
             LOGGER.warning("index_failed source=%s query=%r error=%s", lane.name, query, err)
             lane.failed = (i, str(err))
-            return
+            break
+    progress(step="gather", source=lane.name,
+             hits=sum(len(hits) for hits in lane.answered.values()), failed=lane.failed is not None)
 
 
 def _collect(lanes: list[_Lane], queries: tuple[str, ...],

@@ -31,9 +31,11 @@ interface Props {
   onClose?: () => void
   /** 还没开口时那一屏的两句：还没有对话是欢迎屏，开了一段还没说话是正文里的同一块 */
   welcome: WelcomeCopy
+  /** 输入框上方的「运行中」（外层 #243） */
+  running?: ReactNode
 }
 
-export function ChatView({ scope, chatId, current, create, backends, onTurnDone, drawer, onClose, welcome }: Props) {
+export function ChatView({ scope, chatId, current, create, backends, onTurnDone, drawer, onClose, welcome, running }: Props) {
   const conv = useConversation({ scope, chatId, current, backends, create, onTurnDone })
   const t = conv.tuning
   const inChat = chatId !== null || conv.turns.length > 0
@@ -62,7 +64,7 @@ export function ChatView({ scope, chatId, current, create, backends, onTurnDone,
             </div>
           </div>
         )}
-      <Composer busy={conv.busy} thinking={t.thinking} knobs={t.knobs} tuning={t.tuning} onTune={t.onTune}
+      <Composer busy={conv.busy} thinking={t.thinking} knobs={t.knobs} tuning={t.tuning} onTune={t.onTune} above={running}
                 who={chatId || !backends ? undefined : { options: backends, value: t.backendName ?? '', onChange: t.choose }}
                 onSend={(text) => void conv.send(text)} />
     </div>

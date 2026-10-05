@@ -28,18 +28,13 @@ from framework.workspace import jobs, outputs, progress
 from framework.workspace.project import Project
 from framework.workspace.root import Workspace
 
-# 产出目录里给页面列文件时跳过的：框架的两份文件、环境、git、日志、缓存
+# 产出目录里列文件时跳过的：框架的两份文件、环境、git、日志、缓存
 LISTING_IGNORED = frozenset({output.META_NAME, output.SIGNED_NAME, ".venv", ".git", "__pycache__",
                              ".ai4sci", "executor"})
-LISTING_LIMIT = 200
-# 小文本文件的正文直接带上，页面照渲染；大的与二进制只给名字。
-# 没有后缀的（python-version、SHA256SUMS）也当文本试着读，读不出来就只给名字
-TEXT_SUFFIXES = (".md", ".txt", ".yaml", ".yml", ".json", ".tsv", ".csv", ".py", ".sh", ".lock",
-                 ".toml", ".cfg", ".ini", ".log", "")
-TEXT_LIMIT = 200_000
 # 文件镜头：目录树里整段跳过的（环境、git 对象库、缓存——几千个文件，对人没意义）；
 # 正文最多给这么多字节，再大截断；原样端出的文件上限（数据集不该从这儿下）
 TREE_SKIPPED = frozenset({".venv", ".git", "__pycache__", "node_modules"})
+TEXT_LIMIT = 200_000
 RAW_LIMIT = 50_000_000
 
 
@@ -123,23 +118,14 @@ def output_brief(directory: Path, meta: output.Meta) -> dict[str, Any]:
 
 
 def output_detail(workspace: Workspace, oid: str) -> dict[str, Any]:
-    """一次产出：记录 + 目录里的文件清单（小文本带正文）+ 它的作业。"""
+    """一次产出：记录 + 目录里的全部文件（路径与大小，不截：页面数一共几个、各是什么）+ 它的作业。
+    正文不带，要看走文件镜头的 `read_file`。"""
     directory, meta = outputs.find_output(workspace, oid)
     files: list[dict[str, Any]] = []
     for path in sorted(p for p in directory.rglob("*") if p.is_file()):
         rel = path.relative_to(directory)
-        if any(part in LISTING_IGNORED for part in rel.parts):
-            continue
-        entry: dict[str, Any] = {"path": rel.as_posix(), "size": path.stat().st_size}
-        if path.suffix in TEXT_SUFFIXES and entry["size"] <= TEXT_LIMIT:
-            try:
-                entry["text"] = path.read_bytes().decode("utf-8")
-            except UnicodeDecodeError:
-                pass  # 没后缀的二进制：只给名字
-
-        files.append(entry)
-        if len(files) >= LISTING_LIMIT:
-            break
+        if not any(part in LISTING_IGNORED for part in rel.parts):
+            files.append({"path": rel.as_posix(), "size": path.stat().st_size})
     return {**output_brief(directory, meta), "files": files,
             "jobs": [job.to_dict() for job in jobs.jobs_for(workspace.jobs, meta.id)]}
 

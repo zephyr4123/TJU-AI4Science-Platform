@@ -37,7 +37,7 @@
 
 ## 3. 代码约定
 
-- **目录按页面与地方分**（`src/`）：`home/` 首页与门口、`project/` 项目页、`workspace/` 工作区页、`board/` 看板、`files/` 文件镜头、`chat/` 对话、`studio/` 编辑台、`keys/` 两处人的确认、`settings/` 设置、`places/` 地方栏与状态机、`components/` 零件（`ui/` shadcn 生成、`reactbits/` 改装件、`markdown/`）、`lib/` 纯逻辑与 hooks、`api/` 契约、`assets.ts` 素材 URL。每个目录的职责写在各文件的头注释里，文件清单以代码为准。
+- **目录按页面与地方分**（`src/`）：`home/` 首页与门口、`project/` 项目页、`workspace/` 工作区页、`board/` 看板、`files/` 文件镜头、`chat/` 对话、`progress/` 每个能力自己的进度面板（产出悬浮窗最上面，外层 #242）、`studio/` 编辑台、`keys/` 两处人的确认、`settings/` 设置、`places/` 地方栏与状态机、`components/` 零件（`ui/` shadcn 生成、`reactbits/` 改装件、`markdown/`）、`lib/` 纯逻辑与 hooks、`api/` 契约、`assets.ts` 素材 URL。每个目录的职责写在各文件的头注释里，文件清单以代码为准。
 页面此刻在哪是 `places/place.ts` 的状态机（设置是压在任何地方上的悬浮板，不是一个地方）：
 
 ```mermaid
@@ -72,13 +72,15 @@ flowchart TB
     STUDIO["studio/<br/>编辑台"]
     SET["settings/"]
     KEYS["keys/<br/>两处人的确认"]
+    PROG["progress/<br/>进度面板"]
     PROJ --> WSP
     WSP --> BOARD
     WSP --> FILES
     WSP --> CHAT
     STUDIO --> CHAT
     BOARD --> KEYS
-    FILES -. "用 board/OutputSheet 的正文" .-> BOARD
+    BOARD --> PROG
+    FILES -. "用 board/OutputDialog 的正文" .-> BOARD
   end
   COMP["components/<br/>零件、shadcn、reactbits 改装件"]
   LIB["lib/<br/>纯函数与 hooks"]
@@ -93,11 +95,11 @@ flowchart TB
   API --> SRV
 ```
 
-- **依赖方向**（目录级没有环）：`App → home / project / studio / places / settings`；`project → workspace → board / files / chat`；`board → keys`；`studio → chat`；`files` 用 `board/OutputSheet` 的正文（横向）；`components` 只引 `lib` 与 `assets`，从不引 `api`；`lib` 可以引 `api`（`useChats`）。组件不直接 `fetch`。
-- **计算下沉到纯函数模块**，组件只拼装：`board/derive.ts`、`project/derive.ts`、`files/derive.ts`、`studio/model.ts`、`chat/trace.ts`、`chat/turns.ts`、`settings/status.ts`、`lib/humanize.ts`、`lib/diff.ts`、`lib/slug.ts`、`lib/format.ts`。新逻辑先问能不能写成纯函数。
-- **取数**：`lib/useResource` + `lastSeen`（模块级 Map，换地方不闪）+ `epoch`（每轮对话结束加一，看板重读）+ 只在有作业时每 10 秒轮询。
+- **依赖方向**（目录级没有环）：`App → home / project / studio / places / settings`；`project → workspace → board / files / chat`；`board → keys / progress`；`studio → chat`；`files` 用 `board/OutputSheet` 的正文（横向）；`components` 只引 `lib` 与 `assets`，从不引 `api`；`lib` 可以引 `api`（`useChats`）。组件不直接 `fetch`。
+- **计算下沉到纯函数模块**，组件只拼装：`board/derive.ts`、`project/derive.ts`、`files/derive.ts`、`studio/model.ts`、`chat/trace.ts`、`chat/turns.ts`、`chat/running.ts`、`progress/search.ts`、`progress/read.ts`、`progress/hex.ts`、`settings/status.ts`、`lib/humanize.ts`、`lib/diff.ts`、`lib/slug.ts`、`lib/format.ts`、`lib/clock.ts`。新逻辑先问能不能写成纯函数。
+- **取数**：`lib/useResource` + `lastSeen`（模块级 Map，换地方不闪）+ `epoch`（每轮对话结束加一，看板重读）+ 只在有作业时每 10 秒轮询；产出运行中时进度面板每 2 秒重读 `progress.jsonl`，产出窗的记录不自己轮询，看板那份已经按时在拉，它的状态变了才重拉一次。
 - **错误**：非 2xx 抛 `ApiError`，显示在 `ErrorNote`（`role=alert`）；静默 `catch` 必须写注释说明为什么可以不管；不留 `console.*`。
-- **删除**一律 `HoldButton` 按住一秒生效，服务端返回 `{removed, leftovers}`；人的两处确认 `ConfirmKey` / `SignKey` 都要署名（`localStorage` 的 `ai4sci.signer`）。
+- **删除**一律 `HoldButton` 按住一秒生效，服务端返回 `{removed, leftovers}`；人的两处确认 `ConfirmKey` / `SignKey` 与叫停都不署名，服务端记登录名（本地部署，能按的只有用户自己）。
 - **素材**：图片 / 视频只写 CDN URL，只在 `assets.ts`；`git ls-files ui/` 里没有二进制（`make ui-check` 拦）。
 - **文案**：只用词表里的词与后端给的中文名（能力 `title` `brief`、参数 `label`、阶段名、流程 `title`；产出 id 写「设计 · 1」）；机器的名字与状态码只在展开层；对话里的工具调用是例外，原样一行（`chat/trace.ts::toolLine`）。
 - **命名与风格**：组件 PascalCase 具名导出；逻辑模块小写 `.ts`；hooks `useX`；测试同目录 `*.test.ts`；import 分三段（node / 第三方、`@/…`、相对）；单引号、不写分号；中文头注释写为什么、引用 P-n 与 issue。
