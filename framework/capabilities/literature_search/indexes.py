@@ -13,6 +13,10 @@
   按自己的退避表等得更久、多等一次。返回的是 Atom XML，只用正则取每条 entry 的 id，
   不起 XML 解析器（这里只要编号，用不着整棵树）。
 - Europe PMC 生物医学为主，按相关度排；非生物医学的题目命中的多是不相关的，交给排序与筛选。
+
+起始年份（外层 #227）每家都推到检索里，不只是事后滤：每条检索词每家只取前 10 篇，不推下去前 10
+里多半是旧的。三家的写法：Crossref `from-pub-date`、arXiv `submittedDate` 区间（按第一版提交的
+日子）、Europe PMC `PUB_YEAR` 区间；0 不限。
 """
 
 from __future__ import annotations
@@ -44,17 +48,19 @@ class Hit:
     pmid: str | None = None
 
 
-def crossref(web: Web, query: str, n: int) -> list[Hit]:
-    params = {"query": query, "rows": str(n), "select": "DOI,type",
-              "filter": ",".join(f"type:{t}" for t in CROSSREF_TYPES)}
+def crossref(web: Web, query: str, n: int, since: int) -> list[Hit]:
+    filters = [f"type:{t}" for t in CROSSREF_TYPES] + ([f"from-pub-date:{since}"] if since else [])
+    params = {"query": query, "rows": str(n), "select": "DOI,type", "filter": ",".join(filters)}
     body, _ = web.get(f"{CROSSREF_URL}?{urllib.parse.urlencode(params)}")
     items = json.loads(body)["message"]["items"]
     return [Hit("Crossref", doi=d) for d in (bare_doi(i.get("DOI")) for i in items) if d]
 
 
-def arxiv(web: Web, query: str, n: int) -> list[Hit]:
+def arxiv(web: Web, query: str, n: int, since: int) -> list[Hit]:
     terms = [t for t in re.split(r"\s+", query.replace('"', " ").strip()) if t]
     search = " AND ".join(f"all:{t}" for t in terms)
+    if since:
+        search += f" AND submittedDate:[{since}01010000 TO 300001010000]"
     params = {"search_query": search, "max_results": str(n)}
     body, _ = web.get(f"{ARXIV_URL}?{urllib.parse.urlencode(params)}", spacing_s=ARXIV_SPACING_S,
                       backoff_s=ARXIV_BACKOFF_S)
@@ -63,8 +69,9 @@ def arxiv(web: Web, query: str, n: int) -> list[Hit]:
     return [Hit("arXiv", arxiv=i) for i in dict.fromkeys(ids)]
 
 
-def europe_pmc(web: Web, query: str, n: int) -> list[Hit]:
-    params = {"query": query, "format": "json", "pageSize": str(n), "resultType": "lite"}
+def europe_pmc(web: Web, query: str, n: int, since: int) -> list[Hit]:
+    where = f"{query} AND PUB_YEAR:[{since} TO 3000]" if since else query
+    params = {"query": where, "format": "json", "pageSize": str(n), "resultType": "lite"}
     body, _ = web.get(f"{EUROPE_PMC_URL}?{urllib.parse.urlencode(params)}")
     results = json.loads(body)["resultList"]["result"]
     hits = [Hit("Europe PMC", doi=bare_doi(r.get("doi")), pmid=r.get("pmid")) for r in results]

@@ -16,6 +16,9 @@
 2025 年的综述，天然不含新论文，而研究者两头都要；轮流取答案 6 篇、2025 年后的仍有 26 篇。
 第 1 跳不乘被引数：候选本来就是收录的论文引用的，再乘反而更差（生理信号那道前 30 篇 15→9）。
 
+起始年份（外层 #227）：早于它的线索不排、不交给模型筛——检索那头已经按年份查了，这里挡的是
+种子与向后的参考文献（多是旧的）；年份不详的照常交，不知道不等于旧。
+
 来源记成短标记，给人看时由 `report.py` 翻成话：
 - `seed` 种子（执行层用自带搜索找来的）；`query:<哪家>:<检索词>` 关键词检索；
 - `ref:<W>` 收录的 W 引用了它（向后）；`cites:<W>` 它引用了收录的 W（向前）。
@@ -57,8 +60,8 @@ class Entry:
 
 
 class Pool:
-    def __init__(self, excluded: frozenset[str] = frozenset(),
-                 queries: tuple[str, ...] = ()) -> None:
+    def __init__(self, excluded: frozenset[str] = frozenset(), queries: tuple[str, ...] = (),
+                 since: int = 0) -> None:
         self.entries: dict[str, Entry] = {}
         # 线索：还没交给模型的 W 号 → 来源标记；元数据取过的放 cache（排序要被引数）
         self.leads: dict[str, set[str]] = defaultdict(set)
@@ -66,6 +69,7 @@ class Pool:
         # 永远不进池的 W 号：召回实测时把当标准答案的那篇综述挡在外面，否则向后一跳就把答案全抄回来
         self.excluded = excluded
         self.terms = Counter(t for q in queries for t in set(tokens(q)))
+        self.since = since  # 起始年份，0 不限；检索那头也按它查（gather / loop 读这一处）
 
     def admit(self, paper: Paper, hop: int, found: str) -> bool:
         """一篇论文交给第 hop 跳筛；已经在池里的只补一条来源。返回是不是新进的。"""
@@ -77,6 +81,9 @@ class Pool:
             return False
         self.entries[paper.key] = Entry(paper, hop, [found])
         return True
+
+    def in_period(self, paper: Paper) -> bool:
+        return not self.since or paper.year is None or paper.year >= self.since
 
     def of_hop(self, hop: int) -> list[Entry]:
         return [e for e in self.entries.values() if e.hop == hop]
@@ -123,8 +130,8 @@ class Pool:
 
     def next_batch(self, n: int) -> list[Paper]:
         """下一跳交给模型筛的 n 篇：关联数 ×（1 + 2 × 字面相关度）高的在前，同分被引多的在前。
-        没取到元数据的不排。"""
-        ready = [k for k in self.open_leads() if k in self.cache]
+        没取到元数据的、早于起始年份的不排。"""
+        ready = self._ready()
         relevance = self._lexical(ready)
         ready.sort(key=lambda k: (-self.links(k) * (1 + LEXICAL_WEIGHT * relevance[k]),
                                   -self.cache[k].cited_by, k))
@@ -132,7 +139,7 @@ class Pool:
 
     def opening_batch(self, n: int) -> list[Paper]:
         """第 0 跳的 n 篇：「新」与「经典」两种排法轮流取，重复的跳过。"""
-        ready = [k for k in self.open_leads() if k in self.cache]
+        ready = self._ready()
         relevance = self._lexical(ready)
 
         def base(k: str) -> float:
@@ -146,6 +153,9 @@ class Pool:
                 if key not in picked and len(picked) < n:
                     picked.append(key)
         return [self.cache[k] for k in picked]
+
+    def _ready(self) -> list[str]:
+        return [k for k in self.open_leads() if k in self.cache and self.in_period(self.cache[k])]
 
     def _lexical(self, keys: list[str]) -> dict[str, float]:
         """每条线索的题目加摘要命中检索词的程度（0~1），词按在这批线索里的稀有度（idf）加权。"""

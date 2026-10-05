@@ -108,9 +108,15 @@ class FakeWeb:
 
 
 def _openalex(query: dict[str, str]) -> list[str]:
-    if "search" in query:
-        return SEARCHES.get(query["search"], [])
-    field, _, value = query["filter"].partition(":")
+    """`from_publication_date` 与别的条件用逗号并起来（起始年份，外层 #227）：拆出来按年份滤。"""
+    filters = dict(f.split(":", 1) for f in query.get("filter", "").split(",") if f)
+    since = int(filters.pop("from_publication_date", "0")[:4])
+    keys = SEARCHES.get(query["search"], []) if "search" in query else _filtered(query, filters)
+    return [k for k in keys if (CORPUS[k]["publication_year"] or since) >= since]
+
+
+def _filtered(query: dict[str, str], filters: dict[str, str]) -> list[str]:
+    [(field, value)] = filters.items()
     wanted = value.split("|")
     if field == "doi":
         return [k for k, w in CORPUS.items() if w["doi"] and w["doi"][16:] in wanted]
@@ -348,7 +354,7 @@ def test_client_retries_rate_limits_then_succeeds():
                                          "x-ratelimit-remaining": "500"}, io.BytesIO(b""))
         return b'{"results": []}', {"x-ratelimit-remaining": "499"}
     client = openalex.OpenAlex(web.Web(get=flaky, sleep=waits.append))
-    assert client.search("q", 5) == []
+    assert client.search("q", 5, 0) == []
     assert waits == [2.0, 2.0] and client.remaining == 499 and client.requests == 1
 
 
@@ -362,7 +368,7 @@ def test_arxiv_rate_limit_waits_long_enough_for_a_busy_neighbour():
         if len(calls) <= 4:
             raise urllib.error.HTTPError(url, 429, "slow down", {}, io.BytesIO(b""))
         return b"<feed><entry><id>http://arxiv.org/abs/2003.06097v1</id></entry></feed>", {}
-    hits = indexes.arxiv(web.Web(get=busy, sleep=waits.append), "pinn inverse", 5)
+    hits = indexes.arxiv(web.Web(get=busy, sleep=waits.append), "pinn inverse", 5, 0)
     assert [h.arxiv for h in hits] == ["2003.06097"]
     assert [w for w in waits if w >= 5] == list(indexes.ARXIV_BACKOFF_S)
 
@@ -536,3 +542,58 @@ def test_opening_batch_alternates_fresh_and_classic():
         pool.note_query(p, "Crossref", "pinn blood pressure")
     assert [p.key for p in pool.next_batch(2)] == ["W1", "W2"]
     assert [p.key for p in pool.opening_batch(2)] == ["W1", "W3"]
+
+
+def test_since_reaches_every_search_and_the_citing_query(ws):
+    """起始年份推到每一家检索里，不只是事后过滤：每条检索词每家只取前 10 篇，不推下去前 10 里
+    多半是旧的，近期的召回会掉（外层 #227）。"""
+    fake = FakeWeb()
+    _search(ws, [_seeds_move(), _screen, _screen], max_hops=1, get=fake, since=2020)
+    urls = [urllib.parse.unquote_plus(u) for u in fake.urls]
+
+    def of(host: str) -> list[str]:
+        return [u for u in urls if host in u]
+    assert any("search=pinn inverse" in u and "filter=from_publication_date:2020-01-01" in u
+               for u in of("api.openalex.org"))
+    assert any("filter=cites:" in u and ",from_publication_date:2020-01-01" in u
+               for u in of("api.openalex.org"))
+    assert of("api.crossref.org") and all("from-pub-date:2020" in u for u in of("api.crossref.org"))
+    assert all("AND submittedDate:[202001010000 TO 300001010000]" in u
+               for u in of("export.arxiv.org"))
+    assert all("AND PUB_YEAR:[2020 TO 3000]" in u for u in of("www.ebi.ac.uk"))
+    # 按编号取元数据不带年份：种子与线索先取到元数据，才知道是哪一年的
+    assert not any("from_publication_date" in u for u in of("api.openalex.org")
+                   if "filter=doi:" in u or "filter=openalex_id:" in u)
+
+
+def test_since_keeps_older_papers_out_of_screening(ws, monkeypatch):
+    """早于起始年份的不交给模型筛：向后的参考文献多是旧的；年份不详的照常交（不知道不等于旧）。"""
+    monkeypatch.setitem(CORPUS["W3"], "publication_year", 2019)
+    monkeypatch.setitem(CORPUS["W4"], "publication_year", None)
+    out, _, _ = _search(ws, [_seeds_move(), _screen, _screen], max_hops=1, since=2020)
+    pool = _pool(out)
+    assert "W3" not in pool and "W4" in pool
+
+
+def test_a_seed_older_than_since_is_left_out_and_counted(ws, monkeypatch):
+    monkeypatch.setitem(CORPUS["W1"], "publication_year", 2019)
+    out, _, _ = _search(ws, [_seeds_move(), _screen], max_hops=0, since=2020)
+    assert "W1" not in _pool(out)
+    sources = (out / "sources.md").read_text()
+    assert "- 年份：2020 年及以后发表的" in sources
+    assert "早于 2020 年的 1 条没筛" in sources
+
+
+def test_the_period_is_told_to_the_seed_session(ws):
+    _, runner, _ = _search(ws, [_seeds_move(), _screen], max_hops=0, since=2023)
+    assert "只要 2023 年及以后发表的" in runner.prompts[0]
+    out, runner, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
+    assert "不限年份" in runner.prompts[0]
+    assert "- 年份：不限" in (out / "sources.md").read_text()
+
+
+@pytest.mark.parametrize("since", [3, -1, 99999])
+def test_since_must_be_a_year(ws, since):
+    """「近三年」要换算成年份再给：写成 3 当场拒，不当成公元 3 年、悄悄等于不筛。"""
+    with pytest.raises(CapabilityFailed, match="起始年份"):
+        _search(ws, [], since=since)

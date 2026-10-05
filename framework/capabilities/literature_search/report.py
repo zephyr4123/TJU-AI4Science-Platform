@@ -32,7 +32,9 @@ def render(*, title: str, seeds: Seeds, pool: Pool, stop: str, texts: dict[str, 
         + "、".join(f"{name} {n} 条" for name, n in sorted(gathered.hits.items()))
         + f"，去重后 {gathered.distinct} 篇（OpenAlex 里取不到的 {gathered.unmatched} 条不算）"
         + (f"；{len(gathered.failures)} 次没查成，列在文末" if gathered.failures else ""),
-        f"- 种子：{len(seeds.seeds)} 条，查不到的 {len(gathered.unresolved_seeds)} 条列在文末",
+        f"- 年份：{f'{pool.since} 年及以后发表的' if pool.since else '不限'}",
+        f"- 种子：{len(seeds.seeds)} 条，查不到的 {len(gathered.unresolved_seeds)} 条列在文末"
+        + (f"，早于 {pool.since} 年的 {gathered.old_seeds} 条没筛" if gathered.old_seeds else ""),
         f"- 看过摘要 {len(pool.entries)} 篇，收录 {len(included)} 篇" + (f"（{per_hop}）" if per_hop
                                                                     else ""),
         f"- 停在：{stop}",

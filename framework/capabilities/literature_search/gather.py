@@ -41,6 +41,7 @@ MAX_SEEDS = 20
 @dataclass
 class Gathered:
     unresolved_seeds: list[str] = field(default_factory=list)
+    old_seeds: int = 0     # 早于起始年份、没交给模型筛的种子
     hits: Counter[str] = field(default_factory=Counter)   # 每家命中几条
     failures: list[str] = field(default_factory=list)     # 哪家哪条检索词没查成
     unmatched: int = 0     # 命中了、但 OpenAlex 里取不到元数据的
@@ -53,7 +54,7 @@ def gather(pool: Pool, client: OpenAlex, seeds: Seeds, cap: int) -> Gathered:
     _seeds(pool, client, seeds, got)
     queries = seeds.queries[:MAX_QUERIES]
     for query in queries[:OPENALEX_QUERIES]:
-        works = client.search(query, QUERY_RESULTS)
+        works = client.search(query, QUERY_RESULTS, pool.since)
         got.hits["OpenAlex"] += len(works)
         for work in works:
             pool.note_query(from_openalex(work), "OpenAlex", query)
@@ -61,7 +62,7 @@ def gather(pool: Pool, client: OpenAlex, seeds: Seeds, cap: int) -> Gathered:
     for query in queries:
         for name, search in indexes.SOURCES:
             try:
-                hits = search(client.web, query, QUERY_RESULTS)
+                hits = search(client.web, query, QUERY_RESULTS, pool.since)
             except FetchError as err:
                 LOGGER.warning("index_failed source=%s query=%r error=%s", name, query, err)
                 got.failures.append(f"{name}「{query}」：{err}")
@@ -99,7 +100,10 @@ def _seeds(pool: Pool, client: OpenAlex, seeds: Seeds, got: Gathered) -> None:
         if not papers:
             got.unresolved_seeds.append(line)
         for paper in papers:
-            pool.admit(paper, 0, "seed")
+            if pool.in_period(paper):
+                pool.admit(paper, 0, "seed")
+            else:
+                got.old_seeds += 1
 
 
 class _Lookup:
