@@ -62,7 +62,23 @@ def test_shipped_workflow_is_one_line_from_design_to_verification():
     assert workflows.stop_after(wf, 2) is None
     assert workflows.matching_step(wf, "auto-research", "实验") == 2
     assert workflows.matching_step(wf, "analysis", "分析", after=2) == 3
-    assert workflows.matching_step(wf, "design", "设计", after=0) is None
+    assert workflows.matching_step(wf, "design", "设计", after=0, made_by={"design"}) is None
+    # 外层 #237：没点名的格子里，同一阶段别的步骤读这一格的产出，落在这一格
+    assert workflows.matching_step(wf, "reproduction", "设计", after=0, made_by={"design"}) == 0
+
+
+def test_a_second_step_fed_by_the_first_in_the_same_cell_stays_in_that_cell(tmp_path):
+    """外层 #237：一格里点了几个步骤（先检索、再精读），后一个读前一个的产出，落在同一格；
+    同一个能力接着自己的产出跑，照旧往后找。"""
+    write(tmp_path, "name: w\ntitle: 文献\nsummary: 先检索再精读\nstages:\n"
+                    "  - 文献: [literature-search, literature-read]\n  - 断点: 核对\n  - 写作\n")
+    [wf] = workflows.load_workflows(tmp_path)
+    assert workflows.matching_step(wf, "literature-read", "文献", after=0,
+                                   made_by={"literature-search"}) == 0
+    assert workflows.matching_step(wf, "literature-read", "文献", after=0,
+                                   made_by={"literature-read"}) is None
+    assert workflows.matching_step(wf, "literature-search", "文献", after=0,
+                                   made_by={"literature-search"}) is None
 
 
 def test_stages_parse_in_all_three_spellings(tmp_path):
