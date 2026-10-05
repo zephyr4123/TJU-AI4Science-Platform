@@ -59,7 +59,7 @@ def render(*, title: str, seeds: Seeds, pool: Pool, stop: str, texts: dict[str, 
         lines += [f"- {line}" for line in gathered.unresolved_seeds]
     if gathered.failures:
         lines += ["", "## 没查成的检索", "",
-                  "重试用完仍失败，这一路少了（429 是被限速：同一台机器上别同时跑几个检索）：", ""]
+                  "这几路少了，别的照收（429 是被限速：同一台机器上别同时跑几个检索）：", ""]
         lines += [f"- {failure}" for failure in gathered.failures]
     return "\n".join(lines) + "\n"
 

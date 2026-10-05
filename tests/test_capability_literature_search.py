@@ -18,6 +18,7 @@ import io
 import json
 import re
 import subprocess
+import threading
 import urllib.error
 import urllib.parse
 from pathlib import Path
@@ -25,7 +26,15 @@ from pathlib import Path
 import pytest
 
 from framework.capabilities import literature_search
-from framework.capabilities.literature_search import fulltext, indexes, loop, openalex, papers, web
+from framework.capabilities.literature_search import (
+    fulltext,
+    gather,
+    indexes,
+    loop,
+    openalex,
+    papers,
+    web,
+)
 from framework.capabilities.literature_search.fulltext import Fulltext
 from framework.capabilities.literature_search.pool import Entry
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
@@ -597,3 +606,48 @@ def test_since_must_be_a_year(ws, since):
     """「近三年」要换算成年份再给：写成 3 当场拒，不当成公元 3 年、悄悄等于不筛。"""
     with pytest.raises(CapabilityFailed, match="起始年份"):
         _search(ws, [], since=since)
+
+
+def _two_queries() -> dict[str, str]:
+    return {"seeds.md": "## 检索词\n- pinn inverse\n- pinn forward\n\n"
+                        "## 纳入标准\n- x\n\n## 种子\n"}
+
+
+def test_an_index_that_keeps_failing_is_not_asked_again(ws):
+    """失败不阻塞（外层 #228）：某家重试用完仍失败，这次就当它不可用，后面的检索词不再问它——
+    原来逐条重试，arXiv 挂了时一条约 4 分钟，15 条近一个小时。"""
+    fake = FakeWeb(fail=("export.arxiv.org",))
+    out, _, line = _search(ws, [_two_queries(), _screen], max_hops=0, get=fake)
+    assert line.startswith("literature ok")
+    arxiv = [u for u in fake.urls if "export.arxiv.org" in u]
+    assert len(arxiv) == 1 + len(indexes.ARXIV_BACKOFF_S)  # 只有第一条检索词重试了一轮
+    assert sum("api.crossref.org" in u for u in fake.urls) == 2  # 别家照常两条都查
+    sources = (out / "sources.md").read_text()
+    assert "arXiv「pinn inverse」" in sources
+    assert "arXiv：重试用完仍失败，这次当它不可用，之后 1 条检索词没再问" in sources
+
+
+def test_a_hanging_index_is_cut_off_and_the_others_still_count(ws, monkeypatch):
+    """三家各查各的：一家卡住拖不住别家；到了时限没查完的，已经回来的照收、没查的记下来。"""
+    release = threading.Event()
+
+    class Hanging(FakeWeb):
+        def __call__(self, url, headers):
+            if "export.arxiv.org" in url:
+                release.wait(10)
+            return super().__call__(url, headers)
+    monkeypatch.setattr(gather, "INDEX_BUDGET_S", 0.3)
+    monkeypatch.setitem(FREE, ("Crossref", "pinn inverse"), ["10.1016/j.bpinn.2021"])
+    fake = Hanging()
+    try:
+        out, _, line = _search(ws, [_two_queries(), _screen], max_hops=0, get=fake)
+    finally:
+        release.set()
+    assert line.startswith("literature ok")
+    assert "W5" in _pool(out)  # Crossref 查到的照收
+    assert "arXiv：到了时限还没查完，2 条检索词没查" in (out / "sources.md").read_text()
+    for lane in threading.enumerate():
+        if lane.name.startswith("index-"):
+            lane.join(5)
+    # 到点之后手上那条查完就停，第二条不再问
+    assert sum("export.arxiv.org" in u for u in fake.urls) == 1
