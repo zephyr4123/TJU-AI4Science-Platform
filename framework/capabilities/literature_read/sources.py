@@ -7,6 +7,7 @@
 
 写：本步骤的 `sources.md` 也是文献阶段的主文件，下游当文本读。读了哪些、每篇一句话、笔记在哪、
 原句对上几条；没读成的、没有原文的、按篇数上限没轮到的列在文末；检索过程不抄，指回上游。
+笔记写成相对这份文件的链接，页面上点得开（外层 #236）。
 """
 
 from __future__ import annotations
@@ -94,7 +95,7 @@ def render(*, title: str, upstream_id: str, reads: list[Read], no_text: list[Ent
         lines += ["", f"### {r.entry.n}. {r.entry.title}", ""]
         lines += [r.entry.link] if r.entry.link else []
         lines += [f"- 一句话：{r.gist or '（笔记里没有「一句话」那一节）'}",
-                  f"- 笔记：`{r.note}`（原句 {r.quotes} 条，在原文里找到 {r.found} 条）"]
+                  f"- 笔记：[{r.note}]({r.note})（原句 {r.quotes} 条，在原文里找到 {r.found} 条）"]
     tails = ((f"没读成的（{len(failed)} 篇）", [f"{_name(r.entry)}：{r.why}" for r in failed]),
              (f"没有原文的（{len(no_text)} 篇）", [_named_link(e) for e in no_text]),
              (f"没轮到的（{len(not_reached)} 篇）", [_named_link(e) for e in not_reached]))

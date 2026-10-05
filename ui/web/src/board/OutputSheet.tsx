@@ -9,6 +9,7 @@ import type { WorkspaceClient } from '@/api/client'
 import type { Capability, OutputFile, WorkspaceDetail } from '@/api/types'
 import { ErrorNote, Skeleton } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
+import type { FileAt } from '@/components/markdown/links'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import HoldButton from '@/components/reactbits/HoldButton'
 import { SignKey } from '@/keys/SignKey'
@@ -114,7 +115,7 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
             <h3 className="t-step">文件</h3>
             {o.files.length === 0 && <p className="t-label mt-1">暂无文件</p>}
             <ul className="mt-2 space-y-2">
-              {o.files.map((f) => <FileRow key={f.path} file={f} />)}
+              {o.files.map((f) => <FileRow key={f.path} file={f} at={{ ws: workspace.id, path: `${oid}/${f.path}` }} />)}
             </ul>
           </section>
         )}
@@ -123,8 +124,8 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
   )
 }
 
-/** 一个文件：小文本展开看（markdown 排版、别的原样），大的与二进制只有名字与大小。 */
-function FileRow({ file }: { file: OutputFile }) {
+/** 一个文件：小文本展开看（markdown 排版、别的原样），大的与二进制只有名字与大小。`at` 是它在工作区里的位置 */
+function FileRow({ file, at }: { file: OutputFile; at: FileAt }) {
   const [open, setOpen] = useState(file.path.endsWith('.md'))
   const readable = file.text !== undefined
   return (
@@ -137,7 +138,7 @@ function FileRow({ file }: { file: OutputFile }) {
       {open && readable && (
         <div className="border-t px-3 py-3">
           {file.path.endsWith('.md')
-            ? <Markdown text={file.text!} />
+            ? <Markdown text={file.text!} at={at} />
             : <pre className="max-h-[24rem] overflow-auto text-[0.75rem] leading-relaxed whitespace-pre-wrap break-all">{file.text}</pre>}
         </div>
       )}

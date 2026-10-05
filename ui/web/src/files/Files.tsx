@@ -243,7 +243,7 @@ function FilePane({ workspace, path, epoch, doc, meaning, onReveal, onOpenBoard 
         : f.text === null
           ? <p className="t-label px-6 py-5">二进制文件，页面不显示。</p>
           : kind === 'markdown'
-            ? <div className="px-6 py-5"><Markdown text={f.text} className="max-w-[72ch]" /></div>
+            ? <div className="px-6 py-5"><Markdown text={f.text} className="max-w-[72ch]" at={{ ws: workspace.id, path }} /></div>
             : kind === 'table'
               ? <DataTable text={f.text} path={path} />
               : <Code text={f.text} language={languageOf(path)} />}

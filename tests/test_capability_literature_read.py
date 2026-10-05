@@ -125,8 +125,8 @@ def test_each_paper_with_fulltext_gets_its_own_session_and_note(ws):
     sources = (out / "sources.md").read_text(encoding="utf-8")
     assert "### 1. MemoryBank: Enhancing LLMs with Long-Term Memory（2024）" in sources
     assert "- 一句话：第 1 篇提出了一种长期记忆。" in sources
-    assert "`notes/1/note.md`（原句 2 条，在原文里找到 2 条）" in sources
-    assert "`notes/2/note.md`（原句 2 条，在原文里找到 1 条）" in sources
+    assert "[notes/1/note.md](notes/1/note.md)（原句 2 条，在原文里找到 2 条）" in sources
+    assert "[notes/2/note.md](notes/2/note.md)（原句 2 条，在原文里找到 1 条）" in sources
     assert "## 没有原文的（1 篇）" in sources and "Paywalled Memory Study" in sources
     assert "literature/1" in sources  # 检索过程指回上游
 
@@ -140,7 +140,7 @@ def test_a_paper_that_was_not_read_is_listed_not_fatal(ws):
     assert line.startswith("read ok\tpapers=2\tnotes=1\t")
     sources = (out / "sources.md").read_text(encoding="utf-8")
     assert "## 没读成的（1 篇）" in sources and "没有写出笔记" in sources
-    assert "`notes/2/note.md`" in sources
+    assert "[notes/2/note.md](notes/2/note.md)" in sources
 
 
 def test_writing_outside_the_note_fails_that_paper(ws):
