@@ -220,6 +220,61 @@ def test_hops_expand_from_included_papers_and_stop_when_nothing_is_left(ws):
     assert sorted(p.name for p in (out / "executor").iterdir()) == ["hop-0", "hop-1", "seeds"]
 
 
+def _events(out: Path) -> list[dict]:
+    """progress.jsonl 每行去掉时间。"""
+    rows = [json.loads(x) for x in (out / "progress.jsonl").read_text().splitlines()]
+    assert all(r.pop("at") for r in rows)
+    return rows
+
+
+def test_progress_is_written_step_by_step_and_matches_the_pool(ws):
+    """页面的检索面板照 progress.jsonl 画（外层 #244）：每一步开始一行、做完一行带数，筛完每篇一行，
+    下原文每篇一行；数和候选池、结论行对得上。"""
+    out, _, line = _search(ws, [_seeds_move(), _screen, _screen])
+    events = _events(out)
+    steps = [e for e in events if "paper" not in e and "source" not in e]
+    assert steps == [
+        {"step": "seeds"},
+        {"step": "seeds", "done": True, "seeds": 2, "queries": 1},
+        {"step": "gather"},
+        {"step": "gather", "done": True, "found": 2, "admitted": 3,
+         "sources": {"OpenAlex": 2, "Crossref": 0, "arXiv": 0, "Europe PMC": 0}},
+        {"step": "screen", "hop": 0, "n": 3},
+        {"step": "screen", "hop": 0, "done": True, "included": 2},
+        {"step": "expand", "hop": 1},
+        {"step": "expand", "hop": 1, "done": True, "admitted": 5},
+        {"step": "screen", "hop": 1, "n": 5},
+        {"step": "screen", "hop": 1, "done": True, "included": 3},
+        {"step": "expand", "hop": 2},
+        {"step": "expand", "hop": 2, "done": True, "admitted": 0},
+        {"step": "fulltext", "n": 5},
+        {"step": "fulltext", "done": True, "ok": 1},
+    ]
+    pool = _pool(out)
+    screened = [e for e in events if e["step"] == "screen" and "paper" in e]
+    assert {e["paper"]: (e["hop"], e["include"]) for e in screened} == {
+        k: (r["hop"], r["verdict"] == "收") for k, r in pool.items()}
+    assert {e["paper"] for e in screened if e["seed"]} == {"W1"}
+    assert next(e for e in screened if e["paper"] == "W5")["title"] == "Bayesian PINN"
+    fetched = [e for e in events if e["step"] == "fulltext" and "paper" in e]
+    assert {e["paper"]: e["ok"] for e in fetched} == {
+        "W1": True, "W2": False, "W3": False, "W5": False, "W6": False}
+    assert "\tfulltext=1\t" in line
+    # 三家不扣额度的检索源各报一次查完
+    lanes = [e for e in events if "source" in e]
+    assert sorted(e["source"] for e in lanes) == ["Crossref", "Europe PMC", "arXiv"]
+    assert all(e == {"step": "gather", "source": e["source"], "hits": 0, "failed": False}
+               for e in lanes)
+
+
+def test_progress_stops_where_the_search_failed(ws):
+    """半路失败：进度停在那一步的开始，页面照产出的状态把它画成失败。"""
+    with pytest.raises(CapabilityFailed):
+        _search(ws, [_seeds_move(), {"notes.md": "越界"}])
+    out = next((ws.root / "literature").iterdir())
+    assert _events(out)[-1] == {"step": "screen", "hop": 0, "n": 3}
+
+
 def test_next_hop_takes_the_most_linked_leads_first(ws):
     out, runner, _ = _search(ws, [_seeds_move(), _screen, _screen], max_hops=1, per_hop=1)
     pool = _pool(out)

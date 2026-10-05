@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -152,6 +153,28 @@ def test_writing_outside_the_note_fails_that_paper(ws):
     assert "\tnotes=1\t" in line
     sources = (out / "sources.md").read_text(encoding="utf-8")
     assert "## 没读成的（1 篇）" in sources and "scratch.md" in sources
+
+
+def test_progress_follows_each_paper_from_reading_to_note(ws):
+    """页面的精读面板照 progress.jsonl 画（外层 #245）：开头一行列出要读的每篇与同时几个会话，
+    每篇开始读一行、读完或没读成一行；几个会话并行写，行行完整。"""
+    def second_silent(cwd: Path) -> None:
+        if cwd.name != "2":
+            write_note(cwd)
+    out, _, _ = _read(ws, [second_silent, second_silent])
+    rows = [json.loads(x) for x in (out / "progress.jsonl").read_text().splitlines()]
+    assert all(r.pop("at") for r in rows)
+    assert rows[0] == {"papers": [
+        {"n": "1", "title": "MemoryBank: Enhancing LLMs with Long-Term Memory（2024）"},
+        {"n": "2", "title": "Agentic Memory（2026）"}], "sessions": read.SESSIONS}
+    states: dict[str, list[str]] = {}
+    for row in rows[1:]:
+        states.setdefault(row["paper"], []).append(row["state"])
+    assert states == {"1": ["reading", "done"], "2": ["reading", "failed"]}
+    done = next(r for r in rows if r.get("state") == "done")
+    assert (done["quotes"], done["found"]) == (2, 2)
+    failed = next(r for r in rows if r.get("state") == "failed")
+    assert "没有写出笔记" in failed["why"]
 
 
 def test_nothing_read_at_all_fails(ws):

@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 
 from backends import Runner, RunResult
@@ -21,7 +23,7 @@ from framework.capabilities.literature_read.sources import Entry, Read
 from framework.contracts import requirement
 from framework.contracts.capability import CapabilityFailed, Inputs
 from framework.executor import prompting, session
-from framework.files import write_atomic
+from framework.files import append_event, write_atomic
 from framework.workspace import loadout
 
 LOGGER = logging.getLogger("ai4sci.literature")
@@ -37,6 +39,9 @@ LOG_DIRNAME = "executor"
 TEXT_MAX = 100_000
 SESSIONS = 4  # 同时几个会话
 GIST_HEADING = "## 一句话"
+# 边跑边追加的进度，页面的精读面板照它画（外层 #245）：开头一行列出要读的每篇与同时几个会话，
+# 之后每篇开始读一行、读完或没读成一行
+PROGRESS_NAME = "progress.jsonl"
 
 
 def read_all(output_dir: Path, inputs: Inputs, runner: Runner, *, max_papers: int) -> str:
@@ -56,8 +61,10 @@ def read_all(output_dir: Path, inputs: Inputs, runner: Runner, *, max_papers: in
             "先拿到原文，或请研究者把下好的原文放进 materials/")
     chosen = with_text[:max_papers] if max_papers else with_text
     need = requirement.read(inputs.workspace).strip()
+    progress = partial(append_event, output_dir / PROGRESS_NAME)
+    progress(papers=[{"n": e.n, "title": e.title} for e in chosen], sessions=SESSIONS)
     with ThreadPoolExecutor(max_workers=SESSIONS, thread_name_prefix="read") as pool:
-        reads = list(pool.map(lambda e: _read_one(output_dir, runner, need, e), chosen))
+        reads = list(pool.map(lambda e: _read_one(output_dir, runner, need, e, progress), chosen))
     write_atomic(output_dir / SOURCES_NAME, sources_mod.render(
         title=requirement.title(need, "文献精读"), upstream_id=upstream_id, reads=reads,
         no_text=[e for e in entries if not e.fulltext], not_reached=with_text[len(chosen):]))
@@ -73,7 +80,8 @@ def read_all(output_dir: Path, inputs: Inputs, runner: Runner, *, max_papers: in
             f"\tcost_usd={'nan' if math.isnan(cost) else f'{cost:.4f}'}\tpath={SOURCES_NAME}")
 
 
-def _read_one(output_dir: Path, runner: Runner, need: str, entry: Entry) -> Read:
+def _read_one(output_dir: Path, runner: Runner, need: str, entry: Entry,
+              progress: Callable[..., None]) -> Read:
     cwd = output_dir / NOTES_DIRNAME / entry.n
     cwd.mkdir(parents=True)
     note = cwd / NOTE_NAME
@@ -85,16 +93,19 @@ def _read_one(output_dir: Path, runner: Runner, need: str, entry: Entry) -> Read
         PROMPT, {"requirement": need, "title": entry.title, "note": str(note), "length": length,
                  "text": text[:TEXT_MAX]},
         loadout=loadout.around(output_dir))
+    progress(paper=entry.n, state="reading")
     result = session.run_session(runner, prompt, cwd=cwd, allowed_paths=[cwd],
                                  log_dir=output_dir / LOG_DIRNAME / entry.n)
     why = _problem(result, note)
     if why:
         LOGGER.warning("read_failed n=%s why=%s", entry.n, why)
+        progress(paper=entry.n, state="failed", why=why)
         return Read(entry, why=why, cost_usd=result.cost_usd)
     body = note.read_text(encoding="utf-8")
     said = quotes.quoted(body)
     found = sum(quotes.found(q, text) for q in said)
     LOGGER.info("read_ok n=%s quotes=%d/%d", entry.n, found, len(said))
+    progress(paper=entry.n, state="done", quotes=len(said), found=found)
     return Read(entry, note=f"{NOTES_DIRNAME}/{entry.n}/{NOTE_NAME}", gist=_gist(body),
                 quotes=len(said), found=found, cost_usd=result.cost_usd)
 
