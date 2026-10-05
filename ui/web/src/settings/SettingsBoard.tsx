@@ -1,7 +1,7 @@
 // 设置：压在当前地方上的一块悬浮板（纲领 P-25，外层 #134）。入口在地方栏的脚；底图照旧铺满，板四周留边、圆角、投影。
 // 一页滚下来，四段（主人 2026-09-22：左边那列索引砍掉）：AI（助理 / 执行层两个下拉；每家一块——名字与版本、状态、模型与深度、检查）、
 // 算力（一台一块，同 AI 的三层：名字行 / 状态行 / 细节行；「添加」在段名那一行，点了才在清单末尾展开表单）、
-// 存放（一眼要看的数在上、路径小灰在下，家目录缩成 ~）、外观（浅 / 深 / 跟随系统）。
+// 存放（一眼要看的数在上、路径小灰在下，家目录缩成 ~）、外观（Light / Dark / Auto；外层 #252，主人：中文三档 1 / 1 / 4 个字，滑块里字号看着怪）。
 // 每个条目三层从大到小（主人：细节和标题混在一行太乱）：名字（谁）> 状态（怎么样：一个词 + 一个数）> 细节（在哪、为什么）；动作靠右成一列。
 // 字分四级（主人：几乎一个大小看不出层级）：板名「设置」宋体 1.375rem > 段名宋体 1.125rem > 条目名 0.9375rem 中黑 >
 // 状态与下拉 0.875rem > 注解与事实 0.75rem 灰；段与段之间空得比段内宽一倍。
@@ -33,7 +33,7 @@ type SectionId = 'ai' | 'compute' | 'storage' | 'look'
 const ROLE_LABEL = { chat: '助理', executor: '执行层' } as const
 const WORD_CLASS: Record<Tone, string> = { ok: 'text-ok', bad: 'text-bad', neutral: 'text-muted-foreground' }
 const THEMES: { value: ThemeChoice; label: string }[] = [
-  { value: 'light', label: '浅' }, { value: 'dark', label: '深' }, { value: 'system', label: '跟随系统' },
+  { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'system', label: 'Auto' },
 ]
 /** 检查大概要跑多久（片上的底色填到九成用这么久）：一家底座 pong 一次几秒，全部一起十几秒 */
 const CHECK_MS = 9000
