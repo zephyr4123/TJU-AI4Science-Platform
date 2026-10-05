@@ -163,7 +163,7 @@ def _screen(cwd: Path) -> None:
     (current / "decisions.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _fake_fetch(paper: papers.Paper, output_dir: Path) -> Fulltext:
+def _fake_fetch(paper: papers.Paper, output_dir: Path, slots: fulltext.HostSlots) -> Fulltext:
     if not paper.pdf_url:
         return Fulltext(None, None, "没有开放获取的 PDF")
     return Fulltext(f"papers/{paper.key}/paper.md", 12)
@@ -482,7 +482,7 @@ def test_fulltext_falls_back_to_arxiv_when_the_publisher_refuses(tmp_path, monke
     monkeypatch.setattr(fulltext, "capture_script", fake_capture)
     work = _work("W10", "t", doi="10.1088/2632-2153/ac3712", pdf="https://iopscience.iop.org/x/pdf",
                  landings=("http://arxiv.org/abs/2107.00940",))
-    got = fulltext.fetch(papers.from_openalex(work), tmp_path)
+    got = fulltext.fetch(papers.from_openalex(work), tmp_path, fulltext.HostSlots(1))
     assert tried == ["https://iopscience.iop.org/x/pdf", "https://arxiv.org/pdf/2107.00940"]
     assert got == Fulltext("papers/W10/paper.md", 9)
 
@@ -491,7 +491,7 @@ def test_fulltext_reports_the_last_failure_when_every_link_fails(tmp_path, monke
     monkeypatch.setattr(fulltext, "capture_script", lambda script, args, timeout_s:
                         subprocess.CompletedProcess(args, 3, "", "HTTP Error 403: Forbidden\n"))
     work = _work("W11", "t", pdf="https://publisher.org/x.pdf")
-    got = fulltext.fetch(papers.from_openalex(work), tmp_path)
+    got = fulltext.fetch(papers.from_openalex(work), tmp_path, fulltext.HostSlots(1))
     assert got.path is None and "403" in got.why
 
 
@@ -694,3 +694,36 @@ def test_short_or_far_apart_titles_are_not_folded():
     assert pool.admit(paper("W3", long, 2024), 0, "seed")
     assert not pool.admit(paper("W4", long, 2025), 0, "seed")
     assert pool.admit(paper("W5", long, 2019), 0, "seed")
+
+
+def test_fulltexts_download_in_parallel_but_a_site_gets_few_at_a_time(tmp_path, monkeypatch):
+    """外层 #229：原来逐篇串行，一篇慢的拖住后面全部（演练 38 篇 5 分钟）。不同站点同时下，同一站点
+    同时不超过 per_host 篇（出版社对并发更凶，arXiv 也要求别猛下）；结果按收录顺序回来。"""
+    import threading
+    import time
+    import urllib.parse
+
+    active: dict[str, int] = {}
+    peak: dict[str, int] = {}
+    lock = threading.Lock()
+
+    def capture(script, args, timeout_s):
+        host = urllib.parse.urlsplit(args[args.index("--input") + 1]).netloc
+        with lock:
+            active[host] = active.get(host, 0) + 1
+            peak[host] = max(peak.get(host, 0), active[host])
+            peak["*"] = max(peak.get("*", 0), sum(active.values()))
+        time.sleep(0.05)
+        with lock:
+            active[host] -= 1
+        return subprocess.CompletedProcess(args, 0, '{"pages": 3}\n', "")
+    monkeypatch.setattr(fulltext, "capture_script", capture)
+    works = ([_work(f"W{i}", "t", pdf=f"https://arxiv.org/pdf/{i}") for i in range(6)]
+             + [_work(f"W{i}", "t", pdf=f"https://pub{i % 2}.org/{i}.pdf") for i in range(6, 10)]
+             + [_work("W10", "t")])
+    got = fulltext.fetch_all([papers.from_openalex(w) for w in works], tmp_path, workers=4,
+                             per_host=2)
+    assert list(got) == [f"W{i}" for i in range(11)]
+    assert all(got[f"W{i}"].path for i in range(10)) and got["W10"].path is None
+    assert peak["arxiv.org"] <= 2 and peak["pub0.org"] <= 2
+    assert peak["*"] >= 3  # 不同站点同时在下

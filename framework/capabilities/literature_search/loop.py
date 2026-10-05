@@ -252,7 +252,7 @@ def _origins(marks: list[str]) -> str:
 
 
 def _fulltexts(output_dir: Path, pool: Pool, fetch: Fetch) -> dict[str, Fulltext]:
-    return {e.paper.key: fetch(e.paper, output_dir) for e in pool.included()}
+    return fulltext_mod.fetch_all([e.paper for e in pool.included()], output_dir, fetch)
 
 
 # ── 会话的事后判定 ────────────────────────────────────────────────────────
