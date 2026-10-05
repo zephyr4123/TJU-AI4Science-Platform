@@ -17,7 +17,7 @@ const row = (over: Partial<WorkspaceRow> = {}): WorkspaceRow => ({
 describe('项目页上一行工作区', () => {
   it('需求没确认先说需求，别的都不看', () => {
     expect(rowState(row({ requirement: { confirmed: false, version: null, by: null, at: null, dirty: false }, running: 2 })))
-      .toMatchObject({ word: '需求未确认', tone: 'warn', mark: 'pending', details: ['产出 3 次'] })
+      .toMatchObject({ word: '需求未确认', tone: 'warn', mark: 'pending', details: ['共产出 3 次'] })
   })
   it('有作业在跑就是运行中；坏流程文件先说有误；没取流程说没取', () => {
     expect(rowState(row({ running: 1 }))).toMatchObject({ word: '运行中', mark: 'running' })
@@ -26,14 +26,14 @@ describe('项目页上一行工作区', () => {
   })
   it('几条流程各在等谁：等人 > 在跑 > 等助理 > 全走完', () => {
     expect(rowState(row({ flows: [flow(), flow({ name: 'b', title: '对照', waiting: 'sign' })] })))
-      .toMatchObject({ word: '待确认', tone: 'warn', details: ['论文复现 6 / 6 等 2 条', '产出 3 次'] })
+      .toMatchObject({ word: '待确认', tone: 'warn', details: ['流程「论文复现」6 / 6 步，另有 1 条', '共产出 3 次'] })
     expect(rowState(row({ flows: [flow({ waiting: 'job' })] }))).toMatchObject({ word: '运行中', mark: 'running' })
-    expect(rowState(row({ flows: [flow({ waiting: 'assistant', step: 2 })] }))).toMatchObject({ word: '进行中', details: ['论文复现 3 / 6', '产出 3 次'] })
+    expect(rowState(row({ flows: [flow({ waiting: 'assistant', step: 2 })] }))).toMatchObject({ word: '进行中', details: ['流程「论文复现」3 / 6 步', '共产出 3 次'] })
     expect(rowState(row({ flows: [flow()] }))).toMatchObject({ word: '完成', tone: 'ok', mark: 'done' })
   })
   it('进度写走过几项（外层 #238）：后端给的是走到那一项的下标，一项没走是 -1；走完写满', () => {
-    expect(rowState(row({ flows: [flow({ waiting: 'assistant', step: -1 })] })).details[0]).toBe('论文复现 0 / 6')
-    expect(rowState(row({ flows: [flow({ waiting: 'sign', step: 0 })] })).details[0]).toBe('论文复现 1 / 6')
-    expect(rowState(row({ flows: [flow({ title: '文献调研', step: 0, total: 1 })] })).details[0]).toBe('文献调研 1 / 1')
+    expect(rowState(row({ flows: [flow({ waiting: 'assistant', step: -1 })] })).details[0]).toBe('流程「论文复现」0 / 6 步')
+    expect(rowState(row({ flows: [flow({ waiting: 'sign', step: 0 })] })).details[0]).toBe('流程「论文复现」1 / 6 步')
+    expect(rowState(row({ flows: [flow({ title: '文献调研', step: 0, total: 1 })] })).details[0]).toBe('流程「文献调研」1 / 1 步')
   })
 })

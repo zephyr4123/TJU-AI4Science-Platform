@@ -51,18 +51,18 @@
                                             + 作业（下面 …/ 都是这个前缀）
     POST …/workspaces/<id>/remove           删整个工作区（级联镜像；兄弟读过它的产出拒）
     GET  …/workspaces/<id>/requirement      需求：原文、按二级标题切的格、确认状态、上一版原文
-    POST …/workspaces/<id>/requirement/confirm  {"by"} → 确认需求；人的确认，agent 不替人做
+    POST …/workspaces/<id>/requirement/confirm  → 确认需求；人的确认，agent 不替人做
     GET  …/workspaces/<id>/flows            流程实例：covers / remarks / problems + 进度
     POST …/workspaces/<id>/flows/<name>/remove   删一条流程实例（挂着产出拒）
-    GET  …/workspaces/<id>/outputs/<stage>/<n>  一次产出：记录、签字、文件清单（小文本带正文）、作业
-    POST …/workspaces/<id>/outputs/<stage>/<n>/sign  {"by", "note"?} → 签字记录
+    GET  …/workspaces/<id>/outputs/<stage>/<n>  一次产出：记录、签字、全部文件的路径与大小、作业
+    POST …/workspaces/<id>/outputs/<stage>/<n>/sign  → 签字记录
     POST …/workspaces/<id>/outputs/<stage>/<n>/remove  删一次产出（只删叶子）
     GET  …/workspaces/<id>/files?path=<dir> 文件镜头：目录的一层（目录在前；.venv .git 不列），
                                             懒加载，path 空是工作区根
     GET  …/workspaces/<id>/file?path=<file> 一个文件：文本带正文（大的截断），二进制 text 为 null
     GET  …/workspaces/<id>/raw?path=<file>  文件原样端出（图片让浏览器显示）；出了工作区一律 422
     GET  …/workspaces/<id>/jobs[/<jid>]     作业清单 / 一个作业
-    POST …/workspaces/<id>/jobs/<jid>/stop  {"by"} → 人叫停：杀进程树，作业记 stopped、产出记 failed
+    POST …/workspaces/<id>/jobs/<jid>/stop  → 人叫停：杀进程树，作业记 stopped、产出记 failed
     GET  <域>/chats                         对话清单；<域> 是 /projects/<p> 或 /studio
     POST <域>/chats                         {"backend"?, "model"?, "effort"?} → 新对话的 meta
     GET  <域>/chats/<cid>                   meta + transcript + history + running（正在跑的那一轮，
@@ -78,6 +78,7 @@
 
 from __future__ import annotations
 
+import getpass
 import json
 import logging
 import mimetypes
@@ -109,6 +110,9 @@ from framework.workspace import removal as ws_removal
 
 LOGGER = logging.getLogger("ai4sci.serve")
 MAX_BODY = 1 << 20
+# 人的三处确认（需求、产出、叫停）记在谁名下：本地部署，按键的就是跑服务的这个人（主人 2026-10-05：
+# 不要署名），记登录名，与 CLI 的 `--by` 缺省一样
+SIGNER = getpass.getuser()
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
 API_ROOTS = ("health", "backends", "settings", "stages", "cap", "skills", "workflows", "templates",
              "projects", "studio")
@@ -414,11 +418,8 @@ class Handler(BaseHTTPRequestHandler):
         if ws is None:
             return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
         if rest == ["requirement", "confirm"]:
-            by = self._by(body)
-            if by is None:
-                return None
             try:
-                requirement.confirm(ws.root, by=by)
+                requirement.confirm(ws.root, by=SIGNER)
             except requirement.ConfirmRefused as exc:
                 return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
             return self._json(boards.requirement_detail(ws), HTTPStatus.CREATED)
@@ -428,20 +429,14 @@ class Handler(BaseHTTPRequestHandler):
                 directory, _ = outputs.find_output(ws, oid)
             except (ValueError, output.OutputNotFound) as exc:
                 return self._error(HTTPStatus.NOT_FOUND, str(exc))
-            by = self._by(body)
-            if by is None:
-                return None
             try:
-                output.sign(directory, by=by, note=str(body.get("note") or ""))
+                output.sign(directory, by=SIGNER)
             except output.SignRefused as exc:
                 return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
             return self._json(boards.output_detail(ws, oid), HTTPStatus.CREATED)
         if len(rest) == 3 and rest[0] == "jobs" and rest[2] == "stop":
-            by = self._by(body)
-            if by is None:
-                return None
             try:
-                job = jobs.stop(ws, rest[1], by=by)
+                job = jobs.stop(ws, rest[1], by=SIGNER)
             except jobs.JobNotFound as exc:
                 return self._error(HTTPStatus.NOT_FOUND, str(exc))
             except (jobs.JobNotRunning, output.OutputNotFound) as exc:
@@ -641,13 +636,6 @@ class Handler(BaseHTTPRequestHandler):
         except agents.AgentsInvalid as exc:
             self._error(HTTPStatus.BAD_REQUEST, str(exc))
             return None
-
-    def _by(self, body: dict[str, Any]) -> str | None:
-        by = body.get("by")
-        if not isinstance(by, str) or not by.strip():
-            self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 by：谁确认的，记在记录上")
-            return None
-        return by.strip()
 
     def _body(self) -> dict[str, Any] | None:
         length = int(self.headers.get("Content-Length") or 0)

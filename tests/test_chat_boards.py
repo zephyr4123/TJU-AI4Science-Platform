@@ -107,16 +107,21 @@ def test_broken_flow_file_is_a_problem_row(tmp_path):
     assert "waiting" not in flow
 
 
-def test_output_detail_lists_files_with_small_text_inline(tmp_path):
+def test_output_detail_lists_every_file_by_path_and_size(tmp_path):
     run_dir, pack = rf.make_run(tmp_path)
     doc = rf.write_analysis(pack, rf.good_analysis(run_dir))
     detail = boards.output_detail(pack.workspace, f"analysis/{doc.name}")
     assert detail["id"] == "analysis/1" and detail["from"] == ["experiment/1"]
-    [entry] = detail["files"]
-    assert entry["path"] == "analysis.md" and "## 结论" in entry["text"]
+    size = (doc / "analysis.md").stat().st_size
+    assert detail["files"] == [{"path": "analysis.md", "size": size}]
+    plots = run_dir / "plots"
+    plots.mkdir()
+    for i in range(250):  # 不截：页面拿它数一共几个、各是什么
+        (plots / f"{i:04d}.png").write_bytes(b"x")
     detail = boards.output_detail(pack.workspace, "experiment/1")
     names = [f["path"] for f in detail["files"]]
     assert "ledger.tsv" in names and "checkpoint.json" in names
+    assert sum(n.startswith("plots/") for n in names) == 250
     assert not any(n.startswith((".venv", "work/.git", "executor")) for n in names)
     with pytest.raises(output.OutputNotFound):
         boards.output_detail(pack.workspace, "analysis/9")

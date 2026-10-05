@@ -17,6 +17,8 @@ import pytest
 import yaml
 
 from compute.local import LocalCompute
+from framework.chat import boards
+from framework.cli import show
 from framework.contracts import output, requirement
 from framework.experiment import layout
 from framework.workspace import jobs, outputs
@@ -148,9 +150,16 @@ def test_show_workspace_walks_requirement_outputs_flows_and_jobs(tmp_path):
     only = run_cli("show", "outputs", "analysis", cwd=run_dir)
     assert only.stdout.startswith("analysis/1\tok\tanalysis\tfrom=experiment/1")
     assert run_cli("show", "outputs", "runs", cwd=run_dir).returncode == EXIT_USAGE
+    plots = run_dir / "plots"
+    plots.mkdir()
+    for i in range(250):
+        (plots / f"{i:04d}.png").write_bytes(b"x")
     one = run_cli("show", "output", "experiment/1", cwd=run_dir)
     assert one.returncode == EXIT_OK, one.stderr
     assert "id\texperiment/1" in one.stdout and "file\tledger.tsv" in one.stdout
+    listed = [line for line in one.stdout.splitlines() if line.startswith("file\t")]
+    rest = len(boards.output_detail(pack.workspace, "experiment/1")["files"]) - show.FILES_SHOWN
+    assert len(listed) == show.FILES_SHOWN + 1 and listed[-1] == f"file\t…\t还有 {rest} 个"
     assert "signed\t-" in one.stdout
     assert run_cli("show", "output", "experiment/9", cwd=run_dir).returncode == EXIT_USAGE
     assert run_cli("show", "output", "r1", cwd=run_dir).returncode == EXIT_USAGE

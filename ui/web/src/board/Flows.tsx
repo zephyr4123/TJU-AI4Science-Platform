@@ -7,7 +7,6 @@ import type { WorkspaceClient } from '@/api/client'
 import type { FlowOutput, FlowPick, FlowProgress, FlowProgressItem, ResearchStage, WorkspaceDetail } from '@/api/types'
 import { Dot, ErrorNote, Problems } from '@/components/bits'
 import HoldButton from '@/components/reactbits/HoldButton'
-import { useSigner } from '@/lib/useSigner'
 import { stageIcon } from '@/lib/stages'
 import { cn } from '@/lib/utils'
 
@@ -71,7 +70,10 @@ function FlowTable({ workspace, flow, pending, nameOf, capsOf, onOpen, onChanged
   return (
     <section className="rounded-2xl border bg-card/80 p-5 backdrop-blur-sm" aria-label={flow.title}>
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <span className="font-serif text-[1.0625rem] font-semibold">{flow.title}</span>
+        <span className="flex items-baseline gap-2">
+          <span className="text-[0.75rem] text-muted-foreground">流程</span>
+          <span className="font-serif text-[1.0625rem] font-semibold">{flow.title}</span>
+        </span>
         <span className="flex items-center gap-3">
           <span className={cn('text-[0.875rem]', broken ? 'text-bad' : flow.waiting === 'sign' ? 'font-semibold text-wait' : flow.waiting === 'job' ? 'text-primary' : 'text-muted-foreground')}>
             {sentence}
@@ -179,9 +181,8 @@ function StopLine({ item, flow }: { item: Extract<FlowProgressItem, { kind: 'sto
   )
 }
 
-/** 停一个正在跑的作业：第一下只是拉开保险（变红），第二下才停（外层 #115）。署名与确认键同一个。 */
+/** 停一个正在跑的作业：第一下只是拉开保险（变红），第二下才停（外层 #115）。 */
 function StopKey({ workspace, jobId, onChanged }: { workspace: WorkspaceClient; jobId: string; onChanged: () => Promise<void> }) {
-  const [signer] = useSigner()
   const [armed, setArmed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -190,7 +191,7 @@ function StopKey({ workspace, jobId, onChanged }: { workspace: WorkspaceClient; 
     setBusy(true)
     setError(null)
     try {
-      await workspace.stopJob(jobId, signer.trim() || '研究者')
+      await workspace.stopJob(jobId)
       await onChanged()
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc))

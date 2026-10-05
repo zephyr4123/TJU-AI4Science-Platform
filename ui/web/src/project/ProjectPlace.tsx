@@ -8,6 +8,8 @@ import { coverOf } from '@/assets'
 import { ChatDrawer } from '@/chat/ChatDrawer'
 import { ChatView } from '@/chat/ChatView'
 import { localFile } from '@/chat/links'
+import { RunningStrip } from '@/chat/RunningStrip'
+import { type RunningJob, runningJobs } from '@/chat/running'
 import { WELCOME } from '@/chat/Welcome'
 import { ErrorNote, Skeleton } from '@/components/bits'
 import { LinkOpener } from '@/components/markdown/links'
@@ -55,6 +57,22 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
   }, [projectId, wsId, onOpenWorkspace])
   const openFile = useMemo(() => (fileRequest && fileRequest.ws === wsId ? { path: fileRequest.path, n: fileRequest.n } : null),
                            [fileRequest, wsId])
+  // 对话底部「运行中」点了一个作业（外层 #243）：去那个工作区、在看板的悬浮窗里打开那次产出看进度。离开那个工作区就作废，
+  // 回来时不再自己弹开
+  const [outputRequest, setOutputRequest] = useState<{ ws: string; oid: string; n: number } | null>(null)
+  const openOutput = useMemo(() => (outputRequest && outputRequest.ws === wsId ? { oid: outputRequest.oid, n: outputRequest.n } : null),
+                             [outputRequest, wsId])
+  const openJob = useCallback((job: RunningJob) => {
+    if (!job.output) return
+    setOutputRequest((prev) => ({ ws: job.workspace, oid: job.output!, n: (prev?.n ?? 0) + 1 }))
+    if (job.workspace !== wsId) onOpenWorkspace(job.workspace)
+  }, [wsId, onOpenWorkspace])
+  const leave = (go: () => void) => () => { setOutputRequest(null); go() }
+  const jobs = runningJobs(doc.data)
+  const running = (
+    <RunningStrip jobs={jobs} showWorkspace={(doc.data?.workspaces.length ?? 0) > 1} onOpen={openJob}
+                  titleOf={(cap) => caps.data?.find((c) => c.name === cap)?.title ?? cap} />
+  )
 
   const busy = (doc.data?.running ?? 0) > 0
   const reload = doc.reload
@@ -69,12 +87,12 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
     return (
       <LinkOpener.Provider value={openLink}>
         <WorkspacePage key={ws.key} ws={ws} project={doc.data} epoch={c.epoch} caps={caps} skills={skills} menu={menu}
-                       openFile={openFile}
-                       onBack={onBack} onSwitch={onOpenWorkspace} onRemoved={onWorkspaceRemoved}
+                       openFile={openFile} openOutput={openOutput}
+                       onBack={leave(onBack)} onSwitch={(id) => leave(() => onOpenWorkspace(id))()} onRemoved={onWorkspaceRemoved}
                        chat={(close) => (
                          <ChatView scope={scope} chatId={c.chatId} current={c.current} create={c.newChat} backends={backends}
                                    onTurnDone={c.turnDone} onClose={close}
-                                   welcome={WELCOME.research}
+                                   welcome={WELCOME.research} running={running}
                                    drawer={
                                      <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                                                  creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
@@ -102,7 +120,7 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
   }
   return (
     <LinkOpener.Provider value={openLink}>
-      <ProjectPage project={doc.data} chats={c} backends={backends} healthy={healthy} menu={menu}
+      <ProjectPage project={doc.data} chats={c} backends={backends} healthy={healthy} menu={menu} running={running}
                    onOpenWorkspace={onOpenWorkspace}
                    onCreatedWorkspace={async (id) => { await reload(); onOpenWorkspace(id) }}
                    onRemove={async () => { const removed = await api.removeProject(projectId); await onRemoved(removed.leftovers) }} />

@@ -35,6 +35,9 @@ from framework.contracts.stages import STAGE_SLUGS, STAGES
 from framework.skills.shelves import shelf_of
 from framework.workspace import jobs, loadout, outputs, project
 
+# `show output` 最多列这么多个文件：一次文献检索几百个（每篇原文切出的图），agent 一屏看不完也用不上
+FILES_SHOWN = 200
+
 
 def cmd_projects(args: argparse.Namespace) -> int:
     """全部项目：id、标题、几个工作区、在哪。"""
@@ -147,8 +150,10 @@ def cmd_output(args: argparse.Namespace) -> int:
     signed = detail["signed"]
     who = f"\t{signed['by']} {signed['signed_at']} {signed['note']}" if signed else ""
     print(f"signed\t{_signed_word(signed)}{who}")
-    for entry in detail["files"]:
+    for entry in detail["files"][:FILES_SHOWN]:
         print(f"file\t{entry['path']}\t{entry['size']}")
+    if len(detail["files"]) > FILES_SHOWN:
+        print(f"file\t…\t还有 {len(detail['files']) - FILES_SHOWN} 个")
     return EXIT_OK if detail["status"] != "failed" else EXIT_INVALID
 
 

@@ -1,4 +1,4 @@
-// 人确认的那一块：琥珀底（等你），标题、一句提示、下面放署名与那颗键。
+// 确认需求的那一块：琥珀底（等你），标题、一句提示、下面那颗键。
 import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'

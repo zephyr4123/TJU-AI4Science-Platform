@@ -16,7 +16,9 @@ import datetime
 import logging
 import math
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 from backends import Runner, RunResult
@@ -38,7 +40,7 @@ from framework.capabilities.literature_search.web import FetchError
 from framework.contracts import requirement
 from framework.contracts.capability import CapabilityFailed, Inputs
 from framework.executor import prompting, session
-from framework.files import write_atomic
+from framework.files import append_event, write_atomic
 from framework.workspace import loadout
 
 LOGGER = logging.getLogger("ai4sci.literature")
@@ -48,6 +50,9 @@ SEED_PROMPT = HERE / "seed.md"
 SCREEN_PROMPT = HERE / "screen.md"
 SOURCES_NAME = "sources.md"
 CANDIDATES_NAME = "candidates.jsonl"
+# 边跑边追加的进度，页面的检索面板照它画（外层 #244）：每一步开始一行、做完一行带数，筛完每篇一行，
+# 下原文每篇一行。执行层那一段会话中途没有动静，页面只画「在这一步」
+PROGRESS_NAME = "progress.jsonl"
 ROUNDS_DIRNAME = "rounds"
 LISTING_NAME = "candidates.md"
 DECISIONS_NAME = "decisions.md"
@@ -80,15 +85,19 @@ def search(output_dir: Path, inputs: Inputs, runner: Runner, limits: Limits, *, 
     need = requirement.read(inputs.workspace).strip()
     client = client or OpenAlex(key=openalex_key())
     costs: list[float] = []
-    seeds = _seed_session(output_dir, runner, need, since, costs)
+    progress = partial(append_event, output_dir / PROGRESS_NAME)
+    seeds = _seed_session(output_dir, runner, need, since, costs, progress)
     pool = Pool(excluded, seeds.queries[:MAX_QUERIES], since)
     try:
-        gathered = gather(pool, client, seeds, 2 * limits.per_hop)
-        hop, stop = _hops(output_dir, runner, need, seeds, pool, client, limits, costs)
+        progress(step="gather")
+        gathered = gather(pool, client, seeds, 2 * limits.per_hop, progress)
+        progress(step="gather", done=True, found=gathered.distinct, admitted=len(pool.of_hop(0)),
+                 sources=dict(gathered.hits))
+        hop, stop = _hops(output_dir, runner, need, seeds, pool, client, limits, costs, progress)
     except (OpenAlexError, FetchError) as err:
         pool.save(output_dir / CANDIDATES_NAME)
         raise CapabilityFailed(f"查 OpenAlex 失败，检索停在半路：{err}") from err
-    texts = _fulltexts(output_dir, pool, fetch) if fulltext else {}
+    texts = _fulltexts(output_dir, pool, fetch, progress) if fulltext else {}
     write_atomic(output_dir / SOURCES_NAME, report.render(
         title=requirement.title(need, "文献检索"), seeds=seeds, pool=pool, stop=stop,
         texts=texts, fulltext=fulltext, gathered=gathered))
@@ -119,13 +128,14 @@ def _check_since(since: int) -> None:
 
 # ── 种子与第 0 跳 ─────────────────────────────────────────────────────────
 def _seed_session(output_dir: Path, runner: Runner, need: str, since: int,
-                  costs: list[float]) -> Seeds:
+                  costs: list[float], progress: Callable[..., None]) -> Seeds:
     period = (f"只要 {since} 年及以后发表的论文：平台去学术库查时按这个年份查，更早的不交给你筛；"
               "种子也只找这之后发表的。" if since else "不限年份。")
     prompt = prompting.build_prompt(
         SEED_PROMPT, {"requirement": need, "period": period, "max_queries": MAX_QUERIES,
                       "max_seeds": MAX_SEEDS},
         loadout=loadout.around(output_dir))
+    progress(step="seeds")
     result = session.run_session(runner, prompt, cwd=output_dir, allowed_paths=[output_dir],
                                  log_dir=output_dir / LOG_DIRNAME / "seeds")
     costs.append(result.cost_usd)
@@ -133,12 +143,15 @@ def _seed_session(output_dir: Path, runner: Runner, need: str, since: int,
     seeds, problems = parse_seeds(_read(output_dir / SEEDS_NAME))
     if seeds is None:
         raise CapabilityFailed(f"{SEEDS_NAME} 不合形状：" + "；".join(problems))
+    progress(step="seeds", done=True, seeds=len(seeds.seeds[:MAX_SEEDS]),
+             queries=len(seeds.queries[:MAX_QUERIES]))
     return seeds
 
 
 # ── 一跳一跳 ──────────────────────────────────────────────────────────────
 def _hops(output_dir: Path, runner: Runner, need: str, seeds: Seeds, pool: Pool,
-          client: OpenAlex, limits: Limits, costs: list[float]) -> tuple[int, str]:
+          client: OpenAlex, limits: Limits, costs: list[float],
+          progress: Callable[..., None]) -> tuple[int, str]:
     """筛第 0 跳，然后扩一跳筛一跳，直到停；返回（停在第几跳, 为什么停）。"""
     asked: set[str] = set()  # 取过元数据的线索：OpenAlex 没返回的（合并、删掉的）不再问
     hop = 0
@@ -146,9 +159,14 @@ def _hops(output_dir: Path, runner: Runner, need: str, seeds: Seeds, pool: Pool,
         batch = pool.of_hop(hop)
         if not batch:
             return hop, "没有可筛的候选了" if hop else "检索词与种子一篇论文都没查到"
+        progress(step="screen", hop=hop, n=len(batch))
         _screen(output_dir, runner, need, seeds.criteria, pool, hop, costs)
         pool.save(output_dir / CANDIDATES_NAME)
+        for entry in batch:
+            progress(step="screen", hop=hop, paper=entry.paper.key, title=entry.paper.title,
+                     include=entry.verdict == INCLUDE, seed="seed" in entry.found)
         new = [e.paper for e in batch if e.verdict == INCLUDE]
+        progress(step="screen", hop=hop, done=True, included=len(new))
         LOGGER.info("hop_done hop=%d screened=%d included=%d remaining=%s", hop, len(batch),
                     len(new), client.remaining)
         if hop == 0 and not new:
@@ -158,7 +176,9 @@ def _hops(output_dir: Path, runner: Runner, need: str, seeds: Seeds, pool: Pool,
         if hop == limits.max_hops:
             return hop, f"到了最多跳数 {limits.max_hops}"
         hop += 1
+        progress(step="expand", hop=hop)
         _expand(pool, client, new, hop, limits.per_hop, asked)
+        progress(step="expand", hop=hop, done=True, admitted=len(pool.of_hop(hop)))
 
 
 def _expand(pool: Pool, client: OpenAlex, frontier: list[Paper], hop: int, per_hop: int,
@@ -251,8 +271,20 @@ def _origins(marks: list[str]) -> str:
     return "；".join(say.format(n=kinds[kind]) for kind, say in says if kinds[kind])
 
 
-def _fulltexts(output_dir: Path, pool: Pool, fetch: Fetch) -> dict[str, Fulltext]:
-    return fulltext_mod.fetch_all([e.paper for e in pool.included()], output_dir, fetch)
+def _fulltexts(output_dir: Path, pool: Pool, fetch: Fetch,
+               progress: Callable[..., None]) -> dict[str, Fulltext]:
+    """收录的一起下；每篇下完（成不成）当场报一行进度。"""
+    papers = [e.paper for e in pool.included()]
+    progress(step="fulltext", n=len(papers))
+
+    def one(paper: Paper, out: Path, slots: fulltext_mod.HostSlots) -> Fulltext:
+        got = fetch(paper, out, slots)
+        progress(step="fulltext", paper=paper.key, ok=got.path is not None)
+        return got
+
+    texts = fulltext_mod.fetch_all(papers, output_dir, one)
+    progress(step="fulltext", done=True, ok=sum(1 for t in texts.values() if t.path))
+    return texts
 
 
 # ── 会话的事后判定 ────────────────────────────────────────────────────────

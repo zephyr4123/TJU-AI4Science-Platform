@@ -47,7 +47,7 @@ DESCRIPTOR = Capability(
         "sources.md（文献阶段的主文件：检索词、纳入标准，收录的每篇论文的题目、作者、链接、"
         "怎么找到的、为什么收、原文在不在）；candidates.jsonl（看过的每篇与筛选结论）；"
         "seeds.md；rounds/ 下每一跳的候选与结论；papers/ 下解析好的原文；"
-        "执行层会话的日志在 executor/。"
+        "progress.jsonl（边跑边记走到哪一步，页面画检索进度）；执行层会话的日志在 executor/。"
     ),
     stops=(
         "第 0 跳一篇都没收、某一跳新收录的少于停止下限、到了最多跳数、没有可筛的候选，"

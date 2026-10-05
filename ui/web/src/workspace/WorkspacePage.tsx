@@ -26,7 +26,7 @@ type View = 'board' | 'files'
 /** 有作业在跑时多久重拉一次：别的对话起的作业跑完，这边才看得见 */
 const POLL_MS = 10_000
 
-export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, openFile, onBack, onSwitch, onRemoved }: {
+export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, openFile, openOutput, onBack, onSwitch, onRemoved }: {
   ws: WorkspaceClient
   /** 所在的项目那一整份：页眉要项目名与兄弟工作区；还没回来就先只写 id */
   project: ProjectDetail | null
@@ -39,12 +39,14 @@ export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, op
   menu?: ReactNode
   /** 对话里点了这个工作区的一个文件（外层 #231）：切到文件镜头定位到它；`n` 每点一次加一，同一个文件再点也算 */
   openFile: { path: string; n: number } | null
+  /** 对话底部「运行中」点了这个工作区的一次产出（外层 #243）：切到看板、悬浮窗里打开它；`n` 同上 */
+  openOutput: { oid: string; n: number } | null
   onBack: () => void
   onSwitch: (id: string) => void
   onRemoved: (leftovers: string[]) => Promise<void>
 }) {
   const [view, setView] = useState<View>(openFile ? 'files' : 'board')
-  // 从看板「打开目录」跳到文件镜头时定位到哪个产出；从文件镜头「在看板打开」回来时侧滑里开哪次产出；
+  // 从看板「打开目录」跳到文件镜头时定位到哪个产出；从文件镜头「在看板打开」回来时悬浮窗里开哪次产出；
   // 对话里点了这个工作区的文件也定位到它
   const [focus, setFocus] = useState<string | null>(openFile?.path ?? null)
   const [opened, setOpened] = useState<string | null>(null)
@@ -53,6 +55,12 @@ export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, op
     setAnswered(openFile.n)
     setFocus(openFile.path)
     setView('files')
+  }
+  const [shown, setShown] = useState(0)
+  if (openOutput && openOutput.n !== shown) {
+    setShown(openOutput.n)
+    setOpened(openOutput.oid)
+    setView('board')
   }
   // 这个工作区那一整份（需求、产出、流程的进度、作业）两个镜头共用，拉一次；有作业在跑时轮询；对话每一轮结束重读
   const doc = useResource(ws.detail, [ws.key, epoch], `workspace:${ws.key}`)
