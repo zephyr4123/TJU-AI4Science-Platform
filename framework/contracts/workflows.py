@@ -410,18 +410,23 @@ def stop_after(workflow: Workflow, index: int) -> Stop | None:
 
 
 def matching_step(workflow: Workflow, cap: str, stage: str, after: int = -1,
-                  skills: Collection[str] = ()) -> int | None:
-    """一个步骤跑在这条流程的第几项（0 起）：`after` 之后第一个阶段对得上的项——点了名看名字，
+                  skills: Collection[str] = (), made_by: Collection[str] = ()) -> int | None:
+    """一个步骤跑在这条流程的第几项（0 起）：`after` 之后第一个对得上的项——点了名看名字，
     没点名看阶段。格子上挂的 skill 不算点名（那是这一步推荐的工具，不是谁来跑这一步）。
+    `after` 是输入里最靠后的那一项，`made_by` 是那一项里产出输入的能力：输入那一项也对得上、
+    又不是同一个能力接着自己的产出跑，就落在那一项——一格里连着跑几个步骤（先检索再精读，
+    外层 #237）。
     流程里没有它就是 None。"""
-    for i in range(after + 1, len(workflow.stages)):
+    def fits(i: int) -> bool:
         item = workflow.stages[i]
         if not isinstance(item, Stage):
-            continue
+            return False
         named = [p.cap for p in item.picks if p.cap not in skills]
-        if (cap in named if named else item.stage == stage):
-            return i
-    return None
+        return cap in named if named else item.stage == stage
+
+    if after >= 0 and made_by and cap not in made_by and fits(after):
+        return after
+    return next((i for i in range(after + 1, len(workflow.stages)) if fits(i)), None)
 
 
 def describe_dir(root: Path, catalog: dict[str, Capability], skills: Collection[str] = (), *,

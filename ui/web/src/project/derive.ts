@@ -28,13 +28,15 @@ export function rowState(row: WorkspaceRow): RowState {
   return { word: '完成', tone: 'ok', mark: 'done', details }
 }
 
-/** 细节两句：第一条流程走到第几步（多条时再加「等 N 条」）、七个阶段一共产出几次 */
+/** 细节两句：第一条流程走过几项（多条时再加「等 N 条」）、七个阶段一共产出几次。
+ *  后端的 `step` 是走到的那一项的下标（一项没走是 -1），走过几项是它加一；走完（末尾断点也签了）写满（外层 #238） */
 function detailsOf(row: WorkspaceRow): string[] {
   const out: string[] = []
   const [first, ...rest] = row.flows.filter((f) => f.problems.length === 0)
   if (first && first.total) {
     const name = first.title ?? first.name
-    out.push(`${name} ${first.step ?? 0} / ${first.total}` + (rest.length ? ` 等 ${rest.length + 1} 条` : ''))
+    const passed = first.waiting === 'done' ? first.total : (first.step ?? -1) + 1
+    out.push(`${name} ${passed} / ${first.total}` + (rest.length ? ` 等 ${rest.length + 1} 条` : ''))
   }
   const produced = Object.values(row.counts).reduce((a, b) => a + b, 0)
   if (produced > 0) out.push(`产出 ${produced} 次`)

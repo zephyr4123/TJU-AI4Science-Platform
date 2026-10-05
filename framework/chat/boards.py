@@ -107,7 +107,7 @@ def requirement_detail(workspace: Workspace) -> dict[str, Any]:
     state = requirement.status(workspace.root)
     return {**state, "title": requirement.title(text, workspace.id), "text": text,
             "sections": [s.to_dict() for s in requirement.sections(text)],
-            "pending": requirement.PLACEHOLDER in text,
+            "pending": bool(requirement.pending_headings(text)),
             "confirmed_text": (requirement.confirmed_text(workspace.root)
                                if state["confirmed"] else None)}
 

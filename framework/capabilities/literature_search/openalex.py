@@ -54,9 +54,12 @@ class OpenAlex:
         self._headers = {"Authorization": f"Bearer {key}"} if key else {}
         LOGGER.info("openalex_client keyed=%s", bool(key))
 
-    def search(self, query: str, n: int) -> list[dict[str, Any]]:
-        """关键词检索，按相关度取前 n 篇（扣 10）。"""
-        return self._list({"search": query, "per-page": str(n)})
+    def search(self, query: str, n: int, since: int) -> list[dict[str, Any]]:
+        """关键词检索，按相关度取前 n 篇（扣 10）；`since` 是起始年份，0 不限。"""
+        params = {"search": query, "per-page": str(n)}
+        if since:
+            params["filter"] = _from(since)
+        return self._list(params)
 
     def by_dois(self, dois: list[str]) -> list[dict[str, Any]]:
         """按 DOI 批量取；OpenAlex 没收录的 DOI 不在结果里（调用方按 DOI 对账）。"""
@@ -75,16 +78,18 @@ class OpenAlex:
     def by_pmids(self, pmids: list[str]) -> list[dict[str, Any]]:
         return self._batched("pmid", pmids)
 
-    def citing(self, keys: list[str], pages: int) -> list[dict[str, Any]]:
-        """引用了 keys 里任何一篇的论文，按被引数取前 pages 页（每页 200 篇、每页扣 1）。
-        谁引用了谁由调用方按每篇的参考文献表对回去。"""
+    def citing(self, keys: list[str], pages: int, since: int) -> list[dict[str, Any]]:
+        """引用了 keys 里任何一篇的论文，按被引数取前 pages 页（每页 200 篇、每页扣 1）；`since`
+        同上。谁引用了谁由调用方按每篇的参考文献表对回去。"""
         works: list[dict[str, Any]] = []
         for start in range(0, len(keys), BATCH):
+            cites = f"cites:{'|'.join(keys[start:start + BATCH])}"
+            where = f"{cites},{_from(since)}" if since else cites
             cursor: str | None = "*"
             for _ in range(pages):
                 if cursor is None:
                     break
-                body = self._page({"filter": f"cites:{'|'.join(keys[start:start + BATCH])}",
+                body = self._page({"filter": where,
                                    "sort": "cited_by_count:desc", "per-page": str(CITING_PAGE),
                                    "cursor": cursor})
                 works += body["results"]
@@ -126,3 +131,8 @@ class OpenAlex:
         value = {k.lower(): v for k, v in headers.items()}.get("x-ratelimit-remaining")
         if value is not None and value.strip().lstrip("-").isdigit():
             self.remaining = int(value)
+
+
+def _from(since: int) -> str:
+    """起始年份的 filter 条件（外层 #227），与别的条件用逗号并起来是「且」。"""
+    return f"from_publication_date:{since}-01-01"

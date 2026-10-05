@@ -15,16 +15,20 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
 
 from backends import BackendNotFound, Chat, ChatEvent, get_chat
 from framework.chat import conversation, guide, scope, settings
-from framework.workspace import project
+from framework.workspace import jobs, project
 from framework.workspace.jobs import Job
 from framework.workspace.root import Workspace
 
 LOGGER = logging.getLogger("ai4sci.notify")
 RETRY_S = 1.0
 SETTLE_S = 10.0
+# 跑完了还没记叫醒结果的作业，多久之内还当它要来叫醒：叫醒那一轮最长 15 分钟（协调层的墙钟），
+# 留一倍；更久的是叫醒的进程死在半路，不再等它
+WAKE_WINDOW = timedelta(minutes=30)
 
 
 def message_for(job: Job, workspace: Workspace) -> str:
@@ -36,6 +40,23 @@ def message_for(job: Job, workspace: Workspace) -> str:
             f"看一眼结果（ai4sci show output <id> --ws {workspace.id} / show job），"
             "用人话告诉研究者"
             "发生了什么、下一步打算怎么办；要调用下一条命令就调，长的照旧 --detach。")
+
+
+def awaiting(proj: project.Project, conv: conversation.Conversation) -> int:
+    """还会来叫醒这段对话的有几个：它起的作业还在跑的、跑完了还没记叫醒结果的（叫醒那一轮在跑或
+    刚要开），加收件箱里排着的话。页面据此定时重读对话（外层 #230）：叫醒那一轮是作业进程起的，
+    不经过服务，页面不重读就看不到。"""
+    cutoff = datetime.now(UTC) - WAKE_WINDOW
+    count = len(conversation.pending_notes(conv))
+    for ws in proj.workspaces():
+        for job in jobs.list_jobs(ws.jobs):
+            if job.chat_id != conv.chat_id:
+                continue
+            status = jobs.effective_status(job)
+            unwoken = (status in ("done", "failed") and job.wake is None and job.finished_at
+                       and datetime.fromisoformat(job.finished_at) > cutoff)
+            count += status == "running" or bool(unwoken)
+    return count
 
 
 def wake(workspace: Workspace, job: Job, *, settle_s: float = SETTLE_S,

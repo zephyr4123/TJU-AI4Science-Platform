@@ -31,6 +31,8 @@ DESCRIPTOR = Capability(
         "向后取它的参考文献，向前取引用它们的（合起来按被引数前 400 篇）；"
         "新线索按关联到几篇已收录的、乘上题目与摘要命中检索词的程度排序，同分看被引数，"
         "前若干篇交下一跳筛。"
+        "给了起始年份就只查、只收那一年及以后发表的：四家检索与「谁引用了它」都按年份查，"
+        "更早的种子与参考文献不交给模型筛。"
         "最后把收录的、有开放获取 PDF 的交给 pdf skill 下载并解析，写 sources.md。"
     ),
     does_not=(
@@ -60,6 +62,9 @@ DESCRIPTOR = Capability(
         Param("per_hop", "int", 30, "每一跳交给模型看摘要筛的篇数", "每跳筛选数"),
         Param("min_new", "int", 3, "某一跳新收录的少于这个数就停：再扩也扩不出新东西了",
               "停止下限"),
+        Param("since", "int", 0,
+              "只查、只收这一年及以后发表的，写四位年份（近三年就写今年减二）；0 是不限",
+              "起始年份"),
         Param("abstracts_only", "bool", False,
               "只看摘要筛，收录的不下载原文；缺省是有开放获取的 PDF 就下载并解析", "只看摘要"),
     ),
@@ -68,8 +73,8 @@ DESCRIPTOR = Capability(
 
 
 def run(output_dir: Path, inputs: Inputs, ports: Ports, *, max_hops: int = 2, per_hop: int = 30,
-        min_new: int = 3, abstracts_only: bool = False) -> str:
+        min_new: int = 3, since: int = 0, abstracts_only: bool = False) -> str:
     if ports.runner is None:
         raise CapabilityFailed("文献检索要执行层：写检索词、找种子、看摘要筛都靠它")
     return search(output_dir, inputs, ports.runner, Limits(max_hops, per_hop, min_new),
-                  fulltext=not abstracts_only)
+                  fulltext=not abstracts_only, since=since)

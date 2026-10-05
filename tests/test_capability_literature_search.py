@@ -18,6 +18,7 @@ import io
 import json
 import re
 import subprocess
+import threading
 import urllib.error
 import urllib.parse
 from pathlib import Path
@@ -25,7 +26,15 @@ from pathlib import Path
 import pytest
 
 from framework.capabilities import literature_search
-from framework.capabilities.literature_search import fulltext, indexes, loop, openalex, papers, web
+from framework.capabilities.literature_search import (
+    fulltext,
+    gather,
+    indexes,
+    loop,
+    openalex,
+    papers,
+    web,
+)
 from framework.capabilities.literature_search.fulltext import Fulltext
 from framework.capabilities.literature_search.pool import Entry
 from framework.contracts.capability import CapabilityFailed, Inputs, Ports
@@ -108,9 +117,15 @@ class FakeWeb:
 
 
 def _openalex(query: dict[str, str]) -> list[str]:
-    if "search" in query:
-        return SEARCHES.get(query["search"], [])
-    field, _, value = query["filter"].partition(":")
+    """`from_publication_date` 与别的条件用逗号并起来（起始年份，外层 #227）：拆出来按年份滤。"""
+    filters = dict(f.split(":", 1) for f in query.get("filter", "").split(",") if f)
+    since = int(filters.pop("from_publication_date", "0")[:4])
+    keys = SEARCHES.get(query["search"], []) if "search" in query else _filtered(query, filters)
+    return [k for k in keys if (CORPUS[k]["publication_year"] or since) >= since]
+
+
+def _filtered(query: dict[str, str], filters: dict[str, str]) -> list[str]:
+    [(field, value)] = filters.items()
     wanted = value.split("|")
     if field == "doi":
         return [k for k, w in CORPUS.items() if w["doi"] and w["doi"][16:] in wanted]
@@ -148,7 +163,7 @@ def _screen(cwd: Path) -> None:
     (current / "decisions.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _fake_fetch(paper: papers.Paper, output_dir: Path) -> Fulltext:
+def _fake_fetch(paper: papers.Paper, output_dir: Path, slots: fulltext.HostSlots) -> Fulltext:
     if not paper.pdf_url:
         return Fulltext(None, None, "没有开放获取的 PDF")
     return Fulltext(f"papers/{paper.key}/paper.md", 12)
@@ -348,7 +363,7 @@ def test_client_retries_rate_limits_then_succeeds():
                                          "x-ratelimit-remaining": "500"}, io.BytesIO(b""))
         return b'{"results": []}', {"x-ratelimit-remaining": "499"}
     client = openalex.OpenAlex(web.Web(get=flaky, sleep=waits.append))
-    assert client.search("q", 5) == []
+    assert client.search("q", 5, 0) == []
     assert waits == [2.0, 2.0] and client.remaining == 499 and client.requests == 1
 
 
@@ -362,7 +377,7 @@ def test_arxiv_rate_limit_waits_long_enough_for_a_busy_neighbour():
         if len(calls) <= 4:
             raise urllib.error.HTTPError(url, 429, "slow down", {}, io.BytesIO(b""))
         return b"<feed><entry><id>http://arxiv.org/abs/2003.06097v1</id></entry></feed>", {}
-    hits = indexes.arxiv(web.Web(get=busy, sleep=waits.append), "pinn inverse", 5)
+    hits = indexes.arxiv(web.Web(get=busy, sleep=waits.append), "pinn inverse", 5, 0)
     assert [h.arxiv for h in hits] == ["2003.06097"]
     assert [w for w in waits if w >= 5] == list(indexes.ARXIV_BACKOFF_S)
 
@@ -467,7 +482,7 @@ def test_fulltext_falls_back_to_arxiv_when_the_publisher_refuses(tmp_path, monke
     monkeypatch.setattr(fulltext, "capture_script", fake_capture)
     work = _work("W10", "t", doi="10.1088/2632-2153/ac3712", pdf="https://iopscience.iop.org/x/pdf",
                  landings=("http://arxiv.org/abs/2107.00940",))
-    got = fulltext.fetch(papers.from_openalex(work), tmp_path)
+    got = fulltext.fetch(papers.from_openalex(work), tmp_path, fulltext.HostSlots(1))
     assert tried == ["https://iopscience.iop.org/x/pdf", "https://arxiv.org/pdf/2107.00940"]
     assert got == Fulltext("papers/W10/paper.md", 9)
 
@@ -476,7 +491,7 @@ def test_fulltext_reports_the_last_failure_when_every_link_fails(tmp_path, monke
     monkeypatch.setattr(fulltext, "capture_script", lambda script, args, timeout_s:
                         subprocess.CompletedProcess(args, 3, "", "HTTP Error 403: Forbidden\n"))
     work = _work("W11", "t", pdf="https://publisher.org/x.pdf")
-    got = fulltext.fetch(papers.from_openalex(work), tmp_path)
+    got = fulltext.fetch(papers.from_openalex(work), tmp_path, fulltext.HostSlots(1))
     assert got.path is None and "403" in got.why
 
 
@@ -536,3 +551,179 @@ def test_opening_batch_alternates_fresh_and_classic():
         pool.note_query(p, "Crossref", "pinn blood pressure")
     assert [p.key for p in pool.next_batch(2)] == ["W1", "W2"]
     assert [p.key for p in pool.opening_batch(2)] == ["W1", "W3"]
+
+
+def test_since_reaches_every_search_and_the_citing_query(ws):
+    """起始年份推到每一家检索里，不只是事后过滤：每条检索词每家只取前 10 篇，不推下去前 10 里
+    多半是旧的，近期的召回会掉（外层 #227）。"""
+    fake = FakeWeb()
+    _search(ws, [_seeds_move(), _screen, _screen], max_hops=1, get=fake, since=2020)
+    urls = [urllib.parse.unquote_plus(u) for u in fake.urls]
+
+    def of(host: str) -> list[str]:
+        return [u for u in urls if host in u]
+    assert any("search=pinn inverse" in u and "filter=from_publication_date:2020-01-01" in u
+               for u in of("api.openalex.org"))
+    assert any("filter=cites:" in u and ",from_publication_date:2020-01-01" in u
+               for u in of("api.openalex.org"))
+    assert of("api.crossref.org") and all("from-pub-date:2020" in u for u in of("api.crossref.org"))
+    assert all("AND submittedDate:[202001010000 TO 300001010000]" in u
+               for u in of("export.arxiv.org"))
+    assert all("AND PUB_YEAR:[2020 TO 3000]" in u for u in of("www.ebi.ac.uk"))
+    # 按编号取元数据不带年份：种子与线索先取到元数据，才知道是哪一年的
+    assert not any("from_publication_date" in u for u in of("api.openalex.org")
+                   if "filter=doi:" in u or "filter=openalex_id:" in u)
+
+
+def test_since_keeps_older_papers_out_of_screening(ws, monkeypatch):
+    """早于起始年份的不交给模型筛：向后的参考文献多是旧的；年份不详的照常交（不知道不等于旧）。"""
+    monkeypatch.setitem(CORPUS["W3"], "publication_year", 2019)
+    monkeypatch.setitem(CORPUS["W4"], "publication_year", None)
+    out, _, _ = _search(ws, [_seeds_move(), _screen, _screen], max_hops=1, since=2020)
+    pool = _pool(out)
+    assert "W3" not in pool and "W4" in pool
+
+
+def test_a_seed_older_than_since_is_left_out_and_counted(ws, monkeypatch):
+    monkeypatch.setitem(CORPUS["W1"], "publication_year", 2019)
+    out, _, _ = _search(ws, [_seeds_move(), _screen], max_hops=0, since=2020)
+    assert "W1" not in _pool(out)
+    sources = (out / "sources.md").read_text()
+    assert "- 年份：2020 年及以后发表的" in sources
+    assert "早于 2020 年的 1 条没筛" in sources
+
+
+def test_the_period_is_told_to_the_seed_session(ws):
+    _, runner, _ = _search(ws, [_seeds_move(), _screen], max_hops=0, since=2023)
+    assert "只要 2023 年及以后发表的" in runner.prompts[0]
+    out, runner, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
+    assert "不限年份" in runner.prompts[0]
+    assert "- 年份：不限" in (out / "sources.md").read_text()
+
+
+@pytest.mark.parametrize("since", [3, -1, 99999])
+def test_since_must_be_a_year(ws, since):
+    """「近三年」要换算成年份再给：写成 3 当场拒，不当成公元 3 年、悄悄等于不筛。"""
+    with pytest.raises(CapabilityFailed, match="起始年份"):
+        _search(ws, [], since=since)
+
+
+def _two_queries() -> dict[str, str]:
+    return {"seeds.md": "## 检索词\n- pinn inverse\n- pinn forward\n\n"
+                        "## 纳入标准\n- x\n\n## 种子\n"}
+
+
+def test_an_index_that_keeps_failing_is_not_asked_again(ws):
+    """失败不阻塞（外层 #228）：某家重试用完仍失败，这次就当它不可用，后面的检索词不再问它——
+    原来逐条重试，arXiv 挂了时一条约 4 分钟，15 条近一个小时。"""
+    fake = FakeWeb(fail=("export.arxiv.org",))
+    out, _, line = _search(ws, [_two_queries(), _screen], max_hops=0, get=fake)
+    assert line.startswith("literature ok")
+    arxiv = [u for u in fake.urls if "export.arxiv.org" in u]
+    assert len(arxiv) == 1 + len(indexes.ARXIV_BACKOFF_S)  # 只有第一条检索词重试了一轮
+    assert sum("api.crossref.org" in u for u in fake.urls) == 2  # 别家照常两条都查
+    sources = (out / "sources.md").read_text()
+    assert "arXiv「pinn inverse」" in sources
+    assert "arXiv：重试用完仍失败，这次当它不可用，之后 1 条检索词没再问" in sources
+
+
+def test_a_hanging_index_is_cut_off_and_the_others_still_count(ws, monkeypatch):
+    """三家各查各的：一家卡住拖不住别家；到了时限没查完的，已经回来的照收、没查的记下来。"""
+    release = threading.Event()
+
+    class Hanging(FakeWeb):
+        def __call__(self, url, headers):
+            if "export.arxiv.org" in url:
+                release.wait(10)
+            return super().__call__(url, headers)
+    monkeypatch.setattr(gather, "INDEX_BUDGET_S", 0.3)
+    monkeypatch.setitem(FREE, ("Crossref", "pinn inverse"), ["10.1016/j.bpinn.2021"])
+    fake = Hanging()
+    try:
+        out, _, line = _search(ws, [_two_queries(), _screen], max_hops=0, get=fake)
+    finally:
+        release.set()
+    assert line.startswith("literature ok")
+    assert "W5" in _pool(out)  # Crossref 查到的照收
+    assert "arXiv：到了时限还没查完，2 条检索词没查" in (out / "sources.md").read_text()
+    for lane in threading.enumerate():
+        if lane.name.startswith("index-"):
+            lane.join(5)
+    # 到点之后手上那条查完就停，第二条不再问
+    assert sum("export.arxiv.org" in u for u in fake.urls) == 1
+
+
+def test_another_version_of_a_paper_in_the_pool_is_folded_into_it(ws, monkeypatch):
+    """同一篇的预印本与期刊版是两个 W 号（外层 #232：演练里 130 篇有 6 组）：认成一篇，不占第二个
+    筛选名额；期刊版没有开放获取的 PDF，arXiv 版的编号与原文链接补给它。"""
+    monkeypatch.setitem(CORPUS["W1"], "best_oa_location", None)
+    monkeypatch.setitem(CORPUS, "W11", _work(
+        "W11", "Seed Paper on PINN Inverse Problems.", doi="10.48550/arxiv.2101.00001",
+        landings=("http://arxiv.org/abs/2101.00001",), cited=3))
+    monkeypatch.setitem(SEARCHES, "pinn inverse", ["W2", "W8", "W11"])
+    out, _, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
+    pool = _pool(out)
+    assert "W11" not in pool
+    assert pool["W1"]["found"] == ["seed", "query:OpenAlex:pinn inverse"]
+    assert pool["W1"]["paper"]["arxiv"] == "2101.00001"
+    assert pool["W1"]["paper"]["pdf_url"] == "https://arxiv.org/pdf/2101.00001"
+    assert (out / "sources.md").read_text().count("Seed paper on PINN inverse problems") == 1
+
+
+def test_two_versions_in_one_batch_take_one_slot(ws, monkeypatch):
+    title = "Bayesian physics-informed neural networks for noisy inverse problems"
+    monkeypatch.setitem(CORPUS, "W12", _work("W12", title, cited=5))
+    monkeypatch.setitem(CORPUS, "W13", _work("W13", title + ".", cited=1,
+                                              landings=("http://arxiv.org/abs/2003.06097",)))
+    monkeypatch.setitem(SEARCHES, "pinn inverse", ["W2", "W8", "W12", "W13"])
+    out, _, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
+    pool = _pool(out)
+    assert ("W12" in pool) != ("W13" in pool)
+
+
+def test_short_or_far_apart_titles_are_not_folded():
+    """题目太短（「Introduction」这类）或年份差得远的，不认成同一篇：宁可多筛一篇，不误并。"""
+    from framework.capabilities.literature_search.pool import Pool
+
+    def paper(key, title, year):
+        return papers.from_openalex({**_work(key, title), "publication_year": year})
+    pool = Pool()
+    assert pool.admit(paper("W1", "Introduction", 2024), 0, "seed")
+    assert pool.admit(paper("W2", "Introduction", 2024), 0, "seed")
+    long = "A survey on the memory mechanism of large language model based agents"
+    assert pool.admit(paper("W3", long, 2024), 0, "seed")
+    assert not pool.admit(paper("W4", long, 2025), 0, "seed")
+    assert pool.admit(paper("W5", long, 2019), 0, "seed")
+
+
+def test_fulltexts_download_in_parallel_but_a_site_gets_few_at_a_time(tmp_path, monkeypatch):
+    """外层 #229：原来逐篇串行，一篇慢的拖住后面全部（演练 38 篇 5 分钟）。不同站点同时下，同一站点
+    同时不超过 per_host 篇（出版社对并发更凶，arXiv 也要求别猛下）；结果按收录顺序回来。"""
+    import threading
+    import time
+    import urllib.parse
+
+    active: dict[str, int] = {}
+    peak: dict[str, int] = {}
+    lock = threading.Lock()
+
+    def capture(script, args, timeout_s):
+        host = urllib.parse.urlsplit(args[args.index("--input") + 1]).netloc
+        with lock:
+            active[host] = active.get(host, 0) + 1
+            peak[host] = max(peak.get(host, 0), active[host])
+            peak["*"] = max(peak.get("*", 0), sum(active.values()))
+        time.sleep(0.05)
+        with lock:
+            active[host] -= 1
+        return subprocess.CompletedProcess(args, 0, '{"pages": 3}\n', "")
+    monkeypatch.setattr(fulltext, "capture_script", capture)
+    works = ([_work(f"W{i}", "t", pdf=f"https://arxiv.org/pdf/{i}") for i in range(6)]
+             + [_work(f"W{i}", "t", pdf=f"https://pub{i % 2}.org/{i}.pdf") for i in range(6, 10)]
+             + [_work("W10", "t")])
+    got = fulltext.fetch_all([papers.from_openalex(w) for w in works], tmp_path, workers=4,
+                             per_host=2)
+    assert list(got) == [f"W{i}" for i in range(11)]
+    assert all(got[f"W{i}"].path for i in range(10)) and got["W10"].path is None
+    assert peak["arxiv.org"] <= 2 and peak["pub0.org"] <= 2
+    assert peak["*"] >= 3  # 不同站点同时在下

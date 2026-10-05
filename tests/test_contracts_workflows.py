@@ -38,10 +38,15 @@ def write(tmp_path, text: str) -> None:
     (tmp_path / "w.yaml").write_text(text, encoding="utf-8")
 
 
-def test_shipped_workflow_is_one_line_from_design_to_verification():
+def test_shipped_workflows():
     found = workflows.load_workflows(paths.workflows_root())
-    assert [wf.name for wf in found] == ["reproduce", "research"]
-    repro, wf = found
+    assert [wf.name for wf in found] == ["literature-survey", "reproduce", "research"]
+    survey, repro, wf = found
+    # 文献调研：一格里先检索再精读，到精读的 sources.md 为止，不排写作（外层 #239）
+    assert workflows.workflow_problems(survey, catalog(), SKILLS) == []
+    assert survey.covered == ["文献"] and survey.caps == ["literature-search", "literature-read"]
+    assert workflows.matching_step(survey, "literature-read", "文献", after=0,
+                                   made_by={"literature-search"}) == 0
     assert workflows.workflow_problems(repro, catalog(), SKILLS) == []
     assert workflows.remarks(repro) == []
     assert repro.covered == ["文献", "设计", "分析", "验证"]
@@ -62,7 +67,23 @@ def test_shipped_workflow_is_one_line_from_design_to_verification():
     assert workflows.stop_after(wf, 2) is None
     assert workflows.matching_step(wf, "auto-research", "实验") == 2
     assert workflows.matching_step(wf, "analysis", "分析", after=2) == 3
-    assert workflows.matching_step(wf, "design", "设计", after=0) is None
+    assert workflows.matching_step(wf, "design", "设计", after=0, made_by={"design"}) is None
+    # 外层 #237：没点名的格子里，同一阶段别的步骤读这一格的产出，落在这一格
+    assert workflows.matching_step(wf, "reproduction", "设计", after=0, made_by={"design"}) == 0
+
+
+def test_a_second_step_fed_by_the_first_in_the_same_cell_stays_in_that_cell(tmp_path):
+    """外层 #237：一格里点了几个步骤（先检索、再精读），后一个读前一个的产出，落在同一格；
+    同一个能力接着自己的产出跑，照旧往后找。"""
+    write(tmp_path, "name: w\ntitle: 文献\nsummary: 先检索再精读\nstages:\n"
+                    "  - 文献: [literature-search, literature-read]\n  - 断点: 核对\n  - 写作\n")
+    [wf] = workflows.load_workflows(tmp_path)
+    assert workflows.matching_step(wf, "literature-read", "文献", after=0,
+                                   made_by={"literature-search"}) == 0
+    assert workflows.matching_step(wf, "literature-read", "文献", after=0,
+                                   made_by={"literature-read"}) is None
+    assert workflows.matching_step(wf, "literature-search", "文献", after=0,
+                                   made_by={"literature-search"}) is None
 
 
 def test_stages_parse_in_all_three_spellings(tmp_path):
@@ -98,6 +119,8 @@ def test_describe_dir_keeps_a_broken_file_as_a_problem_row(tmp_path):
 def test_used_by_is_looked_up_from_the_files():
     found = workflows.load_workflows(paths.workflows_root())
     assert workflows.used_by(found) == {"auto-research": ["research"],
+                                        "literature-search": ["literature-survey"],
+                                        "literature-read": ["literature-survey"],
                                         "pdf": ["reproduce"], "download": ["reproduce"],
                                         "reproduction": ["reproduce"],
                                         "reproducibility": ["reproduce"]}
@@ -122,7 +145,8 @@ def test_a_capability_must_sit_in_its_own_room(tmp_path):
     assert problems == [
         "第 3 项「设计」里的 verify 属于「验证」阶段，不能放在「设计」阶段里",
         "第 3 项「设计」里的 nope：没有这个能力，拼错了？（步骤：['analysis', 'auto-research', "
-        "'design', 'literature-search', 'reproducibility', 'reproduction', 'verify']；"
+        "'design', 'literature-read', 'literature-search', 'reproducibility', 'reproduction', "
+        "'verify']；"
         "skill 用 ai4sci show skills <词> 查）"]
 
 

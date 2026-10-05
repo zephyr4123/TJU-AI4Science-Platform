@@ -41,6 +41,7 @@ include = ["framework*", "backends*", "compute*"]
 "framework.capabilities.reproduction" = ["prompt.md"]
 "framework.capabilities.reproducibility" = ["prompt.md"]
 "framework.capabilities.literature_search" = ["seed.md", "screen.md"]
+"framework.capabilities.literature_read" = ["prompt.md"]
 
 [tool.ruff]
 line-length = 100

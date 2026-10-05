@@ -38,7 +38,7 @@ export function Ladder({ stages, onAdd }: { stages: string[]; onAdd: (seed: Seed
 
 export function Library({ workflows, onLoad, onRemoved }: {
   workflows: Workflow[]; onLoad: (wf: Workflow) => void
-  /** 删了库里的一条之后（清单要重读）；出厂的两条没有删 */
+  /** 删了库里的一条之后（清单要重读）；出厂的没有删 */
   onRemoved: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -70,7 +70,7 @@ export function Library({ workflows, onLoad, onRemoved }: {
                 </span>
                 {wf.problems.length > 0 && <span role="img" aria-label="有问题" className="size-2 shrink-0 rounded-full bg-bad" />}
               </button>
-              {/* 出厂的两条是平台的底，没有删；人存的悬停出「删除」，按住才算 */}
+              {/* 出厂的是平台的底，没有删；人存的悬停出「删除」，按住才算 */}
               {!wf.shipped && (
                 <span className="shrink-0 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100">
                   <HoldButton holdTime={800} doneLabel={<Trash weight="fill" className="size-3.5" />} className="px-2" onHold={() => remove(wf.name)}>

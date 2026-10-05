@@ -213,7 +213,8 @@ def _place_in_flow(ws: Workspace, by: str, stage: str, inputs: Inputs,
                    flow_name: str) -> tuple[str | None, int | None]:
     """照哪条流程、第几项：`--flow` 给了用它；没给而工作区只有一条流程就用那条；几条就得说清；
     一条没有就不照流程。
-    照流程时查断点：输入那一项后面紧跟断点的，那个产出得签过且没过期。"""
+    照流程时查断点：输入那一项后面紧跟断点的，那个产出得签过且没过期；这次落在输入那一格的
+    （一格里连着跑的第二个步骤，外层 #237）不查。"""
     flow_name = (flow_name or "").strip()
     instances = sorted(p.stem for p in ws.flows.glob("*.yaml")) if ws.flows.is_dir() else []
     if not flow_name:
@@ -229,14 +230,15 @@ def _place_in_flow(ws: Workspace, by: str, stage: str, inputs: Inputs,
             f"工作区里没有叫 {flow_name!r} 的流程（flows/ 下有：{', '.join(instances) or '-'}）；"
             f"库里有的先取过来：ai4sci flow take {flow_name}")
     workflow = workflows.load_workflow(path)
-    after = -1
-    for directory, oid in zip(inputs.outputs, inputs.ids, strict=True):
-        meta = output.read_meta(directory)
-        if meta.flow != workflow.name or meta.step is None:
-            continue
-        after = max(after, meta.step)
+    metas = [(d, oid, output.read_meta(d))
+             for d, oid in zip(inputs.outputs, inputs.ids, strict=True)]
+    placed = [(d, oid, m) for d, oid, m in metas if m.flow == workflow.name and m.step is not None]
+    after = max((meta.step for *_, meta in placed), default=-1)
+    step = workflows.matching_step(workflow, by, stage, after, abilities.skill_names(),
+                                   made_by={meta.by for *_, meta in placed if meta.step == after})
+    for directory, oid, meta in placed:
         stop = workflows.stop_after(workflow, meta.step)
-        if stop is None:
+        if stop is None or meta.step == step:  # 同一格里接着跑：断点管的是整格做完之后
             continue
         signed = output.signature_state(directory)
         if signed is None or signed["stale"]:
@@ -245,7 +247,6 @@ def _place_in_flow(ws: Workspace, by: str, stage: str, inputs: Inputs,
                 f"流程 {workflow.name} 在 {oid} 之后有断点{what}：这次产出要人签了下游才能读"
                 + ("（签过但之后改了，签字过期）" if signed else "")
                 + f"；研究者在页面上签，或终端 ai4sci sign {oid}")
-    step = workflows.matching_step(workflow, by, stage, after, abilities.skill_names())
     return workflow.name, step
 
 

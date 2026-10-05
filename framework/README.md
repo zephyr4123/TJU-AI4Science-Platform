@@ -41,10 +41,10 @@ flowchart TB
 | `contracts/` | 框架认的东西的形状，只有这几样：七个研究阶段（`stages`）、需求与确认（`requirement`）、产出目录与签字（`output`：`meta.yaml`、`signed.json`、tree hash）、流程文件（`workflows`：形状与检查；`workflow_library`：库的两层、机器名、`from` 血缘、差异、结构查重，P-15）、能力描述符与入口形状（`capability`：`Capability` / `Inputs` / `Param` / `Ports`，文案的字数与禁用词断言） | 谁都不 import |
 | `skills/` | skill 库的读取点：扫三处库（平台自带、收录、领域包）、宽进地校验、不合格的隔离、收录台账、拼 `<available_skills>`、`uv run` 起脚本 | `library.py` `provenance.py` `catalog.py` `run.py` |
 | `workspace/` | 项目与工作区的磁盘：`project`（`project.md`）、`root`（`requirement.md`、七个阶段目录、`.ai4sci/`）、`outputs`（`<stage>/<n>/` 的开与收、冻结判断、跨工作区引用）、`progress`（流程实例走到哪，从 meta 现算）、`loadout`（一个项目装载哪些能力：常驻 skill 加各工作区流程实例上挂的，研究助理、执行层、`ai4sci skill` / `cap` 都从这一处取，P-26）、`jobs`（后台作业）、`removal`（删，拒的条件在文件头） | |
-| `executor/` | 起执行层会话：`prompting` 组提示（模板 + 领域约定 + skill 清单 + 联网规矩）、`session` 起会话留档（Bash 只放行 `ai4sci skill`） | |
+| `executor/` | 起执行层会话：`prompting` 组提示（模板 + 领域约定 + skill 清单 + 联网规矩）、`session` 起会话留档（Bash 只放行 `ai4sci skill`；没开工就失败的隔一会重试两次，外层 #235） | |
 | `experiment/` | 实验这一族能力私下的约定：设计那包合不合约（`pack`）、`env`（`env/` 与 uv venv、保证给 harness 的环境变量）、`headroom` 预检、`layout` 实验目录布局、`checkpoint` `ledger` `notebook` `artifacts` `results` `analysis` `report`、`drafting` 起执行层写草稿、`baseline` 跑基线、`harness_contract.md` 给执行层的 harness 约定；`schemas/` 三份 JSON Schema | 契约层不认识它（纲领 P-19） |
 | `chat/` | 两位助理与页面后端：`scope` 定域（可写目录、指南、命令前缀）、`guide` 注入指南与前言、`conversation` 一段对话（落盘、忙锁、收件箱）、`notify` 作业跑完排进收件箱、`boards` 看板读盘、`settings` 设置、`removal` 目录外的删（会话、镜像）、`server` 标准库 HTTP + SSE（端点清单在文件头） | |
-| `capabilities/` | 能力库的「步骤」那一半：一个步骤一个子包，互不 import，各导出 `DESCRIPTOR` 与 `run(output_dir, inputs, ports, **params)`；`discover()` 扫目录并断言签名；`abilities.py` 是能力库的出处（步骤 + skill 两个 tag）；`MAIN_FILES` 阶段主文件表 | 现有七个：`literature_search` `design` `reproduction` `auto_research` `analysis` `reproducibility` `verify` |
+| `capabilities/` | 能力库的「步骤」那一半：一个步骤一个子包，互不 import，各导出 `DESCRIPTOR` 与 `run(output_dir, inputs, ports, **params)`；`discover()` 扫目录并断言签名；`abilities.py` 是能力库的出处（步骤 + skill 两个 tag）；`MAIN_FILES` 阶段主文件表 | 现有八个：`literature_search` `literature_read` `design` `reproduction` `auto_research` `analysis` `reproducibility` `verify` |
 | `cli/` | 命令行，一类一个模块，`__init__.py` 逐行装配（没有注册表，加一条就加一行）；`_common.py` 退出码、当前项目与工作区、按名字取端口、`refuse_if_assistant` | 清单以 `ai4sci --help` 为准 |
 
 分层之外的三个顶层模块是**唯一读取点**：`paths.py`（仓根、出厂件、数据根、五个 `*_ROOT` 环境变量）、`computes.py`（`~/.config/ai4sci/computes.yaml`）、`agents.py`（`agents.yaml`）。分层包可以 import 它们，它们不许 import 分层包。
