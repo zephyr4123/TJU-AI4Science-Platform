@@ -1,14 +1,16 @@
 // 项目的世界（外层 #136）：一个项目一位助理，对话是项目的，这里拿着它——项目页（正中间输入框、整屏的对话）与项目里的工作区页
 // 共用同一份对话清单与同一份项目清单，来回切换不断线。进了工作区，对话在右边那块板上，接着最近的一段。
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api, inProject, WorkspaceClient } from '@/api/client'
 import type { Backend, ProjectSummary } from '@/api/types'
 import { coverOf } from '@/assets'
 import { ChatDrawer } from '@/chat/ChatDrawer'
 import { ChatView } from '@/chat/ChatView'
+import { localFile } from '@/chat/links'
 import { WELCOME } from '@/chat/Welcome'
 import { ErrorNote, Skeleton } from '@/components/bits'
+import { LinkOpener } from '@/components/markdown/links'
 import { Scene } from '@/components/Scene'
 import { useChats } from '@/lib/useChats'
 import { useResource } from '@/lib/useResource'
@@ -41,6 +43,18 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
   const caps = useResource(api.capabilities, [], 'caps')
   const skills = useResource(api.skills, [], 'skills')
   const ws = useMemo(() => (wsId ? new WorkspaceClient(projectId, wsId) : null), [projectId, wsId])
+  // 对话里点了本项目的一个文件（外层 #231）：去那个工作区、在文件镜头里打开它
+  const [fileRequest, setFileRequest] = useState<{ ws: string; path: string; n: number } | null>(null)
+  const openLink = useCallback((href: string) => {
+    const target = localFile(href, projectId)
+    if (!target) return null
+    return () => {
+      setFileRequest((prev) => ({ ...target, n: (prev?.n ?? 0) + 1 }))
+      if (target.ws !== wsId) onOpenWorkspace(target.ws)
+    }
+  }, [projectId, wsId, onOpenWorkspace])
+  const openFile = useMemo(() => (fileRequest && fileRequest.ws === wsId ? { path: fileRequest.path, n: fileRequest.n } : null),
+                           [fileRequest, wsId])
 
   const busy = (doc.data?.running ?? 0) > 0
   const reload = doc.reload
@@ -53,19 +67,22 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
   if (ws) {
     const title = doc.data?.title ?? projectId
     return (
-      <WorkspacePage key={ws.key} ws={ws} project={doc.data} epoch={c.epoch} caps={caps} skills={skills} menu={menu}
-                     onBack={onBack} onSwitch={onOpenWorkspace} onRemoved={onWorkspaceRemoved}
-                     chat={(close) => (
-                       <ChatView scope={scope} chatId={c.chatId} current={c.current} create={c.newChat} backends={backends}
-                                 onTurnDone={c.turnDone} onClose={close}
-                                 welcome={WELCOME.research}
-                                 drawer={
-                                   <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
-                                               creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
-                                               onRemove={async (id) => { await c.remove(id) }}
-                                               cover={coverOf(projectId)} title={title} />
-                                 } />
-                     )} />
+      <LinkOpener.Provider value={openLink}>
+        <WorkspacePage key={ws.key} ws={ws} project={doc.data} epoch={c.epoch} caps={caps} skills={skills} menu={menu}
+                       openFile={openFile}
+                       onBack={onBack} onSwitch={onOpenWorkspace} onRemoved={onWorkspaceRemoved}
+                       chat={(close) => (
+                         <ChatView scope={scope} chatId={c.chatId} current={c.current} create={c.newChat} backends={backends}
+                                   onTurnDone={c.turnDone} onClose={close}
+                                   welcome={WELCOME.research}
+                                   drawer={
+                                     <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
+                                                 creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
+                                                 onRemove={async (id) => { await c.remove(id) }}
+                                                 cover={coverOf(projectId)} title={title} />
+                                   } />
+                       )} />
+      </LinkOpener.Provider>
     )
   }
   if (!doc.data) {
@@ -84,9 +101,11 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
     )
   }
   return (
-    <ProjectPage project={doc.data} chats={c} backends={backends} healthy={healthy} menu={menu}
-                 onOpenWorkspace={onOpenWorkspace}
-                 onCreatedWorkspace={async (id) => { await reload(); onOpenWorkspace(id) }}
-                 onRemove={async () => { const removed = await api.removeProject(projectId); await onRemoved(removed.leftovers) }} />
+    <LinkOpener.Provider value={openLink}>
+      <ProjectPage project={doc.data} chats={c} backends={backends} healthy={healthy} menu={menu}
+                   onOpenWorkspace={onOpenWorkspace}
+                   onCreatedWorkspace={async (id) => { await reload(); onOpenWorkspace(id) }}
+                   onRemove={async () => { const removed = await api.removeProject(projectId); await onRemoved(removed.leftovers) }} />
+    </LinkOpener.Provider>
   )
 }
