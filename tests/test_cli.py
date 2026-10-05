@@ -320,6 +320,36 @@ def test_flow_take_then_stops_are_enforced_when_following_the_flow(tmp_path, mon
     assert "flow\tresearch-5\tstep=0/6\twaiting=assistant" in shown.stdout
 
 
+def test_a_second_step_in_the_same_cell_stays_there_and_the_stop_after_the_cell_waits(
+        tmp_path, monkeypatch, capsys):
+    """外层 #237：一格里点了两个步骤，后一个读前一个的产出，记在同一格（看板上摆在那一格）；
+    这一格后面的断点管的是整格做完之后，不拦同一格里接着跑的那个，往后走的照旧要签。"""
+    from framework.capabilities import reproduction
+    from framework.cli import main
+
+    pack = pf.make_pack(tmp_path)
+    env_of(pack, monkeypatch)
+    pack.workspace.flows.mkdir(exist_ok=True)
+    (pack.workspace.flows / "two.yaml").write_text(
+        "name: two\ntitle: 两步\nsummary: 两步\nstages:\n"
+        "  - 设计: [design, reproduction]\n  - 断点: 核对\n  - 实验\n", encoding="utf-8")
+    _, meta = outputs.find_output(pack.workspace, "design/1")
+    meta.flow, meta.step = "two", 0
+    output.write_meta(pack.pack, meta)
+
+    def fake_run(output_dir, inputs, ports, *, code="", domain="", feedback=""):
+        return "reproduction ok"
+
+    monkeypatch.setattr(reproduction, "run", fake_run)
+    code = main(["cap", "reproduction", "--from", "design/1", "--flow", "two"])
+    assert code == EXIT_OK, capsys.readouterr().err
+    placed = output.read_meta(pack.workspace.root / "design" / "2")
+    assert (placed.by, placed.flow, placed.step) == ("reproduction", "two", 0)
+    fake_loop_that_stops_at_once(monkeypatch)
+    code = main(["cap", "auto-research", "--from", "design/1", "--flow", "two"])
+    assert code == EXIT_INVALID and "断点「核对」" in capsys.readouterr().err
+
+
 def test_cap_detach_returns_a_job_id_and_the_job_finishes_on_its_own(tmp_path):
     """外层 #63：`--detach` 打印作业号退出；子进程自己跑完回写产出与结论；
     show job / show jobs 能查。#118：返回之前等它开了产出，作业号旁边就有产出 id。"""
@@ -445,7 +475,9 @@ def test_show_caps_lists_stages_with_empty_stages_visible_and_five_columns():
     proc = run_cli("show", "caps")
     assert proc.returncode == EXIT_OK, proc.stderr
     lines = proc.stdout.splitlines()
-    assert lines[0].startswith("文献\tliterature-search\t文献检索\t")
+    # 一个能力一行头、五栏缩进；同一阶段里按名字排
+    heads = [ln.split("\t")[1] for ln in lines if ln.startswith("文献\t")]
+    assert heads == ["literature-read", "literature-search"]
     empty = next(line for line in lines if line.startswith("假设\t"))
     assert empty.startswith("假设\t-\t这个阶段还没有能力") and "output new hypothesis" in empty
     design = next(line for line in lines if line.startswith("设计\tdesign\t"))
@@ -464,8 +496,8 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
     doc = {c["name"]: c for c in json.loads(proc.stdout)}
     # 能力库的两半：步骤（描述符）与 skill（SKILL.md），每条带 kind
     assert {n for n, c in doc.items() if c["kind"] == "步骤"} == {
-        "literature-search", "design", "reproduction", "auto-research", "analysis",
-        "reproducibility", "verify"}
+        "literature-search", "literature-read", "design", "reproduction", "auto-research",
+        "analysis", "reproducibility", "verify"}
     assert {"pdf", "download"} <= {n for n, c in doc.items() if c["kind"] == "skill"}
     assert doc["pdf"]["used_by"] == ["reproduce"] and doc["pdf"]["brief"]
     assert "scripts" in doc["pdf"] and "body" not in doc["pdf"]  # 正文只经 skill show（过装载）
@@ -476,12 +508,15 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
 
 
 def test_show_workflows_lists_stages_and_stops(tmp_path):
-    env = {"AI4SCI_HOME": str(tmp_path)}  # 用户库空着：只有出厂的两条
+    env = {"AI4SCI_HOME": str(tmp_path)}  # 用户库空着：只有出厂的三条
     proc = run_cli("show", "workflows", env=env)
     assert proc.returncode == EXIT_OK, proc.stderr
-    # 文献格上挂的两个 skill 标 [skill]：助理一眼分得出哪个是 cap、哪个是 skill run；第三列是来源
-    assert proc.stdout.startswith("reproduce\t论文复现\t出厂\t文献(pdf[skill],download[skill]) → "
-                                  "设计(reproduction) → ◆复现结果核对")
+    # 一格点两个步骤照写；文献格上挂的两个 skill 标 [skill]：助理一眼分得出哪个是 cap、哪个是
+    # skill run；第三列是来源
+    assert proc.stdout.startswith(
+        "literature-survey\t文献调研\t出厂\t文献(literature-search,literature-read)\n"
+        "reproduce\t论文复现\t出厂\t文献(pdf[skill],download[skill]) → 设计(reproduction) → "
+        "◆复现结果核对")
     assert "\nresearch\t从设计到验证\t出厂\t设计 → ◆评分指标核对" in proc.stdout
     assert proc.stdout.rstrip().endswith("→ 验证 → ◆验收")
 
@@ -501,11 +536,11 @@ def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
     proc = run_cli("show", "workflows", env=env)
     assert proc.returncode == EXIT_OK, proc.stderr
     lines = proc.stdout.splitlines()
-    assert lines[0].startswith("reproduce\t论文复现\t出厂\t")
+    assert lines[0].startswith("literature-survey\t文献调研\t出厂\t")
     assert "quick\t快看\t自定义\t实验(auto-research) → 分析" in lines
     listed = json.loads(run_cli("show", "workflows", "--json", env=env).stdout)
-    assert {w["name"]: w["shipped"] for w in listed} == {"reproduce": True, "research": True,
-                                                         "quick": False}
+    assert {w["name"]: w["shipped"] for w in listed} == {
+        "literature-survey": True, "reproduce": True, "research": True, "quick": False}
 
     proc = run_cli("show", "caps", "--json", env=env)
     caps = {c["name"]: c for c in json.loads(proc.stdout)}
@@ -516,7 +551,8 @@ def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
     assert proc.returncode == EXIT_OK, proc.stderr
     assert (ws.flows / "quick.yaml").is_file()
     proc = run_cli("flow", "take", "nope", cwd=ws.root, env=env)
-    assert proc.returncode == EXIT_USAGE and "有：quick, reproduce, research" in proc.stderr
+    assert proc.returncode == EXIT_USAGE
+    assert "有：literature-survey, quick, reproduce, research" in proc.stderr
 
     taken = yaml.safe_load((ws.flows / "quick.yaml").read_text(encoding="utf-8"))
     assert taken["from"]["name"] == "quick"  # 实例也记取自哪条（P-15）
@@ -914,10 +950,11 @@ def test_serve_helpers_check_a_draft_and_list_the_catalog(tmp_path, monkeypatch)
     assert kept["problems"] == []
     catalog = {c["name"]: c for c in serve._catalog()}
     assert catalog["auto-research"]["used_by"] == ["research"] and catalog["verify"]["does"]
-    assert [w["name"] for w in serve._workflows()] == ["reproduce", "research"]
-    assert set(serve._descriptor_map()) == {"literature-search", "design", "reproduction",
-                                            "auto-research", "analysis", "reproducibility",
-                                            "verify"}
+    assert [w["name"] for w in serve._workflows()] == ["literature-survey", "reproduce",
+                                                       "research"]
+    assert set(serve._descriptor_map()) == {"literature-search", "literature-read", "design",
+                                            "reproduction", "auto-research", "analysis",
+                                            "reproducibility", "verify"}
 
 
 def test_env_resolve_writes_a_complete_lock_into_materials(tmp_path, monkeypatch, capsys):

@@ -285,3 +285,23 @@ def test_lock_is_taken_atomically_and_a_moved_conversation_cannot_continue(tmp_p
         drain(conv, chat, "再来")
     assert not (conv.dir / conv_mod.INFLIGHT_NAME).exists()  # 拒了也把锁摘掉
     assert conv_mod.read_turns(conv)[0]["reply"] == "好"  # 旧的照样能读
+
+
+def test_a_turn_running_in_another_process_can_be_read_from_disk(tmp_path):
+    """外层 #230：作业跑完由作业进程叫醒助理，这一轮不经过服务；页面要从盘上读到它在跑、跑到哪了。
+    没在跑是 None；trace 最后一行写到一半的不算。"""
+    conv, chat = start(tmp_path, with_tool("好了", "Bash", {"command": "ls"}, "a"))
+    assert conv_mod.running_turn(conv) is None
+    stream = conv_mod.send(conv, chat, "作业跑完了", system_prompt=GUIDE, allowed_paths=[],
+                           bash_rules=(), origin="框架")
+    next(stream)
+    next(stream)  # init、tool_use 落了盘
+    running = conv_mod.running_turn(conv)
+    assert {k: v for k, v in running.items() if k != "events"} == {
+        "turn": 1, "origin": "框架", "message": "作业跑完了", "reply": ""}
+    assert [e["kind"] for e in running["events"]] == ["init", "tool_use"]
+    with (conv.dir / "turn-1" / "trace.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write('{"kind": "tool_res')
+    assert [e["kind"] for e in conv_mod.running_turn(conv)["events"]] == ["init", "tool_use"]
+    stream.close()
+    assert conv_mod.running_turn(conv) is None

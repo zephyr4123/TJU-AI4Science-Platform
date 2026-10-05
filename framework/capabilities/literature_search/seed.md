@@ -8,6 +8,10 @@
 
 $requirement
 
+## 年份
+
+$period
+
 ## 要做的三件事
 
 1. **检索词**：写 8 到 $max_queries 条英文检索词，每条 2 到 6 个词，是学术库里能直接搜的一个短语，比如 `physics-informed neural networks inverse problem`。最要紧、最概括的 3 到 5 条写在最前面；后面的往细里铺，需求里提到的每个具体对象、子方向、同义说法各写一条（比如需求说到心电、血压、脑电，就各写一条 `physics-informed ECG`、`physics-informed blood pressure estimation`……）——冷门的小方向论文被引少，顺着引用找不到，只能靠这些细的检索词查到。不写布尔表达式，不写引号。

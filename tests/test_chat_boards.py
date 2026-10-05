@@ -191,3 +191,13 @@ def test_workflow_helpers_used_by_the_board():
     wf = workflows.parse_workflow("quick.yaml", __import__("yaml").safe_load(FLOW))
     assert workflows.stop_after(wf, 0).note == "核对评分脚本"
     assert workflows.stop_after(wf, 4) is None
+
+
+def test_template_intro_mentioning_the_placeholder_does_not_block_confirming(tmp_path):
+    """外层 #234：各格都填了，只有模板开头的引言带「待填」两个字（「把每一格的『待填』换成实话」），
+    页面照旧说「尚有待填」、确认按钮灰着；后端确认早就只看格子了。两边读同一个判断。"""
+    ws = pf.make_workspace(tmp_path, "w", confirmed=False)
+    intro = "> 通用模板：把每一格的「待填」换成实话。\n\n"
+    ws.requirement.write_text(pf.REQUIREMENT.replace("\n\n## 问题", "\n\n" + intro + "## 问题", 1),
+                              encoding="utf-8")
+    assert boards.requirement_detail(ws)["pending"] is False

@@ -127,3 +127,32 @@ def test_mark_wake_lands_in_the_job_record(tmp_path: Path):
     jobs._save(tmp_path / "jobs", _job("chat-x"))
     assert jobs.mark_wake(tmp_path / "jobs", "job-7", "queued").wake == "queued"
     assert json.loads((tmp_path / "jobs" / "job-7.json").read_text())["wake"] == "queued"
+
+
+def test_awaiting_counts_jobs_that_will_still_wake_this_conversation(tmp_path: Path):
+    """外层 #230：页面据此决定要不要定时重读对话。还在跑的、跑完了还没叫醒（叫醒那一轮在跑或刚要开）
+    的算；叫醒过的、别的对话的、跑完很久的、进程死了的不算；收件箱里排着的话也算。"""
+    import datetime as dt
+    import os
+
+    ws = _ws(tmp_path)
+    proj = project_mod.of(ws)
+    conv = conv_mod.new_conversation(proj.chats, "claude_code", ws.root)
+    now = dt.datetime.now(dt.UTC)
+    recent = (now - dt.timedelta(minutes=1)).isoformat()
+    old = (now - dt.timedelta(hours=2)).isoformat()
+
+    def save(job_id: str, **kw) -> None:
+        fields = {"job_id": job_id, "cap": "literature-search", "stage": "literature", "argv": [],
+                  "pid": os.getpid(), "started_at": "t", "chat_id": conv.chat_id, **kw}
+        jobs._save(ws.jobs, jobs.Job(**fields))
+    assert notify.awaiting(proj, conv) == 0
+    save("job-run")                                                        # 在跑
+    save("job-unwoken", status="done", exit_code=0, finished_at=recent)    # 跑完、还没叫醒
+    save("job-woken", status="done", exit_code=0, finished_at=recent, wake="done")
+    save("job-old", status="done", exit_code=0, finished_at=old)
+    save("job-other", chat_id="chat-other")
+    save("job-lost", pid=999_999_999)
+    assert notify.awaiting(proj, conv) == 2
+    conv_mod.queue_note(conv, "另一个作业的结果")
+    assert notify.awaiting(proj, conv) == 3

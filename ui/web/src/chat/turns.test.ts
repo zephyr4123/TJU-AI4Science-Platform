@@ -18,6 +18,18 @@ describe('屏上的轮次', () => {
     expect(assembleTurns([], live({ chatId: null, n: 1 }), 'c9')).toHaveLength(1)
     expect(assembleTurns([record(1)], live({ chatId: 'c1' }), 'c2')).toHaveLength(1)
   })
+  it('别的进程正在跑的那一轮（作业跑完叫醒助理）接在后面，标着谁开的口、是 live；跑完落盘就不重复', () => {
+    const running: TurnRecord = { turn: 2, origin: '框架', message: '作业跑完了', reply: '', events: [
+      { kind: 'tool_use', text: '', tool: 'Bash', tool_input: { command: 'ls' } } as never] }
+    const turns = assembleTurns([record(1)], null, 'c1', running)
+    expect(turns.map((t) => [t.n, t.origin, t.live])).toEqual([[1, '人', false], [2, '框架', true]])
+    expect(turns[1].trace).toHaveLength(1)
+    expect(assembleTurns([record(1), record(2)], null, 'c1', running).map((t) => t.n)).toEqual([1, 2])
+  })
+  it('自己发的这一轮在跑时，同一轮不再从盘上摆第二遍', () => {
+    const running: TurnRecord = { turn: 2, origin: '人', message: '正在问', reply: '', events: [] }
+    expect(assembleTurns([record(1)], live(), 'c1', running).map((t) => t.n)).toEqual([1, 2])
+  })
   it('落盘之后同一轮不重复', () => {
     const turns = assembleTurns([record(1), record(2)], live({ outcome: { cost_usd: 0, duration_s: 1, error: null, exit_code: 0 } as never }), 'c1')
     expect(turns.map((t) => t.n)).toEqual([1, 2])

@@ -9,7 +9,7 @@ DOI 与 arXiv 号只用来进门（种子）和给人看。arXiv 号不换成 `1
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 # DOI：前缀 10.<4~9 位注册号>/，后缀到空白或成对符号为止；句末标点另外剥掉
@@ -21,6 +21,10 @@ WORK_KEY_RE = re.compile(r"W\d+")
 PMID_RE = re.compile(r"(\d+)\s*$")  # OpenAlex 给的是 https://pubmed.ncbi.nlm.nih.gov/<号>
 ARXIV_DOI_PREFIX = "10.48550/arxiv."
 AUTHORS_KEPT = 8  # 给人看与给模型筛都用不着全部作者，几百人的合作论文只留前几位
+# 认同一篇的不同版本：题目归一后至少这么长才认（「Introduction」这类短题目不同论文撞上的多），
+# 年份差不过这么多（预印本到期刊一两年）
+VERSION_TITLE_MIN = 20
+VERSION_YEARS = 2
 
 
 @dataclass(frozen=True)
@@ -125,3 +129,28 @@ def bare_doi(value: str | None) -> str | None:
         return None
     match = DOI_RE.search(value)
     return match.group(0).rstrip(".,;:)").lower() if match else None
+
+
+def version_title(title: str) -> str | None:
+    """认同一篇不同版本用的题目：小写、只留字母与数字；太短的不认，返回 None。"""
+    words = " ".join(re.findall(r"[a-z0-9]+", title.lower()))
+    return words if len(words) >= VERSION_TITLE_MIN else None
+
+
+def same_work(a: Paper, b: Paper) -> bool:
+    """同一篇的不同版本（预印本 / 会议 / 期刊在 OpenAlex 各一个 W 号，外层 #232）：题目归一后一样、
+    年份差不过 `VERSION_YEARS`（不知道年份的不拦）。"""
+    title = version_title(a.title)
+    return (title is not None and title == version_title(b.title)
+            and (a.year is None or b.year is None or abs(a.year - b.year) <= VERSION_YEARS))
+
+
+def merge_versions(kept: Paper, other: Paper) -> Paper:
+    """另一个版本补进来：缺的编号、摘要、原文与落地页从它取（期刊版常没有开放获取的 PDF，
+    arXiv 版有），参考文献并起来，被引取大的；W 号、题目、年份、出处照旧用先进池的那个。"""
+    return replace(kept, doi=kept.doi or other.doi, arxiv=kept.arxiv or other.arxiv,
+                   pmid=kept.pmid or other.pmid, abstract=kept.abstract or other.abstract,
+                   pdf_url=kept.pdf_url or other.pdf_url,
+                   landing_url=kept.landing_url or other.landing_url,
+                   refs=tuple(dict.fromkeys(kept.refs + other.refs)),
+                   cited_by=max(kept.cited_by, other.cited_by))

@@ -1,6 +1,8 @@
 // 一段对话的运行态：落盘的轮次、正在进行的这一轮、发送。还没有对话时第一句也从这里发——先开一段再发，
 // 从按下回车起这一轮就已经在屏上，不是等对话建好再切过去（主人 2026-09-22：不要闪一下）。
 // 项目页正中间的输入框、板里的对话视图（工作区页、编辑台）共用。
+// 作业跑完由作业进程叫醒助理，那一轮不经过这页的流（外层 #230）：有一轮在别处跑、或还有作业会来叫醒
+// 时定时重读，把那一轮摆出来、锁住输入框；跑完了看板跟着重读。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { api, type Scope, scopeKey } from '@/api/client'
@@ -12,6 +14,8 @@ import { outcome, reduceTrace } from './trace'
 import { assembleTurns, type LiveTurn } from './turns'
 import type { Turn } from './TurnView'
 import { type TuningState, useTuning } from './useTuning'
+
+const POLL_MS = 3000
 
 export interface Conversation {
   doc: Resource<ChatDoc | null>
@@ -43,8 +47,22 @@ export function useConversation({ scope, chatId, current, backends, create, onTu
   const [live, setLive] = useState<LiveTurn | null>(null)
   const [failure, setFailure] = useState<{ chatId: string | null; text: string } | null>(null)
   const t = useTuning(backends, current)
-  const turns = useMemo(() => assembleTurns(doc.data?.history ?? [], live, chatId), [doc.data, live, chatId])
+  const turns = useMemo(() => assembleTurns(doc.data?.history ?? [], live, chatId, doc.data?.running ?? null),
+                        [doc.data, live, chatId])
   const history = doc.data?.history ?? null
+  const elsewhere = live === null ? doc.data?.running?.turn ?? null : null
+  const watching = live === null && doc.data != null && (doc.data.running !== null || doc.data.waiting > 0)
+  useEffect(() => {
+    if (!watching) return
+    const timer = setInterval(() => { void reload.current() }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [watching])
+  // 别处跑的那一轮结束了：助理可能改了流程、开了产出，看板要重读
+  const seen = useRef<number | null>(null)
+  useEffect(() => {
+    if (seen.current !== null && elsewhere === null) onTurnDone()
+    seen.current = elsewhere
+  }, [elsewhere, onTurnDone])
 
   const send = useCallback(async (text: string) => {
     setFailure(null)
@@ -77,5 +95,5 @@ export function useConversation({ scope, chatId, current, backends, create, onTu
     onTurnDone()
   }, [chatId, create, history, onTurnDone, scope, t.backendName, t.tuning])
 
-  return { doc, turns, busy: live !== null, error: failure && failure.chatId === chatId ? failure.text : null, tuning: t, send }
+  return { doc, turns, busy: live !== null || elsewhere !== null, error: failure && failure.chatId === chatId ? failure.text : null, tuning: t, send }
 }

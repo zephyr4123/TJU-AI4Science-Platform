@@ -1,0 +1,7 @@
+# 出厂流程之一：文献调研。一格里先检索、再精读，产出到精读的 sources.md 为止（外层 #239）。
+# 研究助理照笔记在对话里回答研究者；不排写作阶段——写作还没有步骤，综述之后单独设计。
+name: literature-survey
+title: 文献调研
+summary: 按需求查论文、下载原文，再逐篇精读，每篇一份带原句的笔记。
+stages:
+  - 文献: [literature-search, literature-read]

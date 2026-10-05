@@ -74,6 +74,13 @@ def title(text: str, fallback: str) -> str:
     return match.group(1).strip() if match else fallback
 
 
+def pending_headings(text: str) -> list[str]:
+    """还没填的格的标题。只看格子：二级标题之前的引言不算格——模板那句「把每一格的『待填』换成实话」
+    本身带这个词（Codex 演练里助理照抄了引言，整份被拒）。确认与页面都读这一处（外层 #234：页面原来
+    自己拿整篇去找，各格都填了还说「尚有待填」，研究者卡在确认上）。"""
+    return [s.heading for s in sections(text) if s.pending]
+
+
 def sections(text: str) -> list[Section]:
     """按二级标题切格；标题之前的引言不算格。一格空着或还带「待填」就是 pending。"""
     heads = list(_H2_RE.finditer(text))
@@ -123,9 +130,7 @@ def confirm(root: Path, *, by: str) -> dict[str, Any]:
     text = read(root)
     if not text.strip():
         raise ConfirmRefused(f"{FILE_NAME} 是空的，先和助理把需求写出来")
-    # 只看格子：二级标题之前的引言不算格（模板那句「把每一格的「待填」换成实话」本身带这个词——
-    # Codex 演练里助理照抄了引言，整份被拒；页面渲染也只认格子）
-    pending = [s.heading for s in sections(text) if s.pending]
+    pending = pending_headings(text)
     if pending:
         raise ConfirmRefused(f"{FILE_NAME} 里还有「{PLACEHOLDER}」没填：{', '.join(pending)}"
                              "（模板不能当需求确认）")

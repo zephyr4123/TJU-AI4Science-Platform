@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import datetime
 import logging
 import math
 from collections import Counter
@@ -68,18 +69,19 @@ class Limits:
 
 
 def search(output_dir: Path, inputs: Inputs, runner: Runner, limits: Limits, *, fulltext: bool,
-           client: OpenAlex | None = None, fetch: Fetch = fulltext_mod.fetch,
+           since: int = 0, client: OpenAlex | None = None, fetch: Fetch = fulltext_mod.fetch,
            excluded: frozenset[str] = frozenset()) -> str:
-    """跑完整个检索，写 sources.md，返回一行结论。`client` / `fetch` 给测试换成不连网的（四家
-    接口共用 `client.web`）；`excluded` 给召回实测挡住当标准答案的那篇综述。第 0 跳取每跳筛选数
-    的两倍：它要铺开题目的各个侧面。"""
+    """跑完整个检索，写 sources.md，返回一行结论。`since` 是起始年份，0 不限（外层 #227）。
+    `client` / `fetch` 给测试换成不连网的（四家接口共用 `client.web`）；`excluded` 给召回实测挡住
+    当标准答案的那篇综述。第 0 跳取每跳筛选数的两倍：它要铺开题目的各个侧面。"""
     output_dir = Path(output_dir).resolve()
     _check_limits(limits)
+    _check_since(since)
     need = requirement.read(inputs.workspace).strip()
     client = client or OpenAlex(key=openalex_key())
     costs: list[float] = []
-    seeds = _seed_session(output_dir, runner, need, costs)
-    pool = Pool(excluded, seeds.queries[:MAX_QUERIES])
+    seeds = _seed_session(output_dir, runner, need, since, costs)
+    pool = Pool(excluded, seeds.queries[:MAX_QUERIES], since)
     try:
         gathered = gather(pool, client, seeds, 2 * limits.per_hop)
         hop, stop = _hops(output_dir, runner, need, seeds, pool, client, limits, costs)
@@ -107,10 +109,22 @@ def _check_limits(limits: Limits) -> None:
             f"参数不对：最多跳数不能小于 0，每跳筛选数与停止下限至少 1，得到 {limits}")
 
 
+def _check_since(since: int) -> None:
+    """「近三年」要换算成年份再给：写成 3 当场拒，不当成公元 3 年、悄悄等于不筛。"""
+    this_year = datetime.date.today().year
+    if since and not 1000 <= since <= this_year:
+        raise CapabilityFailed(
+            f"起始年份写四位的年份（比如近三年是 {this_year - 2}），0 是不限；得到 {since}")
+
+
 # ── 种子与第 0 跳 ─────────────────────────────────────────────────────────
-def _seed_session(output_dir: Path, runner: Runner, need: str, costs: list[float]) -> Seeds:
+def _seed_session(output_dir: Path, runner: Runner, need: str, since: int,
+                  costs: list[float]) -> Seeds:
+    period = (f"只要 {since} 年及以后发表的论文：平台去学术库查时按这个年份查，更早的不交给你筛；"
+              "种子也只找这之后发表的。" if since else "不限年份。")
     prompt = prompting.build_prompt(
-        SEED_PROMPT, {"requirement": need, "max_queries": MAX_QUERIES, "max_seeds": MAX_SEEDS},
+        SEED_PROMPT, {"requirement": need, "period": period, "max_queries": MAX_QUERIES,
+                      "max_seeds": MAX_SEEDS},
         loadout=loadout.around(output_dir))
     result = session.run_session(runner, prompt, cwd=output_dir, allowed_paths=[output_dir],
                                  log_dir=output_dir / LOG_DIRNAME / "seeds")
@@ -152,7 +166,7 @@ def _expand(pool: Pool, client: OpenAlex, frontier: list[Paper], hop: int, per_h
     keys = {paper.key for paper in frontier}
     for paper in frontier:
         pool.note_refs(paper)
-    for work in client.citing(sorted(keys), CITING_PAGES):
+    for work in client.citing(sorted(keys), CITING_PAGES, pool.since):
         citer = from_openalex(work)
         pool.note_citing(citer, keys & set(citer.refs))
     missing = [k for k in pool.open_leads() if k not in pool.cache and k not in asked][:FETCH_CAP]
@@ -238,7 +252,7 @@ def _origins(marks: list[str]) -> str:
 
 
 def _fulltexts(output_dir: Path, pool: Pool, fetch: Fetch) -> dict[str, Fulltext]:
-    return {e.paper.key: fetch(e.paper, output_dir) for e in pool.included()}
+    return fulltext_mod.fetch_all([e.paper for e in pool.included()], output_dir, fetch)
 
 
 # ── 会话的事后判定 ────────────────────────────────────────────────────────

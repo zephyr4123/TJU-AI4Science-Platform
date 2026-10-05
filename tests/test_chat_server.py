@@ -703,3 +703,30 @@ def test_remove_endpoints_cascade_and_refuse(served, tmp_path):
     assert json.loads(call(base, "/projects")[2]) == []
     assert not (tmp_path / "projects" / "p").exists()
     assert call(base, "/projects/p/remove", {})[0] == 404
+
+
+def test_chat_doc_shows_a_turn_running_elsewhere_and_jobs_still_to_wake_it(served, tmp_path):
+    """外层 #230：叫醒那一轮是作业进程起的、不经过服务。对话接口从盘上读出正在跑的那一轮
+    （running），并说还有几个作业会来叫醒它（waiting）：页面据此定时重读、摆出这一轮、锁住输入框。"""
+    import os
+
+    from framework.chat import conversation as conv_mod
+    from framework.workspace import jobs
+    from framework.workspace import project as project_mod
+    from tests.fixtures.scripted_chat import ScriptedChat, reply
+
+    base, _ = served
+    ws = spaces.make_workspace(tmp_path, "w", project_id="p")
+    conv = conv_mod.new_conversation(project_mod.of(ws).chats, "claude_code", ws.root)
+    doc = json.loads(call(base, f"/projects/p/chats/{conv.chat_id}")[2])
+    assert doc["running"] is None and doc["waiting"] == 0
+    jobs._save(ws.jobs, jobs.Job(job_id="job-1", cap="literature-search", stage="literature",
+                                 argv=[], pid=os.getpid(), started_at="t", chat_id=conv.chat_id))
+    stream = conv_mod.send(conv, ScriptedChat([reply("读完了")]), "作业跑完了",
+                           system_prompt="g", allowed_paths=[], bash_rules=(), origin="框架")
+    next(stream)
+    doc = json.loads(call(base, f"/projects/p/chats/{conv.chat_id}")[2])
+    assert doc["waiting"] == 1
+    assert (doc["running"]["turn"], doc["running"]["origin"], doc["running"]["message"]) == (
+        1, "框架", "作业跑完了")
+    stream.close()
