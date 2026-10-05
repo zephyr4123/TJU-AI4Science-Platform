@@ -12,7 +12,7 @@ import { createElement, type ReactNode, useState } from 'react'
 
 import type { WorkspaceClient } from '@/api/client'
 import type { Capability, DirEntry, OutputBrief, WorkspaceDetail } from '@/api/types'
-import { OutputBody } from '@/board/OutputSheet'
+import { OutputBody } from '@/board/OutputDialog'
 import { Dot, ErrorNote, Skeleton } from '@/components/bits'
 import { Markdown } from '@/components/Markdown'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'

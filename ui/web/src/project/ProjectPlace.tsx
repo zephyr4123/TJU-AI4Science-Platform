@@ -57,7 +57,7 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
   }, [projectId, wsId, onOpenWorkspace])
   const openFile = useMemo(() => (fileRequest && fileRequest.ws === wsId ? { path: fileRequest.path, n: fileRequest.n } : null),
                            [fileRequest, wsId])
-  // 对话底部「运行中」点了一个作业（外层 #243）：去那个工作区、在看板的侧滑里打开那次产出看进度。离开那个工作区就作废，
+  // 对话底部「运行中」点了一个作业（外层 #243）：去那个工作区、在看板的悬浮窗里打开那次产出看进度。离开那个工作区就作废，
   // 回来时不再自己弹开
   const [outputRequest, setOutputRequest] = useState<{ ws: string; oid: string; n: number } | null>(null)
   const openOutput = useMemo(() => (outputRequest && outputRequest.ws === wsId ? { oid: outputRequest.oid, n: outputRequest.n } : null),

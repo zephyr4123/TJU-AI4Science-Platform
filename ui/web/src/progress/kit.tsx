@@ -93,7 +93,7 @@ function figures(text: string): ReactNode[] {
   return text.split(/(\d+)/).map((part, i) => (i % 2 ? <span key={i} className="font-medium text-foreground tabular-nums">{part}</span> : part))
 }
 
-/** 收着的「详情」：每行一个名、一句话；面板上只有图，数都在这里。排法与侧滑下面那张记录一样（白底、细线分行、
+/** 收着的「详情」：每行一个名、一句话；面板上只有图，数都在这里。排法与悬浮窗下面那张记录一样（白底、细线分行、
  *  左名右值），值是一句字的，里面的数加重、别的字淡，一眼先看到数 */
 export function Details({ rows }: { rows: [string, ReactNode][] }) {
   return (

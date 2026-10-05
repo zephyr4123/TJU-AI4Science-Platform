@@ -39,14 +39,14 @@ export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, op
   menu?: ReactNode
   /** 对话里点了这个工作区的一个文件（外层 #231）：切到文件镜头定位到它；`n` 每点一次加一，同一个文件再点也算 */
   openFile: { path: string; n: number } | null
-  /** 对话底部「运行中」点了这个工作区的一次产出（外层 #243）：切到看板、侧滑里打开它；`n` 同上 */
+  /** 对话底部「运行中」点了这个工作区的一次产出（外层 #243）：切到看板、悬浮窗里打开它；`n` 同上 */
   openOutput: { oid: string; n: number } | null
   onBack: () => void
   onSwitch: (id: string) => void
   onRemoved: (leftovers: string[]) => Promise<void>
 }) {
   const [view, setView] = useState<View>(openFile ? 'files' : 'board')
-  // 从看板「打开目录」跳到文件镜头时定位到哪个产出；从文件镜头「在看板打开」回来时侧滑里开哪次产出；
+  // 从看板「打开目录」跳到文件镜头时定位到哪个产出；从文件镜头「在看板打开」回来时悬浮窗里开哪次产出；
   // 对话里点了这个工作区的文件也定位到它
   const [focus, setFocus] = useState<string | null>(openFile?.path ?? null)
   const [opened, setOpened] = useState<string | null>(null)

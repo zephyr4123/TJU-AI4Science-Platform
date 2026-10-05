@@ -121,6 +121,9 @@
   --foreground: #1C2230;
   --card: #FFFFFF;
   --card-foreground: #1C2230;
+  /* 悬浮窗的玻璃（外层 #242）：一圈亮边与顶上一道高光 */
+  --glass-rim: rgb(255 255 255 / 0.65);
+  --glass-shine: rgb(255 255 255 / 0.8);
   --popover: #FFFFFF;
   --popover-foreground: #1C2230;
   --primary: #2F4BC9;
@@ -159,6 +162,8 @@
     --foreground: #E6E8EE;
     --card: #1E222A;
     --card-foreground: #E6E8EE;
+    --glass-rim: rgb(255 255 255 / 0.1);
+    --glass-shine: rgb(255 255 255 / 0.08);
     --popover: #1E222A;
     --popover-foreground: #E6E8EE;
     --primary: #8FA3F5;
@@ -194,6 +199,8 @@
   --foreground: #E6E8EE;
   --card: #1E222A;
   --card-foreground: #E6E8EE;
+  --glass-rim: rgb(255 255 255 / 0.1);
+  --glass-shine: rgb(255 255 255 / 0.08);
   --popover: #1E222A;
   --popover-foreground: #E6E8EE;
   --primary: #8FA3F5;

@@ -6,12 +6,12 @@ import type { Capability, FlowPick, SkillEntry, WorkspaceDetail } from '@/api/ty
 import { ErrorNote, Skeleton } from '@/components/bits'
 import type { Resource } from '@/lib/useResource'
 
-import { OutputSheet } from './OutputSheet'
+import { OutputDialog } from './OutputDialog'
 import { RequirementPage, RequirementStrip } from './Requirement'
 import { needsSign } from './derive'
 import { type ColumnCaps, Flows } from './Flows'
 
-/** `opened` 是侧滑里打开的那次产出，状态在父组件（文件镜头「在看板打开」要能指定它） */
+/** `opened` 是悬浮窗里打开的那次产出，状态在父组件（文件镜头「在看板打开」要能指定它） */
 export function Board({ workspace, doc, caps, skills, opened, onOpen, onOpenFiles }: {
   workspace: WorkspaceClient; doc: Resource<WorkspaceDetail>; caps: Resource<Capability[]>; skills: Resource<SkillEntry[]>
   opened: string | null; onOpen: (oid: string | null) => void; onOpenFiles: (path: string) => void
@@ -50,7 +50,7 @@ export function Board({ workspace, doc, caps, skills, opened, onOpen, onOpenFile
         <RequirementStrip workspace={workspace} requirement={data.requirement} reload={doc.reload} />
         <Flows workspace={workspace} doc={data} capsOf={capsOf} onOpen={onOpen} onChanged={doc.reload} />
       </div>
-      <OutputSheet workspace={workspace} doc={data} catalog={catalog} oid={opened} onClose={() => onOpen(null)} onOpen={onOpen}
+      <OutputDialog workspace={workspace} doc={data} catalog={catalog} oid={opened} onClose={() => onOpen(null)} onOpen={onOpen}
                    onChanged={doc.reload}
                    pending={opened !== null && waiting.has(opened)}
                    onOpenFiles={(path) => { onOpen(null); onOpenFiles(path) }} />

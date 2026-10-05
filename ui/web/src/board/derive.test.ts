@@ -67,7 +67,7 @@ describe('流在等谁', () => {
   })
 })
 
-describe('侧滑里的记录', () => {
+describe('产出悬浮窗里的记录', () => {
   it('文件按种类数：从多到少；一样多照文档、数据、图片、PDF、代码排，其它垫底', () => {
     const paths = ['sources.md', 'seeds.md', 'candidates.jsonl', 'papers/W1/source.pdf', 'papers/W1/structured.json',
       'papers/W1/images/a.png', 'papers/W1/images/b.png', 'papers/W1/images/c.png', 'run.log']
