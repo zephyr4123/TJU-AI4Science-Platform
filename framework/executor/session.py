@@ -1,4 +1,4 @@
-"""跑一次执行层会话：调 `Runner` → 把取证日志留档 → 交回 `RunResult`。
+"""跑一次执行层会话：调 `Runner` → 把取证日志留档 → 交回 `RunResult`；没开工就失败的隔一会重试。
 
 在 executor 层：它是框架里唯一碰 `backends` 那个端口的地方，但**零模型调用**——
 模型跑在适配器起的子进程里，这里只负责喂进去、收回来，并且不看会话自报的任何结论
@@ -9,18 +9,25 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
+import time
 from pathlib import Path
 
 from backends import Runner, RunResult
 from framework import agents
 from framework.skills import EXECUTOR_BASH_RULES
 
+LOGGER = logging.getLogger("ai4sci.executor")
+
 EXECUTOR_TIMEOUT_ENV = "AI4SCI_EXECUTOR_TIMEOUT_S"
 DEFAULT_EXECUTOR_TIMEOUT_S = 900.0
 # 执行层适配器把事件流写在 cwd/<这个目录>/ 下；跑完搬走留档
 SCRATCH_DIRNAME = ".ai4sci"
+# 会话没开工就失败，隔这么久再起，几个数就重试几次（外层 #235）：#226 演练里 Codex 一时满载，
+# 一个精读会话起来就退，前后几秒别的会话都正常
+RETRY_WAITS_S = (30.0, 90.0)
 
 
 def executor_timeout_s() -> float:
@@ -42,16 +49,39 @@ def run_session(
     之后按 `changed_files` 判越界，那是能力的事（纲领 §5）。命令只放行 `ai4sci skill …`：
     执行层面前只有工具包（纲领 P-22），能力与签字是协调层的。
     提示末尾接这家 CLI 自己的「工具怎么用」；模型与深度按人的设置里这家的（P-25）。
+    没开工就失败的（见 `_never_started`）隔一会再起，最多 `len(RETRY_WAITS_S)` 次；
+    每次的事件流都留档，交回最后一次的结果——前几次按判据没花钱，花费只记最后一次。
     """
-    result = runner.run(
-        prompt=full_prompt(runner, prompt), cwd=cwd,
-        timeout_s=executor_timeout_s() if timeout_s is None else timeout_s,
-        allowed_paths=allowed_paths, bash_rules=EXECUTOR_BASH_RULES,
-        tuning=agents.tuning_for(runner.name),
-        max_turns=max_turns, max_budget_usd=max_budget_usd,
-    )
-    stash_executor_logs(cwd, log_dir)
+    def once() -> RunResult:
+        result = runner.run(
+            prompt=full_prompt(runner, prompt), cwd=cwd,
+            timeout_s=executor_timeout_s() if timeout_s is None else timeout_s,
+            allowed_paths=allowed_paths, bash_rules=EXECUTOR_BASH_RULES,
+            tuning=agents.tuning_for(runner.name),
+            max_turns=max_turns, max_budget_usd=max_budget_usd,
+        )
+        stash_executor_logs(cwd, log_dir)
+        return result
+
+    result = once()
+    for attempt, wait_s in enumerate(RETRY_WAITS_S, start=1):
+        if not _never_started(result):
+            break
+        LOGGER.warning("session_retry cwd=%s attempt=%d exit=%d wait_s=%g tail=%r", cwd, attempt,
+                       result.exit_code, wait_s, result.stdout_tail[-200:])
+        time.sleep(wait_s)
+        result = once()
     return result
+
+
+def _never_started(result: RunResult) -> bool:
+    """会话没开工就失败：自己退出且退出码非零、没超时、一个文件没动、没花钱（0 或未知）。
+
+    只用框架看得见的事实判，不读各家 CLI 的报错字眼（端口方向）。被信号杀的（退出码为负，
+    有人停了它）、超时的、动过文件的、花了钱的（撞了轮数或预算的闸）都不算，照旧交给能力判。
+    """
+    return (result.exit_code > 0 and not result.timed_out and not result.changed_files
+            and not result.cost_usd > 0)
 
 
 def full_prompt(runner: Runner, prompt: str) -> str:
