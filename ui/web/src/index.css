@@ -127,6 +127,10 @@
   /* 玻璃上的两团极光（外层 #249）：靛压左上、青压右下，只拿来垫底与描边，不表示状态 */
   --aurora-1: #2F4BC9;
   --aurora-2: #1C9AB0;
+  /* 侧边栏与页眉的边（外层 #253）：一深一亮两层细线，两头渐隐，像刻出来的一道边 */
+  --edge: rgb(28 34 48 / 0.11);
+  --edge-glint: rgb(255 255 255 / 0.8);
+  --key-shine: rgb(255 255 255 / 0.55);
   --popover: #FFFFFF;
   --popover-foreground: #1C2230;
   --primary: #2F4BC9;
@@ -169,6 +173,9 @@
     --glass-shine: rgb(255 255 255 / 0.08);
     --aurora-1: #8FA3F5;
     --aurora-2: #5CC6D6;
+    --edge: rgb(255 255 255 / 0.09);
+    --edge-glint: rgb(0 0 0 / 0.35);
+    --key-shine: rgb(255 255 255 / 0.06);
     --popover: #1E222A;
     --popover-foreground: #E6E8EE;
     --primary: #8FA3F5;
@@ -208,6 +215,9 @@
   --glass-shine: rgb(255 255 255 / 0.08);
   --aurora-1: #8FA3F5;
   --aurora-2: #5CC6D6;
+  --edge: rgb(255 255 255 / 0.09);
+  --edge-glint: rgb(0 0 0 / 0.35);
+  --key-shine: rgb(255 255 255 / 0.06);
   --popover: #1E222A;
   --popover-foreground: #E6E8EE;
   --primary: #8FA3F5;
@@ -287,6 +297,27 @@
         color-mix(in oklab, var(--background) 42%, transparent) 100%),
       linear-gradient(180deg, color-mix(in oklab, var(--background) 55%, transparent) 0%, transparent 28%,
         transparent 72%, color-mix(in oklab, var(--background) 55%, transparent) 100%);
+  }
+
+  /* 侧边栏右边、页眉底边（外层 #253）：两层细线（亮的一层贴着里面、深的一层压在边上），两头渐隐——竖的顶上淡掉、
+     横的左头淡掉，两条在左上角不再交成「T」。挂在 position: relative 的元素上 */
+  .edge-r::after,
+  .edge-b::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+  }
+  .edge-r::after {
+    inset: 0 0 0 auto;
+    width: 2px;
+    background: linear-gradient(90deg, var(--edge-glint) 0 1px, var(--edge) 1px 2px);
+    mask-image: linear-gradient(180deg, transparent 3.5rem, #000 9rem, #000 calc(100% - 6rem), transparent);
+  }
+  .edge-b::after {
+    inset: auto 0 0 0;
+    height: 2px;
+    background: linear-gradient(180deg, var(--edge-glint) 0 1px, var(--edge) 1px 2px);
+    mask-image: linear-gradient(90deg, transparent, #000 10rem, #000 calc(100% - 4rem), transparent);
   }
 
   /* 铺整块面板的画面上的纱幕：压到只剩一点氛围，字照常读（对话正文、看板） */
