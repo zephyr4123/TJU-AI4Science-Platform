@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-05
+
 ### 新增
 
 - 文献检索与精读边跑边往产出目录写 `progress.jsonl`（`framework/files.py::append_event`），产出悬浮窗最上面按能力画定制的进度面板：检索是方块连线加收录蜂巢，精读是原文沿流水线流成笔记（外层 #242 #244 #245）
@@ -209,7 +211,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.2.0...v1.3.0
