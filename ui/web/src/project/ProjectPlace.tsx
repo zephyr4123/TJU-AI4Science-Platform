@@ -12,18 +12,21 @@ import { RunningStrip } from '@/chat/RunningStrip'
 import { type RunningJob, runningJobs } from '@/chat/running'
 import { WELCOME } from '@/chat/Welcome'
 import { ErrorNote, Skeleton } from '@/components/bits'
+import { Logo } from '@/components/Logo'
 import { LinkOpener } from '@/components/markdown/links'
 import { Scene } from '@/components/Scene'
+import { Back } from '@/components/Top'
 import { useChats } from '@/lib/useChats'
 import { useResource } from '@/lib/useResource'
 import { WorkspacePage } from '@/workspace/WorkspacePage'
 
+import { projectKey } from './prefetch'
 import { ProjectPage } from './ProjectPage'
 
 /** 有作业在跑时多久重拉一次项目清单 */
 const POLL_MS = 10_000
 
-export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu, onOpenWorkspace, onBack, onRemoved, onWorkspaceRemoved }: {
+export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu, onOpenWorkspace, onBack, onHome, onRemove, onWorkspaceRemoved }: {
   projectId: string
   /** 首页清单里的那一行：那一整份还没回来时标题与目标先照它写 */
   summary: ProjectSummary | null
@@ -35,12 +38,15 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
   onOpenWorkspace: (id: string) => void
   /** 从工作区回项目页 */
   onBack: () => void
-  onRemoved: (leftovers: string[]) => Promise<void>
+  /** 项目页左上角「‹ 首页」 */
+  onHome: () => void
+  /** 删整个项目（首页清单上也是它，App 收尾） */
+  onRemove: () => Promise<void>
   onWorkspaceRemoved: (leftovers: string[]) => Promise<void>
 }) {
   const scope = useMemo(() => inProject(projectId), [projectId])
   const c = useChats(scope)
-  const doc = useResource(() => api.project(projectId), [projectId, c.epoch], `project:${projectId}`)
+  const doc = useResource(() => api.project(projectId), [projectId, c.epoch], projectKey(projectId))
   // 能力表与 skill 清单整个项目拉一次：看板每一列底下的能力、产出记录里能力的名与参数的 label 都从它查（P-21）
   const caps = useResource(api.capabilities, [], 'caps')
   const skills = useResource(api.skills, [], 'skills')
@@ -104,14 +110,15 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
     )
   }
   if (!doc.data) {
-    // 第一次进这个项目、那一整份还没回来：底图、标题、目标先照首页清单里那一行摆好（和项目页同一个位置），
-    // 输入框的地方放骨架——回来时只有输入框与工作区清单冒出来，别的都不动
+    // 第一次进这个项目、那一整份还没回来（首页鼠标停过那一行就先取了，多半等不到这里，外层 #250）：底图、返回、标、
+    // 标题、目标先照首页清单里那一行摆好，位置与项目页一模一样；输入框的地方放骨架——回来时只有输入框与工作区清单冒出来
     return (
       <div className="relative flex min-h-0 flex-1 flex-col">
         <Scene picture={coverOf(projectId)} veil="mist" />
-        {menu && <div className="absolute top-3 left-4 z-10">{menu}</div>}
-        <div className="relative mx-auto w-full max-w-[47rem] px-6 pt-[12vh]">
-          <h1 className="text-center font-serif text-[2rem] leading-[1.25] font-semibold tracking-tight text-balance">{summary?.title ?? projectId}</h1>
+        <div className="absolute top-3 left-4 z-10 flex items-center gap-3 sm:left-5">{menu}<Back label="首页" onClick={onHome} /></div>
+        <div className="relative mx-auto w-full max-w-[47rem] px-6 pt-[10vh]">
+          <Logo className="mx-auto size-12 text-primary" />
+          <h1 className="mt-5 text-center font-serif text-[2rem] leading-[1.25] font-semibold tracking-tight text-balance">{summary?.title ?? projectId}</h1>
           {summary?.goal && <p className="t-body mx-auto mt-3 text-center text-muted-foreground">{summary.goal}</p>}
           <div className="mt-8">{doc.error ? <ErrorNote text={doc.error} /> : <Skeleton lines={3} />}</div>
         </div>
@@ -123,7 +130,7 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
       <ProjectPage project={doc.data} chats={c} backends={backends} healthy={healthy} menu={menu} running={running}
                    onOpenWorkspace={onOpenWorkspace}
                    onCreatedWorkspace={async (id) => { await reload(); onOpenWorkspace(id) }}
-                   onRemove={async () => { const removed = await api.removeProject(projectId); await onRemoved(removed.leftovers) }} />
+                   onRemove={onRemove} onHome={onHome} />
     </LinkOpener.Provider>
   )
 }

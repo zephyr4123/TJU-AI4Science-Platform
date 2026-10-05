@@ -1,9 +1,10 @@
 // 首页 = 项目清单（主人 2026-09-22：侧边栏列项目很鸡肋，直接在门口把项目都摆出来，点一个进去）。外层 #249（主人 2026-10-05）：
 // 三列格子名字高低不齐，改成一行一个；封面图与项目无关，看着难受，不放图，只靠字与材质。整张清单是一块玻璃（与产出悬浮窗
 // 同一种），底下垫两团静态的极光、边上一圈渐变细线；一行：宋体名字与目标一句、右边三列事实（运行中几个、几个工作区、
-// 创建于哪天，列宽固定上下对齐）；鼠标在哪行，那行跟着一团淡靛光、右端滑出箭头。标题那一行有搜索框（项目多了也好找）：
-// 按名字与目标筛，搜中的字标出来。一个项目都没有：一句「还没有项目」加一枚「新建项目」。
-import { ArrowRight, MagnifyingGlass, Plus, X } from '@phosphor-icons/react'
+// 创建于哪天，列宽固定上下对齐）；鼠标在哪行，那行跟着一团淡靛光、右端出来一枚「…」，里面是删除项目（外层 #250：
+// 不用点进去才能删），同时先去取那个项目（点下去直接摆出来）。标题那一行有搜索框（项目多了也好找）：按名字与目标筛，
+// 搜中的字标出来。一个项目都没有：一句「还没有项目」加一枚「新建项目」。
+import { MagnifyingGlass, Plus, X } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type MouseEvent, type ReactNode, useState } from 'react'
 
@@ -19,11 +20,16 @@ import { day } from '@/lib/format'
 import { useToken } from '@/lib/tokens'
 import type { Resource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
+import { prefetchProject } from '@/project/prefetch'
+import { ProjectMenu } from '@/project/ProjectMenu'
 
 import { findProjects, marks, newestFirst, wordsOf } from './derive'
 
-export function Home({ projects, onOpen, onNew, menu }: {
-  projects: Resource<ProjectSummary[]>; onOpen: (id: string) => void; onNew: () => void; menu?: ReactNode
+export function Home({ projects, onOpen, onNew, onRemove, menu }: {
+  projects: Resource<ProjectSummary[]>; onOpen: (id: string) => void; onNew: () => void
+  /** 删整个项目（连工作区、对话、机器上的镜像） */
+  onRemove: (id: string) => Promise<void>
+  menu?: ReactNode
 }) {
   const [query, setQuery] = useState('')
   const list = projects.data ? newestFirst(projects.data) : null
@@ -53,8 +59,11 @@ export function Home({ projects, onOpen, onNew, menu }: {
           <Aurora className="mt-6">
             <ul>
               {shown.map((p) => (
-                <li key={p.id} className="relative not-first:before:absolute not-first:before:inset-x-6 not-first:before:top-0 not-first:before:h-px not-first:before:bg-foreground/[0.07]">
+                <li key={p.id} onPointerEnter={() => prefetchProject(p.id)}
+                    className="group/row relative not-first:before:absolute not-first:before:inset-x-6 not-first:before:top-0 not-first:before:h-px not-first:before:bg-foreground/[0.07]">
                   <ProjectRow project={p} words={words} onOpen={() => onOpen(p.id)} />
+                  <ProjectMenu title={p.title} onRemove={() => onRemove(p.id)}
+                               className="absolute top-1/2 right-4 -translate-y-1/2 opacity-0 transition-opacity duration-200 group-hover/row:opacity-100 group-focus-within/row:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100" />
                 </li>
               ))}
             </ul>
@@ -109,16 +118,16 @@ function follow(e: MouseEvent<HTMLElement>) {
   e.currentTarget.style.setProperty('--spot-y', `${e.clientY - r.top}px`)
 }
 
-/** 一行：宋体名字（最多两行）与目标一句、右边三列事实；鼠标进来事实往左让，右端滑出箭头。窄屏事实挪到目标底下一行 */
+/** 一行：宋体名字（最多两行）与目标一句、右边三列事实；鼠标进来事实往左让出「…」的位置。窄屏事实挪到目标底下一行 */
 function ProjectRow({ project, words, onOpen }: { project: ProjectSummary; words: string[]; onOpen: () => void }) {
   const running = project.running > 0 && (
     <span className="flex items-center justify-end gap-1.5 text-primary"><Dot tone="primary" pulse />运行中 {project.running}</span>
   )
   return (
-    <button type="button" onClick={onOpen} onMouseMove={follow}
-            className="group relative isolate flex min-h-[4.75rem] w-full items-center gap-6 px-6 py-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset">
+    <button type="button" onClick={onOpen} onMouseMove={follow} onFocus={() => prefetchProject(project.id)}
+            className="relative isolate flex min-h-[4.75rem] w-full items-center gap-6 py-4 pr-14 pl-6 text-left outline-none sm:[@media(hover:hover)]:pr-6 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset">
       <span aria-hidden="true"
-            className="pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100 group-focus-visible:opacity-100"
+            className="pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-200 ease-out group-hover/row:opacity-100 group-focus-within/row:opacity-100"
             style={{ background: 'radial-gradient(26rem circle at var(--spot-x, 50%) var(--spot-y, 50%), color-mix(in oklab, var(--primary) 9%, transparent), transparent 72%)' }} />
       <span className="min-w-0 flex-1">
         <span className="line-clamp-2 font-serif text-[1.125rem] leading-[1.35] font-semibold text-balance"><Marked text={project.title} words={words} /></span>
@@ -127,13 +136,11 @@ function ProjectRow({ project, words, onOpen }: { project: ProjectSummary; words
           {running}<span>{project.workspaces} 个工作区</span><span>创建于 {day(project.created_at)}</span>
         </span>
       </span>
-      <span className="hidden shrink-0 grid-cols-[5.5rem_5.5rem_7rem] items-center text-right text-[0.8125rem] text-muted-foreground tabular transition-[translate] duration-200 ease-out group-hover:-translate-x-7 group-focus-visible:-translate-x-7 sm:grid">
+      <span className="hidden shrink-0 grid-cols-[5.5rem_5.5rem_7rem] items-center text-right text-[0.8125rem] text-muted-foreground tabular transition-[translate] duration-200 ease-out group-hover/row:-translate-x-8 group-focus-within/row:-translate-x-8 sm:grid">
         <span>{running}</span>
         <span>{project.workspaces} 个工作区</span>
         <span>创建于 {day(project.created_at)}</span>
       </span>
-      <ArrowRight aria-hidden="true"
-                  className="absolute top-1/2 right-6 size-4 -translate-x-1.5 -translate-y-1/2 text-primary opacity-0 transition-[opacity,translate] duration-200 ease-out group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100" />
     </button>
   )
 }

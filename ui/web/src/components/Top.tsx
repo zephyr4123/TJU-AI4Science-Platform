@@ -23,13 +23,7 @@ export function Top({ menu, back, title, note, lens, tail, picture }: {
   const row = (
     <header className="flex h-14 items-center gap-3 px-4 sm:px-5">
       {menu}
-      {back && (
-        <button type="button" onClick={back.onClick}
-                className="flex h-8 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1 text-[0.875rem] text-muted-foreground transition-colors hover:bg-background/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
-          <CaretLeft weight="bold" className="size-3.5" />
-          <span className="max-w-[16rem] truncate">{back.label}</span>
-        </button>
-      )}
+      {back && <Back {...back} />}
       {typeof title === 'string'
         ? <span className="min-w-0 truncate font-serif text-[1.0625rem] font-semibold tracking-[0.02em]">{title}</span>
         : title}
@@ -46,4 +40,15 @@ export function Top({ menu, back, title, note, lens, tail, picture }: {
   )
   if (!picture) return <div className="shrink-0 border-b bg-card">{row}</div>
   return <Band picture={picture} veil="wash" blur className="shrink-0 border-b">{row}</Band>
+}
+
+/** 「‹ 上一级的名字」：页眉里一枚；项目页没有页眉，左上角浮着同一枚回首页（外层 #250） */
+export function Back({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+            className="flex h-8 shrink-0 items-center gap-0.5 rounded-md pr-2 pl-1 text-[0.875rem] text-muted-foreground transition-colors hover:bg-background/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+      <CaretLeft weight="bold" className="size-3.5" />
+      <span className="max-w-[16rem] truncate">{label}</span>
+    </button>
+  )
 }
