@@ -98,8 +98,8 @@ AUTH_NAME = "auth.json"
 RULES_NAME = "ai4sci.rules"
 CHAT_ID_ENV = "AI4SCI_CHAT_ID"
 MIN_VERSION = (0, 160, 0)
-# 起点 6.1 Sol / medium（P-25，外层 #247）：0.160 目录里排第一的主力款（Latest workhorse for
-# coding and everyday work）；Astra 是目录里写的 Frontier 那档，Luna 快而省
+# 起点 6.1 Sol / medium（P-25，外层 #247；主人 2026-10-05 定：性价比最高）：0.160 目录里排第一的
+# 主力款（Latest workhorse for coding and everyday work）；Astra 是目录里写的 Frontier 那档，Luna 快而省
 MODELS = (Choice("gpt-6.1-sol", "GPT-6.1 Sol", "主力"),
           Choice("gpt-6-astra", "GPT-6 Astra", "最强"),
           Choice("gpt-6-luna", "GPT-6 Luna", "快"),
