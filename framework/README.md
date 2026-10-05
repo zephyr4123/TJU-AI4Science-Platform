@@ -71,7 +71,7 @@ flowchart TB
 | 静态检查 | ruff：`E F W B I BLE UP`，行宽 100（`BLE` 是「不吞异常」的机器判据） | |
 | 测试 | pytest，剧本后端代替 mock（见 `tests/README.md`） | |
 | 外部命令 | git、ssh / rsync、ruff（查执行层写的 harness）、pgrep | |
-| agent CLI | Claude Code ≥ 2.1.276（隔离参数 `--setting-sources "" --strict-mcp-config --disable-slash-commands`）、Codex 按 0.147.0 实测（私有 `CODEX_HOME` 隔离）；实测清单只记在各自适配器的文件头 | |
+| agent CLI | Claude Code ≥ 2.1.276（隔离参数 `--setting-sources "" --strict-mcp-config --disable-slash-commands`）、Codex ≥ 0.160.0（0.147.0 上逐条实测、0.160.0 上 live 复测）（私有 `CODEX_HOME` 隔离）；实测清单只记在各自适配器的文件头 | |
 
 ## 2b. 两条主路径
 

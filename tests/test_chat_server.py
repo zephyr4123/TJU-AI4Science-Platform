@@ -73,7 +73,7 @@ def served(tmp_path):
         # 自检不跑真 CLI：claude_code 过、codex 没登录
         if name == "codex":
             return AgentProbe(items=[("装了没", True, "/x"), ("登录", False, "没登录")],
-                              installed=True, version="codex-cli 0.147.0")
+                              installed=True, version="codex-cli 0.160.0")
         return AgentProbe(items=[("装了没", True, "/x"), ("说话", True, "pong")],
                           installed=True, version="2.1.278", logged_in=True, spoke_s=0.8)
 
