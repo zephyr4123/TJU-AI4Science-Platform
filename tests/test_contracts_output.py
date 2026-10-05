@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -77,3 +80,28 @@ def test_sign_records_the_hash_and_goes_stale_when_the_directory_changes(tmp_pat
     with pytest.raises(ValueError, match="不是一份签字记录"):
         output.read_signed(tmp_path)
     assert output.signature_state(tmp_path / "nowhere") is None
+
+
+def test_signature_state_rereads_the_files_only_when_they_change(tmp_path, monkeypatch):
+    """项目页每开一次都要看签字过没过期（外层 #250）：文件清单、大小、修改时间都没变就不重读内容；
+    改了一个字节（同样大小）也照样看出来过期。签字本身照旧现算。"""
+    output.write_meta(tmp_path, Meta(id="literature/1", stage="literature", title="t", by="b",
+                                     created_at="c", status="ok"))
+    (tmp_path / "paper.pdf").write_bytes(b"x" * 1000)
+    (tmp_path / "sources.md").write_text("one\n", encoding="utf-8")
+    output.sign(tmp_path, by="me")
+    reads = []
+    real = Path.read_bytes
+    monkeypatch.setattr(Path, "read_bytes", lambda self: (reads.append(self.name), real(self))[1])
+
+    assert output.signature_state(tmp_path)["stale"] is False
+    first = len(reads)
+    assert output.signature_state(tmp_path)["stale"] is False
+    assert len(reads) == first  # 没变：一个文件都不重读
+
+    stat = (tmp_path / "sources.md").stat()
+    (tmp_path / "sources.md").write_text("two\n", encoding="utf-8")  # 同样大小
+    os.utime(tmp_path / "sources.md", ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+    assert output.signature_state(tmp_path)["stale"] is True
+    (tmp_path / "extra.txt").write_text("new", encoding="utf-8")
+    assert output.signature_state(tmp_path)["stale"] is True
