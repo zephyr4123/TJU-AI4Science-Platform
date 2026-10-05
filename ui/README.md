@@ -63,7 +63,7 @@ flowchart TB
   subgraph PAGES["页面与地方（每个目录一个页面或镜头）"]
     direction LR
     PLACES["places/<br/>地方栏、状态机"]
-    HOME["home/<br/>项目墙、门口"]
+    HOME["home/<br/>项目清单、门口"]
     PROJ["project/<br/>项目页"]
     WSP["workspace/<br/>工作区页"]
     BOARD["board/<br/>看板"]

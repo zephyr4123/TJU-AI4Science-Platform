@@ -37,7 +37,7 @@ export function span(start: string, end: string | null): string {
   return `${when(start)} – ${sameDay ? b.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : when(end)}`
 }
 
-/** 只到天：「9 月 21 日」；跨年才带年。项目墙上「创建于」用它。 */
+/** 只到天：「9 月 21 日」；跨年才带年。首页项目清单上「创建于」用它。 */
 export function day(iso: string | null | undefined, today = new Date()): string {
   if (!iso) return '—'
   const date = new Date(iso)
