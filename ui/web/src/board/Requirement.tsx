@@ -1,14 +1,14 @@
 // 需求（纲领 P-19）：工作区的根。没确认时它就是工作区页——文档按二级标题一格一格铺开（模板留的「待填」是空格子），
-// 底下一颗「确认」；确认了收成顶部一条（版本、谁、何时），点开侧滑看全文；助理又改了就显示 diff 与「确认下一版」。
+// 底下一颗「确认」；确认了收成顶部一条（版本、何时），点开居中的玻璃悬浮窗看全文；助理又改了就显示 diff 与「确认下一版」。
 // 页面只渲染不编辑：改需求只走对话（一个文件一个生产者），diff 才有意义。
 import { ArrowsClockwise, CaretRight, CheckCircle, Circle } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import type { WorkspaceClient } from '@/api/client'
 import type { RequirementDetail, RequirementSection } from '@/api/types'
+import { GlassDialog, GlassTitle } from '@/components/GlassDialog'
 import { Markdown } from '@/components/Markdown'
 import { SpotlightCard } from '@/components/reactbits/SpotlightCard'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { ConfirmKey } from '@/keys/ConfirmKey'
 import { changedCount, diffLines } from '@/lib/diff'
 import { when } from '@/lib/format'
@@ -69,7 +69,7 @@ function SectionCard({ section }: { section: RequirementSection }) {
   )
 }
 
-// ── 已确认：收成一条，点开侧滑 ──────────────────────────────────────────────
+// ── 已确认：收成一条，点开悬浮窗 ────────────────────────────────────────────
 export function RequirementStrip({ workspace, requirement, reload }: {
   workspace: WorkspaceClient; requirement: RequirementDetail; reload: () => Promise<void>
 }) {
@@ -92,24 +92,22 @@ export function RequirementStrip({ workspace, requirement, reload }: {
           ? <ArrowsClockwise weight="bold" className="size-4 shrink-0 text-wait" aria-hidden />
           : <CaretRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
       </button>
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="gap-0 overflow-y-auto p-0 data-[side=right]:w-[100vw] data-[side=right]:sm:w-[40rem] data-[side=right]:sm:max-w-[40rem]">
-          <SheetHeader className="px-6 pt-6 pb-2">
-            <SheetTitle className="font-serif text-[1.25rem]">{requirement.title}</SheetTitle>
-            <p className="t-label">需求 v{requirement.version} · {when(requirement.at)} 确认</p>
-          </SheetHeader>
-          <div className="px-6 pb-8">
-            {requirement.dirty && requirement.confirmed_text !== null ? (
-              <>
-                <DiffView before={requirement.confirmed_text} after={requirement.text} />
-                <div className="mt-6"><ConfirmKey workspace={workspace} requirement={requirement} reload={reload} compact /></div>
-              </>
-            ) : (
-              <Markdown text={requirement.text} />
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+      <GlassDialog open={open} onOpenChange={setOpen}>
+        <header className="flex flex-col gap-1 px-6 pt-6 pb-3">
+          <GlassTitle>{requirement.title}</GlassTitle>
+          <p className="t-label">需求 v{requirement.version} · {when(requirement.at)} 确认</p>
+        </header>
+        <div className="px-6 pb-8">
+          {requirement.dirty && requirement.confirmed_text !== null ? (
+            <>
+              <DiffView before={requirement.confirmed_text} after={requirement.text} />
+              <div className="mt-6"><ConfirmKey workspace={workspace} requirement={requirement} reload={reload} compact /></div>
+            </>
+          ) : (
+            <Markdown text={requirement.text} />
+          )}
+        </div>
+      </GlassDialog>
     </>
   )
 }
