@@ -5,7 +5,7 @@
 // 宽度与正文同一列（主人：矮胖显窄，要高一点瘦一点、大气一点）。空着的时候 placeholder 只写快捷键（主人：轮换的提示语没有信息量，删）；
 // 助理答着的时候 placeholder 是那个英文词（thinking…）、不许发。
 import { ArrowUp } from '@phosphor-icons/react'
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import type { Backend, Choice, Tuning } from '@/api/types'
 import GlassSurface from '@/components/reactbits/GlassSurface'
@@ -29,6 +29,8 @@ interface Props {
   who?: { options: Backend[]; value: string; onChange: (name: string) => void }
   /** 空着时的提示；项目页正中间那只写「要做什么？」 */
   placeholder?: string
+  /** 摆在输入框正上方的一条（对话底部的「运行中」，外层 #243） */
+  above?: ReactNode
   className?: string
 }
 
@@ -36,7 +38,7 @@ const LINE = 24
 const MIN_LINES = 3
 const MAX_LINES = 10
 
-export function Composer({ busy, thinking, knobs, tuning, onTune, onSend, who, placeholder = 'Enter 发送，Shift + Enter 换行', className }: Props) {
+export function Composer({ busy, thinking, knobs, tuning, onTune, onSend, who, placeholder = 'Enter 发送，Shift + Enter 换行', above, className }: Props) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -65,6 +67,7 @@ export function Composer({ busy, thinking, knobs, tuning, onTune, onSend, who, p
 
   return (
     <div className={cn('relative z-10 px-6 pt-3 pb-6', className)}>
+      {above}
       <GlassSurface borderRadius={24} className="mx-auto max-w-[44rem] focus-within:ring-3 focus-within:ring-ring/35">
         <div className="relative flex flex-col px-4 pt-4 pb-3">
           <Textarea
