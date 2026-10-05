@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { FlowProgress } from '@/api/types'
 
-import { needsSign, nextStage, openByDefault, outputState, shortNote, waitingSentence } from './derive'
+import { filesWord, needsSign, nextStage, outputState, shortNote, waitingSentence } from './derive'
 
 const out = (id: string, signed = false, stale = false) =>
   ({ id, title: 't', status: 'ok' as const, by: 'design', from: [], signed, signed_stale: stale })
@@ -67,10 +67,16 @@ describe('流在等谁', () => {
   })
 })
 
-describe('侧滑里一打开就展开的文件', () => {
-  it('只有产出目录顶层的 markdown；子目录里的（几十篇原文、笔记）点了才排版', () => {
-    expect(['sources.md', 'seeds.md', 'analysis.md'].map(openByDefault)).toEqual([true, true, true])
-    expect(['papers/W1/paper.md', 'notes/3/note.md', 'rounds/0/decisions.md', 'candidates.jsonl', 'scoring.yaml'].map(openByDefault))
-      .toEqual([false, false, false, false, false])
+describe('侧滑里文件那一行', () => {
+  it('一共几个，再按种类从多到少；一样多照文档、数据、图片、PDF、代码排，其它垫底', () => {
+    const paths = ['sources.md', 'seeds.md', 'candidates.jsonl', 'papers/W1/source.pdf', 'papers/W1/structured.json',
+      'papers/W1/images/a.png', 'papers/W1/images/b.png', 'papers/W1/images/c.png', 'run.log']
+    expect(filesWord(paths)).toBe('9 个：图片 3、文档 2、数据 2、PDF 1、其它 1')
+  })
+  it('只有一种就直说；一个没有写「—」', () => {
+    expect(filesWord(['notes/1/note.md', 'notes/2/note.md'])).toBe('2 个文档')
+    expect(filesWord(['paper.pdf'])).toBe('1 个 PDF')
+    expect(filesWord(['a.log', 'b.bin'])).toBe('2 个')
+    expect(filesWord([])).toBe('—')
   })
 })

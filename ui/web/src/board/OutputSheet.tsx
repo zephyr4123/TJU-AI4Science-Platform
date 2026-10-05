@@ -1,26 +1,23 @@
 // 一次产出的细节：最上面是产它的能力自己的进度面板（有的话，progress/），然后记录（来源、输入、在哪条流程第几步、按哪版需求）、
-// 确认、目录里的文件——按文件种类通用渲染
-// （markdown 排版、json / yaml / tsv 原样、大的与二进制只给名字），能力没配专门视图也看得见东西（P-13 在页面上的对应物）。
-// 看板里是侧滑（带文件清单与「打开目录」跳到文件镜头）；文件镜头里同一份 `OutputBody` 嵌在右边，不带文件清单（树就是清单）。
+// 确认。看板里是侧滑，记录末尾一行「文件」：一共几个、各是什么，「打开目录」跳到文件镜头看正文——不在侧滑里平铺
+// （主人 2026-10-05：一次文献检索几百个文件，大半是原文切出来的图）；文件镜头里同一份 `OutputBody` 嵌在右边，没有这一行（树就是清单）。
 // 记录里的机器名字都翻过（P-21）：产出 id 写「设计 · 1」、产它的能力写名、参数写描述符的 label、流程写标题；文件名是文件本身，照写。
 import { FolderOpen, Trash } from '@phosphor-icons/react'
 import { type ReactNode, useEffect, useState } from 'react'
 
 import type { WorkspaceClient } from '@/api/client'
-import type { Capability, OutputFile, WorkspaceDetail } from '@/api/types'
+import type { Capability, WorkspaceDetail } from '@/api/types'
 import { ErrorNote, Skeleton } from '@/components/bits'
-import { Markdown } from '@/components/Markdown'
-import type { FileAt } from '@/components/markdown/links'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import HoldButton from '@/components/reactbits/HoldButton'
 import { SignKey } from '@/keys/SignKey'
-import { bytes, when } from '@/lib/format'
+import { when } from '@/lib/format'
 import { byWord, outputWord } from '@/lib/humanize'
 import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 import { ProgressPanel } from '@/progress/ProgressPanel'
 
-import { type NameOf, openByDefault, outputName } from './derive'
+import { filesWord, type NameOf, outputName } from './derive'
 
 
 export function OutputSheet({ workspace, doc, catalog, oid, signHint, onClose, onOpen, onChanged, onOpenFiles }: {
@@ -31,7 +28,7 @@ export function OutputSheet({ workspace, doc, catalog, oid, signHint, onClose, o
     <Sheet open={oid !== null} onOpenChange={(open) => { if (!open) onClose() }}>
       <SheetContent side="right" className="gap-0 overflow-y-auto p-0 data-[side=right]:w-[100vw] data-[side=right]:sm:w-[40rem] data-[side=right]:sm:max-w-[40rem]">
         {oid && (
-          <OutputBody workspace={workspace} doc={doc} catalog={catalog} oid={oid} signHint={signHint} onChanged={onChanged} showFiles
+          <OutputBody workspace={workspace} doc={doc} catalog={catalog} oid={oid} signHint={signHint} onChanged={onChanged}
                       onRemoved={() => { onClose(); void onChanged() }}
                       title={(o) => <SheetTitle className="font-serif text-[1.25rem]">{o.title}</SheetTitle>}
                       onOpen={onOpen} onOpenFiles={onOpenFiles} />
@@ -41,11 +38,11 @@ export function OutputSheet({ workspace, doc, catalog, oid, signHint, onClose, o
   )
 }
 
-/** 一次产出的记录、结论、确认；`showFiles` 再带目录里的文件清单。标题由外面给（侧滑里要 SheetTitle）。
+/** 一次产出的记录、结论、确认；给了 `onOpenFiles` 记录末尾再带「文件」一行。标题由外面给（侧滑里要 SheetTitle）。
  *  `doc` 与 `catalog` 只为翻译：阶段名、别的产出的标题、流程的标题、能力的名与参数的 label 都是后端给的，这里查表不猜。 */
-export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, onRemoved, showFiles, title, onOpen, onOpenFiles }: {
+export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, onRemoved, title, onOpen, onOpenFiles }: {
   workspace: WorkspaceClient; doc: WorkspaceDetail; catalog: Capability[]; oid: string; signHint: string | null
-  onChanged: () => Promise<void>; showFiles: boolean
+  onChanged: () => Promise<void>
   /** 删了这次产出之后（侧滑要关）；不给就没有「删除」 */
   onRemoved?: () => void
   title: (o: { title: string }) => ReactNode; onOpen?: (oid: string) => void; onOpenFiles?: (path: string) => void
@@ -54,7 +51,7 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
   const record = useResource(() => workspace.output(oid), [workspace.key, oid, epoch], `output:${workspace.key}:${oid}`)
   const reload = async () => { setEpoch((n) => n + 1); await onChanged() }
   // 运行中的产出跑完了：看板那一份（有作业在跑时工作区页每 10 秒重拉）里它的状态先变，这里跟着重拉一次记录。
-  // 不自己轮询：一次检索的记录带着几十篇原文的正文，上 MB（外层 #242）
+  // 不自己轮询：看板那份已经在按时拉，状态变了跟一次就够（外层 #242）
   const listed = doc.stages.flatMap((s) => s.outputs).find((x) => x.id === oid)?.status
   const shown = record.data?.status
   const refetch = record.reload
@@ -74,15 +71,7 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
     <>
       <SheetHeader className="px-6 pt-6 pb-2">
         {title(o)}
-        <p className="flex items-center gap-3">
-          <span className="t-label">{outputName(o.id, nameOf)}</span>
-          {onOpenFiles && (
-            <button type="button" onClick={() => onOpenFiles(o.id)}
-                    className="inline-flex items-center gap-1 text-[0.8125rem] text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary focus-visible:outline-2 focus-visible:outline-ring">
-              <FolderOpen className="size-3.5" aria-hidden />打开目录
-            </button>
-          )}
-        </p>
+        <p className="t-label">{outputName(o.id, nameOf)}</p>
       </SheetHeader>
       <div className="space-y-5 px-6 pb-8">
         <ProgressPanel workspace={workspace} output={o} onOpenFile={onOpenFiles ? (path) => onOpenFiles(`${o.id}/${path}`) : undefined} />
@@ -115,6 +104,16 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
                 ))}
               </dd></>
           )}
+          {onOpenFiles && (
+            <><dt className="text-muted-foreground">文件</dt>
+              <dd className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <span className="tabular-nums">{filesWord(o.files.map((f) => f.path))}</span>
+                <button type="button" onClick={() => onOpenFiles(o.id)}
+                        className="inline-flex items-center gap-1 self-center text-[0.8125rem] text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary focus-visible:outline-2 focus-visible:outline-ring">
+                  <FolderOpen className="size-3.5" aria-hidden />打开目录
+                </button>
+              </dd></>
+          )}
         </dl>
         {o.error && <ErrorNote text={o.error} />}
         {o.result && o.status === 'ok' && (
@@ -122,43 +121,10 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
         )}
         <SignKey workspace={workspace} output={o} hint={signHint} reload={reload} />
         {onRemoved && <RemoveKey workspace={workspace} doc={doc} oid={oid} status={o.status} onRemoved={onRemoved} />}
-        {showFiles && (
-          <section>
-            <h3 className="t-step">文件</h3>
-            {o.files.length === 0 && <p className="t-label mt-1">暂无文件</p>}
-            <ul className="mt-2 space-y-2">
-              {o.files.map((f) => <FileRow key={f.path} file={f} at={{ ws: workspace.id, path: `${oid}/${f.path}` }} />)}
-            </ul>
-          </section>
-        )}
       </div>
     </>
   )
 }
-
-/** 一个文件：小文本展开看（markdown 排版、别的原样），大的与二进制只有名字与大小；一打开就展开哪些见 `openByDefault`。
- *  `at` 是它在工作区里的位置 */
-function FileRow({ file, at }: { file: OutputFile; at: FileAt }) {
-  const [open, setOpen] = useState(openByDefault(file.path))
-  const readable = file.text !== undefined
-  return (
-    <li className="rounded-xl border bg-card">
-      <button type="button" disabled={!readable} onClick={() => setOpen(!open)} aria-expanded={open}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-[0.8125rem] disabled:cursor-default">
-        <span className="min-w-0 flex-1 truncate">{file.path}</span>
-        <span className="t-label tabular-nums">{bytes(file.size)}</span>
-      </button>
-      {open && readable && (
-        <div className="border-t px-3 py-3">
-          {file.path.endsWith('.md')
-            ? <Markdown text={file.text!} at={at} />
-            : <pre className="max-h-[24rem] overflow-auto text-[0.75rem] leading-relaxed whitespace-pre-wrap break-all">{file.text}</pre>}
-        </div>
-      )}
-    </li>
-  )
-}
-
 
 /** 删这次产出（主人 2026-09-22）：只有叶子（没被下游读过的）且没在跑才出现这枚键，按住一秒才删；服务那边还会再拒一遍 */
 function RemoveKey({ workspace, doc, oid, status, onRemoved }: {

@@ -1,4 +1,4 @@
-// 看板上算出来的东西，纯函数、有单测：一条流程在等谁、下一步是哪个阶段、每次产出用哪个词、断点的短标签。
+// 看板上算出来的东西，纯函数、有单测：一条流程在等谁、下一步是哪个阶段、每次产出用哪个词、断点的短标签、侧滑里文件那一行。
 import type { FlowOutput, FlowProgress, FlowProgressItem } from '@/api/types'
 
 /** 哪些产出待人确认：流程里那一项后面是断点、产出还没确认（或确认之后又改了） */
@@ -68,8 +68,29 @@ export function outputName(id: string, nameOf: NameOf): string {
   return `${nameOf(slug)} · ${n}`
 }
 
-/** 产出侧滑里一打开就展开的文件：只有产出目录顶层的 markdown（`sources.md`、`analysis.md` 这类），子目录里的点了才排版——
- *  文献检索一次产出几十篇原文 `papers/<编号>/paper.md`，全展开时点开侧滑主线程卡 3.4 秒（外层 #242 实测） */
-export function openByDefault(path: string): boolean {
-  return path.endsWith('.md') && !path.includes('/')
+/** 文件按后缀归的种类；同样多时照这个顺序排，归不进去的算「其它」 */
+const FILE_KINDS: [string, RegExp][] = [
+  ['文档', /\.(md|txt)$/i],
+  ['数据', /\.(jsonl?|csv|tsv|ya?ml|toml|npy|npz|h5|parquet)$/i],
+  ['图片', /\.(png|jpe?g|gif|svg|webp|bmp|tiff?)$/i],
+  ['PDF', /\.pdf$/i],
+  ['代码', /\.(py|sh|ipynb|r|jl)$/i],
+]
+
+/** 产出侧滑里「文件」那一行：一共几个、各是什么（主人 2026-10-05：一次文献检索几百个文件，大半是原文切出来的图，
+ *  不在侧滑里平铺，要看去文件镜头）。`9 个：图片 3、文档 2、…`，只有一种写 `2 个文档`，一个没有写「—」 */
+export function filesWord(paths: string[]): string {
+  if (paths.length === 0) return '—'
+  const counts = new Map<string, number>()
+  for (const path of paths) {
+    const kind = FILE_KINDS.find(([, pattern]) => pattern.test(path))?.[0] ?? '其它'
+    counts.set(kind, (counts.get(kind) ?? 0) + 1)
+  }
+  const order = [...FILE_KINDS.map(([kind]) => kind), '其它']
+  const kinds = [...counts].sort(([a, m], [b, n]) =>
+    (a === '其它' ? 1 : 0) - (b === '其它' ? 1 : 0) || n - m || order.indexOf(a) - order.indexOf(b))
+  if (kinds.length > 1) return `${paths.length} 个：${kinds.map(([kind, n]) => `${kind} ${n}`).join('、')}`
+  const [only] = kinds[0]
+  if (only === '其它') return `${paths.length} 个`
+  return `${paths.length} 个${/^[A-Z]/.test(only) ? ' ' : ''}${only}`
 }
