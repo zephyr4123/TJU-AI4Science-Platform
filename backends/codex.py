@@ -3,6 +3,7 @@
 每一条都是 2026-09-22 在本机实测的（codex-cli 0.147.0，ChatGPT Plus 账号登录），flag 与配置键先对过
 官方文档（learn.chatgpt.com/docs/*，developers.openai.com/codex/* 308 跳过去）与源码
 （github.com/openai/codex 的 rust-v0.147.0：exec/src/cli.rs、exec/src/exec_events.rs）；外层 #131。
+2026-10-05 升到 0.160.0 后 live 复测过（探测、执行层写文件、协调层两轮续接，外层 #247）。
 
 - **隔离的承重位是私有 `CODEX_HOME`**（`~/.config/ai4sci/codex-home/`，`AI4SCI_CODEX_HOME` 可指向
   别的根；协调层用根、执行层用 `executor/` 子目录，因为 execpolicy 规则是按 home 放的、两层放行的
@@ -51,11 +52,13 @@
   `project_doc_max_bytes=0`。
 - **联网搜索**：顶层 `web_search="live"`（`tools.web_search=true` 在 0.147 会被反序列化器丢掉），
   搜索在服务端，沙箱没网也通；事件是 `web_search` item。
-- **模型 / 深度**：`-m <slug>` + `-c model_reasoning_effort="<档>"`。0.147 随包的目录：gpt-5.6-sol /
-  terra / luna、gpt-5.5（四款都给 Plus），四款共有 low / medium / high / xhigh（sol、
-  terra 另有 max、
-  ultra，luna 有 max，不进清单，`Knobs.check` 才守得住）。slug 写错是服务端 400：`error` +
-  `turn.failed`，退出码 1。
+- **模型 / 深度**：`-m <slug>` + `-c model_reasoning_effort="<档>"`。0.160 随包的目录（二进制里的
+  `models` 数组，外层 #247）按排序：gpt-6.1-sol（Latest workhorse，最低客户端 0.153）、gpt-6-astra
+  （Frontier，0.153）、gpt-6-sol（Previous workhorse，0.155）、gpt-6-luna（Fast，0.155），往后是
+  gpt-5.6-sol / terra / luna、gpt-5.5（Older / Legacy），都给 Plus。清单收四款：6.1 Sol、6 Astra、
+  6 Luna，加 5.6 Terra——旧配置与旧对话只用过它，留着就不用迁移。四款共有 low / medium / high /
+  xhigh（sol、astra、terra 另有 max、ultra，luna 有 max，不进清单，`Knobs.check` 才守得住）。
+  slug 写错是服务端 400：`error` + `turn.failed`，退出码 1。
 - **成本**：ChatGPT 订阅报不出美元，`turn.completed.usage` 只有 token 数——`cost_usd` 一律 NaN、usage
   进 raw（端口：绝不填 0）；`cost_reporting = "turn"`。退出码只有 0 / 1；没有轮数 / 花费的闸，超时
   是唯一的闸。长命令 agent 自己等着跑完（sleep 70 实测通过），没有 Claude Code 那种 2 分钟挪后台的
@@ -94,16 +97,16 @@ LAYERS = ("chat", "executor")
 AUTH_NAME = "auth.json"
 RULES_NAME = "ai4sci.rules"
 CHAT_ID_ENV = "AI4SCI_CHAT_ID"
-MIN_VERSION = (0, 147, 0)
-# 起点 terra / medium（P-25）：Plus 的五小时窗 terra 25–200 句、sol 10–100、luna 250–2000（官方估计
-# 区间），研究助理一段对话几十轮，均衡的那款当起点
-MODELS = (Choice("gpt-5.6-terra", "GPT-5.6 Terra", "均衡"),
-          Choice("gpt-5.6-sol", "GPT-5.6 Sol", "强"),
-          Choice("gpt-5.6-luna", "GPT-5.6 Luna", "快"),
-          Choice("gpt-5.5", "GPT-5.5", "上一代"))
+MIN_VERSION = (0, 160, 0)
+# 起点 6.1 Sol / medium（P-25，外层 #247）：0.160 目录里排第一的主力款（Latest workhorse for
+# coding and everyday work）；Astra 是目录里写的 Frontier 那档，Luna 快而省
+MODELS = (Choice("gpt-6.1-sol", "GPT-6.1 Sol", "主力"),
+          Choice("gpt-6-astra", "GPT-6 Astra", "最强"),
+          Choice("gpt-6-luna", "GPT-6 Luna", "快"),
+          Choice("gpt-5.6-terra", "GPT-5.6 Terra", "上一代"))
 EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
            Choice("xhigh", "超高"))
-KNOBS = Knobs(models=MODELS, efforts=EFFORTS, model="gpt-5.6-terra", effort="medium")
+KNOBS = Knobs(models=MODELS, efforts=EFFORTS, model="gpt-6.1-sol", effort="medium")
 # 两层共用的 exec 参数：JSONL、不查 git 仓库（工作区不是仓库）、不读本机配置；execpolicy 规则要读
 # （私有 home 里只有我们写的那份）
 BASE_ARGS = ("--json", "--skip-git-repo-check", "--ignore-user-config")

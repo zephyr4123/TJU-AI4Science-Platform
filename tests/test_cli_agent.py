@@ -30,15 +30,15 @@ def test_agent_list_shows_roles_and_defaults(capsys):
     out = capsys.readouterr().out.splitlines()
     assert out[0].startswith("claude_code\tClaude Code\t-\tsonnet\tmedium\t未检查")
     assert out[0].endswith("(对话用、执行用)")
-    assert out[1].startswith("codex\tCodex\t-\tgpt-5.6-terra\tmedium\t未检查") and "(" not in out[1]
+    assert out[1].startswith("codex\tCodex\t-\tgpt-6.1-sol\tmedium\t未检查") and "(" not in out[1]
 
 
 def test_agent_use_switches_a_role_and_rejects_values_off_the_list(capsys):
-    assert main(["agent", "use", "codex", "--for", "executor", "--model", "gpt-5.6-luna"]) == 0
-    assert capsys.readouterr().out.startswith("ok codex\tgpt-5.6-luna\tmedium\t执行用\t写入 ")
+    assert main(["agent", "use", "codex", "--for", "executor", "--model", "gpt-6-luna"]) == 0
+    assert capsys.readouterr().out.startswith("ok codex\tgpt-6-luna\tmedium\t执行用\t写入 ")
     registry = agents.load()
     assert registry.executor == "codex" and registry.chat == "claude_code"
-    assert registry.get("codex").model == "gpt-5.6-luna"
+    assert registry.get("codex").model == "gpt-6-luna"
     assert main(["agent", "use", "codex", "--model", "nope"]) == 2
     assert "模型 'nope' 不在清单上" in capsys.readouterr().err
     assert main(["agent", "use", "codex"]) == 2  # 什么都没给

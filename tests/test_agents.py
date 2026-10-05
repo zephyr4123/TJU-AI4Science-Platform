@@ -90,5 +90,5 @@ def test_record_check_keeps_the_probe_with_a_timestamp():
 def test_real_knobs_come_from_the_adapters():
     registry = agents.load()
     assert registry.get("claude_code").tuning == Tuning(model="sonnet", effort="medium")
-    assert registry.get("codex").tuning == Tuning(model="gpt-5.6-terra", effort="medium")
+    assert registry.get("codex").tuning == Tuning(model="gpt-6.1-sol", effort="medium")
     assert registry.get("codex").title == "Codex"
