@@ -92,7 +92,7 @@ export default function App() {
                 {/* 设置是全局的，不挂在哪个地方底下（主人 2026-09-22）：宽屏没有页眉，窄屏只留一条放地方清单的入口 */}
                 {!wide && <Top menu={menu} title="设置" />}
                 <div className="relative flex min-h-0 flex-1">
-                  <Scene picture={ASSETS.board} veil="mist" />
+                  <Scene picture={ASSETS.backdrop} veil="mist" />
                   <SettingsBoard onClose={() => setSettingsOpen(false)} onChanged={settingsChanged} />
                 </div>
               </>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { api, inProject, WorkspaceClient } from '@/api/client'
 import type { Backend, ProjectSummary } from '@/api/types'
-import { coverOf } from '@/assets'
+import { ASSETS } from '@/assets'
 import { ChatDrawer } from '@/chat/ChatDrawer'
 import { ChatView } from '@/chat/ChatView'
 import { localFile } from '@/chat/links'
@@ -103,7 +103,7 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
                                      <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                                                  creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
                                                  onRemove={async (id) => { await c.remove(id) }}
-                                                 cover={coverOf(projectId)} title={title} />
+                                                 title={title} />
                                    } />
                        )} />
       </LinkOpener.Provider>
@@ -114,7 +114,7 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
     // 标题、目标先照首页清单里那一行摆好，位置与项目页一模一样；输入框的地方放骨架——回来时只有输入框与工作区清单冒出来
     return (
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <Scene picture={coverOf(projectId)} veil="mist" />
+        <Scene picture={ASSETS.backdrop} veil="mist" />
         <div className="absolute top-3 left-4 z-10 flex items-center gap-3 sm:left-5">{menu}<Back label="首页" onClick={onHome} /></div>
         <div className="relative mx-auto w-full max-w-[47rem] px-6 pt-[10vh]">
           <Logo className="mx-auto size-12 text-primary" />

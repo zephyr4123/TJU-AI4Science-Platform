@@ -1,10 +1,10 @@
 // 对话列表收在左侧抽屉里，对话本身才是主角；入口是一枚带字的大圆角按钮「对话 · N」（reactbits GlareHover 改装，外层 #79 #80 #136：
-// 原来一个小图标谁都看不见）。项目页与工作区页都是它（对话归项目）；抽屉顶上是项目的封面（编辑台是库的横幅），清单逐条浮现（reactbits AnimatedList 改装）。
+// 原来一个小图标谁都看不见）。项目页与工作区页都是它（对话归项目）；抽屉顶上铺全站那张底图（外层 #251），清单逐条浮现（reactbits AnimatedList 改装）。
 import { ChatCenteredText, ChatsCircle, NotePencil, Trash } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import type { ChatMeta } from '@/api/types'
-import type { Picture } from '@/assets'
+import { ASSETS } from '@/assets'
 import { Band } from '@/components/Band'
 import { Dot } from '@/components/bits'
 import { AnimatedList } from '@/components/reactbits/AnimatedList'
@@ -25,14 +25,12 @@ interface Props {
   onNew: () => void
   /** 删一段（主人 2026-09-22）：按住才算数；正在跑的那段服务会拒，错误一句摆在清单顶上 */
   onRemove: (chatId: string) => Promise<void>
-  /** 抽屉顶上那张：项目的封面或库的横幅 */
-  cover: Picture
   /** 这一边是谁的对话：项目的标题或「编辑台」 */
   title: string
   /** 这一边的对话是干什么的，一句话 */
 }
 
-export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect, onNew, onRemove, cover, title }: Props) {
+export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect, onNew, onRemove, title }: Props) {
   const [open, setOpen] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
   const remove = (chatId: string) => {
@@ -51,7 +49,7 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
         </GlareHover>
       </SheetTrigger>
       <SheetContent side="left" className="w-[20rem] gap-0 p-0" aria-describedby={undefined}>
-        <Band picture={cover} veil="foot" className="h-36 shrink-0">
+        <Band picture={ASSETS.backdrop} veil="foot" className="h-36 shrink-0">
           <div className="flex h-full flex-col justify-end px-5 pb-4">
             <SheetTitle className="font-serif text-[1.125rem] font-semibold">{title}</SheetTitle>
           </div>

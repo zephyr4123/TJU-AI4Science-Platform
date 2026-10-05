@@ -4,7 +4,6 @@ import { type ReactNode, useState } from 'react'
 
 import { STUDIO } from '@/api/client'
 import type { Backend } from '@/api/types'
-import { ASSETS } from '@/assets'
 import { ChatDrawer } from '@/chat/ChatDrawer'
 import { ChatPanel } from '@/chat/ChatPanel'
 import { ChatView } from '@/chat/ChatView'
@@ -21,7 +20,7 @@ export function StudioPlace({ healthy, backends, menu }: { healthy: boolean | nu
   const [focus, setFocus] = useState<string | null>(null)
   return (
     <>
-      <Top menu={menu} title="编辑台" picture={ASSETS.studio}
+      <Top menu={menu} title="编辑台" banner
            lens={{ value: view, options: [{ value: 'flow', label: '流程' }, { value: 'caps', label: '能力' }],
                    onChange: (v) => { setView(v as StudioView); setFocus(null) } }} />
       <div className="relative flex min-h-0 flex-1">
@@ -35,7 +34,7 @@ export function StudioPlace({ healthy, backends, menu }: { healthy: boolean | nu
               <ChatDrawer chats={c.chats.data} error={c.chats.error} selected={c.chatId} healthy={healthy}
                           creating={c.creating} onSelect={c.pick} onNew={() => void c.newChat()}
                           onRemove={async (id) => { await c.remove(id) }}
-                          cover={ASSETS.studio} title="编辑台" />
+                          title="编辑台" />
             }
           />
         )}>

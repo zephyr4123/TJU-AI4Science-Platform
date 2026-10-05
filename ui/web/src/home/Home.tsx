@@ -37,7 +37,7 @@ export function Home({ projects, onOpen, onNew, onRemove, menu }: {
   const words = wordsOf(query)
   return (
     <div className="relative flex-1 overflow-y-auto">
-      <Scene picture={ASSETS.welcome} veil="mist" />
+      <Scene picture={ASSETS.backdrop} veil="mist" />
       <div className="relative mx-auto w-full max-w-[54rem] px-6 pt-8 pb-16 sm:px-8">
         <header className="flex flex-wrap items-center gap-3">
           {menu}

@@ -9,7 +9,7 @@ import { type ReactNode, useState } from 'react'
 
 import { inProject } from '@/api/client'
 import type { Backend, ProjectDetail, WorkspaceRow } from '@/api/types'
-import { coverOf } from '@/assets'
+import { ASSETS } from '@/assets'
 import { ChatDrawer } from '@/chat/ChatDrawer'
 import { Composer } from '@/chat/Composer'
 import { Transcript } from '@/chat/Transcript'
@@ -67,7 +67,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
                 onSelect={(id) => { setShown(id); setTalking(true) }}
                 onNew={() => { void c.newChat().then((meta) => { setShown(meta.chat_id); setTalking(true) }) }}
                 onRemove={async (id) => { await c.remove(id); if (id === shown) { setShown(null); setTalking(false) } }}
-                cover={coverOf(project.id)} title={project.title} />
+                title={project.title} />
   )
   // 同一只输入框在两个样子里各站一处，layoutId 让它从正中间竖直滑到底（减少动效时直接出现）。
   // 两边带 layoutId 的盒子都要紧贴玻璃框、同宽（44rem）：动画按盒子的左上角算，盒子比玻璃框宽就会斜着走
@@ -83,7 +83,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
   return (
     <LayoutGroup id={`project-${project.id}`}>
       {talking && (
-        <Top menu={menu} picture={coverOf(project.id)}
+        <Top menu={menu} banner
              back={{ label: project.title, onClick: () => { setTalking(false); setShown(null) } }}
              title={current?.title ?? '新对话'}
              tail={<span className="ml-auto flex items-center gap-3">
@@ -92,7 +92,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
              </span>} />
       )}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <Scene picture={coverOf(project.id)} veil="mist" />
+        <Scene picture={ASSETS.backdrop} veil="mist" />
         {talking ? (
           <>
             <motion.div initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
