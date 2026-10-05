@@ -68,7 +68,7 @@ export function Studio({ epoch, view, focus, onFocus }: {
   return (
     <div className="relative min-h-0 min-w-0 flex-1">
       {/* 底下一层风景，压到只剩氛围；两个镜头共用，切换不重贴 */}
-      <Scene picture={ASSETS.studio} veil="mist" />
+      <Scene picture={ASSETS.backdrop} veil="mist" />
       <div className={cn('relative h-full', view !== 'flow' && 'hidden')}>
         <ReactFlowProvider>
           <Editor stages={stages.data} workflows={workflows.data} catalog={catalog.data} skills={skills.data} onSaved={() => void workflows.reload()}

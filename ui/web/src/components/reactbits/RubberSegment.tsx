@@ -1,4 +1,4 @@
-// 设置板「外观」那三档（浅 / 深 / 跟随系统），从 reactbits 的 RubberSegment 捞来改装（MIT，https://reactbits.dev/components/rubber-segment）：
+// 设置板「外观」那三档（Light / Dark / Auto），从 reactbits 的 RubberSegment 捞来改装（MIT，https://reactbits.dev/components/rubber-segment）：
 // 分段开关，滑块像橡皮：点一下先拉长跨过去再压到位，也能抓着拖、一甩就飞到下一格。改动：颜色走 tokens（轨是 --muted、
 // 滑块是 --card、字是 --muted-foreground / --foreground），不收色值；其余原样，减少动效时直接跳过去。
 import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';

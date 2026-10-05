@@ -1,8 +1,9 @@
 // 壳：左边地方栏（首页 / 编辑台 / 设置三个键），右边是此刻的地方（外层 #58 #64 #70 #79 #104 #111 #136）。
-// 页面先认项目（一个项目一位助理，P-15）：首页是项目墙，点一个进项目页——正中间一只对话输入框、底下这个项目的工作区；
+// 页面先认项目（一个项目一位助理，P-15）：首页是项目清单，点一个进项目页——正中间一只对话输入框、底下这个项目的工作区；
 // 点一行进工作区页——看板 / 文件两个镜头，对话在右边那块板上（还是项目的那一段）。编辑台是全局一个流程库、有自己的对话，
 // 和项目的世界平行（P-16）。设置（P-25）是全局的一块，开着时地方的页眉让开。每次打开都从首页进，不记上次在哪。
 // 换地方不闪：每种数据上次那份记着先摆上（lib/lastSeen），全站的图一起来就预热（lib/pictures）。
+// 换地方写进浏览器历史（外层 #250）：后退 / 前进、鼠标侧键、触控板回扫都回得去；网址不变，刷新照旧回首页。
 // 页面只是 `ai4sci serve` 的客户端。
 import { useEffect, useState } from 'react'
 
@@ -44,8 +45,24 @@ export default function App() {
   const place: Place = stale ? HOME : picked
 
   const go = (next: Place) => {
+    if (JSON.stringify(next) !== JSON.stringify(picked)) window.history.pushState({ place: next }, '')
     setPlace(next)
     setSettingsOpen(false)
+  }
+  useEffect(() => {
+    window.history.replaceState({ place: HOME }, '')
+    const back = (e: PopStateEvent) => {
+      setPlace((e.state as { place?: Place } | null)?.place ?? HOME)
+      setSettingsOpen(false)
+    }
+    window.addEventListener('popstate', back)
+    return () => window.removeEventListener('popstate', back)
+  }, [])
+  // 删整个项目：首页清单上与项目页右上角是同一件事；目录外没清干净的摆在正文顶上
+  const removeProject = async (id: string) => {
+    const removed = await api.removeProject(id)
+    setLeftovers(removed.leftovers)
+    await projects.reload()
   }
   const places: PlacesProps = {
     place,
@@ -75,13 +92,14 @@ export default function App() {
                 {/* 设置是全局的，不挂在哪个地方底下（主人 2026-09-22）：宽屏没有页眉，窄屏只留一条放地方清单的入口 */}
                 {!wide && <Top menu={menu} title="设置" />}
                 <div className="relative flex min-h-0 flex-1">
-                  <Scene picture={ASSETS.board} veil="mist" />
+                  <Scene picture={ASSETS.backdrop} veil="mist" />
                   <SettingsBoard onClose={() => setSettingsOpen(false)} onChanged={settingsChanged} />
                 </div>
               </>
             )
             : place.kind === 'home'
-              ? <Home projects={projects} menu={menu} onOpen={(id) => go({ kind: 'project', id })} onNew={() => go({ kind: 'door' })} />
+              ? <Home projects={projects} menu={menu} onOpen={(id) => go({ kind: 'project', id })} onNew={() => go({ kind: 'door' })}
+                    onRemove={removeProject} />
               : place.kind === 'door'
                 ? <NewProject existing={projects.data ?? []} menu={menu}
                               onCreated={async (id) => { await projects.reload(); go({ kind: 'project', id }) }}
@@ -94,8 +112,8 @@ export default function App() {
                                   wsId={place.kind === 'workspace' ? place.id : null}
                                   healthy={healthy} backends={backends.data} menu={menu}
                                   onOpenWorkspace={(id) => go({ kind: 'workspace', project: inside, id })}
-                                  onBack={() => go({ kind: 'project', id: inside })}
-                                  onRemoved={async (rest) => { setLeftovers(rest); await projects.reload(); go(HOME) }}
+                                  onBack={() => go({ kind: 'project', id: inside })} onHome={() => go(HOME)}
+                                  onRemove={async () => { await removeProject(inside); go(HOME) }}
                                   onWorkspaceRemoved={async (rest) => { setLeftovers(rest); await projects.reload(); go({ kind: 'project', id: inside }) }} />
                   )}
         </div>

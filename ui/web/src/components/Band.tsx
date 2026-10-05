@@ -1,5 +1,5 @@
 // 一条画面横幅：顶栏、对话抽屉、编辑台的库都用它——图铺底、纱幕压字、内容浮在上面。
-// 顶栏用 blur：封面糊成一抹颜色，换工作区顶栏就换色；抽屉与库用 foot：图露着，只把脚下压成纸色给字站。
+// 顶栏用 blur：底图糊成一抹颜色；抽屉与库用 foot：图露着，只把脚下压成纸色给字站。
 import type { ReactNode } from 'react'
 
 import type { Picture } from '@/assets'

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -153,14 +154,45 @@ def read_meta(output_dir: Path) -> Meta:
 def tree_hash(output_dir: Path) -> str:
     """目录里全部产物文件（相对路径 + 内容）的 sha256；框架自己的两份文件与环境、git 仓不算。"""
     root = Path(output_dir)
+    return _digest(root, _artifacts(root))
+
+
+def _artifacts(root: Path) -> list[Path]:
+    """算进 hash 的文件，排好序。跳过的目录走都不走进去（外层 #250：先前 rglob 把 `.venv`
+    几万个文件全列一遍再丢，项目页每次打开都为此等半秒）；跳过的集合不变——任何一级叫
+    这些名字的目录或文件。"""
+    files: list[Path] = []
+    for top, dirs, names in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in HASH_IGNORED]
+        files += [Path(top, n) for n in names if n not in HASH_IGNORED]
+    return sorted(p for p in files if p.is_file())
+
+
+def _digest(root: Path, paths: list[Path]) -> str:
     digest = hashlib.sha256()
-    for path in sorted(p for p in root.rglob("*") if p.is_file()):
-        rel = path.relative_to(root)
-        if any(part in HASH_IGNORED for part in rel.parts):
-            continue
-        digest.update(rel.as_posix().encode("utf-8") + b"\0")
+    for path in paths:
+        digest.update(path.relative_to(root).as_posix().encode("utf-8") + b"\0")
         digest.update(path.read_bytes() + b"\0")
     return digest.hexdigest()
+
+
+# 签字过没过期要比 hash，项目页每开一次、看板每轮询一次都要看；签过的文献产出带几百 MB
+# 原文，每次重读要几百毫秒（外层 #250）。按目录记上一次的 hash 与当时每个文件的大小、
+# 修改时间，都没变就不重读——与 git、make 判断文件改没改是同一个办法。只给 signature_state
+# 用：签字、记输入照旧现算。
+_HASHED: dict[Path, tuple[tuple[tuple[str, int, int], ...], str]] = {}
+
+
+def _hash_unless_unchanged(root: Path) -> str:
+    paths = _artifacts(root)
+    stamp = tuple((p.relative_to(root).as_posix(), st.st_size, st.st_mtime_ns)
+                  for p in paths for st in (p.stat(),))
+    cached = _HASHED.get(root)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    digest = _digest(root, paths)
+    _HASHED[root] = (stamp, digest)
+    return digest
 
 
 def sign(output_dir: Path, *, by: str, note: str = "") -> dict[str, Any]:
@@ -197,4 +229,4 @@ def signature_state(output_dir: Path) -> dict[str, Any] | None:
     record = read_signed(output_dir)
     if record is None:
         return None
-    return {**record, "stale": record["sha256"] != tree_hash(output_dir)}
+    return {**record, "stale": record["sha256"] != _hash_unless_unchanged(Path(output_dir))}

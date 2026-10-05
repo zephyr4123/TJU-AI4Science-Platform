@@ -41,8 +41,8 @@ export function ChatView({ scope, chatId, current, create, backends, onTurnDone,
   const inChat = chatId !== null || conv.turns.length > 0
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
-      {/* 没有对话：一张风景铺在整列底下、正中压成纸色给标和字站；有了对话：淡彩的云压到只剩氛围 */}
-      <Scene picture={inChat ? ASSETS.chat : ASSETS.welcome} veil={inChat ? 'mist' : 'stage'} />
+      {/* 全站那张底图（外层 #251）。没有对话：正中压成纸色给标和字站；有了对话：整块压到只剩氛围 */}
+      <Scene picture={ASSETS.backdrop} veil={inChat ? 'mist' : 'stage'} />
       <header className="relative flex h-12 shrink-0 items-center gap-2 px-3">
         {drawer}
         <span className="min-w-0 flex-1 truncate text-[0.875rem] text-muted-foreground">

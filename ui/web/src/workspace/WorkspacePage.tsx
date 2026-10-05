@@ -6,7 +6,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 
 import type { WorkspaceClient } from '@/api/client'
 import type { Capability, ProjectDetail, SkillEntry } from '@/api/types'
-import { ASSETS, coverOf } from '@/assets'
+import { ASSETS } from '@/assets'
 import { Board } from '@/board/Board'
 import { ChatPanel } from '@/chat/ChatPanel'
 import { ErrorNote } from '@/components/bits'
@@ -79,7 +79,7 @@ export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, op
   const latest = doc.data ?? row
   return (
     <>
-      <Top menu={menu} back={{ label: project?.title ?? ws.project, onClick: onBack }} picture={coverOf(ws.project)}
+      <Top menu={menu} back={{ label: project?.title ?? ws.project, onClick: onBack }} banner
            title={siblings.length > 1
              ? <GlideSelect ariaLabel="换个工作区" size="md" value={ws.id} placeholder={title} menuWidth={240}
                             options={siblings.map((w) => ({ value: w.id, label: w.title }))}
@@ -91,7 +91,7 @@ export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, op
                    onChange: (v) => { setView(v as View); setOpened(null) } }}
            tail={<WorkspaceMenu ws={ws} onRemoved={onRemoved} />} />
       <div className="relative flex min-h-0 flex-1">
-        <Scene picture={ASSETS.board} veil="mist" />
+        <Scene picture={ASSETS.backdrop} veil="mist" />
         <ChatPanel chat={chat}>
           {/* 两个镜头都常驻，切换只是显示 / 隐藏：不重新挂载、不重新拉数据，树的展开与滚动位置也都保住 */}
           <div className={cn('relative h-full', view !== 'board' && 'hidden')}>

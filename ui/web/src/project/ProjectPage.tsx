@@ -1,40 +1,39 @@
 // 项目页（主人 2026-09-22）：正中间一只对话输入框——一个项目只有一位助理，对话入口就这一个，放在正中间（像 Claude 的首页：
 // 平台的标、上面一句话，下面输入框）。输入框里打的第一句话就开始对话：输入框动画下沉到底，正文接在上面，这一轮从按下回车起就在屏上
-// （主人：不要闪一下再切过去）；「‹ 项目名」回来。输入框底下是这个项目的工作区，一行一个：名字、现在到哪一步（一个词，颜色照
+// （主人：不要闪一下再切过去）；「‹ 项目名」回来。左上角「‹ 首页」回首页（外层 #250）。输入框底下是这个项目的工作区，一行一个：名字、现在到哪一步（一个词，颜色照
 // 三态）、走到第几步与产出几次；点一行进工作区页。「新建」在清单那一行，点了才展开表单（project/NewWorkspace）。过去的对话
 // 在「对话 · N」的抽屉里，挑一段也切成整屏的对话。右上角「…」里是删除项目。
-import { DotsThree, Plus, Trash } from '@phosphor-icons/react'
+import { Plus } from '@phosphor-icons/react'
 import { LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useState } from 'react'
 
 import { inProject } from '@/api/client'
 import type { Backend, ProjectDetail, WorkspaceRow } from '@/api/types'
-import { coverOf } from '@/assets'
+import { ASSETS } from '@/assets'
 import { ChatDrawer } from '@/chat/ChatDrawer'
 import { Composer } from '@/chat/Composer'
 import { Transcript } from '@/chat/Transcript'
 import { useConversation } from '@/chat/useConversation'
 import { WELCOME } from '@/chat/Welcome'
-import { ErrorNote, type Tone } from '@/components/bits'
+import type { Tone } from '@/components/bits'
 import { Logo } from '@/components/Logo'
-import HoldButton from '@/components/reactbits/HoldButton'
 import { StatusMark } from '@/components/reactbits/StatusMark'
 import { Scene } from '@/components/Scene'
-import { Top } from '@/components/Top'
+import { Back, Top } from '@/components/Top'
 import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { usd } from '@/lib/format'
 import type { useChats } from '@/lib/useChats'
 import { cn } from '@/lib/utils'
 
 import { rowState } from './derive'
 import { NewWorkspace } from './NewWorkspace'
+import { ProjectMenu } from './ProjectMenu'
 
 const TONE: Record<Tone, string> = {
   neutral: 'text-muted-foreground', ok: 'text-ok', warn: 'text-wait', bad: 'text-bad', primary: 'text-primary',
 }
 
-export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorkspace, onCreatedWorkspace, onRemove, menu, running }: {
+export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorkspace, onCreatedWorkspace, onRemove, onHome, menu, running }: {
   project: ProjectDetail
   chats: ReturnType<typeof useChats>
   backends: Backend[] | null
@@ -43,6 +42,8 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
   onCreatedWorkspace: (id: string) => void
   /** 删整个项目：连工作区、对话及其会话、机器上的镜像 */
   onRemove: () => Promise<void>
+  /** 左上角「‹ 首页」 */
+  onHome: () => void
   /** 窄屏时地方清单的入口 */
   menu?: ReactNode
   /** 输入框上方的「运行中」（外层 #243） */
@@ -66,7 +67,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
                 onSelect={(id) => { setShown(id); setTalking(true) }}
                 onNew={() => { void c.newChat().then((meta) => { setShown(meta.chat_id); setTalking(true) }) }}
                 onRemove={async (id) => { await c.remove(id); if (id === shown) { setShown(null); setTalking(false) } }}
-                cover={coverOf(project.id)} title={project.title} />
+                title={project.title} />
   )
   // 同一只输入框在两个样子里各站一处，layoutId 让它从正中间竖直滑到底（减少动效时直接出现）。
   // 两边带 layoutId 的盒子都要紧贴玻璃框、同宽（44rem）：动画按盒子的左上角算，盒子比玻璃框宽就会斜着走
@@ -82,7 +83,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
   return (
     <LayoutGroup id={`project-${project.id}`}>
       {talking && (
-        <Top menu={menu} picture={coverOf(project.id)}
+        <Top menu={menu} banner
              back={{ label: project.title, onClick: () => { setTalking(false); setShown(null) } }}
              title={current?.title ?? '新对话'}
              tail={<span className="ml-auto flex items-center gap-3">
@@ -91,7 +92,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
              </span>} />
       )}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <Scene picture={coverOf(project.id)} veil="mist" />
+        <Scene picture={ASSETS.backdrop} veil="mist" />
         {talking ? (
           <>
             <motion.div initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
@@ -102,8 +103,8 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
           </>
         ) : (
           <div className="relative min-h-0 flex-1 overflow-y-auto">
-            <div className="absolute top-3 right-4 z-10"><ProjectMenu title={project.title} onRemove={onRemove} /></div>
-            {menu && <div className="absolute top-3 left-4 z-10">{menu}</div>}
+            <div className="absolute top-3 right-4 z-10"><ProjectMenu title={project.title} onRemove={onRemove} className="bg-card/60 backdrop-blur-sm" /></div>
+            <div className="absolute top-3 left-4 z-10 flex items-center gap-3 sm:left-5">{menu}<Back label="首页" onClick={onHome} /></div>
             <div className="relative mx-auto flex min-h-full w-full max-w-[47rem] flex-col px-6 pt-[10vh] pb-16">
               {/* 平台的标在正中、项目名在下（外层 #139）：像 Claude 的首页，标先于字 */}
               <Logo className="mx-auto size-12 text-primary" />
@@ -161,31 +162,5 @@ function Row({ row, onOpen }: { row: WorkspaceRow; onOpen: () => void }) {
       </span>
       <span className={cn('shrink-0 text-[0.8125rem] whitespace-nowrap', TONE[s.tone])}>{s.word}</span>
     </button>
-  )
-}
-
-/** 右上角的「…」：里面只有一件事——删除项目；按住一秒才删 */
-function ProjectMenu({ title, onRemove }: { title: string; onRemove: () => Promise<void> }) {
-  const [open, setOpen] = useState(false)
-  const [failed, setFailed] = useState<string | null>(null)
-  const remove = () => {
-    setFailed(null)
-    onRemove().then(() => setOpen(false)).catch((exc: unknown) => setFailed(exc instanceof Error ? exc.message : String(exc)))
-  }
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="更多" className="bg-card/60 backdrop-blur-sm"><DotsThree weight="bold" /></Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-[18rem] space-y-3 p-4">
-        <p className="text-[0.875rem] font-medium">删除项目</p>
-        <p className="line-clamp-2 text-[0.8125rem]">{title}</p>
-        <p className="text-[0.75rem] text-muted-foreground">全部工作区、对话及其会话、机器上的镜像一起删，回不来。</p>
-        <div className="flex items-center gap-3">
-          <HoldButton onHold={remove} doneLabel="已删除"><Trash className="size-3.5" />删除</HoldButton>
-        </div>
-        {failed && <ErrorNote text={failed} />}
-      </PopoverContent>
-    </Popover>
   )
 }
