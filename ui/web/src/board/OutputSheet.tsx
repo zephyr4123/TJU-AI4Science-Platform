@@ -1,9 +1,10 @@
-// 一次产出的细节：记录（来源、输入、在哪条流程第几步、按哪版需求）、确认、目录里的文件——按文件种类通用渲染
+// 一次产出的细节：最上面是产它的能力自己的进度面板（有的话，progress/），然后记录（来源、输入、在哪条流程第几步、按哪版需求）、
+// 确认、目录里的文件——按文件种类通用渲染
 // （markdown 排版、json / yaml / tsv 原样、大的与二进制只给名字），能力没配专门视图也看得见东西（P-13 在页面上的对应物）。
 // 看板里是侧滑（带文件清单与「打开目录」跳到文件镜头）；文件镜头里同一份 `OutputBody` 嵌在右边，不带文件清单（树就是清单）。
 // 记录里的机器名字都翻过（P-21）：产出 id 写「设计 · 1」、产它的能力写名、参数写描述符的 label、流程写标题；文件名是文件本身，照写。
 import { FolderOpen, Trash } from '@phosphor-icons/react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import type { WorkspaceClient } from '@/api/client'
 import type { Capability, OutputFile, WorkspaceDetail } from '@/api/types'
@@ -17,8 +18,12 @@ import { bytes, when } from '@/lib/format'
 import { byWord, outputWord } from '@/lib/humanize'
 import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
+import { ProgressPanel } from '@/progress/ProgressPanel'
 
 import { type NameOf, outputName } from './derive'
+
+/** 产出运行中时多久重读一次它的记录：跑完了状态、结论、文件跟着变 */
+const LIVE_MS = 4000
 
 export function OutputSheet({ workspace, doc, catalog, oid, signHint, onClose, onOpen, onChanged, onOpenFiles }: {
   workspace: WorkspaceClient; doc: WorkspaceDetail; catalog: Capability[]; oid: string | null; signHint: string | null
@@ -50,6 +55,13 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
   const [epoch, setEpoch] = useState(0)
   const record = useResource(() => workspace.output(oid), [workspace.key, oid, epoch], `output:${workspace.key}:${oid}`)
   const reload = async () => { setEpoch((n) => n + 1); await onChanged() }
+  const live = record.data?.status === 'running'
+  const refetch = record.reload
+  useEffect(() => {
+    if (!live) return
+    const timer = setInterval(() => { void refetch() }, LIVE_MS)
+    return () => clearInterval(timer)
+  }, [live, refetch])
   if (record.error) return <div className="p-6"><ErrorNote text={record.error} /></div>
   if (!record.data) return <div className="p-6"><Skeleton lines={5} /></div>
   const o = record.data
@@ -74,6 +86,7 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
         </p>
       </SheetHeader>
       <div className="space-y-5 px-6 pb-8">
+        <ProgressPanel workspace={workspace} output={o} onOpenFile={onOpenFiles ? (path) => onOpenFiles(`${o.id}/${path}`) : undefined} />
         <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 text-[0.875rem]">
           <dt className="text-muted-foreground">来源</dt><dd>{byWord(o.by, titleOf)}</dd>
           <dt className="text-muted-foreground">状态</dt><dd className={cn(o.status === 'failed' && 'text-bad')}>{outputWord(o)}</dd>
