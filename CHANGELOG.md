@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-06
+
 ### 变更
 
 - 首页的项目墙改成一行一个的项目清单：不放封面图，整张清单一块玻璃，名字与目标在左、三列事实在右对齐；加搜索框，按名字与目标筛，搜中的字标出来（外层 #249）
@@ -223,7 +225,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.0...v1.3.1
