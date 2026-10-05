@@ -651,3 +651,46 @@ def test_a_hanging_index_is_cut_off_and_the_others_still_count(ws, monkeypatch):
             lane.join(5)
     # 到点之后手上那条查完就停，第二条不再问
     assert sum("export.arxiv.org" in u for u in fake.urls) == 1
+
+
+def test_another_version_of_a_paper_in_the_pool_is_folded_into_it(ws, monkeypatch):
+    """同一篇的预印本与期刊版是两个 W 号（外层 #232：演练里 130 篇有 6 组）：认成一篇，不占第二个
+    筛选名额；期刊版没有开放获取的 PDF，arXiv 版的编号与原文链接补给它。"""
+    monkeypatch.setitem(CORPUS["W1"], "best_oa_location", None)
+    monkeypatch.setitem(CORPUS, "W11", _work(
+        "W11", "Seed Paper on PINN Inverse Problems.", doi="10.48550/arxiv.2101.00001",
+        landings=("http://arxiv.org/abs/2101.00001",), cited=3))
+    monkeypatch.setitem(SEARCHES, "pinn inverse", ["W2", "W8", "W11"])
+    out, _, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
+    pool = _pool(out)
+    assert "W11" not in pool
+    assert pool["W1"]["found"] == ["seed", "query:OpenAlex:pinn inverse"]
+    assert pool["W1"]["paper"]["arxiv"] == "2101.00001"
+    assert pool["W1"]["paper"]["pdf_url"] == "https://arxiv.org/pdf/2101.00001"
+    assert (out / "sources.md").read_text().count("Seed paper on PINN inverse problems") == 1
+
+
+def test_two_versions_in_one_batch_take_one_slot(ws, monkeypatch):
+    title = "Bayesian physics-informed neural networks for noisy inverse problems"
+    monkeypatch.setitem(CORPUS, "W12", _work("W12", title, cited=5))
+    monkeypatch.setitem(CORPUS, "W13", _work("W13", title + ".", cited=1,
+                                              landings=("http://arxiv.org/abs/2003.06097",)))
+    monkeypatch.setitem(SEARCHES, "pinn inverse", ["W2", "W8", "W12", "W13"])
+    out, _, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
+    pool = _pool(out)
+    assert ("W12" in pool) != ("W13" in pool)
+
+
+def test_short_or_far_apart_titles_are_not_folded():
+    """题目太短（「Introduction」这类）或年份差得远的，不认成同一篇：宁可多筛一篇，不误并。"""
+    from framework.capabilities.literature_search.pool import Pool
+
+    def paper(key, title, year):
+        return papers.from_openalex({**_work(key, title), "publication_year": year})
+    pool = Pool()
+    assert pool.admit(paper("W1", "Introduction", 2024), 0, "seed")
+    assert pool.admit(paper("W2", "Introduction", 2024), 0, "seed")
+    long = "A survey on the memory mechanism of large language model based agents"
+    assert pool.admit(paper("W3", long, 2024), 0, "seed")
+    assert not pool.admit(paper("W4", long, 2025), 0, "seed")
+    assert pool.admit(paper("W5", long, 2019), 0, "seed")

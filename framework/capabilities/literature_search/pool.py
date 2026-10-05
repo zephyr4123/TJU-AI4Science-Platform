@@ -19,6 +19,10 @@
 起始年份（外层 #227）：早于它的线索不排、不交给模型筛——检索那头已经按年份查了，这里挡的是
 种子与向后的参考文献（多是旧的）；年份不详的照常交，不知道不等于旧。
 
+同一篇的不同版本（外层 #232）：预印本、会议、期刊在 OpenAlex 各一个 W 号，演练里 130 篇有 6 组，
+多占筛选名额、在 sources.md 列两遍，两个版本还被判出相反的结论。题目一样、年份相近的认成一篇
+（`papers.same_work`）：池里已有的，另一个版本并进去、补上编号与原文链接；同一批里只取一个。
+
 来源记成短标记，给人看时由 `report.py` 翻成话：
 - `seed` 种子（执行层用自带搜索找来的）；`query:<哪家>:<检索词>` 关键词检索；
 - `ref:<W>` 收录的 W 引用了它（向后）；`cites:<W>` 它引用了收录的 W（向前）。
@@ -33,7 +37,12 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from framework.capabilities.literature_search.papers import Paper
+from framework.capabilities.literature_search.papers import (
+    Paper,
+    merge_versions,
+    same_work,
+    version_title,
+)
 from framework.files import write_atomic
 
 INCLUDE = "收"
@@ -70,16 +79,21 @@ class Pool:
         self.excluded = excluded
         self.terms = Counter(t for q in queries for t in set(tokens(q)))
         self.since = since  # 起始年份，0 不限；检索那头也按它查（gather / loop 读这一处）
+        # 并进池里某篇的另一个版本：它的 W 号 → 并到了哪篇
+        self.folded: dict[str, str] = {}
+        self._titles: dict[str, str] = {}  # 归一后的题目 → 池里那篇的 W 号
 
     def admit(self, paper: Paper, hop: int, found: str) -> bool:
         """一篇论文交给第 hop 跳筛；已经在池里的只补一条来源。返回是不是新进的。"""
         if paper.key in self.excluded:
             return False
-        if paper.key in self.entries:
-            if found not in self.entries[paper.key].found:
-                self.entries[paper.key].found.append(found)
+        same = self._entry_of(paper)
+        if same is not None:
+            self._fold(same, paper, [found])
             return False
         self.entries[paper.key] = Entry(paper, hop, [found])
+        if title := version_title(paper.title):
+            self._titles.setdefault(title, paper.key)
         return True
 
     def in_period(self, paper: Paper) -> bool:
@@ -105,9 +119,9 @@ class Pool:
         """一条检索命中记成线索：第 0 跳也照线索排，被几家、几条检索词同时查到的在前。已经进池的
         （种子）只补一条来源。"""
         mark = f"query:{source}:{query}"
-        if paper.key in self.entries:
-            if mark not in self.entries[paper.key].found:
-                self.entries[paper.key].found.append(mark)
+        same = self._entry_of(paper)
+        if same is not None:
+            self._fold(same, paper, [mark])
             return
         self.cache[paper.key] = paper
         self._lead(paper.key, mark)
@@ -120,7 +134,7 @@ class Pool:
 
     def open_leads(self) -> list[str]:
         """还没进池的线索，关联多的在前（同样多的按 W 号，结果稳定可复现）。"""
-        return sorted((k for k in self.leads if k not in self.entries),
+        return sorted((k for k in self.leads if k not in self.entries and k not in self.folded),
                       key=lambda k: (-self.links(k), k))
 
     def links(self, key: str) -> int:
@@ -155,7 +169,36 @@ class Pool:
         return [self.cache[k] for k in picked]
 
     def _ready(self) -> list[str]:
-        return [k for k in self.open_leads() if k in self.cache and self.in_period(self.cache[k])]
+        """能排的线索：取到了元数据、不早于起始年份；池里某篇的另一个版本先并进去，同一篇的几个
+        版本只留证据最多的一个（其余留作线索，那一个进池后下次并进去）。"""
+        ready: dict[str, str] = {}
+        for key in self.open_leads():
+            paper = self.cache.get(key)
+            if paper is None or not self.in_period(paper):
+                continue
+            same = self._entry_of(paper)
+            if same is not None:
+                self._fold(same, paper, sorted(self.leads[key]))
+                continue
+            title = version_title(paper.title) or key
+            if title not in ready:  # open_leads 按证据数排好了，先到的就是证据最多的
+                ready[title] = key
+        return list(ready.values())
+
+    def _entry_of(self, paper: Paper) -> Entry | None:
+        """池里的同一篇：同一个 W 号、并过的版本，或题目一样、年份相近的另一个版本。"""
+        key = self.folded.get(paper.key, paper.key)
+        if key in self.entries:
+            return self.entries[key]
+        title = version_title(paper.title)
+        entry = self.entries.get(self._titles.get(title, "")) if title else None
+        return entry if entry is not None and same_work(entry.paper, paper) else None
+
+    def _fold(self, entry: Entry, paper: Paper, marks: list[str]) -> None:
+        if paper.key != entry.paper.key and paper.key not in self.folded:
+            entry.paper = merge_versions(entry.paper, paper)
+            self.folded[paper.key] = entry.paper.key
+        entry.found += [m for m in marks if m not in entry.found]
 
     def _lexical(self, keys: list[str]) -> dict[str, float]:
         """每条线索的题目加摘要命中检索词的程度（0~1），词按在这批线索里的稀有度（idf）加权。"""
