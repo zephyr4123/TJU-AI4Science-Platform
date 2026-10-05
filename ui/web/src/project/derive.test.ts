@@ -26,9 +26,14 @@ describe('项目页上一行工作区', () => {
   })
   it('几条流程各在等谁：等人 > 在跑 > 等助理 > 全走完', () => {
     expect(rowState(row({ flows: [flow(), flow({ name: 'b', title: '对照', waiting: 'sign' })] })))
-      .toMatchObject({ word: '待确认', tone: 'warn', details: ['论文复现 4 / 6 等 2 条', '产出 3 次'] })
+      .toMatchObject({ word: '待确认', tone: 'warn', details: ['论文复现 6 / 6 等 2 条', '产出 3 次'] })
     expect(rowState(row({ flows: [flow({ waiting: 'job' })] }))).toMatchObject({ word: '运行中', mark: 'running' })
-    expect(rowState(row({ flows: [flow({ waiting: 'assistant', step: 2 })] }))).toMatchObject({ word: '进行中', details: ['论文复现 2 / 6', '产出 3 次'] })
+    expect(rowState(row({ flows: [flow({ waiting: 'assistant', step: 2 })] }))).toMatchObject({ word: '进行中', details: ['论文复现 3 / 6', '产出 3 次'] })
     expect(rowState(row({ flows: [flow()] }))).toMatchObject({ word: '完成', tone: 'ok', mark: 'done' })
+  })
+  it('进度写走过几项（外层 #238）：后端给的是走到那一项的下标，一项没走是 -1；走完写满', () => {
+    expect(rowState(row({ flows: [flow({ waiting: 'assistant', step: -1 })] })).details[0]).toBe('论文复现 0 / 6')
+    expect(rowState(row({ flows: [flow({ waiting: 'sign', step: 0 })] })).details[0]).toBe('论文复现 1 / 6')
+    expect(rowState(row({ flows: [flow({ title: '文献调研', step: 0, total: 1 })] })).details[0]).toBe('文献调研 1 / 1')
   })
 })
