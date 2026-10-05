@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-05
+
 ### 新增
 - 出厂流程「文献调研」`literature-survey`：一格里先检索、再精读，产出到精读的 sources.md 为止；不排写作阶段，综述之后单独设计（#239）
 - 文献精读 `literature-read`（文献阶段第二个步骤）：读上游 sources.md 认出有原文的论文，一篇一个执行层会话（同时 4 个）按需求写七节笔记，主要结果每条抄一句原句，框架零模型去原文里核；失败只记那一篇；sources.md 是一句话目录 + 笔记在哪 + 原句对上几条（#233）
@@ -193,7 +195,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.1.1...v1.2.0
