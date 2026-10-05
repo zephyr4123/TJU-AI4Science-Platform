@@ -20,10 +20,8 @@ import { useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 import { ProgressPanel } from '@/progress/ProgressPanel'
 
-import { type NameOf, outputName } from './derive'
+import { type NameOf, openByDefault, outputName } from './derive'
 
-/** 产出运行中时多久重读一次它的记录：跑完了状态、结论、文件跟着变 */
-const LIVE_MS = 4000
 
 export function OutputSheet({ workspace, doc, catalog, oid, signHint, onClose, onOpen, onChanged, onOpenFiles }: {
   workspace: WorkspaceClient; doc: WorkspaceDetail; catalog: Capability[]; oid: string | null; signHint: string | null
@@ -55,13 +53,14 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
   const [epoch, setEpoch] = useState(0)
   const record = useResource(() => workspace.output(oid), [workspace.key, oid, epoch], `output:${workspace.key}:${oid}`)
   const reload = async () => { setEpoch((n) => n + 1); await onChanged() }
-  const live = record.data?.status === 'running'
+  // 运行中的产出跑完了：看板那一份（有作业在跑时工作区页每 10 秒重拉）里它的状态先变，这里跟着重拉一次记录。
+  // 不自己轮询：一次检索的记录带着几十篇原文的正文，上 MB（外层 #242）
+  const listed = doc.stages.flatMap((s) => s.outputs).find((x) => x.id === oid)?.status
+  const shown = record.data?.status
   const refetch = record.reload
   useEffect(() => {
-    if (!live) return
-    const timer = setInterval(() => { void refetch() }, LIVE_MS)
-    return () => clearInterval(timer)
-  }, [live, refetch])
+    if (listed && shown && listed !== shown) void refetch()
+  }, [listed, shown, refetch])
   if (record.error) return <div className="p-6"><ErrorNote text={record.error} /></div>
   if (!record.data) return <div className="p-6"><Skeleton lines={5} /></div>
   const o = record.data
@@ -137,9 +136,10 @@ export function OutputBody({ workspace, doc, catalog, oid, signHint, onChanged, 
   )
 }
 
-/** 一个文件：小文本展开看（markdown 排版、别的原样），大的与二进制只有名字与大小。`at` 是它在工作区里的位置 */
+/** 一个文件：小文本展开看（markdown 排版、别的原样），大的与二进制只有名字与大小；一打开就展开哪些见 `openByDefault`。
+ *  `at` 是它在工作区里的位置 */
 function FileRow({ file, at }: { file: OutputFile; at: FileAt }) {
-  const [open, setOpen] = useState(file.path.endsWith('.md'))
+  const [open, setOpen] = useState(openByDefault(file.path))
   const readable = file.text !== undefined
   return (
     <li className="rounded-xl border bg-card">

@@ -77,8 +77,8 @@ export interface OutputDetail extends OutputBrief {
   jobs: Job[]
 }
 
-/** 一个阶段一格：名字、目录名、这个阶段的全部产出。 */
-export interface StageBoard extends StageInfo {
+/** 一个阶段一格：名字、目录名、这个阶段的全部产出（主文件只在 `GET /stages` 里有，这里不带）。 */
+export interface StageBoard extends Omit<StageInfo, 'main_files'> {
   outputs: OutputBrief[]
 }
 

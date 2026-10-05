@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -9,13 +9,16 @@ import { cn } from '@/lib/utils'
 const PLUGINS = [remarkGfm, remarkTrimAutolink]
 const COMPONENTS = { a: ({ href = '', children }: { href?: string; children?: ReactNode }) => <Link href={href}>{children}</Link> }
 
+interface Props { text: string; className?: string; at?: FileAt }
+
 /** 全页面唯一的 markdown 渲染点；排版在 index.css 的 `.prose-ai4sci`，链接怎么开在 `markdown/links.tsx`。
- *  `at`：渲染的是工作区里的一份文件时给，文件里的相对链接按它解开 */
-export function Markdown({ text, className, at }: { text: string; className?: string; at?: FileAt }) {
+ *  `at`：渲染的是工作区里的一份文件时给，文件里的相对链接按它解开。
+ *  字没变就不重新解析：上面的面板在轮询、在重渲染时，几十 KB 的文件不该跟着再解析一遍（外层 #242）；`at` 按值比 */
+export const Markdown = memo(function Markdown({ text, className, at }: Props) {
   const body = (
     <div className={cn('prose-ai4sci', className)}>
       <ReactMarkdown remarkPlugins={PLUGINS} components={COMPONENTS}>{text}</ReactMarkdown>
     </div>
   )
   return at ? <FileLinks at={at}>{body}</FileLinks> : body
-}
+}, (a: Props, b: Props) => a.text === b.text && a.className === b.className && a.at?.ws === b.at?.ws && a.at?.path === b.at?.path)

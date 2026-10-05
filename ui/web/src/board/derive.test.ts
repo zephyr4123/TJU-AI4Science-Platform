@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { FlowProgress } from '@/api/types'
 
-import { needsSign, nextStage, outputState, shortNote, waitingSentence } from './derive'
+import { needsSign, nextStage, openByDefault, outputState, shortNote, waitingSentence } from './derive'
 
 const out = (id: string, signed = false, stale = false) =>
   ({ id, title: 't', status: 'ok' as const, by: 'design', from: [], signed, signed_stale: stale })
@@ -64,5 +64,13 @@ describe('流在等谁', () => {
     expect(shortNote('验收')).toBe('验收')
     expect(shortNote('看一眼，别急')).toBe('看一眼')
     expect(shortNote('')).toBe('')
+  })
+})
+
+describe('侧滑里一打开就展开的文件', () => {
+  it('只有产出目录顶层的 markdown；子目录里的（几十篇原文、笔记）点了才排版', () => {
+    expect(['sources.md', 'seeds.md', 'analysis.md'].map(openByDefault)).toEqual([true, true, true])
+    expect(['papers/W1/paper.md', 'notes/3/note.md', 'rounds/0/decisions.md', 'candidates.jsonl', 'scoring.yaml'].map(openByDefault))
+      .toEqual([false, false, false, false, false])
   })
 })

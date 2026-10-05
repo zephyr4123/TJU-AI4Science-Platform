@@ -67,3 +67,9 @@ export function outputName(id: string, nameOf: NameOf): string {
   const [slug, n] = id.split('/')
   return `${nameOf(slug)} · ${n}`
 }
+
+/** 产出侧滑里一打开就展开的文件：只有产出目录顶层的 markdown（`sources.md`、`analysis.md` 这类），子目录里的点了才排版——
+ *  文献检索一次产出几十篇原文 `papers/<编号>/paper.md`，全展开时点开侧滑主线程卡 3.4 秒（外层 #242 实测） */
+export function openByDefault(path: string): boolean {
+  return path.endsWith('.md') && !path.includes('/')
+}
