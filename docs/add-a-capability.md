@@ -129,6 +129,12 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, sections: int = 4) ->
 
 不用写的：CLI 子命令、`--from` / `--flow` / `--continue` / `--detach`、页面上的节点与能力小片、`show caps`——都从描述符生成。
 
+## 进度面板
+
+长任务要让研究者看得见在跑（外层 #242）：能力的 Python 程序在它本来就打日志的那些地方，顺手往产出目录追加 `progress.jsonl`——`framework/files.py::append_event(output_dir / "progress.jsonl", step=..., ...)`，一行一个事件、自动带 `at`。每一步开始一行、做完一行带数，逐篇处理的东西每篇一行；执行层会话中途没有动静，就只写开始与结束，页面不猜它做到哪。事件长什么样由这个能力自己定，在描述符的「产出」栏提一句。
+
+页面那边每个能力一块**定制**的面板，不做通用面板（主人 2026-10-05）：`ui/web/src/progress/` 里写这个能力自己的推导（事件 → 面板要画的样子，纯函数、有单测，照 `search.ts` / `read.ts`）与画法（照 `SearchPanel.tsx` / `ReadPanel.tsx`），再在 `ProgressPanel.tsx` 的 `PANELS` 加一行。共用的只有 `kit.tsx` 的图元（方块、连线、六边形、计时、悬停小签、详情）与 `index.css` 的几种动（呼吸、线上的流、新格浮出）；版式与中间那张大图各画各的。没写面板的能力，侧滑照旧，不画任何进度。
+
 ## skill 呢
 
 能力有两种 tag（纲领 P-22，`framework/capabilities/abilities.py` 是出处）：**步骤**是这份文档讲的——框架开产出目录、起执行层、按描述符核对参数；**skill** 是 agent 的工具包——一份说明加几个脚本，随手用、不开编号产出、写哪里由调用者定。两种都能挂到流程的格子上（`- 文献: [pdf, download]`），skill 哪个阶段都能挂、不带参数，意思是「这一步推荐用它」。一件活要不要做成步骤，看它要不要产出目录、要不要被下游 `--from`；只是读个文件、拉个仓库的做 skill 就够。接一个 skill 看 `docs/add-a-skill.md`。
