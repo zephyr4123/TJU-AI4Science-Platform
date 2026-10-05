@@ -46,13 +46,14 @@ workspaces/<名字>/    一份需求的家：
 - **已确认**：取流程、跑阶段。
 - **有改动未确认**：研究者要求改需求，你改了 `requirement.md` 之后就是这个状态——所有阶段又关上了，研究者看过 diff 再确认一次成下一版。
 
-## 七个研究阶段、七个能力、产出与断点
+## 七个研究阶段、八个能力、产出与断点
 
 科研分七个阶段：文献、假设、设计、实验、分析、写作、验证（纲领 P-18）。阶段不定先后，经过哪几个阶段、按什么顺序是流程说了算。每个阶段里有几个能力——一个能力就是一条 `ai4sci cap <name>` 命令，也就是给你调用的一个 tool——`ai4sci show caps` 按阶段列全，每个五栏：职责、边界、输入、产出、终止条件——调用之前先读那五栏。现在有的：
 
 | 阶段 | 能力（命令） | 读什么 | 一句话 |
 |---|---|---|---|
 | 文献 | `literature-search` 文献检索 | 需求 | 执行层写检索词与纳入标准、用自带搜索找种子论文；框架拿检索词查四家学术库（OpenAlex、Crossref、arXiv、Europe PMC）、顺着引用往外扩几跳，每跳执行层看摘要筛，收录的有开放获取 PDF 就下载解析，写 sources.md |
+| 文献 | `literature-read` 文献精读 | `--from literature/<n>`（检索的那次） | 有原文的逐篇起一个执行层会话读，每篇一份笔记（问题、方法、数据与实验、主要结果带原句、局限、和本需求的关系），框架去原文里核原句，写 sources.md：每篇一句话、笔记在哪 |
 | 设计 | `design` 评分脚本与基线 | 需求 + 原件（+ `--from hypothesis/<n>`） | 执行层写 scoring.yaml、harness/ 与 code/，框架封 harness、跑基线出 baseline/、算预检 |
 | 设计 | `reproduction` 原码复现基线 | 需求 + 原件里论文的代码（`--code <目录名>`）+ `--from literature/<n>` | 论文的代码搬进 code/，执行层只写起它的 launcher、算论文那几个数的 evaluate、目标 = 论文值的 scoring；框架跑一次，论文值与我们的值并排（复现那条流程，见下） |
 | 实验 | `auto-research` AutoResearch | `--from design/<n>` | 开一次实验，一轮一轮改代码：过统计门才 keep，否则回退到 best |
@@ -61,6 +62,8 @@ workspaces/<名字>/    一份需求的家：
 | 验证 | `verify` 数字核对 | `--from analysis/<n>` + 它读的实验（或设计） | 零模型：分析里的数回溯到 results.json（复现性分析回溯到 baseline/ 与论文值），账本与 git 对账，PASS / FAIL |
 
 能力有两种 tag，`ai4sci show caps` 与 `show flows` 都标出来：**步骤**（上表这些，`ai4sci cap <name>`，框架开产出目录、起执行层）与 **skill**（`ai4sci skill run <name>`，教你怎么做一件事的指南 + 脚本，随手用、不开编号产出——「工具包」一节列的就是它们）。流程的格子上两种都能挂：`文献(pdf[skill],download[skill])` 的意思是这一步推荐用这两个 skill，不是让你 `cap`。**项目只装载流程实例上挂的能力**（纲领 P-26）：步骤要么点了名、要么它的阶段在流程里而没点名；skill 要么是平台自带的、要么挂在格子上。没挂的读与跑都会被拒——先挂到实例上（见「工具包」一节）。
+
+文献两步常连着用：先 `literature-search` 找，再 `literature-read --from literature/<检索那次>` 读。研究者问「这方面的研究都在做什么」、要综述时，照精读的笔记回答——先看精读那次 `sources.md` 的一句话目录，再挑笔记细读，说法带上笔记里的原句；不要只看检索清单的题目与摘要就下结论。
 
 假设、写作两个阶段还没有步骤。流程里排了这些阶段，你自己写：`ai4sci output new <stage> --title <一句>`（要读谁就加 `--from`）开一个产出目录，然后往里写文件（假设、稿子）。文献阶段的主文件叫 `sources.md`（材料来源）：`literature-search` 产出它，你手写也行；复现那条流程里下游按这个名字找，写法不限。
 

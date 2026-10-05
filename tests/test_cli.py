@@ -445,7 +445,9 @@ def test_show_caps_lists_stages_with_empty_stages_visible_and_five_columns():
     proc = run_cli("show", "caps")
     assert proc.returncode == EXIT_OK, proc.stderr
     lines = proc.stdout.splitlines()
-    assert lines[0].startswith("文献\tliterature-search\t文献检索\t")
+    # 一个能力一行头、五栏缩进；同一阶段里按名字排
+    heads = [ln.split("\t")[1] for ln in lines if ln.startswith("文献\t")]
+    assert heads == ["literature-read", "literature-search"]
     empty = next(line for line in lines if line.startswith("假设\t"))
     assert empty.startswith("假设\t-\t这个阶段还没有能力") and "output new hypothesis" in empty
     design = next(line for line in lines if line.startswith("设计\tdesign\t"))
@@ -464,8 +466,8 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
     doc = {c["name"]: c for c in json.loads(proc.stdout)}
     # 能力库的两半：步骤（描述符）与 skill（SKILL.md），每条带 kind
     assert {n for n, c in doc.items() if c["kind"] == "步骤"} == {
-        "literature-search", "design", "reproduction", "auto-research", "analysis",
-        "reproducibility", "verify"}
+        "literature-search", "literature-read", "design", "reproduction", "auto-research",
+        "analysis", "reproducibility", "verify"}
     assert {"pdf", "download"} <= {n for n, c in doc.items() if c["kind"] == "skill"}
     assert doc["pdf"]["used_by"] == ["reproduce"] and doc["pdf"]["brief"]
     assert "scripts" in doc["pdf"] and "body" not in doc["pdf"]  # 正文只经 skill show（过装载）
@@ -915,9 +917,9 @@ def test_serve_helpers_check_a_draft_and_list_the_catalog(tmp_path, monkeypatch)
     catalog = {c["name"]: c for c in serve._catalog()}
     assert catalog["auto-research"]["used_by"] == ["research"] and catalog["verify"]["does"]
     assert [w["name"] for w in serve._workflows()] == ["reproduce", "research"]
-    assert set(serve._descriptor_map()) == {"literature-search", "design", "reproduction",
-                                            "auto-research", "analysis", "reproducibility",
-                                            "verify"}
+    assert set(serve._descriptor_map()) == {"literature-search", "literature-read", "design",
+                                            "reproduction", "auto-research", "analysis",
+                                            "reproducibility", "verify"}
 
 
 def test_env_resolve_writes_a_complete_lock_into_materials(tmp_path, monkeypatch, capsys):
