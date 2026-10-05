@@ -329,6 +329,10 @@ export interface ChatDoc extends ChatMeta {
   transcript: string
   /** 落盘的问答，一轮一条；`turns` 仍是 meta 里的计数 */
   history: TurnRecord[]
+  /** 正在跑的那一轮，别的进程起的也算（作业跑完叫醒助理）；没在跑是 null */
+  running: TurnRecord | null
+  /** 还有几个作业会来叫醒这段对话（在跑的、跑完了还没叫醒的、收件箱里排着的） */
+  waiting: number
 }
 
 /** `delta` 是助理正在说的几个字（不是累计），同一段说完会来一条完整的 `text` */

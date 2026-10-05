@@ -218,10 +218,39 @@ def read_turns(conv: Conversation) -> list[dict[str, Any]]:
             for n, origin, message, reply in TURN_RE.findall(text)]
 
 
-def _read_trace(path: Path) -> list[dict[str, Any]]:
+def running_turn(conv: Conversation) -> dict[str, Any] | None:
+    """正在跑的那一轮，形状同 `read_turns` 的一条（reply 是空串，events 是到此刻落了盘的）。别的进程
+    起的也读得到：作业跑完由作业进程叫醒助理，这一轮不经过服务，页面只能从盘上看（外层 #230）。
+    没在跑、锁刚拿到还没开出轮次，都是 None。"""
+    if not busy(conv):
+        return None
+    try:
+        lock = json.loads((conv.dir / INFLIGHT_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None  # 锁刚建、还没写完
+    n = lock.get("turn")
+    if n is None:
+        return None
+    turn_dir = conv.dir / f"turn-{n}"
+    message = turn_dir / "message.md"
+    return {"turn": n, "origin": lock.get("origin", ORIGIN_HUMAN),
+            "message": message.read_text(encoding="utf-8").strip() if message.is_file() else "",
+            "reply": "", "events": _read_trace(turn_dir / TRACE_NAME, running=True)}
+
+
+def _read_trace(path: Path, *, running: bool = False) -> list[dict[str, Any]]:
+    """`running`：这一轮还在写，最后一行可能写到一半，那一行不算；写完了的轮次照旧一行坏就抛。"""
     if not path.is_file():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line]
+    events = []
+    for i, line in enumerate(lines):
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            if not (running and i == len(lines) - 1):
+                raise
+    return events
 
 
 def event_payload(event: ChatEvent) -> dict[str, Any]:
@@ -328,7 +357,8 @@ def _turn(
     if update:
         (turn_dir / GUIDE_UPDATE_NAME).write_text(update, encoding="utf-8")
     started = datetime.now(UTC).isoformat(timespec="seconds")
-    write_atomic(inflight, json.dumps({"turn": turn_n, "pid": os.getpid(), "started_at": started}))
+    write_atomic(inflight, json.dumps({"turn": turn_n, "origin": origin, "pid": os.getpid(),
+                                       "started_at": started}))
     events_path = turn_dir / EVENTS_NAME
     trace_path = turn_dir / TRACE_NAME
     timeout = coordinator_timeout_s() if timeout_s is None else timeout_s

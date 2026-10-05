@@ -65,7 +65,8 @@
     POST …/workspaces/<id>/jobs/<jid>/stop  {"by"} → 人叫停：杀进程树，作业记 stopped、产出记 failed
     GET  <域>/chats                         对话清单；<域> 是 /projects/<p> 或 /studio
     POST <域>/chats                         {"backend"?, "model"?, "effort"?} → 新对话的 meta
-    GET  <域>/chats/<cid>                   meta + transcript + history
+    GET  <域>/chats/<cid>                   meta + transcript + history + running（正在跑的那一轮，
+                                            别的进程起的也算）+ waiting（还有几个作业会来叫醒它）
     POST <域>/chats/<cid>/messages          {"text", "model"?, "effort"?} → text/event-stream，
                                             一个事件一条；model / effort 给了就记进对话（没给
                                             沿用）；
@@ -306,9 +307,13 @@ class Handler(BaseHTTPRequestHandler):
             if conv is None:
                 return None
             transcript = (conv.dir / conversation.TRANSCRIPT_NAME).read_text(encoding="utf-8")
+            # 叫醒那一轮是作业进程起的、不经过这里的 SSE：页面靠 running 摆出来、靠 waiting 决定
+            # 要不要定时重读（外层 #230）
+            waiting = notify.awaiting(where.project, conv) if where.project else 0
             return self._json({**conv.to_dict(), "title": conversation.title(conv),
                                "transcript": transcript,
-                               "history": conversation.read_turns(conv)})
+                               "history": conversation.read_turns(conv),
+                               "running": conversation.running_turn(conv), "waiting": waiting})
         return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
 
     # ── POST ─────────────────────────────────────────────────────────────
