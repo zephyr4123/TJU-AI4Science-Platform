@@ -65,7 +65,7 @@ export function Files({ workspace, doc, caps, epoch, focus, onOpenBoard }: {
           ? (
             <>
               <Location path={selected} meaning={meaning} onReveal={reveal} />
-              <OutputBody workspace={workspace} doc={data} catalog={caps.data ?? []} oid={picked.output.id} signHint={null}
+              <OutputBody workspace={workspace} doc={data} catalog={caps.data ?? []} oid={picked.output.id} pending={false}
                           onChanged={doc.reload} onOpen={(oid) => reveal(oid, true)}
                           title={(o) => <h2 className="font-serif text-[1.25rem] font-semibold">{o.title}</h2>} />
             </>

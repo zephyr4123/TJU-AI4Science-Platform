@@ -99,7 +99,7 @@ flowchart TB
 - **计算下沉到纯函数模块**，组件只拼装：`board/derive.ts`、`project/derive.ts`、`files/derive.ts`、`studio/model.ts`、`chat/trace.ts`、`chat/turns.ts`、`chat/running.ts`、`progress/search.ts`、`progress/read.ts`、`progress/hex.ts`、`settings/status.ts`、`lib/humanize.ts`、`lib/diff.ts`、`lib/slug.ts`、`lib/format.ts`、`lib/clock.ts`。新逻辑先问能不能写成纯函数。
 - **取数**：`lib/useResource` + `lastSeen`（模块级 Map，换地方不闪）+ `epoch`（每轮对话结束加一，看板重读）+ 只在有作业时每 10 秒轮询；产出运行中时进度面板每 2 秒重读 `progress.jsonl`，侧滑的记录不自己轮询，看板那份里它的状态变了才重拉一次（一次检索的记录带几十篇原文的正文，上 MB）。
 - **错误**：非 2xx 抛 `ApiError`，显示在 `ErrorNote`（`role=alert`）；静默 `catch` 必须写注释说明为什么可以不管；不留 `console.*`。
-- **删除**一律 `HoldButton` 按住一秒生效，服务端返回 `{removed, leftovers}`；人的两处确认 `ConfirmKey` / `SignKey` 都要署名（`localStorage` 的 `ai4sci.signer`）。
+- **删除**一律 `HoldButton` 按住一秒生效，服务端返回 `{removed, leftovers}`；人的两处确认 `ConfirmKey` / `SignKey` 与叫停都不署名，服务端记登录名（本地部署，能按的只有用户自己）。
 - **素材**：图片 / 视频只写 CDN URL，只在 `assets.ts`；`git ls-files ui/` 里没有二进制（`make ui-check` 拦）。
 - **文案**：只用词表里的词与后端给的中文名（能力 `title` `brief`、参数 `label`、阶段名、流程 `title`；产出 id 写「设计 · 1」）；机器的名字与状态码只在展开层；对话里的工具调用是例外，原样一行（`chat/trace.ts::toolLine`）。
 - **命名与风格**：组件 PascalCase 具名导出；逻辑模块小写 `.ts`；hooks `useX`；测试同目录 `*.test.ts`；import 分三段（node / 第三方、`@/…`、相对）；单引号、不写分号；中文头注释写为什么、引用 P-n 与 issue。

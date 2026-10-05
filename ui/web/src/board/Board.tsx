@@ -52,7 +52,7 @@ export function Board({ workspace, doc, caps, skills, opened, onOpen, onOpenFile
       </div>
       <OutputSheet workspace={workspace} doc={data} catalog={catalog} oid={opened} onClose={() => onOpen(null)} onOpen={onOpen}
                    onChanged={doc.reload}
-                   signHint={opened && waiting.has(opened) ? '流程在此处待你确认，确认后下一步方可读取' : null}
+                   pending={opened !== null && waiting.has(opened)}
                    onOpenFiles={(path) => { onOpen(null); onOpenFiles(path) }} />
     </div>
   )

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { FlowProgress } from '@/api/types'
 
-import { filesWord, needsSign, nextStage, outputState, shortNote, waitingSentence } from './derive'
+import { fileKinds, needsSign, nextStage, outputLine, outputState, shortNote, tookWord, waitingSentence } from './derive'
 
 const out = (id: string, signed = false, stale = false) =>
   ({ id, title: 't', status: 'ok' as const, by: 'design', from: [], signed, signed_stale: stale })
@@ -67,16 +67,21 @@ describe('流在等谁', () => {
   })
 })
 
-describe('侧滑里文件那一行', () => {
-  it('一共几个，再按种类从多到少；一样多照文档、数据、图片、PDF、代码排，其它垫底', () => {
+describe('侧滑里的记录', () => {
+  it('文件按种类数：从多到少；一样多照文档、数据、图片、PDF、代码排，其它垫底', () => {
     const paths = ['sources.md', 'seeds.md', 'candidates.jsonl', 'papers/W1/source.pdf', 'papers/W1/structured.json',
       'papers/W1/images/a.png', 'papers/W1/images/b.png', 'papers/W1/images/c.png', 'run.log']
-    expect(filesWord(paths)).toBe('9 个：图片 3、文档 2、数据 2、PDF 1、其它 1')
+    expect(fileKinds(paths)).toEqual([['图片', 3], ['文档', 2], ['数据', 2], ['PDF', 1], ['其它', 1]])
+    expect(fileKinds(['notes/1/note.md', 'notes/2/note.md'])).toEqual([['文档', 2]])
+    expect(fileKinds([])).toEqual([])
   })
-  it('只有一种就直说；一个没有写「—」', () => {
-    expect(filesWord(['notes/1/note.md', 'notes/2/note.md'])).toBe('2 个文档')
-    expect(filesWord(['paper.pdf'])).toBe('1 个 PDF')
-    expect(filesWord(['a.log', 'b.bin'])).toBe('2 个')
-    expect(filesWord([])).toBe('—')
+  it('用时：不到一分钟、几分钟、几小时几分', () => {
+    expect(tookWord('2026-10-05T13:23:00+08:00', '2026-10-05T13:23:40+08:00')).toBe('不到 1 分钟')
+    expect(tookWord('2026-10-05T13:23:00+08:00', '2026-10-05T13:32:30+08:00')).toBe('9 分钟')
+    expect(tookWord('2026-10-05T13:23:00+08:00', '2026-10-05T20:20:00+08:00')).toBe('6 小时 57 分钟')
+    expect(tookWord('2026-10-05T13:00:00+08:00', '2026-10-05T15:00:00+08:00')).toBe('2 小时')
+  })
+  it('标题下那一行把阶段与第几次说全', () => {
+    expect(outputLine('literature/3', () => '文献')).toBe('文献阶段 · 第 3 次产出')
   })
 })

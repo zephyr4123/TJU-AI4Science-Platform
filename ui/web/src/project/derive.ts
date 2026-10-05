@@ -10,7 +10,7 @@ export interface RowState {
   word: string
   tone: Tone
   mark: Mark
-  /** 小字：流程走到第几步、产出几次 */
+  /** 小字：流程走到第几步、一共产出几次 */
   details: string[]
 }
 
@@ -28,7 +28,8 @@ export function rowState(row: WorkspaceRow): RowState {
   return { word: '完成', tone: 'ok', mark: 'done', details }
 }
 
-/** 细节两句：第一条流程走过几项（多条时再加「等 N 条」）、七个阶段一共产出几次。
+/** 细节两句：第一条流程走过几步（多条时再加「另有 N 条」）、七个阶段一共产出几次。带上「流程」二字与书名号——
+ *  只写「文献调研 1 / 1」看不出它是流程（主人 2026-10-05）。
  *  后端的 `step` 是走到的那一项的下标（一项没走是 -1），走过几项是它加一；走完（末尾断点也签了）写满（外层 #238） */
 function detailsOf(row: WorkspaceRow): string[] {
   const out: string[] = []
@@ -36,9 +37,9 @@ function detailsOf(row: WorkspaceRow): string[] {
   if (first && first.total) {
     const name = first.title ?? first.name
     const passed = first.waiting === 'done' ? first.total : (first.step ?? -1) + 1
-    out.push(`${name} ${passed} / ${first.total}` + (rest.length ? ` 等 ${rest.length + 1} 条` : ''))
+    out.push(`流程「${name}」${passed} / ${first.total} 步` + (rest.length ? `，另有 ${rest.length} 条` : ''))
   }
   const produced = Object.values(row.counts).reduce((a, b) => a + b, 0)
-  if (produced > 0) out.push(`产出 ${produced} 次`)
+  if (produced > 0) out.push(`共产出 ${produced} 次`)
   return out
 }

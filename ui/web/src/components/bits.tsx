@@ -1,7 +1,6 @@
-// 页面零件：状态点、空态、错误条、问题清单、骨架、键按过之后那一行。故意不做成"设计系统"，够用为止。
+// 页面零件：状态点、空态、错误条、问题清单、骨架。故意不做成"设计系统"，够用为止。
 
-import { Check, WarningCircle } from '@phosphor-icons/react'
-import type { ReactNode } from 'react'
+import { WarningCircle } from '@phosphor-icons/react'
 
 import { cn } from '@/lib/utils'
 
@@ -45,14 +44,3 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
 }
 
 /** 键按过之后的陈述句：绿底一行。 */
-export function DoneBlock({ title, detail }: { title: string; detail: ReactNode }) {
-  return (
-    <section className="flex items-start gap-3 rounded-xl bg-ok-soft p-5 text-ok">
-      <Check className="mt-1 size-5 shrink-0" aria-hidden />
-      <div>
-        <div className="text-[0.9375rem] font-semibold">{title}</div>
-        <div className="mt-0.5 text-sm leading-relaxed opacity-90">{detail}</div>
-      </div>
-    </section>
-  )
-}

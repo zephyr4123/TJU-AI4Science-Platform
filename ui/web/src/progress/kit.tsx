@@ -88,7 +88,13 @@ export function HoverNote({ at, title, note }: { at: { x: number; y: number } | 
   )
 }
 
-/** 收着的「详情」：每行一个名、一句话；面板上只有图，数都在这里 */
+/** 一句话里的数加重（`汇集 289 篇` 的 289），别的字照外面的颜色 */
+function figures(text: string): ReactNode[] {
+  return text.split(/(\d+)/).map((part, i) => (i % 2 ? <span key={i} className="font-medium text-foreground tabular-nums">{part}</span> : part))
+}
+
+/** 收着的「详情」：每行一个名、一句话；面板上只有图，数都在这里。排法与侧滑下面那张记录一样（白底、细线分行、
+ *  左名右值），值是一句字的，里面的数加重、别的字淡，一眼先看到数 */
 export function Details({ rows }: { rows: [string, ReactNode][] }) {
   return (
     <Collapsible className="group/details">
@@ -96,10 +102,11 @@ export function Details({ rows }: { rows: [string, ReactNode][] }) {
         <CaretRight weight="bold" className="size-3 transition-transform duration-200 group-data-[state=open]/details:rotate-90" />详情
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <dl className="mt-2 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1 text-[0.8125rem]">
-          {rows.map(([label, value]) => (
-            <div key={label} className="contents">
-              <dt className="text-muted-foreground">{label}</dt><dd className="min-w-0 break-words">{value}</dd>
+        <dl className="mt-2 divide-y divide-foreground/[0.06] rounded-xl border border-foreground/10 bg-card px-3">
+          {rows.map(([label, value], i) => (
+            <div key={`${label}-${i}`} className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-x-3 py-1.5 text-[0.8125rem]">
+              <dt className="text-muted-foreground">{label}</dt>
+              <dd className="min-w-0 break-words text-muted-foreground">{typeof value === 'string' ? figures(value) : value}</dd>
             </div>
           ))}
         </dl>

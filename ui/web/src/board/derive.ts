@@ -1,4 +1,4 @@
-// 看板上算出来的东西，纯函数、有单测：一条流程在等谁、下一步是哪个阶段、每次产出用哪个词、断点的短标签、侧滑里文件那一行。
+// 看板上算出来的东西，纯函数、有单测：一条流程在等谁、下一步是哪个阶段、每次产出用哪个词、断点的短标签、侧滑记录里的几处说法。
 import type { FlowOutput, FlowProgress, FlowProgressItem } from '@/api/types'
 
 /** 哪些产出待人确认：流程里那一项后面是断点、产出还没确认（或确认之后又改了） */
@@ -77,20 +77,31 @@ const FILE_KINDS: [string, RegExp][] = [
   ['代码', /\.(py|sh|ipynb|r|jl)$/i],
 ]
 
-/** 产出侧滑里「文件」那一行：一共几个、各是什么（主人 2026-10-05：一次文献检索几百个文件，大半是原文切出来的图，
- *  不在侧滑里平铺，要看去文件镜头）。`9 个：图片 3、文档 2、…`，只有一种写 `2 个文档`，一个没有写「—」 */
-export function filesWord(paths: string[]): string {
-  if (paths.length === 0) return '—'
+/** 产出侧滑里「生成文件」那一行：各种类几个，从多到少（主人 2026-10-05：一次文献检索几百个文件，大半是原文切出来的图，
+ *  不在侧滑里平铺，要看去文件镜头） */
+export function fileKinds(paths: string[]): [string, number][] {
   const counts = new Map<string, number>()
   for (const path of paths) {
     const kind = FILE_KINDS.find(([, pattern]) => pattern.test(path))?.[0] ?? '其它'
     counts.set(kind, (counts.get(kind) ?? 0) + 1)
   }
   const order = [...FILE_KINDS.map(([kind]) => kind), '其它']
-  const kinds = [...counts].sort(([a, m], [b, n]) =>
+  return [...counts].sort(([a, m], [b, n]) =>
     (a === '其它' ? 1 : 0) - (b === '其它' ? 1 : 0) || n - m || order.indexOf(a) - order.indexOf(b))
-  if (kinds.length > 1) return `${paths.length} 个：${kinds.map(([kind, n]) => `${kind} ${n}`).join('、')}`
-  const [only] = kinds[0]
-  if (only === '其它') return `${paths.length} 个`
-  return `${paths.length} 个${/^[A-Z]/.test(only) ? ' ' : ''}${only}`
+}
+
+/** 跑了多久，按分钟说：不到 1 分钟 / 9 分钟 / 6 小时 57 分钟 */
+export function tookWord(start: string, end: string): string {
+  const minutes = Math.floor(Math.max(0, Date.parse(end) - Date.parse(start)) / 60_000)
+  if (minutes < 1) return '不到 1 分钟'
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (!h) return `${m} 分钟`
+  return m ? `${h} 小时 ${m} 分钟` : `${h} 小时`
+}
+
+/** 侧滑标题下那一行：literature/3 → 文献阶段 · 第 3 次产出（别处的小片写「文献 · 3」，这里地方够，说全） */
+export function outputLine(id: string, nameOf: NameOf): string {
+  const [slug, n] = id.split('/')
+  return `${nameOf(slug)}阶段 · 第 ${n} 次产出`
 }

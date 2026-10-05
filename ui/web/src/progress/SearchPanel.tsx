@@ -189,15 +189,16 @@ function Legend({ cells }: { cells: Cell[] }) {
 
 function details(view: SearchView): [string, string][] {
   const rows: [string, string][] = []
-  if (view.seeds.seeds !== null) rows.push(['种子', `${view.seeds.seeds} 篇，检索词 ${view.seeds.queries ?? 0} 条`])
+  if (view.seeds.seeds !== null) rows.push(['种子', `${view.seeds.seeds} 篇 · 检索词 ${view.seeds.queries ?? 0} 条`])
   if (view.gather.found !== null) {
-    const each = view.gather.sources.map((s) => `${s.name} ${s.failed ? '失败' : `${s.hits ?? 0} 条`}`).join('、')
-    rows.push(['汇集', `检索命中 ${view.gather.found} 篇（${each}）`])
+    // 库名里的空格不断行（Europe PMC 不拆成两行）
+    const each = view.gather.sources.map((s) => `${s.name.replace(/ /g, '\u00a0')} ${s.failed ? '失败' : `${s.hits ?? 0} 条`}`).join('、')
+    rows.push(['汇集', `去重后 ${view.gather.found} 篇（${each}）`])
   }
   for (const r of view.rounds) {
     const took = r.hop === 0 ? `候选 ${r.screened ?? r.admitted ?? 0} 篇` : `扩出 ${r.admitted ?? 0} 篇`
-    rows.push([`第 ${r.hop + 1} 轮`, r.included === null ? `${took}，筛选中` : `${took}，收录 ${r.included} 篇`])
+    rows.push([`第 ${r.hop + 1} 轮`, r.included === null ? `${took} → 筛选中` : `${took} → 收录 ${r.included} 篇`])
   }
-  if (view.fulltext.n !== null) rows.push(['原文', `${view.fulltext.n} 篇里拿到 ${view.fulltext.ok} 篇`])
+  if (view.fulltext.n !== null) rows.push(['原文', `收录 ${view.fulltext.n} 篇 → 拿到原文 ${view.fulltext.ok} 篇`])
   return rows
 }

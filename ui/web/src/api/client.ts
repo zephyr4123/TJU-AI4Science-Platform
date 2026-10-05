@@ -120,12 +120,12 @@ export class WorkspaceClient {
   /** 那一整份：需求 + 七个阶段的产出 + 每条流程的进度 + 作业 */
   detail = () => request<WorkspaceDetail>(this.base)
   requirement = () => request<RequirementDetail>(`${this.base}/requirement`)
-  confirm = (by: string) => request<RequirementDetail>(`${this.base}/requirement/confirm`, post({ by }))
+  confirm = () => request<RequirementDetail>(`${this.base}/requirement/confirm`, post({}))
   /** 产出的 id 就是路径（experiment/2），直接拼进 URL */
   output = (oid: string) => request<OutputDetail>(`${this.base}/outputs/${oid}`)
-  sign = (oid: string, by: string, note: string) => request<OutputDetail>(`${this.base}/outputs/${oid}/sign`, post({ by, note }))
+  sign = (oid: string) => request<OutputDetail>(`${this.base}/outputs/${oid}/sign`, post({}))
   /** 人叫停一个后台作业：杀进程树，作业记 stopped、它的产出记失败（外层 #115） */
-  stopJob = (jobId: string, by: string) => request<Job>(`${this.base}/jobs/${jobId}/stop`, post({ by }))
+  stopJob = (jobId: string) => request<Job>(`${this.base}/jobs/${jobId}/stop`, post({}))
   /** 文件镜头：目录一层、一个文件的正文、原样端出的 URL（图片直接当 src） */
   files = (path: string) => request<DirListing>(`${this.base}/files?path=${encodeURIComponent(path)}`)
   file = (path: string) => request<FileContent>(`${this.base}/file?path=${encodeURIComponent(path)}`)

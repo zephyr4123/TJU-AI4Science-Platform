@@ -28,6 +28,15 @@ export function when(iso: string | null | undefined): string {
                                         hour: '2-digit', minute: '2-digit' })
 }
 
+/** 起止两个时刻：同一天的终点只写钟点「10/5 13:23 – 13:32」，跨天两头都写全；没有终点写「10/5 13:23 开始」 */
+export function span(start: string, end: string | null): string {
+  if (!end) return `${when(start)} 开始`
+  const a = new Date(start)
+  const b = new Date(end)
+  const sameDay = a.toDateString() === b.toDateString()
+  return `${when(start)} – ${sameDay ? b.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : when(end)}`
+}
+
 /** 只到天：「9 月 21 日」；跨年才带年。项目墙上「创建于」用它。 */
 export function day(iso: string | null | undefined, today = new Date()): string {
   if (!iso) return '—'

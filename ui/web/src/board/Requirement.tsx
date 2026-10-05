@@ -84,7 +84,7 @@ export function RequirementStrip({ workspace, requirement, reload }: {
         <span className="min-w-0 flex-1">
           <span className="block truncate font-serif text-[1rem] font-semibold">{requirement.title}</span>
           <span className="mt-0.5 block truncate text-[0.8125rem] text-muted-foreground">
-            需求 v{requirement.version} · {requirement.by} · {when(requirement.at)}
+            需求 v{requirement.version} · {when(requirement.at)} 确认
             {requirement.dirty && <span className="ml-2 text-wait">{changed} 行改动 · 待确认</span>}
           </span>
         </span>
@@ -96,7 +96,7 @@ export function RequirementStrip({ workspace, requirement, reload }: {
         <SheetContent side="right" className="gap-0 overflow-y-auto p-0 data-[side=right]:w-[100vw] data-[side=right]:sm:w-[40rem] data-[side=right]:sm:max-w-[40rem]">
           <SheetHeader className="px-6 pt-6 pb-2">
             <SheetTitle className="font-serif text-[1.25rem]">{requirement.title}</SheetTitle>
-            <p className="t-label">v{requirement.version} · {requirement.by} · {when(requirement.at)}</p>
+            <p className="t-label">需求 v{requirement.version} · {when(requirement.at)} 确认</p>
           </SheetHeader>
           <div className="px-6 pb-8">
             {requirement.dirty && requirement.confirmed_text !== null ? (

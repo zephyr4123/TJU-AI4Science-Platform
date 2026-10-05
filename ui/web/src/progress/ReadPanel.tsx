@@ -3,7 +3,7 @@
 // 原句在原文里全找到的是铜绿，有没找到的淡一些；没读成的落到下面一格。「核对」是一个圆环：读完的笔记里原句找到了几成。
 // 字只有方块名和数；悬停一枚看题目，点笔记堆里的一枚打开那篇笔记；其余进「详情」。
 import { LayoutGroup, motion, useReducedMotion } from 'motion/react'
-import { type MouseEvent, useRef, useState } from 'react'
+import { type MouseEvent, type ReactNode, useRef, useState } from 'react'
 
 import { Clock } from '@/components/Clock'
 import { cn } from '@/lib/utils'
@@ -174,10 +174,11 @@ function note(p: Paper): string {
   return p.state === 'reading' ? '精读中' : '排队'
 }
 
-function details(view: ReadView): [string, string][] {
+function details(view: ReadView): [string, ReactNode][] {
   const done = view.papers.filter((p) => p.state === 'done').length
-  const rows: [string, string][] = [['同时读', `${view.sessions} 篇`], ['读完', `${done} 篇`]]
-  if (view.quotes) rows.push(['原句', `${view.quotes} 条，在原文找到 ${view.found} 条`])
-  for (const p of view.papers.filter((x) => x.state === 'failed')) rows.push(['没读成', `${p.title}：${p.why || '中途停止'}`])
+  const rows: [string, ReactNode][] = [['精读', `同时读 ${view.sessions} 篇 · 读完 ${done} / ${view.papers.length} 篇`]]
+  if (view.quotes) rows.push(['核对', `摘录原句 ${view.quotes} 条 → 在原文找到 ${view.found} 条`])
+  // 没读成的题目给成节点：题目里的数（GPT-4 这类）不该当成数加重
+  for (const p of view.papers.filter((x) => x.state === 'failed')) rows.push(['没读成', <span key={p.n}>{p.title}：{p.why || '中途停止'}</span>])
   return rows
 }
