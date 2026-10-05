@@ -508,12 +508,15 @@ def test_show_caps_json_is_descriptor_dicts_with_used_by():
 
 
 def test_show_workflows_lists_stages_and_stops(tmp_path):
-    env = {"AI4SCI_HOME": str(tmp_path)}  # 用户库空着：只有出厂的两条
+    env = {"AI4SCI_HOME": str(tmp_path)}  # 用户库空着：只有出厂的三条
     proc = run_cli("show", "workflows", env=env)
     assert proc.returncode == EXIT_OK, proc.stderr
-    # 文献格上挂的两个 skill 标 [skill]：助理一眼分得出哪个是 cap、哪个是 skill run；第三列是来源
-    assert proc.stdout.startswith("reproduce\t论文复现\t出厂\t文献(pdf[skill],download[skill]) → "
-                                  "设计(reproduction) → ◆复现结果核对")
+    # 一格点两个步骤照写；文献格上挂的两个 skill 标 [skill]：助理一眼分得出哪个是 cap、哪个是
+    # skill run；第三列是来源
+    assert proc.stdout.startswith(
+        "literature-survey\t文献调研\t出厂\t文献(literature-search,literature-read)\n"
+        "reproduce\t论文复现\t出厂\t文献(pdf[skill],download[skill]) → 设计(reproduction) → "
+        "◆复现结果核对")
     assert "\nresearch\t从设计到验证\t出厂\t设计 → ◆评分指标核对" in proc.stdout
     assert proc.stdout.rstrip().endswith("→ 验证 → ◆验收")
 
@@ -533,11 +536,11 @@ def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
     proc = run_cli("show", "workflows", env=env)
     assert proc.returncode == EXIT_OK, proc.stderr
     lines = proc.stdout.splitlines()
-    assert lines[0].startswith("reproduce\t论文复现\t出厂\t")
+    assert lines[0].startswith("literature-survey\t文献调研\t出厂\t")
     assert "quick\t快看\t自定义\t实验(auto-research) → 分析" in lines
     listed = json.loads(run_cli("show", "workflows", "--json", env=env).stdout)
-    assert {w["name"]: w["shipped"] for w in listed} == {"reproduce": True, "research": True,
-                                                         "quick": False}
+    assert {w["name"]: w["shipped"] for w in listed} == {
+        "literature-survey": True, "reproduce": True, "research": True, "quick": False}
 
     proc = run_cli("show", "caps", "--json", env=env)
     caps = {c["name"]: c for c in json.loads(proc.stdout)}
@@ -548,7 +551,8 @@ def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
     assert proc.returncode == EXIT_OK, proc.stderr
     assert (ws.flows / "quick.yaml").is_file()
     proc = run_cli("flow", "take", "nope", cwd=ws.root, env=env)
-    assert proc.returncode == EXIT_USAGE and "有：quick, reproduce, research" in proc.stderr
+    assert proc.returncode == EXIT_USAGE
+    assert "有：literature-survey, quick, reproduce, research" in proc.stderr
 
     taken = yaml.safe_load((ws.flows / "quick.yaml").read_text(encoding="utf-8"))
     assert taken["from"]["name"] == "quick"  # 实例也记取自哪条（P-15）
@@ -946,7 +950,8 @@ def test_serve_helpers_check_a_draft_and_list_the_catalog(tmp_path, monkeypatch)
     assert kept["problems"] == []
     catalog = {c["name"]: c for c in serve._catalog()}
     assert catalog["auto-research"]["used_by"] == ["research"] and catalog["verify"]["does"]
-    assert [w["name"] for w in serve._workflows()] == ["reproduce", "research"]
+    assert [w["name"] for w in serve._workflows()] == ["literature-survey", "reproduce",
+                                                       "research"]
     assert set(serve._descriptor_map()) == {"literature-search", "literature-read", "design",
                                             "reproduction", "auto-research", "analysis",
                                             "reproducibility", "verify"}

@@ -35,7 +35,7 @@ stages:
 
 ## 现在库里有的
 
-`research` 从设计到验证：设计 →◆评分指标核对 → 实验 → 分析 → 验证 →◆验收。`reproduce` 论文复现：文献（挂 pdf、download）→ 设计（reproduction）→◆ → 分析（reproducibility）→ 验证 →◆。它们是同一条路走过两三次之后铺的砖；截一段、改参数、换断点、挂别的 skill，都是新的流程。出厂的这两条改不了也删不了：要改就 `ai4sci workflow new --from <它>` 派生一条。
+`research` 从设计到验证：设计 →◆评分指标核对 → 实验 → 分析 → 验证 →◆验收。`reproduce` 论文复现：文献（挂 pdf、download）→ 设计（reproduction）→◆ → 分析（reproducibility）→ 验证 →◆。`literature-survey` 文献调研：文献（literature-search、literature-read，先检索再精读）。它们是同一条路走过两三次之后铺的砖；截一段、改参数、换断点、挂别的 skill，都是新的流程。出厂的这几条改不了也删不了：要改就 `ai4sci workflow new --from <它>` 派生一条。
 
 ## 什么时候找人
 

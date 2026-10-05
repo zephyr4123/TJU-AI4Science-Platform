@@ -79,7 +79,7 @@ platform/
 ├── domains/       领域包：generic/ 兜底、petab/ 参数估计（docs/add-a-domain.md）
 ├── skills/        平台自带的 skill（常驻）：general/materials/ 下的 pdf 解析论文、download 拉材料（docs/add-a-skill.md）
 ├── skills-curated/ 收录的社区 skill：按 <架>/<tag>/ 分好（分类表 framework/skills/shelves.py），台账 provenance.yaml；挂到流程上才装载
-├── workflows/     出厂的流程：research（改进）、reproduce（论文复现），只读；人在编辑台存的在数据根 studio/workflows/，两层合起来是库，工作区取实例
+├── workflows/     出厂的流程：research（改进）、reproduce（论文复现）、literature-survey（文献调研），只读；人在编辑台存的在数据根 studio/workflows/，两层合起来是库，工作区取实例
 ├── templates/     需求模板库：generic / ai / cs / materials / reproduce
 ├── projects/      数据根（源码模式）：一个项目一位助理，样例三个单工作区项目 mlp-regression、boehm-nll、rahman-nll
 ├── ui/            界面层：web/ 网页（React + Tailwind + shadcn；规矩见 ui/README.md），tui/ 留位置
