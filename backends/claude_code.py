@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -31,7 +32,7 @@ from backends._snapshot import diff, snapshot
 __all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "KNOBS", "MODELS", "EFFORTS", "PRICES",
            "WEB_TOOLS", "usage", "build_env", "bash_rule", "tool_guide", "parse_events",
            "final_metrics", "final_report", "kill_tree", "probe", "parse_version", "make_runner",
-           "make_chat", "login_command", "logout_command"]
+           "make_chat", "login_command", "logout_command", "session_dirname"]
 
 NAME = "claude_code"
 CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
@@ -348,9 +349,9 @@ class ClaudeCodeChat:
 
     def forget(self, session_id: str, cwd: Path) -> None:
         """删这条会话的痕迹（实测 2.1.278 的布局，官方没有删会话的命令）：配置目录（平台家里的
-        私有目录）下 `projects/<cwd 里的 / 换成 ->/<session>.jsonl` 与 `session-env/<session>`。"""
+        私有目录）下 `projects/<编过的 cwd>/<session>.jsonl` 与 `session-env/<session>`。"""
         home = self.link.home
-        encoded = str(Path(cwd).resolve()).replace("/", "-")
+        encoded = session_dirname(Path(cwd))
         for path in (home / "projects" / encoded / f"{session_id}.jsonl",
                      home / "session-env" / session_id):
             if path.is_dir():
@@ -577,6 +578,13 @@ def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> Ag
     result.cost_usd, _ = final_metrics(events, False, result.spoke_s, spoke.returncode)
     result.items.append(("说话", True, f"pong，{result.spoke_s:.1f} 秒，${result.cost_usd:.3f}"))
     return result
+
+
+def session_dirname(cwd: Path) -> str:
+    """CLI 按 cwd 给会话起的目录名：路径里不是字母数字的都换成 `-`（实测 2.1.291：
+    `/Users/a_b/x` → `-Users-a-b-x`）。早先只换 `/`，带下划线的路径删对话时一直没删到
+    （外层 #264）。"""
+    return re.sub(r"[^A-Za-z0-9]", "-", str(cwd.resolve()))
 
 
 def login_command(link: Link, cli: str = "claude") -> tuple[list[str], dict[str, str]]:

@@ -387,8 +387,8 @@ def test_sessions_live_in_the_platform_home_not_the_persons_claude_dir(tmp_path:
     home = tmp_path / "claude_code"
     assert build_env(1.0, home)["CLAUDE_CONFIG_DIR"] == str(home)
     chat = ClaudeCodeChat(Link(home=home))
-    cwd = tmp_path / "ws"
-    encoded = str(cwd.resolve()).replace("/", "-")
+    cwd = tmp_path / "my_ws"
+    encoded = str(cwd.resolve()).replace("/", "-").replace("_", "-")  # CLI 把下划线也换掉
     session = home / "projects" / encoded / f"{SID}.jsonl"
     session.parent.mkdir(parents=True)
     session.write_text("{}\n", encoding="utf-8")
