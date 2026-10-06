@@ -79,13 +79,13 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import AgentProbe, ChatEvent, Choice, Knobs, RunResult, Tuning
+from backends import AgentProbe, ChatEvent, Choice, Knobs, RunResult, Tuning, Usage
 from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
 __all__ = ["CodexRunner", "CodexChat", "KNOBS", "MODELS", "EFFORTS", "LAYERS", "codex_home",
            "write_rules", "build_env", "config_args", "skill_off_paths", "toml_str", "tool_guide",
-           "chat_tool_guide", "parse_events", "Translator", "final_report", "probe",
+           "chat_tool_guide", "parse_events", "Translator", "final_report", "usage", "probe",
            "parse_version",
            "make_runner", "make_chat"]
 
@@ -108,6 +108,8 @@ MODELS = (Choice("gpt-6.1-sol", "GPT-6.1 Sol", "主力"),
 EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
            Choice("xhigh", "超高"))
 KNOBS = Knobs(models=MODELS, efforts=EFFORTS, model="gpt-6.1-sol", effort="medium")
+# 执行层留档的第一行：Codex 的事件里不写模型，适配器记下这次用的哪个（外层 #256：首页按模型数花费）
+MODEL_EVENT = "ai4sci.model"
 # 两层共用的 exec 参数：JSONL、不查 git 仓库（工作区不是仓库）、不读本机配置；execpolicy 规则要读
 # （私有 home 里只有我们写的那份）
 BASE_ARGS = ("--json", "--skip-git-repo-check", "--ignore-user-config")
@@ -277,6 +279,22 @@ def parse_events(raw: list[str]) -> tuple[list[dict], list[str]]:
     return events, junk
 
 
+def usage(events: list[dict]) -> Usage | None:
+    """用量是每个 turn.completed 的 usage 加起来（外层 #256）：`input_tokens` 已含命中缓存的；
+    订阅报不出美元，花费是 NaN（未知）；模型 CLI 不报，执行层留档第一行有适配器记的
+    （`MODEL_EVENT`），对话的没有、是 None。
+    一次 turn.completed 都没有就是 None。"""
+    done = [e["usage"] for e in events
+            if e.get("type") == "turn.completed" and isinstance(e.get("usage"), dict)]
+    if not done:
+        return None
+    model = next((e.get("model") for e in events if e.get("type") == MODEL_EVENT), None)
+    return Usage(input_tokens=sum(int(u.get("input_tokens") or 0) for u in done),
+                 cached_tokens=sum(int(u.get("cached_input_tokens") or 0) for u in done),
+                 output_tokens=sum(int(u.get("output_tokens") or 0) for u in done),
+                 model=model if isinstance(model, str) else None)
+
+
 def final_report(events: list[dict]) -> str:
     """收尾的自述 = 最后一条 agent_message；没有就空串，不编。"""
     for event in reversed(events):
@@ -351,7 +369,7 @@ class CodexRunner:
             reader.join(timeout=5)
         wall_s = time.monotonic() - started
         events, junk = parse_events(raw)
-        _persist(cwd, raw, err)
+        _persist(cwd, raw, err, model=KNOBS.fill(tuning).model)
         # 成功也是 NaN：订阅账号报不出美元（端口：绝不填 0），
         # token 用量在 turn.completed 的 usage 里
         return RunResult(exit_code=proc.returncode, events=events,
@@ -361,12 +379,13 @@ class CodexRunner:
                          report=final_report(events))
 
 
-def _persist(cwd: Path, raw: list[str], err: list[str]) -> None:
+def _persist(cwd: Path, raw: list[str], err: list[str], *, model: str) -> None:
     # 与 Claude Code 同一处、同一种命名：框架按这个模式把日志搬到产出目录（P-9：日志不进 prompt）
     log_dir = cwd / ".ai4sci"
     log_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    (log_dir / f"executor-{stamp}.jsonl").write_text("".join(raw), encoding="utf-8")
+    head = json.dumps({"type": MODEL_EVENT, "model": model}) + "\n"
+    (log_dir / f"executor-{stamp}.jsonl").write_text(head + "".join(raw), encoding="utf-8")
     if err:
         (log_dir / f"executor-{stamp}.stderr.log").write_text("".join(err), encoding="utf-8")
 

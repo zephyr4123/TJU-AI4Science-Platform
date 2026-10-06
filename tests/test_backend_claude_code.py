@@ -565,3 +565,38 @@ def test_live_chat_two_turns_remember_across_resume(tmp_path: Path):
     assert "delta" in kinds and kinds.index("delta") < kinds.index("text")
     assert "".join(e.text for e in second if e.kind == "delta").strip() == \
         next(e.text for e in second if e.kind == "text").strip()
+
+
+# --- 用量（外层 #256：首页的花费）---------------------------------------------------
+
+from backends import Usage, read_usage  # noqa: E402
+from backends.claude_code import usage  # noqa: E402
+
+# 本机一轮真实对话的 init 与 result（GUA 项目第 1 轮，删去与用量无关的字段）
+_INIT = {"type": "system", "subtype": "init", "model": "claude-opus-5[1m]"}
+_RESULT = {"type": "result", "subtype": "success", "total_cost_usd": 1.2065,
+           "duration_ms": 94369, "usage": {"input_tokens": 22, "cache_creation_input_tokens": 77824,
+                     "cache_read_input_tokens": 582738, "output_tokens": 5072}}
+
+
+def test_usage_reads_tokens_dollars_and_the_listed_model():
+    """读进去的 = 没缓存的 + 写缓存的 + 读缓存的；模型写成清单上的名（opus），页面才对得上标题。"""
+    assert usage([_INIT, _RESULT]) == Usage(input_tokens=22 + 77824 + 582738,
+                                            cached_tokens=582738, output_tokens=5072,
+                                            model="opus", cost_usd=1.2065)
+
+
+def test_usage_keeps_a_model_off_the_list_as_reported_and_none_without_init():
+    haiku = {**_INIT, "model": "claude-haiku-4-5-20251001"}
+    assert usage([haiku, _RESULT]).model == "claude-haiku-4-5-20251001"
+    assert usage([_RESULT]).model is None
+
+
+def test_usage_is_unknown_without_a_result_event():
+    """超时被杀、进程崩了：result 没来，用了多少不知道——是 None，不编 0。"""
+    assert usage([_INIT]) is None
+
+
+def test_read_usage_finds_which_cli_wrote_the_events():
+    assert read_usage([_INIT, _RESULT]) == ("claude_code", usage([_INIT, _RESULT]))
+    assert read_usage([{"type": "unknown"}]) is None

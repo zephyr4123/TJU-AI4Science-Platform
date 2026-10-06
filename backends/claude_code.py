@@ -24,11 +24,11 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import AgentProbe, ChatEvent, Choice, Knobs, RunResult, Tuning
+from backends import AgentProbe, ChatEvent, Choice, Knobs, RunResult, Tuning, Usage
 from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
-__all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "KNOBS", "MODELS", "EFFORTS", "WEB_TOOLS",
+__all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "KNOBS", "MODELS", "EFFORTS", "WEB_TOOLS", "usage",
            "build_env", "bash_rule", "tool_guide", "parse_events", "final_metrics", "final_report",
            "kill_tree", "probe", "parse_version", "make_runner", "make_chat"]
 
@@ -260,6 +260,29 @@ def final_metrics(
     duration_s = float(result["duration_ms"]) / 1000.0
     assert cost >= 0 and duration_s >= 0, f"result 事件的成本或耗时为负：{cost}, {duration_s}"
     return cost, duration_s
+
+
+def usage(events: list[dict]) -> Usage | None:
+    """用量只认最终 result 事件（外层 #256）：读进去的 = 没缓存的 + 写缓存的 + 读缓存的，
+    花费照它报的；模型取 init 事件里写的，含清单上哪个名就记那个名（`claude-opus-5[1m]` → opus）。
+    没有 result（超时被杀、崩了）就是 None：用了多少不知道，不编。"""
+    result = next((e for e in reversed(events)
+                   if e.get("type") == "result" and "usage" in e), None)
+    if result is None:
+        return None
+    raw = result["usage"]
+    cached = int(raw.get("cache_read_input_tokens") or 0)
+    read = (int(raw.get("input_tokens") or 0) + int(raw.get("cache_creation_input_tokens") or 0)
+            + cached)
+    init = next((e for e in events if e.get("type") == "system" and e.get("subtype") == "init"), {})
+    model = init.get("model")
+    if isinstance(model, str):
+        model = next((c.id for c in MODELS if c.id in model.lower()), model)
+    cost = result.get("total_cost_usd")
+    return Usage(input_tokens=read, cached_tokens=cached,
+                 output_tokens=int(raw.get("output_tokens") or 0),
+                 model=model if isinstance(model, str) else None,
+                 cost_usd=float(cost) if isinstance(cost, (int, float)) else math.nan)
 
 
 def final_report(events: list[dict]) -> str:

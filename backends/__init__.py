@@ -22,7 +22,8 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 __all__ = ["RunResult", "Runner", "ChatEvent", "Choice", "Tuning", "Knobs", "Chat", "AgentProbe",
-           "BackendNotFound", "get_backend", "get_chat", "probe", "available_backends"]
+           "Usage", "BackendNotFound", "get_backend", "get_chat", "probe", "read_usage",
+           "available_backends"]
 
 
 @dataclass
@@ -46,6 +47,23 @@ class RunResult:
     timed_out: bool = False
     stdout_tail: str = ""
     report: str = ""
+
+
+@dataclass(frozen=True)
+class Usage:
+    """一次调用（对话的一轮、执行层的一次会话）用掉多少：各家适配器从自家 CLI 的原生事件里取
+    （框架不解析原生事件，端口方向；外层 #256 首页的花费读它）。
+
+    `input_tokens` 是读进去的全部、含命中缓存的，`cached_tokens` 是其中命中缓存的；`model` 写成这家
+    清单上的名（`Knobs.models` 的 id），事件里写的不在清单上就照原样，没写是 None。`cost_usd` 是 CLI
+    报的美元，报不出是 NaN（Codex 用订阅登录）；Claude Code 续接的会话报的是会话累计，单轮由框架减。
+    """
+
+    input_tokens: int
+    cached_tokens: int
+    output_tokens: int
+    model: str | None = None
+    cost_usd: float = math.nan
 
 
 @dataclass(frozen=True)
@@ -312,6 +330,17 @@ def get_chat(name: str) -> Chat:
     assert hasattr(chat, "tool_guide"), f"后端 {name!r} 的协调层适配器没有 tool_guide()"
     chat.name = name
     return chat
+
+
+def read_usage(events: list[dict]) -> tuple[str, Usage] | None:
+    """一段原生事件是哪家写的、用掉多少：挨家问它的 `usage()`，认得的那家给答案；
+    都不认得（事件里没有用量，比如超时被杀）是 None。执行层的留档不记是哪家起的，
+    读的人只有事件本身。"""
+    for name in available_backends():
+        got = _module(name, "执行层").usage(events)
+        if got is not None:
+            return name, got
+    return None
 
 
 def probe(name: str) -> AgentProbe:
