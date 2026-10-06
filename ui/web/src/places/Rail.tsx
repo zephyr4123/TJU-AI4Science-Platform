@@ -8,6 +8,7 @@
 import { Blueprint, GearSix, House, type Icon } from '@phosphor-icons/react'
 
 import { ASSETS } from '@/assets'
+import { BRAND } from '@/brand'
 import { Band } from '@/components/Band'
 import { Logo } from '@/components/Logo'
 import { GlassIcon } from '@/components/reactbits/GlassIcon'
@@ -21,7 +22,7 @@ export function Rail({ place, onHome, onStudio, settingsDot, onSettings }: Place
     <Band picture={ASSETS.backdrop} veil="wash" blur className="edge-r w-[4.5rem] shrink-0">
       <nav aria-label="地方" className="flex h-full flex-col items-center">
         <div className="flex h-14 shrink-0 items-center">
-          <GlassIcon icon={<Logo className="size-[1.15em]" />} label="AI4Science" />
+          <GlassIcon icon={<Logo className="size-[1.15em]" />} label={BRAND.name} />
         </div>
         <div className="flex flex-col items-center gap-3 pt-1">
           <Key label="首页" icon={House} active={world === 'projects'} onClick={onHome} />

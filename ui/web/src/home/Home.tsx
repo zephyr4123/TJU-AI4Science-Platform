@@ -6,7 +6,8 @@
 // 搜中的字标出来。一个项目都没有：一句「还没有项目」加一枚「新建项目」。
 // 外层 #256（主人 2026-10-06：只有一列居中的清单，两边太空）：宽屏左半边是清单，右半边横纵结合（不越拉越长）——
 // 上面「待你确认」「运行中」两张小卡并排，下面一张「花费」；右半边是另一个模块，配色换成与清单对着映衬的暖调。
-// 窄屏右半边折到清单下面。右半边顶上一行同步（上次同步多久以前、立即同步、自动刷新隔多久），与「项目」那行齐。最底下一行素的页脚：平台叫什么、靠什么搭起来、源码在哪（主人 2026-10-06）。
+// 窄屏右半边折到清单下面。最上面一行门牌（外层 #258）：字标「AAAI4S」与一句口号，和地方栏顶上那枚标同一高度、连成一组，
+// 只在首页有（其它页的页眉留给当前地方）；窄屏跟在左上那枚玻璃标后面。右半边顶上一行同步（上次同步多久以前、立即同步、自动刷新隔多久），与「项目」那行齐。最底下一行素的页脚：平台叫什么、靠什么搭起来、源码在哪（主人 2026-10-06）。
 import { GithubLogo, MagnifyingGlass, Plus, X } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type ReactNode, useCallback, useState } from 'react'
@@ -15,11 +16,13 @@ import { api } from '@/api/client'
 
 import type { ProjectSummary } from '@/api/types'
 import { ASSETS } from '@/assets'
+import { BRAND } from '@/brand'
 import { Aurora, follow, Spot } from '@/components/Aurora'
 import { Dot, ErrorNote, Skeleton } from '@/components/bits'
 import { Logo } from '@/components/Logo'
 import SpecularButton from '@/components/reactbits/SpecularButton'
 import { Scene } from '@/components/Scene'
+import { Wordmark } from '@/components/Wordmark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { day } from '@/lib/format'
@@ -65,9 +68,14 @@ export function Home({ projects, onOpen, onOpenWorkspace, onNew, onRemove, menu 
   return (
     <div className="relative flex flex-1 flex-col overflow-y-auto">
       <Scene picture={ASSETS.backdrop} veil="mist" />
-      <div className="relative mx-auto grid w-full max-w-[92rem] gap-x-10 gap-y-6 px-6 pt-8 pb-12 sm:px-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:grid-rows-[auto_minmax(30rem,auto)]">
-        <header className="flex flex-wrap items-center gap-3 lg:col-start-1">
+      <div className="relative mx-auto grid w-full max-w-[92rem] gap-x-10 gap-y-6 px-6 pb-12 sm:px-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:grid-rows-[auto_auto_minmax(30rem,auto)]">
+        {/* 门牌：一行高 3.5rem，与地方栏顶上那枚标的那一格同高，字标的中线对着标的中线 */}
+        <div className="-mb-2 flex h-14 min-w-0 items-center gap-3 lg:col-span-2">
           {menu}
+          <Wordmark className="text-[1.5rem]" />
+          <span className="min-w-0 truncate pt-0.5 text-[0.8125rem] text-muted-foreground">{BRAND.motto}</span>
+        </div>
+        <header className="flex flex-wrap items-center gap-3 lg:col-start-1 lg:row-start-2">
           <div className="flex items-baseline gap-2.5">
             <h1 className="font-serif text-[1.75rem] leading-none font-semibold tracking-tight">项目</h1>
             {list && list.length > 0 && <span className="text-[0.9375rem] text-muted-foreground tabular">{list.length}</span>}
@@ -81,7 +89,7 @@ export function Home({ projects, onOpen, onOpenWorkspace, onNew, onRemove, menu 
         </header>
         {/* 两边齐（主人 2026-10-06：各自长了就不齐）：宽屏这一行的高由右半边定（它定高：小卡最多三件、排行露前几名），
             清单这一格 h-0 + min-h-full 不往上撑、只填满这一行，项目多了在玻璃面里滚；最低 30rem，右边数据少时清单不被压扁 */}
-        <div className="flex min-w-0 flex-col lg:col-start-1 lg:h-0 lg:min-h-full">
+        <div className="flex min-w-0 flex-col lg:col-start-1 lg:row-start-3 lg:h-0 lg:min-h-full">
           {projects.error && <ErrorNote text={projects.error} />}
           {!list && !projects.error && <Skeleton lines={5} />}
           {list && list.length === 0 && <NoProjects onNew={onNew} />}
@@ -106,8 +114,8 @@ export function Home({ projects, onOpen, onOpenWorkspace, onNew, onRemove, menu 
         </div>
         <SyncBar busy={projects.loading || attention.loading || usage.loading} onSync={sync} syncedAt={oldest(projects.at, attention.at, usage.at)}
                  every={every} onEvery={(e) => { setEvery(e); remember('home:refresh', e) }}
-                 className="justify-end lg:col-start-2 lg:row-start-1" />
-        <aside aria-label="概览" className="grid grid-rows-[auto_1fr] gap-5 sm:grid-cols-2 lg:col-start-2 lg:row-start-2">
+                 className="justify-end lg:col-start-2 lg:row-start-2" />
+        <aside aria-label="概览" className="grid grid-rows-[auto_1fr] gap-5 sm:grid-cols-2 lg:col-start-2 lg:row-start-3">
           <Attention items={attention} onOpen={onOpenWorkspace} />
           <div className="sm:col-span-2">
             <Spending usage={usage} range={range} metric={metric} onOpenProject={onOpen} onOpenWorkspace={onOpenWorkspace}
@@ -123,11 +131,14 @@ export function Home({ projects, onOpen, onOpenWorkspace, onNew, onRemove, menu 
 
 const SOURCE = 'https://github.com/zephyr4123/TJU-AI4Science-Platform'
 
-/** 页脚：一行淡字，内容少时压在页底；左边标与名，右边靠什么搭起来与源码 */
+/** 页脚：一行淡字，内容少时压在页底；左边标、字标与全称，右边靠什么搭起来与源码 */
 function Footer() {
   return (
     <footer className="relative mx-auto mt-auto flex w-full max-w-[92rem] flex-wrap items-center gap-x-6 gap-y-1.5 px-6 pb-6 text-[0.75rem] text-muted-foreground sm:px-8">
-      <span className="flex items-center gap-1.5 text-foreground/70"><Logo className="size-3.5" />AI4Science 工作台</span>
+      <span className="flex items-center gap-1.5">
+        <Logo className="size-3.5 text-primary" /><Wordmark className="text-[0.8125rem] text-foreground/80" />
+        <span>· {BRAND.full}</span>
+      </span>
       <span className="sm:ml-auto">Powered by Claude Code · Codex · React · Tailwind CSS · Python</span>
       <a href={SOURCE} target="_blank" rel="noreferrer"
          className="flex items-center gap-1 rounded-sm transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60">

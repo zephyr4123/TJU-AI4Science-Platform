@@ -2,9 +2,11 @@
 import { Blueprint, GearSix, House, type Icon } from '@phosphor-icons/react'
 import { useState } from 'react'
 
+import { BRAND } from '@/brand'
 import { Logo } from '@/components/Logo'
 import { GlassIcon } from '@/components/reactbits/GlassIcon'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Wordmark } from '@/components/Wordmark'
 import { cn } from '@/lib/utils'
 
 import { type PlacesProps, worldOf } from './place'
@@ -32,12 +34,13 @@ export function PlacesSheet({ place, onHome, onStudio, settingsDot, onSettings }
       <SheetTrigger asChild>
         <button type="button" aria-label="换个地方"
                 className="rounded-[28%] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-          <GlassIcon icon={<Logo className="size-[1.15em]" />} label="AI4Science" />
+          <GlassIcon icon={<Logo className="size-[1.15em]" />} label={BRAND.name} />
         </button>
       </SheetTrigger>
       <SheetContent side="left" className="w-[18rem] gap-0 p-0" aria-describedby={undefined}>
         <SheetHeader className="px-5 pt-5 pb-2">
-          <SheetTitle className="font-serif text-[1.125rem] font-semibold">AI4Science</SheetTitle>
+          <SheetTitle><Wordmark className="text-[1.25rem]" /></SheetTitle>
+          <p className="text-[0.75rem] text-muted-foreground">{BRAND.motto}</p>
         </SheetHeader>
         <div className="space-y-0.5 px-3 py-2">
           {row('首页', House, world === 'projects', onHome)}
