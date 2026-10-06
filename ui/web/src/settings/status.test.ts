@@ -7,8 +7,9 @@ describe('设置：一个词的状态', () => {
     expect(agentStatus(null)).toEqual({ word: '未检查', tone: 'neutral', facts: [] })
     expect(agentStatus({ ok: true, items: [{ name: '装了没', ok: true, note: '/x' }], spoke_s: 0.62, cost_usd: 0.05, at: 't' }))
       .toEqual({ word: '就绪', tone: 'ok', facts: ['0.6 s', '$0.05'] })
-    // 订阅账号没有美元：不写
+    // 没算出美元：不写；DeepSeek 一句 pong 不到一分：写「<$0.01」，不写成像没花钱的 $0.00（外层 #266）
     expect(agentStatus({ ok: true, items: [], spoke_s: 11.2, cost_usd: null, at: 't' }).facts).toEqual(['11.2 s'])
+    expect(agentStatus({ ok: true, items: [], spoke_s: 3.2, cost_usd: 0.0027, at: 't' }).facts).toEqual(['3.2 s', '<$0.01'])
     expect(agentStatus({ ok: false, items: [{ name: '装了没', ok: true, note: '/x' },
                                            { name: '登录', ok: false, note: '没登录：在终端跑 codex login' }], at: 't' }))
       .toEqual({ word: '未登录', tone: 'bad', facts: [], hint: '没登录：在终端跑 codex login' })

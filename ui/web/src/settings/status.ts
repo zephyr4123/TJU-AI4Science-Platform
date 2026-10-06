@@ -2,6 +2,7 @@
 // 不是一句话（主人 2026-09-22：能用词就用词，短句也少）；贴进来的 ssh 一行怎么拆、机器名怎么起。
 // 都不碰 DOM，vitest 直接测。
 import type { AgentCheck, CheckItem, ComputeCheck } from '@/api/types'
+import { money } from '@/lib/format'
 
 export type Tone = 'ok' | 'bad' | 'neutral'
 
@@ -25,7 +26,7 @@ export function agentStatus(check: AgentCheck | null): Status {
   }
   const facts: string[] = []
   if (check.spoke_s != null) facts.push(`${check.spoke_s.toFixed(1)} s`)
-  if (check.cost_usd != null) facts.push(`$${check.cost_usd.toFixed(2)}`)
+  if (check.cost_usd != null) facts.push(money(check.cost_usd))
   return { word: '就绪', tone: 'ok', facts }
 }
 

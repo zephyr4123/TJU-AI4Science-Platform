@@ -65,7 +65,10 @@ export const api = {
   backends: () => request<Backend[]>('/backends'),
   /** 设置那块板（P-25）：读一整份、改用哪家与缺省、真探并记回、接一台机器、删一台 */
   settings: () => request<SettingsDoc>('/settings'),
-  updateAgents: (body: { chat?: string; executor?: string; agents?: Record<string, { model?: string; effort?: string }> }) =>
+  updateAgents: (body: {
+    chat?: string; executor?: string
+    agents?: Record<string, { provider?: string; base_url?: string; models?: string[]; model?: string; effort?: string }>
+  }) =>
     request<SettingsDoc>('/settings/agents', post(body)),
   runCheck: (what: 'all' | 'agents' | 'computes' | 'storage', name?: string) =>
     request<CheckReport>('/settings/check', post(name ? { what, name } : { what })),

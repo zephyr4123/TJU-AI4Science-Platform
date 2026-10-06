@@ -176,7 +176,7 @@ function Agents({ doc, ctx }: { doc: SettingsDoc; ctx: Ctx }) {
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         {table.entries.map((entry) => (
-          <AgentWell key={entry.name} entry={entry} ctx={ctx}
+          <AgentWell key={entry.name} entry={entry} ctx={ctx} keys={doc.keys}
                      roles={ROLES.filter(([role]) => table[role] === entry.name).map(([, label]) => label)} />
         ))}
       </div>
@@ -184,11 +184,18 @@ function Agents({ doc, ctx }: { doc: SettingsDoc; ctx: Ctx }) {
   )
 }
 
-/** 一家一格浅底：名字行（标、名、版本，检查靠右）、正被谁用、状态、模型与思考深度两行 */
-function AgentWell({ entry, roles, ctx }: { entry: AgentEntry; roles: string[]; ctx: Ctx }) {
+/** 一家一格浅底：名字行（标、名、版本，检查靠右）、正被谁用、状态；供应商、它要的 key（或登录 / 自定义地址）、
+ *  模型与思考深度（外层 #266：模型跟着供应商走，换供应商模型回到它的起点） */
+function AgentWell({ entry, roles, keys, ctx }: { entry: AgentEntry; roles: string[]; keys: Record<string, string>; ctx: Ctx }) {
   const status = agentStatus(entry.last_check)
   const version = shortVersion(entry.last_check?.version)
-  const tune = (key: 'model' | 'effort', value: string) => {
+  // 选「自定义」先不写：地址与模型名填好按「存」才一起写（没地址的自定义服务端不收）
+  const [pickingCustom, setPickingCustom] = useState(false)
+  const shown = pickingCustom ? 'custom' : entry.provider
+  const provider = entry.providers.find((p) => p.id === shown)
+  const tune = (key: 'provider' | 'model' | 'effort', value: string) => {
+    if (key === 'provider') setPickingCustom(value === 'custom' && entry.provider !== 'custom')
+    if (key === 'provider' && value === 'custom') return
     if (value !== entry[key]) void ctx.act(`${entry.name}:${key}`, () => api.updateAgents({ agents: { [entry.name]: { [key]: value } } }))
   }
   return (
@@ -214,6 +221,17 @@ function AgentWell({ entry, roles, ctx }: { entry: AgentEntry; roles: string[]; 
         )}
       </div>
       <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-2 gap-y-2">
+        <dt className="text-[0.8125rem] text-muted-foreground">供应商</dt>
+        <dd className="min-w-0">
+          <GlideSelect ariaLabel={`${entry.title} 用谁的模型`} value={shown} disabled={ctx.busy !== null}
+                       options={entry.providers.map((p) => ({ value: p.id, label: p.title, tag: p.tested || p.id === 'custom' ? undefined : '未实测' }))}
+                       onChange={(value) => tune('provider', value)} />
+        </dd>
+        {provider?.id === 'custom' && <CustomFields entry={entry} ctx={ctx} onSaved={() => setPickingCustom(false)} />}
+        {provider?.key
+          ? <KeyField name={provider.key} title={provider.title} tail={keys[provider.key]} ctx={ctx} />
+          : <><dt className="text-[0.8125rem] text-muted-foreground">登录</dt>
+            <dd className="text-[0.75rem] text-muted-foreground">终端里运行 ai4sci agent login {entry.name}，在浏览器里授权</dd></>}
         <dt className="text-[0.8125rem] text-muted-foreground">模型</dt>
         <dd className="min-w-0">
           <GlideSelect ariaLabel={`${entry.title} 的模型`} value={entry.model} disabled={ctx.busy !== null}
@@ -228,6 +246,60 @@ function AgentWell({ entry, roles, ctx }: { entry: AgentEntry; roles: string[]; 
         </dd>
       </dl>
     </div>
+  )
+}
+
+/** 供应商要的 key（外层 #265）：存了只露末四位，「换」展开一格粘贴、「删」按住才算；没存直接一格粘贴。
+ *  key 存在平台的家里、只有本人能读，整把 key 从不回到页面 */
+function KeyField({ name, title, tail, ctx }: { name: string; title: string; tail?: string; ctx: Ctx }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState('')
+  const save = () => void ctx.act(`key:${name}`, () => api.putKey(name, value)).then(() => { setValue(''); setEditing(false) })
+  return (
+    <>
+      <dt className="text-[0.8125rem] text-muted-foreground">key</dt>
+      <dd className="min-w-0">
+        {tail && !editing
+          ? <span className="flex items-center gap-1.5">
+              <span className="mr-auto text-[0.8125rem] tabular">{tail}</span>
+              <Button variant="ghost" size="sm" disabled={ctx.busy !== null} onClick={() => setEditing(true)}>换</Button>
+              <HoldButton disabled={ctx.busy !== null} onHold={() => void ctx.act(`key:${name}`, () => api.removeKey(name))}>删</HoldButton>
+            </span>
+          : <form className="flex items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); if (value.trim()) save() }}>
+              <Input type="password" value={value} onChange={(e) => setValue(e.target.value)} spellCheck={false} autoComplete="off"
+                     aria-label={`${title} 的 key`} placeholder={name.startsWith('custom') ? '粘贴这家的 key' : `粘贴 ${title} 的 key`}
+                     className="h-8 bg-card text-[0.8125rem]" />
+              <Button type="submit" size="sm" disabled={ctx.busy !== null || !value.trim()}>存</Button>
+              {tail && <Button type="button" variant="ghost" size="sm" onClick={() => { setValue(''); setEditing(false) }}>取消</Button>}
+            </form>}
+      </dd>
+    </>
+  )
+}
+
+/** 自定义供应商：兼容的接口地址与模型名（逗号隔开）；改完按「存」一起写 */
+function CustomFields({ entry, ctx, onSaved }: { entry: AgentEntry; ctx: Ctx; onSaved: () => void }) {
+  const [url, setUrl] = useState(entry.base_url)
+  const [names, setNames] = useState(entry.custom_models.join(', '))
+  const models = names.split(',').map((m) => m.trim()).filter(Boolean)
+  const changed = entry.provider !== 'custom' || url.trim() !== entry.base_url || models.join(',') !== entry.custom_models.join(',')
+  return (
+    <>
+      <dt className="text-[0.8125rem] text-muted-foreground">地址</dt>
+      <dd className="min-w-0">
+        <Input value={url} onChange={(e) => setUrl(e.target.value)} spellCheck={false} aria-label={`${entry.title} 自定义供应商的地址`}
+               placeholder="https://…" className="h-8 bg-card text-[0.8125rem]" />
+      </dd>
+      <dt className="text-[0.8125rem] text-muted-foreground">模型名</dt>
+      <dd className="flex min-w-0 items-center gap-1.5">
+        <Input value={names} onChange={(e) => setNames(e.target.value)} spellCheck={false} aria-label={`${entry.title} 自定义供应商的模型名`}
+               placeholder="逗号隔开" className="h-8 bg-card text-[0.8125rem]" />
+        <Button size="sm" disabled={ctx.busy !== null || !changed || !url.trim() || models.length === 0}
+                onClick={() => void ctx.act(`${entry.name}:custom`,
+                                            () => api.updateAgents({ agents: { [entry.name]: { provider: 'custom', base_url: url.trim(), models } } }))
+                  .then(onSaved)}>存</Button>
+      </dd>
+    </>
   )
 }
 

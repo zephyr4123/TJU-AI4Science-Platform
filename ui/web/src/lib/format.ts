@@ -58,3 +58,8 @@ export function bytes(value: number): string {
   if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`
   return `${(value / 1024 ** 3).toFixed(1)} GB`
 }
+
+/** 成本：两位小数；有花但不到一分写「<$0.01」，别让一次调用看着像白跑（首页花费、设置里检查的那一句，外层 #256 #266） */
+export function money(value: number): string {
+  return value > 0 && value < 0.005 ? '<$0.01' : `$${value.toFixed(2)}`
+}

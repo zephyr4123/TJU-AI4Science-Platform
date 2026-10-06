@@ -271,9 +271,24 @@ export interface AgentCheck {
 }
 
 /** 设置 → AI 里的一家：Backend 那几样 + 上次自检 */
+/** 一家 CLI 能接的一个供应商（外层 #266）：要 key 的写 key 在家里 keys.yaml 的名字；没实测过 tested 是空串 */
+export interface ProviderRow {
+  id: string
+  title: string
+  key: string | null
+  base_url: string
+  tested: string
+}
+
 export interface AgentEntry {
   name: string
   title: string
+  /** 用谁的模型（官方登录 official、DeepSeek…、自定义 custom）；模型清单跟着它走 */
+  provider: string
+  providers: ProviderRow[]
+  /** 只有自定义供应商才有：接口地址与人填的模型名 */
+  base_url: string
+  custom_models: string[]
   model: string
   effort: string
   models: Choice[]

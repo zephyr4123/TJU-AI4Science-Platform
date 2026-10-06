@@ -21,11 +21,6 @@ export function tokens(n: number): string {
   return n.toLocaleString('zh-CN')
 }
 
-/** 成本：两位小数；有花但不到一分写「<$0.01」，别让一次调用看着像白跑 */
-export function money(value: number): string {
-  return value > 0 && value < 0.005 ? '<$0.01' : `$${value.toFixed(2)}`
-}
-
 /** 定价（每百万 token）：至少两位小数，细到三位的照写（$0.125） */
 export function perMillion(value: number): string {
   return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`
