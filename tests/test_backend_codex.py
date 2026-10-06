@@ -493,6 +493,21 @@ def test_third_party_providers_ride_a_responses_provider_block_with_a_model_cata
     assert not any("model_provider" in a for a in official)
 
 
+def test_third_party_effort_lists_match_the_model_catalogs():
+    """档位表是唯一真相，随包的模型说明要和它对得上（外层 #266）：每家第三方的档位、起点与
+    模型说明里每款模型的 supported_reasoning_levels / default_reasoning_level 一致，清单上的模型
+    说明里都有。起点照各家官方缺省：DeepSeek high，Kimi max。"""
+    for name, path in cx.CATALOGS.items():
+        provider = cx.PROVIDERS[name]
+        models = {m["slug"]: m for m in json.loads(path.read_text(encoding="utf-8"))["models"]}
+        assert {c.id for c in provider.models} <= set(models), name
+        for slug in (c.id for c in provider.models):
+            levels = [lv["effort"] for lv in models[slug]["supported_reasoning_levels"]]
+            assert levels == [c.id for c in provider.efforts], slug
+            assert models[slug]["default_reasoning_level"] == provider.effort, slug
+    assert (cx.PROVIDERS["deepseek"].effort, cx.PROVIDERS["kimi"].effort) == ("high", "max")
+
+
 def test_codex_with_a_missing_key_says_so_instead_of_starting(link, tmp_path):
     events = list(cx.CodexChat(Link(home=link.home, provider="kimi"), cli="/nonexistent")
                   .turn("hi", tmp_path, 5, session_id=None, system_prompt="", allowed_paths=[],

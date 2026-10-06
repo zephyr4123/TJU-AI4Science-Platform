@@ -125,7 +125,11 @@ MODELS = (Choice("gpt-6.1-sol", "GPT-6.1 Sol", "主力"),
           Choice("gpt-5.6-terra", "GPT-5.6 Terra", "上一代"))
 EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
            Choice("xhigh", "超高"))
-# 第三方的思考档照它们的模型说明（cc-switch 的 codex_deepseek_catalog_template.json、Kimi 预设）
+# 第三方的思考档一档对一档（主人 2026-10-06 定）：Codex 把 `model_reasoning_effort` 原样写进
+# `reasoning.effort`（本机抓包），两家的 Responses 都只认 low / high / max；起点照官方缺省——DeepSeek
+# high（https://api-docs.deepseek.com/zh-cn/guides/thinking_mode ，它给 Codex 的 models.json 同），
+# Kimi max（https://platform.kimi.com/docs/api/models-overview ，2026-10-06）。随包的模型说明
+# （CATALOGS）与这里对账，`test_third_party_effort_lists_match_the_model_catalogs` 守着
 THIRD_EFFORTS = (Choice("low", "低"), Choice("high", "高"), Choice("max", "最高"))
 # 供应商目录（外层 #266）：地址与模型照 cc-switch 的 src/config/codexProviderPresets.ts（a4d07f31，
 # 2026-10-06），都是原生 Responses（`wire_api="responses"`），不用中间转发。第三方要带一份模型说明
@@ -142,7 +146,7 @@ PROVIDERS = {
                          base_url="https://api.deepseek.com",
                          tested="2026-10-06 冒烟：pong 约 $0.003，agent 的命令看不见 key"),
     "kimi": Provider("kimi", "Kimi", (Choice("kimi-k3", "Kimi K3"),), THIRD_EFFORTS, "kimi-k3",
-                     "high", key="kimi", base_url="https://api.moonshot.cn/v1"),
+                     "max", key="kimi", base_url="https://api.moonshot.cn/v1"),
 }
 CATALOGS = {"deepseek": CATALOG_DIR / "codex-deepseek.json",
             "kimi": CATALOG_DIR / "codex-kimi.json"}

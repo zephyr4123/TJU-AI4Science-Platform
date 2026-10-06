@@ -104,11 +104,13 @@ def test_switching_provider_brings_its_own_models_and_the_link_its_key():
     from framework import keys
 
     entry = agents.use("claude_code", provider="deepseek")
-    assert (entry.provider, entry.model, entry.effort) == ("deepseek", "deepseek-flash", "medium")
+    assert (entry.provider, entry.model, entry.effort) == ("deepseek", "deepseek-flash", "high")
     assert [c.id for c in agents.knobs_of("claude_code").models] == ["deepseek-flash",
                                                                      "deepseek-v4-pro"]
     with pytest.raises(ValueError, match="模型 'opus' 不在清单上"):
         agents.use("claude_code", model="opus")
+    with pytest.raises(ValueError, match="思考深度 'medium' 不在清单上"):  # DeepSeek 分不出「中」
+        agents.use("claude_code", effort="medium")
     assert agents.link("claude_code").key is None
     keys.put("deepseek", "sk-deepseek-0000")
     link = agents.link("claude_code")

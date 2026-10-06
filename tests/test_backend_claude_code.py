@@ -722,6 +722,22 @@ def test_models_follow_the_provider_and_third_party_ids_go_straight_to_the_cli(t
         ClaudeCodeChat(Link(home=HOME, provider="custom")).knobs()
 
 
+def test_third_party_effort_lists_only_the_levels_the_provider_tells_apart():
+    """思考深度一档对一档（外层 #266，主人 2026-10-06 定）：CLI 把 `--effort` 原样写进
+    `output_config.effort`（本机抓包），DeepSeek 只分 low / high / max（medium、xhigh 服务端都当
+    high），Kimi K3 也是这三档；旋钮上不给它分不出来的档。起点照各家官方缺省。"""
+    from backends.claude_code import PROVIDERS
+
+    for name, start in (("deepseek", "high"), ("kimi", "max")):
+        provider = PROVIDERS[name]
+        assert [c.id for c in provider.efforts] == ["low", "high", "max"]
+        assert provider.effort == start
+    # Kimi 的主模型是 K3；K2.7 Code 不认思考深度，不进清单
+    assert [c.id for c in PROVIDERS["kimi"].models] == ["kimi-k3"]
+    official = ["low", "medium", "high", "xhigh", "max"]  # 官方两家是 CLI 自己的五档
+    assert [c.id for c in PROVIDERS["anthropic"].efforts] == official
+
+
 def test_third_party_turn_cost_is_left_for_the_price_table(tmp_path):
     """第三方那一轮的 done 不带 CLI 报的美元（它按缺省价乱算），读的人照价目折算。"""
     from backends.claude_code import ClaudeCodeChat

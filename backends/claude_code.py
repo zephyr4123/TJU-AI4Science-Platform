@@ -15,7 +15,8 @@
 Bash 工具继承它的环境，实测 agent `sh -c 'test -n "$ANTHROPIC_AUTH_TOKEN"'` 看得见；改成私有目录里
 0600 的文件 + `--settings` 的 `apiKeyHelper`（`--setting-sources ""` 下照样生效），看不见。第三方的
 美元 CLI 按缺省价乱算（DeepSeek 一句 pong 报 $0.084），报 NaN、读的人照价目折算。DeepSeek 冒烟：
-两款都通、一句 pong 约 $0.005。
+两款都通、一句 pong 约 $0.005。思考深度：本机抓包，不认识的模型名 CLI 照样把 `--effort` 原样写进
+`output_config.effort`（不降级，不给时发 high），再加 `thinking: {type: adaptive}`。
 """
 
 from __future__ import annotations
@@ -52,8 +53,8 @@ from backends import (
 from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
-__all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "MODELS", "EFFORTS", "PROVIDERS", "PRICED",
-           "provider", "connect_env",
+__all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "MODELS", "EFFORTS", "THIRD_EFFORTS", "PROVIDERS",
+           "PRICED", "provider", "connect_env",
            "WEB_TOOLS", "usage", "build_env", "bash_rule", "tool_guide", "parse_events",
            "final_metrics", "final_report", "kill_tree", "probe", "parse_version", "make_runner",
            "make_chat", "login_command", "logout_command", "session_dirname"]
@@ -83,8 +84,13 @@ EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
 # 供应商目录（外层 #266）：地址、交 key 的方式、模型照 cc-switch 的
 # src/config/claudeProviderPresets.ts（a4d07f31，2026-10-06）。官方两家用别名，CLI 自己解析成
 # 哪一版；第三方直接写那家的模型名（`--model deepseek-flash`），后台的小活（标题、摘要）
-# 用的 haiku 映射到那家第一款（快的那款）。第三方的 `--effort` CLI 照传、那家接受不报错，
-# 管不管用没实测（2026-10-06）
+# 用的 haiku 映射到那家第一款（快的那款）。
+# 思考深度一档对一档（主人 2026-10-06 定）：旋钮上只给那家分得出来的档，起点照它官方的缺省。
+# DeepSeek 只分 low / high / max，缺省 high，medium、xhigh 服务端都当 high
+# （https://api-docs.deepseek.com/zh-cn/guides/thinking_mode ，2026-10-06）；Kimi 只有 K3 认
+# 思考深度，low / high / max，缺省 max，K2.7 Code 不认、思考恒开，所以清单只放 K3
+# （https://platform.kimi.com/docs/api/models-overview ，2026-10-06）
+THIRD_EFFORTS = (Choice("low", "低"), Choice("high", "高"), Choice("max", "最高"))
 PROVIDERS = {
     OFFICIAL: Provider(OFFICIAL, "Claude 订阅", MODELS, EFFORTS, "sonnet", "medium",
                        reports_cost=True, tested="2.1.291 在平台的私有目录里登录后用"),
@@ -93,19 +99,18 @@ PROVIDERS = {
     "deepseek": Provider("deepseek", "DeepSeek",
                          (Choice("deepseek-flash", "DeepSeek V4.1 Flash", "快"),
                           Choice("deepseek-v4-pro", "DeepSeek V4 Pro", "强")),
-                         EFFORTS, "deepseek-flash", "medium", key="deepseek",
+                         THIRD_EFFORTS, "deepseek-flash", "high", key="deepseek",
                          base_url="https://api.deepseek.com/anthropic",
                          tested="2026-10-06 冒烟：pong 约 $0.005，本机 ~/.claude 没动，"
                                 "agent 的命令看不见 key"),
-    "kimi": Provider("kimi", "Kimi", (Choice("kimi-k2.7-code", "Kimi K2.7 Code"),), EFFORTS,
-                     "kimi-k2.7-code", "medium", key="kimi",
-                     base_url="https://api.moonshot.cn/anthropic"),
+    "kimi": Provider("kimi", "Kimi", (Choice("kimi-k3", "Kimi K3"),), THIRD_EFFORTS, "kimi-k3",
+                     "max", key="kimi", base_url="https://api.moonshot.cn/anthropic"),
 }
 # 价目表里这家用得上的（CLI 报的那一版）：三档别名解析成哪版由 CLI 定（2.1.291 留档实测
 # sonnet → claude-sonnet-5、opus → claude-opus-5），所以两代都列；加第三方的模型要在这里加，
 # `backends/catalog/prices.json` 也得有（测试对账）
 PRICED = ("claude-sonnet-5", "claude-opus-5", "claude-opus-5-5", "claude-fable-5",
-          "claude-fable-5-1", "deepseek-flash", "deepseek-v4-pro", "kimi-k2.7-code")
+          "claude-fable-5-1", "deepseek-flash", "deepseek-v4-pro", "kimi-k3")
 # 用户 shell 里可能有的连接变量：一律不继承——key 只在平台的家里（外层 #265），起服务的终端里设了
 # ANTHROPIC_API_KEY 也不能让平台悄悄改走按量计费
 INHERITED_DROPPED = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
