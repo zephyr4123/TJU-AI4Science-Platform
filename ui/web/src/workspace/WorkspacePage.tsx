@@ -95,7 +95,7 @@ export function WorkspacePage({ ws, project, epoch, caps, skills, chat, menu, op
         <ChatPanel chat={chat}>
           {/* 两个镜头都常驻，切换只是显示 / 隐藏：不重新挂载、不重新拉数据，树的展开与滚动位置也都保住 */}
           <div className={cn('relative h-full', view !== 'board' && 'hidden')}>
-            <Board workspace={ws} doc={doc} caps={caps} skills={skills} opened={opened} onOpen={setOpened}
+            <Board workspace={ws} doc={doc} caps={caps} skills={skills} siblings={siblings} opened={opened} onOpen={setOpened}
                    onOpenFiles={(path) => { setFocus(path); setView('files') }} />
           </div>
           <div className={cn('relative h-full', view !== 'files' && 'hidden')}>

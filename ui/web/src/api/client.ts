@@ -5,9 +5,9 @@
 // 拿着一个绑死在（项目，工作区）上的 `WorkspaceClient` 取数，不各自拼路径。
 
 import type {
-  Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, Job, OutputDetail, ProjectDetail, ProjectSummary,
-  Removed, RequirementDetail, SettingsDoc, SkillDoc, SkillEntry, StageInfo, Template, Tuning, Workflow, WorkflowCheck, WorkflowDraft,
-  WorkspaceDetail, WorkspaceSummary,
+  AttentionItem, Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, Job, OutputDetail, ProjectDetail,
+  ProjectSummary, Removed, RequirementDetail, SettingsDoc, SkillDoc, SkillEntry, Spending, StageInfo, Template, Workflow,
+  WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
 } from './types'
 
 export type Scope = { kind: 'project'; id: string } | { kind: 'studio' }
@@ -88,6 +88,10 @@ export const api = {
   newProject: (id: string, title: string, goal: string) => request<ProjectSummary>('/projects', post({ id, title, goal })),
   project: (id: string) => request<ProjectDetail>(scopePath(inProject(id))),
   removeProject: (id: string) => request<Removed>(`${scopePath(inProject(id))}/remove`, post({})),
+
+  /** 首页右栏（外层 #256）：跨项目要人做的与在跑的；近几天的花费 */
+  attention: () => request<AttentionItem[]>('/attention'),
+  usage: (days: number) => request<Spending>(`/usage?days=${days}`),
   newWorkspace: (project: string, id: string, title: string, template: string) =>
     request<WorkspaceSummary>(`${scopePath(inProject(project))}/workspaces`, post({ id, title, template })),
 
@@ -95,8 +99,8 @@ export const api = {
   chat: (scope: Scope, chatId: string) =>
     request<ChatDoc>(`${scopePath(scope)}/chats/${encodeURIComponent(chatId)}`),
   /** 开一段：哪家、模型、深度都可以不给——服务从按人的设置抄（P-25） */
-  newChat: (scope: Scope, tuning?: Tuning, backend?: string) =>
-    request<ChatMeta>(`${scopePath(scope)}/chats`, post({ ...(tuning ?? {}), ...(backend ? { backend } : {}) })),
+  /** 开一段：哪家、模型、思考深度照设置（P-25，外层 #257：只在设置里改） */
+  newChat: (scope: Scope) => request<ChatMeta>(`${scopePath(scope)}/chats`, post({})),
   /** 删一段对话（主人 2026-09-22：人产生的都能删；正在一轮里的服务拒 409） */
   removeChat: (scope: Scope, chatId: string) =>
     request<Removed>(`${scopePath(scope)}/chats/${encodeURIComponent(chatId)}/remove`, post({})),

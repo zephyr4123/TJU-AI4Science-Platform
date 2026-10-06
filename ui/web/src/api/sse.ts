@@ -4,21 +4,20 @@
 import { createParser } from 'eventsource-parser'
 
 import { ApiError, errorMessage, type Scope, scopePath } from './client'
-import type { ChatEvent, Tuning } from './types'
+import type { ChatEvent } from './types'
 
-/** 发一轮。`tuning` 是这一轮用的模型与思考深度（null 是后端缺省），服务端记进对话，之后每轮沿用。 */
+/** 发一轮。模型与思考深度照对话 meta 里记的（开对话时从设置抄的，外层 #257），这里不带。 */
 export async function streamTurn(
   scope: Scope,
   chatId: string,
   text: string,
-  tuning: Tuning,
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${scopePath(scope)}/chats/${encodeURIComponent(chatId)}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, ...tuning }),
+    body: JSON.stringify({ text }),
     signal,
   })
   if (!res.ok) throw new ApiError(res.status, errorMessage(res.status, await res.text()))

@@ -91,7 +91,9 @@ class Conversation:
     created_at: str
     session_id: str | None = None
     turns: int = 0
-    cost_usd: float = 0.0
+    # 各轮花费之和；一轮都没报过美元（Codex 用订阅登录）是 None——「未知」，不记 0（外层 #256：
+    # 以前记成 0.0，对话清单里一排 $0.00）
+    cost_usd: float | None = None
     # 后端上次报的这段会话的累计花费（`Chat.cost_reporting == "session"` 的后端才用得上）：
     # 这一轮的花费 = 这次报的 − 它；换了会话就从零算
     session_cost_usd: float = 0.0
@@ -482,7 +484,7 @@ def _close_turn(conv: Conversation, turn_n: int, message: str, event: ChatEvent,
                 origin: str) -> None:
     conv.turns += 1
     if not math.isnan(event.cost_usd):
-        conv.cost_usd += event.cost_usd
+        conv.cost_usd = (conv.cost_usd or 0.0) + event.cost_usd
     conv.save()
     reply = event.text if event.kind == "done" else f"（这一轮没走完：{event.text}）"
     with (conv.dir / TRANSCRIPT_NAME).open("a", encoding="utf-8") as fh:

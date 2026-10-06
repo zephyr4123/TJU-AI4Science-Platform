@@ -1,4 +1,4 @@
-// 设置板上的「检查」键，从 reactbits 的 CallChip 捞来改装（MIT，https://reactbits.dev/components/call-chip）：
+// 设置页上的「检查」键，从 reactbits 的 CallChip 捞来改装（MIT，https://reactbits.dev/components/call-chip）：
 // 一枚小片，按下去开始检查——底色从左往右慢慢填（预计几秒）、毫秒数跳着走，过了整片洗成铜绿、图标翻成 ✓，
 // 没过洗成红、抖一下、图标翻成「再来」。原版是只读的状态片（role=status），这里改成真按钮：闲着、过了、没过都能再按；
 // 图标换 Phosphor、颜色走 tokens 不收色值；计时只在跑着时显示（几秒是状态行的事）；减少动效时不填不抖。

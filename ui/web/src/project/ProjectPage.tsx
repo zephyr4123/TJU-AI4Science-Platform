@@ -1,5 +1,6 @@
 // 项目页（主人 2026-09-22）：正中间一只对话输入框——一个项目只有一位助理，对话入口就这一个，放在正中间（像 Claude 的首页：
-// 平台的标、上面一句话，下面输入框）。输入框里打的第一句话就开始对话：输入框动画下沉到底，正文接在上面，这一轮从按下回车起就在屏上
+// 平台的标紧挨着项目名一行，下面输入框；外层 #258，主人 2026-10-06：标别单独占一行，名字底下那句目标砍掉）。输入框里打的第一句话
+// 就开始对话：输入框动画下沉到底、变成扁长一条（外层 #257：像 Claude，分清主次），正文接在上面，这一轮从按下回车起就在屏上
 // （主人：不要闪一下再切过去）；「‹ 项目名」回来。左上角「‹ 首页」回首页（外层 #250）。输入框底下是这个项目的工作区，一行一个：名字、现在到哪一步（一个词，颜色照
 // 三态）、走到第几步与产出几次；点一行进工作区页。「新建」在清单那一行，点了才展开表单（project/NewWorkspace）。过去的对话
 // 在「对话 · N」的抽屉里，挑一段也切成整屏的对话。右上角「…」里是删除项目。
@@ -56,10 +57,9 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
   const current = shown ? c.chats.data?.find((x) => x.chat_id === shown) ?? null : null
   const conv = useConversation({
     scope: inProject(project.id), chatId: shown, current, backends,
-    create: async (tuning, backend) => { const meta = await c.newChat(tuning, backend); setShown(meta.chat_id); return meta },
+    create: async () => { const meta = await c.newChat(); setShown(meta.chat_id); return meta },
     onTurnDone: c.turnDone,
   })
-  const t = conv.tuning
   const [creating, setCreating] = useState(false)
 
   const drawer = (
@@ -73,9 +73,8 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
   // 两边带 layoutId 的盒子都要紧贴玻璃框、同宽（44rem）：动画按盒子的左上角算，盒子比玻璃框宽就会斜着走
   const composer = (className?: string) => (
     <motion.div layoutId={`composer-${project.id}`} layout={still ? false : 'position'} className={cn('w-full max-w-[44rem]', className)}>
-      <Composer busy={conv.busy} placeholder={talking ? 'Enter 发送，Shift + Enter 换行' : '要做什么？'}
-                thinking={t.thinking} knobs={t.knobs} tuning={t.tuning} onTune={t.onTune} className="px-0 pt-0 pb-0" above={running}
-                who={shown || !backends ? undefined : { options: backends, value: t.backendName ?? '', onChange: t.choose }}
+      <Composer busy={conv.busy} placeholder={talking ? 'Enter 发送，Shift + Enter 换行' : '要做什么？'} docked={talking}
+                thinking={conv.thinking} className="px-0 pt-0 pb-0" above={running}
                 onSend={(text) => { setTalking(true); void conv.send(text) }} />
     </motion.div>
   )
@@ -87,7 +86,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
              back={{ label: project.title, onClick: () => { setTalking(false); setShown(null) } }}
              title={current?.title ?? '新对话'}
              tail={<span className="ml-auto flex items-center gap-3">
-               {current && current.cost_usd > 0 && <span className="t-label whitespace-nowrap">{usd(current.cost_usd)}</span>}
+               {current && (current.cost_usd ?? 0) > 0 && <span className="t-label whitespace-nowrap">{usd(current.cost_usd)}</span>}
                {drawer}
              </span>} />
       )}
@@ -97,20 +96,21 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
           <>
             <motion.div initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
                         className="relative flex min-h-0 flex-1 flex-col">
-              <Transcript doc={conv.doc} turns={conv.turns} thinking={t.thinking} welcome={WELCOME.research} error={conv.error} />
+              <Transcript doc={conv.doc} turns={conv.turns} thinking={conv.thinking} welcome={WELCOME.research} error={conv.error} />
             </motion.div>
-            <div className="relative z-10 px-6 pt-3 pb-6">{composer('mx-auto')}</div>
+            <div className="relative z-10 px-6 pt-3 pb-3">{composer('mx-auto')}</div>
           </>
         ) : (
           <div className="relative min-h-0 flex-1 overflow-y-auto">
             <div className="absolute top-3 right-4 z-10"><ProjectMenu title={project.title} onRemove={onRemove} className="bg-card/60 backdrop-blur-sm" /></div>
             <div className="absolute top-3 left-4 z-10 flex items-center gap-3 sm:left-5">{menu}<Back label="首页" onClick={onHome} /></div>
-            <div className="relative mx-auto flex min-h-full w-full max-w-[47rem] flex-col px-6 pt-[10vh] pb-16">
-              {/* 平台的标在正中、项目名在下（外层 #139）：像 Claude 的首页，标先于字 */}
-              <Logo className="mx-auto size-12 text-primary" />
-              <h1 className="mt-5 text-center font-serif text-[2rem] leading-[1.25] font-semibold tracking-tight text-balance">{project.title}</h1>
-              {project.goal && <p className="t-body mx-auto mt-3 text-center text-muted-foreground">{project.goal}</p>}
-              {composer('mt-8')}
+            <div className="relative mx-auto flex min-h-full w-full max-w-[47rem] flex-col px-6 pt-[14vh] pb-16">
+              {/* 平台的标紧挨着项目名、一行居中（外层 #139 #258）：像 Claude 首页的「✳ 晚间随想」；名字长了折行时标对着整块的中线 */}
+              <h1 className="flex items-center justify-center gap-3.5 font-serif text-[2rem] leading-[1.25] font-semibold tracking-tight">
+                <Logo className="size-9 shrink-0 text-primary" />
+                <span className="min-w-0 text-balance">{project.title}</span>
+              </h1>
+              {composer('mt-9')}
               <section className="mt-12">
                 <div className="flex items-center gap-3">
                   <h2 className="t-step">工作区</h2>

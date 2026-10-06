@@ -206,3 +206,30 @@ def test_template_intro_mentioning_the_placeholder_does_not_block_confirming(tmp
     ws.requirement.write_text(pf.REQUIREMENT.replace("\n\n## 问题", "\n\n" + intro + "## 问题", 1),
                               encoding="utf-8")
     assert boards.requirement_detail(ws)["pending"] is False
+
+
+def test_attention_lists_what_waits_for_the_person_and_what_runs_across_projects(tmp_path):
+    """首页右栏（外层 #256）：需求未确认 / 有改动、流程停在断点等人确认、作业在跑，跨项目一张单；
+    人要做的在前，在跑的在后。"""
+    import os
+
+    from framework.workspace import jobs, project
+    pf.make_workspace(tmp_path, "draft", confirmed=False, flow=False)
+    pack = pf.make_pack(tmp_path)
+    ws = pack.workspace
+    (ws.flows / "open.yaml").unlink()
+    (ws.flows / "quick.yaml").write_text(FLOW, encoding="utf-8")
+    _, meta = outputs.find_output(ws, "design/1")
+    meta.flow, meta.step = "quick", 0
+    output.write_meta(pack.pack, meta)
+    jobs._save(ws.jobs, jobs.Job(job_id="job-1", cap="auto-research", stage="experiment", argv=[],
+                                 pid=os.getpid(), started_at="2026-10-06T10:00:00+00:00",
+                                 output="experiment/1"))
+    got = boards.attention(project.list_projects(project.projects_root(tmp_path)), catalog())
+    assert [(i["kind"], i["workspace"]) for i in got] == [
+        ("requirement", "draft"), ("sign", "toy"), ("running", "toy")]
+    requirement_row, sign, running = got
+    assert requirement_row["dirty"] is False and requirement_row["project_title"]
+    assert sign["flow"] == "快看" and sign["stage"] == "设计"
+    assert running["cap"] == "AutoResearch" and running["since"] == "2026-10-06T10:00:00+00:00"
+    json.dumps(boards.jsonable(got), allow_nan=False)

@@ -1,7 +1,7 @@
 // 需求（纲领 P-19）：工作区的根。没确认时它就是工作区页——文档按二级标题一格一格铺开（模板留的「待填」是空格子），
-// 底下一颗「确认」；确认了收成顶部一条（版本、何时），点开居中的玻璃悬浮窗看全文；助理又改了就显示 diff 与「确认下一版」。
+// 底下一颗「确认」；确认了收成工作区标题底下一行（第几版、何时），点开居中的玻璃悬浮窗看全文；助理又改了就显示 diff 与「确认下一版」。
 // 页面只渲染不编辑：改需求只走对话（一个文件一个生产者），diff 才有意义。
-import { ArrowsClockwise, CaretRight, CheckCircle, Circle } from '@phosphor-icons/react'
+import { ArrowsClockwise, CaretRight, CheckCircle, Circle, FileText } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import type { WorkspaceClient } from '@/api/client'
@@ -69,8 +69,10 @@ function SectionCard({ section }: { section: RequirementSection }) {
   )
 }
 
-// ── 已确认：收成一条，点开悬浮窗 ────────────────────────────────────────────
-export function RequirementStrip({ workspace, requirement, reload }: {
+// ── 已确认：收成题头底下一行，点开悬浮窗 ────────────────────────────────────
+/** 工作区标题底下一行（外层 #255：需求就是这个工作区的题头，不再是一张和流程平级的卡）：「需求第 N 版 · 何时确认 · 查看全文」；
+ *  助理又改了这一行变成琥珀软底「需求有 N 行改动 · 待确认」——人要做的事一眼看见。点开都是居中的玻璃悬浮窗。 */
+export function RequirementLine({ workspace, requirement, reload }: {
   workspace: WorkspaceClient; requirement: RequirementDetail; reload: () => Promise<void>
 }) {
   const [open, setOpen] = useState(false)
@@ -78,24 +80,23 @@ export function RequirementStrip({ workspace, requirement, reload }: {
     ? changedCount(diffLines(requirement.confirmed_text, requirement.text)) : 0
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}
-              className={cn('flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring',
-                            requirement.dirty ? 'border-wait/50 bg-wait-soft/60' : 'bg-card/80 backdrop-blur-sm')}>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-serif text-[1rem] font-semibold">{requirement.title}</span>
-          <span className="mt-0.5 block truncate text-[0.8125rem] text-muted-foreground">
-            需求 v{requirement.version} · {when(requirement.at)} 确认
-            {requirement.dirty && <span className="ml-2 text-wait">{changed} 行改动 · 待确认</span>}
-          </span>
-        </span>
-        {requirement.dirty
-          ? <ArrowsClockwise weight="bold" className="size-4 shrink-0 text-wait" aria-hidden />
-          : <CaretRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
-      </button>
+      {requirement.dirty ? (
+        <button type="button" onClick={() => setOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-wait-soft px-3 py-1 text-[0.8125rem] font-semibold text-wait transition-colors hover:bg-wait-soft/70 focus-visible:outline-2 focus-visible:outline-ring">
+          <ArrowsClockwise weight="bold" className="size-3.5" aria-hidden />需求有 {changed} 行改动 · 待确认<CaretRight className="size-3.5" aria-hidden />
+        </button>
+      ) : (
+        <button type="button" onClick={() => setOpen(true)}
+                className="group inline-flex flex-wrap items-center gap-x-1.5 text-[0.875rem] text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring">
+          <FileText weight="duotone" className="size-4 text-foreground/55" aria-hidden />
+          <span className="tabular">需求第 {requirement.version} 版 · {when(requirement.at)} 确认</span>
+          <span className="inline-flex items-center gap-0.5 text-primary group-hover:underline group-hover:underline-offset-4">查看全文<CaretRight className="size-3.5" aria-hidden /></span>
+        </button>
+      )}
       <GlassDialog open={open} onOpenChange={setOpen}>
         <header className="flex flex-col gap-1 px-6 pt-6 pb-3">
           <GlassTitle>{requirement.title}</GlassTitle>
-          <p className="t-label">需求 v{requirement.version} · {when(requirement.at)} 确认</p>
+          <p className="t-label">需求第 {requirement.version} 版 · {when(requirement.at)} 确认</p>
         </header>
         <div className="px-6 pb-8">
           {requirement.dirty && requirement.confirmed_text !== null ? (

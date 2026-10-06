@@ -7,7 +7,7 @@ import type { OutputBrief, RequirementState, WorkspaceSummary } from '@/api/type
 /** 需求的状态一句话：未确认 / v2 / v2 · 有改动 */
 export function requirementWord(state: RequirementState): string {
   if (!state.confirmed) return '需求未确认'
-  return state.dirty ? `需求 v${state.version} · 有改动` : `需求 v${state.version}`
+  return state.dirty ? `需求第 ${state.version} 版 · 有改动` : `需求第 ${state.version} 版`
 }
 
 /** 页眉里的一句：需求没确认就说需求；有作业就说几个运行中；否则不说（在等谁写在流那一行）。 */
