@@ -1,5 +1,5 @@
-// 首页右栏「花费」的纯函数（外层 #256）：两种看法（折算美元 / token）各取哪个数、按天还是按周画柱、排行露几名、
-// token 怎么念。美元报不出（Codex 订阅）是 null，不当 0：按美元看时那一格不画、写「未报」。
+// 首页右栏「花费」的纯函数（外层 #256）：两种看法（折算成本 / token）各取哪个数、按天还是按周画柱、表怎么排、
+// 钱、token、缓存命中率与定价怎么念。成本算不出（模型没记）是 null，不当 0：按成本看时那一格不画、写「未知」。
 
 import type { SpendCell } from '@/api/types'
 
@@ -9,7 +9,7 @@ export type Metric = 'usd' | 'tokens'
 export const RANGES = [7, 30, 90] as const
 export type Range = (typeof RANGES)[number]
 
-/** 一格按这种看法的数：按美元看，一次都没报过是 null */
+/** 一格按这种看法的数：按成本看，一次都没算出是 null */
 export function valueOf(cell: SpendCell, metric: Metric): number | null {
   return metric === 'usd' ? cell.cost_usd : cell.tokens
 }
@@ -19,6 +19,21 @@ export function tokens(n: number): string {
   if (n >= 1e8) return `${(n / 1e8).toFixed(2)} 亿`
   if (n >= 1e4) return `${Math.round(n / 1e4).toLocaleString('zh-CN')} 万`
   return n.toLocaleString('zh-CN')
+}
+
+/** 成本：两位小数；有花但不到一分写「<$0.01」，别让一次调用看着像白跑 */
+export function money(value: number): string {
+  return value > 0 && value < 0.005 ? '<$0.01' : `$${value.toFixed(2)}`
+}
+
+/** 定价（每百万 token）：至少两位小数，细到三位的照写（$0.125） */
+export function perMillion(value: number): string {
+  return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`
+}
+
+/** 缓存命中率：读进去的里头命中缓存的占几成；一个 token 都没读过是 null */
+export function hitRate(cell: SpendCell): number | null {
+  return cell.input_tokens > 0 ? cell.cached_tokens / cell.input_tokens : null
 }
 
 export interface Bucket extends SpendCell { label: string }
@@ -34,26 +49,27 @@ export function buckets(days: (SpendCell & { day: string })[]): Bucket[] {
   return out
 }
 
-/** 排行：按这种看法从多到少（按美元看时没报过的垫底、再按 token），露前 `n` 个，其余并成一行（`rows` 是并了几个） */
-export function ranked<T extends SpendCell>(rows: T[], metric: Metric, n: number): { top: T[]; rest: (SpendCell & { rows: number }) | null } {
-  const sorted = [...rows].sort((a, b) => {
+/** 表的次序：按这种看法从多到少（按成本看时算不出的垫底），一样再按 token */
+export function sorted<T extends SpendCell>(rows: T[], metric: Metric): T[] {
+  return [...rows].sort((a, b) => {
     const x = valueOf(a, metric)
     const y = valueOf(b, metric)
     if (x === null || y === null) return x === y ? b.tokens - a.tokens : x === null ? 1 : -1
     return y - x || b.tokens - a.tokens
   })
-  const rest = sorted.slice(n)
-  return { top: sorted.slice(0, n), rest: rest.length ? { ...sum(rest), rows: rest.length } : null }
 }
 
-/** 几格加起来：美元只加报了的（一格都没报过是 null），未知、token、次数照加 */
+/** 几格加起来：成本只加算得出的（一格都没算出是 null），未知、token、次数照加 */
 function sum(cells: SpendCell[]): SpendCell {
   const known = cells.filter((c) => c.cost_usd !== null)
+  const add = (pick: (c: SpendCell) => number) => cells.reduce((s, c) => s + pick(c), 0)
   return {
     cost_usd: known.length ? known.reduce((s, c) => s + (c.cost_usd ?? 0), 0) : null,
-    unknown: cells.reduce((s, c) => s + c.unknown, 0),
-    tokens: cells.reduce((s, c) => s + c.tokens, 0),
-    count: cells.reduce((s, c) => s + c.count, 0),
+    unknown: add((c) => c.unknown),
+    tokens: add((c) => c.tokens),
+    input_tokens: add((c) => c.input_tokens),
+    cached_tokens: add((c) => c.cached_tokens),
+    count: add((c) => c.count),
   }
 }
 

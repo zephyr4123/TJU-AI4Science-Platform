@@ -6,10 +6,10 @@
 // 搜中的字标出来。一个项目都没有：一句「还没有项目」加一枚「新建项目」。
 // 外层 #256（主人 2026-10-06：只有一列居中的清单，两边太空）：宽屏左半边是清单，右半边横纵结合（不越拉越长）——
 // 上面「待你确认」「运行中」两张小卡并排，下面一张「花费」；右半边是另一个模块，配色换成与清单对着映衬的暖调。
-// 窄屏右半边折到清单下面。
-import { MagnifyingGlass, Plus, X } from '@phosphor-icons/react'
+// 窄屏右半边折到清单下面。最底下一行素的页脚：平台叫什么、靠什么搭起来、源码在哪（主人 2026-10-06）。
+import { GithubLogo, MagnifyingGlass, Plus, X } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { api } from '@/api/client'
 
@@ -17,12 +17,14 @@ import type { ProjectSummary } from '@/api/types'
 import { ASSETS } from '@/assets'
 import { Aurora, follow, Spot } from '@/components/Aurora'
 import { Dot, ErrorNote, Skeleton } from '@/components/bits'
+import { Logo } from '@/components/Logo'
 import SpecularButton from '@/components/reactbits/SpecularButton'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { day } from '@/lib/format'
 import { useToken } from '@/lib/tokens'
+import { useEdgeFade } from '@/lib/useEdgeFade'
 import { type Resource, useResource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 import { prefetchProject } from '@/project/prefetch'
@@ -49,20 +51,12 @@ export function Home({ projects, onOpen, onOpenWorkspace, onNew, onRemove, menu 
   const list = projects.data ? newestFirst(projects.data) : null
   const shown = list ? findProjects(list, query) : null
   const words = wordsOf(query)
-  // 清单在面里滚时，上下边哪头还有没露出来的，那头渐隐一截（量一次：滚动、换了内容、面的大小变了）
-  const scroller = useRef<HTMLUListElement>(null)
-  const [edges, setEdges] = useState<Edges>({ above: false, below: false })
-  useEffect(() => {
-    const el = scroller.current
-    if (!el) return
-    const observer = new ResizeObserver(() => setEdges(edgesOf(el)))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [shown?.length])
+  // 清单在面里滚时，上下边哪头还有没露出来的，那头渐隐一截
+  const fade = useEdgeFade<HTMLUListElement>(shown?.length)
   return (
-    <div className="relative flex-1 overflow-y-auto">
+    <div className="relative flex flex-1 flex-col overflow-y-auto">
       <Scene picture={ASSETS.backdrop} veil="mist" />
-      <div className="relative mx-auto grid w-full max-w-[92rem] gap-x-10 gap-y-6 px-6 pt-8 pb-16 sm:px-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:grid-rows-[auto_minmax(30rem,auto)]">
+      <div className="relative mx-auto grid w-full max-w-[92rem] gap-x-10 gap-y-6 px-6 pt-8 pb-12 sm:px-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:grid-rows-[auto_minmax(30rem,auto)]">
         <header className="flex flex-wrap items-center gap-3 lg:col-start-1">
           {menu}
           <div className="flex items-baseline gap-2.5">
@@ -84,7 +78,7 @@ export function Home({ projects, onOpen, onOpenWorkspace, onNew, onRemove, menu 
           {list && list.length === 0 && <NoProjects onNew={onNew} />}
           {shown && shown.length > 0 && (
             <Aurora className="flex min-h-0 flex-1 flex-col">
-              <ul ref={scroller} onScroll={(e) => setEdges(edgesOf(e.currentTarget))} style={{ maskImage: fadeMask(edges) }}
+              <ul {...fade}
                   className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
                 {shown.map((p) => (
                   <li key={p.id} onPointerEnter={() => prefetchProject(p.id)}
@@ -104,26 +98,31 @@ export function Home({ projects, onOpen, onOpenWorkspace, onNew, onRemove, menu 
         <aside aria-label="概览" className="grid grid-rows-[auto_1fr] gap-5 sm:grid-cols-2 lg:col-start-2 lg:row-start-2">
           <Attention items={attention} onOpen={onOpenWorkspace} />
           <div className="sm:col-span-2">
-            <Spending usage={usage} range={range} metric={metric} onOpenProject={onOpen}
+            <Spending usage={usage} range={range} metric={metric} onOpenProject={onOpen} onOpenWorkspace={onOpenWorkspace}
                       onRange={(r) => { setRange(r); remember('home:range', r) }}
                       onMetric={(m) => { setMetric(m); remember('home:metric', m) }} />
           </div>
         </aside>
       </div>
+      <Footer />
     </div>
   )
 }
 
-interface Edges { above: boolean; below: boolean }
+const SOURCE = 'https://github.com/zephyr4123/TJU-AI4Science-Platform'
 
-function edgesOf(el: HTMLElement): Edges {
-  return { above: el.scrollTop > 1, below: el.scrollTop + el.clientHeight < el.scrollHeight - 1 }
-}
-
-/** 哪头还有内容，那头 28px 渐隐；两头都到底就不遮 */
-function fadeMask({ above, below }: Edges): string | undefined {
-  if (!above && !below) return undefined
-  return `linear-gradient(to bottom, ${above ? 'transparent 0, #000 28px' : '#000 0'}, ${below ? '#000 calc(100% - 28px), transparent 100%' : '#000 100%'})`
+/** 页脚：一行淡字，内容少时压在页底；左边标与名，右边靠什么搭起来与源码 */
+function Footer() {
+  return (
+    <footer className="relative mx-auto mt-auto flex w-full max-w-[92rem] flex-wrap items-center gap-x-6 gap-y-1.5 px-6 pb-6 text-[0.75rem] text-muted-foreground sm:px-8">
+      <span className="flex items-center gap-1.5 text-foreground/70"><Logo className="size-3.5" />AI4Science 工作台</span>
+      <span className="sm:ml-auto">Powered by Claude Code · Codex · React · Tailwind CSS · Python</span>
+      <a href={SOURCE} target="_blank" rel="noreferrer"
+         className="flex items-center gap-1 rounded-sm transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60">
+        <GithubLogo className="size-3.5" aria-hidden="true" />源码
+      </a>
+    </footer>
+  )
 }
 
 /** 右栏的范围与看法记在本机（只是这个人的顺手：读不到就用缺省，存不了就不存） */

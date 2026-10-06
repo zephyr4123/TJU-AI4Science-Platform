@@ -480,15 +480,45 @@ export interface AttentionItem {
   since?: string
 }
 
-/** 花费的一格：折算美元（只加报了的；一次都没报过是 null，按天那一列没报是 0）、几次没报美元、token、几次 */
+/** 花费的一格：折算成本（美元，只加算得出的；一次都没算出是 null，按天那一列是 0）、几次算不出、token
+ *  （读进去的 + 写出来的；另有读进去的与其中命中缓存的，缓存命中率用）、几次 */
 export interface SpendCell {
   cost_usd: number | null
   unknown: number
   tokens: number
+  input_tokens: number
+  cached_tokens: number
   count: number
 }
 
-/** `GET /usage?days=`（外层 #256）：近几天的合计、按天、按项目（id 为 null 是编辑台）、按模型、按对话与运行 */
+/** 一段会话：对话是一段对话（标题是人说的第一句，还没说过是 null），运行是一次产出（标题是能力名，带工作区）；
+ *  `at` 是最后一次调用的时刻，模型写最后那次用的 */
+export interface SpendSession extends SpendCell {
+  key: string
+  kind: 'chat' | 'run'
+  title: string | null
+  project: string | null
+  project_title: string
+  workspace: string | null
+  workspace_title: string | null
+  at: string
+  backend_title: string
+  model_title: string
+}
+
+/** 定价表的一行：美元 / 百万 token——读进去没命中缓存的、命中缓存的、写出来的 */
+export interface SpendPrice {
+  backend: string
+  backend_title: string
+  model: string
+  model_title: string
+  input: number
+  cached: number
+  output: number
+}
+
+/** `GET /usage?days=`（外层 #256）：近几天的合计、按天、按项目（id 为 null 是编辑台）、按模型、按对话与运行、
+ *  最近的会话，外加两家的定价表 */
 export interface Spending {
   days: number
   total: SpendCell
@@ -496,4 +526,6 @@ export interface Spending {
   by_project: (SpendCell & { id: string | null; title: string })[]
   by_model: (SpendCell & { backend: string; model: string | null; backend_title: string; model_title: string })[]
   by_kind: (SpendCell & { kind: 'chat' | 'run'; title: string })[]
+  sessions: SpendSession[]
+  pricing: SpendPrice[]
 }
