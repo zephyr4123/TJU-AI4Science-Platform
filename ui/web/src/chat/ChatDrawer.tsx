@@ -82,8 +82,9 @@ export function ChatDrawer({ chats, error, selected, healthy, creating, onSelect
                   <span className="block truncate text-sm font-medium">{chatTitle(chat)}</span>
                   <span className="t-label mt-0.5 flex items-center gap-1.5">
                     <span>{when(chat.created_at)}</span><span>·</span>
-                    <span className="tabular">{chat.turns} 轮</span><span>·</span>
-                    <span className="tabular">{usd(chat.cost_usd)}</span>
+                    <span className="tabular">{chat.turns} 轮</span>
+                    {/* 报不出美元的（Codex 订阅）不写：以前一排 $0.00（外层 #256） */}
+                    {chat.cost_usd !== null && <><span>·</span><span className="tabular">{usd(chat.cost_usd)}</span></>}
                   </span>
                 </span>
               </button>

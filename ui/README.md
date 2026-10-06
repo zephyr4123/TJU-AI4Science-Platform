@@ -38,7 +38,7 @@
 ## 3. 代码约定
 
 - **目录按页面与地方分**（`src/`）：`home/` 首页与门口、`project/` 项目页、`workspace/` 工作区页、`board/` 看板、`files/` 文件镜头、`chat/` 对话、`progress/` 每个能力自己的进度面板（产出悬浮窗最上面，外层 #242）、`studio/` 编辑台、`keys/` 两处人的确认、`settings/` 设置、`places/` 地方栏与状态机、`components/` 零件（`ui/` shadcn 生成、`reactbits/` 改装件、`markdown/`）、`lib/` 纯逻辑与 hooks、`api/` 契约、`assets.ts` 素材 URL。每个目录的职责写在各文件的头注释里，文件清单以代码为准。
-页面此刻在哪是 `places/place.ts` 的状态机（设置是压在任何地方上的悬浮板，不是一个地方）：
+页面此刻在哪是 `places/place.ts` 的状态机（设置也是一个地方，哪里都能去，图里不画那几条边，外层 #257）：
 
 ```mermaid
 stateDiagram-v2

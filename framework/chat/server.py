@@ -41,6 +41,10 @@
     POST /workflows/<name>/remove           删人存的一条流程（出厂的拒 403）
     GET  /templates                         需求模板的库：名字、标题、一句说明、原文
     GET  /projects                          项目清单：标题、几个工作区、有没有作业在跑
+    GET  /attention                         首页右栏：跨项目要人做的（需求未确认或有改动、
+                                            流程停在断点）与在跑的作业（外层 #256）
+    GET  /usage?days=30                     首页的花费：近几天的合计、按天 / 项目 / 模型 / 对话与
+                                            运行，折算美元（报不出的另数）与 token
     POST /projects                          {"id", "title"?, "goal"?} → 新项目（写 project.md）
     GET  /projects/<p>                      项目 + 目标原文 + 每个工作区一行（需求状态、每个阶段几次
                                             产出、每条流程走到哪、在等谁、跑着的作业）
@@ -64,14 +68,13 @@
     GET  …/workspaces/<id>/jobs[/<jid>]     作业清单 / 一个作业
     POST …/workspaces/<id>/jobs/<jid>/stop  → 人叫停：杀进程树，作业记 stopped、产出记 failed
     GET  <域>/chats                         对话清单；<域> 是 /projects/<p> 或 /studio
-    POST <域>/chats                         {"backend"?, "model"?, "effort"?} → 新对话的 meta
+    POST <域>/chats                         {} → 新对话的 meta；哪家、模型、深度照设置抄（P-25），
+                                            body 带 backend / model / effort 是 400（外层 #257）
     GET  <域>/chats/<cid>                   meta + transcript + history + running（正在跑的那一轮，
                                             别的进程起的也算）+ waiting（还有几个作业会来叫醒它）
-    POST <域>/chats/<cid>/messages          {"text", "model"?, "effort"?} → text/event-stream，
-                                            一个事件一条；model / effort 给了就记进对话（没给
-                                            沿用）；
-                                            人这一轮说完，收件箱里排着的作业结果接着以「框架」的身份
-                                            念，事件接在同一条流后面
+    POST <域>/chats/<cid>/messages          {"text"} → text/event-stream，一个事件一条；模型与
+                                            深度照对话 meta 里记的；人这一轮说完，收件箱里排着的
+                                            作业结果接着以「框架」的身份念，事件接在同一条流后面
     POST <域>/chats/<cid>/remove            删一段对话（连 CLI 那边的会话）
     GET  /<其它>                            `ui_dir` 里的静态文件，找不到的回 index.html（单页应用）
 """
@@ -102,7 +105,7 @@ from backends import (
     probe,
 )
 from framework import agents, computes, paths
-from framework.chat import boards, conversation, guide, notify, removal, scope, settings
+from framework.chat import boards, conversation, guide, notify, removal, scope, settings, spending
 from framework.contracts import output, requirement, stages, workflow_library, workflows
 from framework.contracts.capability import Capability
 from framework.workspace import jobs, outputs, project, root
@@ -115,7 +118,7 @@ MAX_BODY = 1 << 20
 SIGNER = getpass.getuser()
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
 API_ROOTS = ("health", "backends", "settings", "stages", "cap", "skills", "workflows", "templates",
-             "projects", "studio")
+             "projects", "studio", "attention", "usage")
 
 
 def _no_add_compute(body: dict[str, Any]) -> dict[str, Any]:
@@ -250,6 +253,15 @@ class Handler(BaseHTTPRequestHandler):
         if parts == ["projects"]:
             return self._json([boards.project_summary(p) for p in
                                project.list_projects(self.server.projects_root)])
+        if parts == ["attention"]:
+            projects = project.list_projects(self.server.projects_root)
+            return self._json(boards.attention(projects, self.server.descriptors(),
+                                               self.server.skill_names()))
+        if parts == ["usage"]:
+            raw = parse_qs(url.query).get("days", ["30"])[0]
+            if not raw.isdigit() or int(raw) < 1:
+                raise ValueError(f"days 要是正整数，得到 {raw!r}")
+            return self._json(spending.summary(self.server.home, days=int(raw)))
         found = self._scope(parts)
         if found is None:
             return None
@@ -386,18 +398,17 @@ class Handler(BaseHTTPRequestHandler):
         if rest[-1:] == ["remove"]:
             return self._post_remove(where, ws, rest[:-1])
         if rest == ["chats"]:
+            if self._tuned_in_body(body):
+                return None
             try:
                 knobs = self.server.knobs_of
-                backend = str(body.get("backend") or agents.role_backend("chat", knobs))
+                backend = agents.role_backend("chat", knobs)
                 chat = self.server.chat_factory(backend)  # 名字不对现在就报，别等发消息
-                # 新对话从按人的设置抄具体值（P-25），body 里给的压过它；剧本后端不在设置里就用起点
-                start = (agents.tuning_for(backend, knobs) if backend in available_backends()
-                         else chat.knobs().fill(None))
+                # 新对话从按人的设置抄具体值（P-25）；剧本后端不在设置里就用起点
+                tuning = (agents.tuning_for(backend, knobs) if backend in available_backends()
+                          else chat.knobs().fill(None))
             except (BackendNotFound, agents.AgentsInvalid) as exc:
                 return self._error(HTTPStatus.BAD_REQUEST, str(exc))
-            tuning = self._tuning(body, start, chat)
-            if tuning is None:
-                return None
             conv = conversation.new_conversation(where.chats, backend, where.cwd, tuning=tuning)
             return self._json(conv.to_dict(), HTTPStatus.CREATED)
         if len(rest) == 3 and rest[0] == "chats" and rest[2] == "messages":
@@ -407,14 +418,13 @@ class Handler(BaseHTTPRequestHandler):
             text = body.get("text")
             if not isinstance(text, str) or not text.strip():
                 return self._error(HTTPStatus.BAD_REQUEST, "body 要有非空的 text")
+            if self._tuned_in_body(body):
+                return None
             try:
                 chat = self.server.chat_factory(conv.backend)
             except BackendNotFound as exc:
                 return self._error(HTTPStatus.BAD_REQUEST, str(exc))
-            tuning = self._tuning(body, conv.tuning, chat)
-            if tuning is None:
-                return None
-            return self._stream(where, conv, chat, text, tuning)
+            return self._stream(where, conv, chat, text, conv.tuning)
         if ws is None:
             return self._error(HTTPStatus.NOT_FOUND, f"没有这个路径：{self.path}")
         if rest == ["requirement", "confirm"]:
@@ -493,26 +503,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(status, str(exc))
         return self._json(boards.workspace_summary(ws), HTTPStatus.CREATED)
 
-    def _tuning(self, body: dict[str, Any], current: Tuning, chat: Chat) -> Tuning | None:
-        """body 里的 model / effort：没给或 null 的键沿用 current（旋钮上只有具体值，没有「回缺省」
-        ）；
-        不是字符串或不在这家后端的清单上就 400。"""
-        picked: dict[str, str | None] = {}
-        for key in ("model", "effort"):
-            value = body.get(key)
-            if value is None:
-                value = getattr(current, key)
-            if value is not None and not isinstance(value, str):
-                self._error(HTTPStatus.BAD_REQUEST, f"{key} 要是字符串")
-                return None
-            picked[key] = value
-        tuning = Tuning(**picked)
-        try:
-            chat.knobs().check(tuning)
-        except ValueError as exc:
-            self._error(HTTPStatus.BAD_REQUEST, str(exc))
-            return None
-        return tuning
+    def _tuned_in_body(self, body: dict[str, Any]) -> bool:
+        """哪家、模型、深度只在设置里改（外层 #257）：body 带了就 400 并返回 True。没有调用方了，
+        带了就是旧页面，悄悄忽略会让人以为换上了。"""
+        stray = [key for key in ("backend", "model", "effort") if key in body]
+        if stray:
+            self._error(HTTPStatus.BAD_REQUEST,
+                        f"哪家、模型、思考深度在设置里改，这里不收 {' / '.join(stray)}")
+        return bool(stray)
 
     def _stream(self, where: scope.Scope, conv: conversation.Conversation, chat: Chat,
                 text: str, tuning: Tuning) -> None:

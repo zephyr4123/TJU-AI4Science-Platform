@@ -345,6 +345,10 @@ def test_runner_run_reports_changed_files_report_and_nan_cost(home: Path, tmp_pa
     assert "some warning" in result.stdout_tail
     logs = sorted((cwd / ".ai4sci").glob("executor-*"))
     assert [p.suffix for p in logs] == [".jsonl", ".log"]  # 事件流与 stderr 各一份留档
+    # Codex 的事件里不写模型：留档第一行由适配器记下这次用的哪个，首页按模型数花费才分得开
+    # （外层 #256）
+    events, _ = cx.parse_events(logs[0].read_text(encoding="utf-8").splitlines(keepends=True))
+    assert cx.usage(events).model == "gpt-6-luna"
 
 
 def test_probe_walks_the_four_questions(home: Path, tmp_path):
@@ -407,3 +411,43 @@ def test_live_probe_runner_and_two_turn_chat(tmp_path: Path, monkeypatch):
                             session_id=sid, system_prompt="", **common))
     assert second[-1].kind == "done" and "kiwi" in second[-1].text.lower()
     assert all(e.session_id == sid for e in second)
+
+
+# --- 用量（外层 #256：首页的花费）---------------------------------------------------
+
+from backends import read_usage  # noqa: E402
+
+# 本机一轮真实对话的 turn.completed（PINN 项目）；一次会话里可以有几轮，按轮加
+_DONE = {"type": "turn.completed",
+         "usage": {"input_tokens": 849491, "cached_input_tokens": 787456,
+                   "cache_write_input_tokens": 0, "output_tokens": 5816,
+                   "reasoning_output_tokens": 1217}}
+
+
+def test_usage_sums_turns_and_reports_no_dollars():
+    """订阅报不出美元：美元是 NaN（未知），不是 0；token 照算，模型事件里没有就是 None。"""
+    got = cx.usage([{"type": "thread.started", "thread_id": "t"}, _DONE, _DONE])
+    assert (got.input_tokens, got.cached_tokens, got.output_tokens) == (2 * 849491, 2 * 787456,
+                                                                        2 * 5816)
+    assert got.model is None
+    assert math.isnan(got.cost_usd)
+
+
+def test_prices_cover_every_listed_model_and_split_cached_tokens():
+    """订阅报不出成本，首页照定价表折算：清单上每一款都有价；命中缓存的那部分按缓存价算。"""
+    from backends import Usage, prices
+    table = prices("codex")
+    assert set(table) == {c.id for c in cx.MODELS}
+    sol = table["gpt-6.1-sol"]
+    assert sol.title == "GPT-6.1 Sol"
+    got = sol.cost(Usage(input_tokens=1_000_000, cached_tokens=800_000, output_tokens=10_000))
+    assert got == pytest.approx(0.2 * sol.input + 0.8 * sol.cached + 0.01 * sol.output)
+
+
+def test_usage_is_unknown_when_no_turn_completed():
+    assert cx.usage([{"type": "thread.started", "thread_id": "t"}, {"type": "turn.failed"}]) is None
+
+
+def test_read_usage_tells_codex_events_apart():
+    name, got = read_usage([_DONE])
+    assert name == "codex" and got.output_tokens == 5816

@@ -338,42 +338,30 @@ def test_backends_endpoint_reports_each_backends_knobs(served):
     assert status == 400 and "模型 'zz' 不在清单上" in json.loads(body)["error"]
 
 
-def test_chat_tuning_is_checked_against_the_knobs_and_remembered(served, tmp_path):
-    """外层 #86 / P-25：开对话与发消息都能带 model / effort；不在清单上 400；给了记住；没给的沿用，
-    开对话时从按人的设置抄具体值——meta 里从来没有 null。"""
+def test_chats_take_backend_and_tuning_from_settings_only(served):
+    """外层 #257：哪家、模型、思考深度只在设置里改。开对话照设置抄具体值进 meta（P-25），之后改设置
+    不动已开的；开对话与发消息的 body 带这三样一律 400——没有调用方了，带了就是旧页面，
+    不悄悄忽略。"""
     from backends import Tuning
 
     base, chat = served
     chat.turns.append(reply("三"))
-    status, _, body = call(base, "/studio/chats", {"model": "zz"})
-    assert status == 400 and "模型 'zz' 不在清单上" in json.loads(body)["error"]
-    status, _, body = call(base, "/studio/chats", {"effort": 3})
-    assert status == 400 and json.loads(body)["error"] == "effort 要是字符串"
-    status, _, body = call(base, "/studio/chats", {"model": "a"})
-    assert status == 201
+    assert call(base, "/settings/agents", {"agents": {"claude_code": {"model": "b"}}})[0] == 200
+    status, _, body = call(base, "/studio/chats", {})
     meta = json.loads(body)
-    assert meta["model"] == "a" and meta["effort"] == "low"  # 深度没给：设置里这家的起点
-    chat_id = meta["chat_id"]
-
-    # 发消息时改深度：模型沿用对话上记的，深度记进去
-    status, _, body = call(base, f"/studio/chats/{chat_id}/messages",
-                           {"text": "你好", "effort": "high"})
+    assert status == 201
+    assert (meta["backend"], meta["model"], meta["effort"]) == ("claude_code", "b", "low")
+    for key, value in (("backend", "codex"), ("model", "a"), ("effort", "high"), ("model", None)):
+        status, _, body = call(base, "/studio/chats", {key: value})
+        assert status == 400 and "在设置里改" in json.loads(body)["error"], (key, value)
+        status, _, body = call(base, f"/studio/chats/{meta['chat_id']}/messages",
+                               {"text": "你好", key: value})
+        assert status == 400 and "在设置里改" in json.loads(body)["error"], (key, value)
+    # 改设置只影响之后开的对话：已开的这段照它 meta 里记的
+    assert call(base, "/settings/agents", {"agents": {"claude_code": {"model": "a"}}})[0] == 200
+    status, _, body = call(base, f"/studio/chats/{meta['chat_id']}/messages", {"text": "你好"})
     assert status == 200 and sse_events(body)[-1]["event"] == "done"
-    assert chat.calls[-1]["tuning"] == Tuning(model="a", effort="high")
-    doc = json.loads(call(base, f"/studio/chats/{chat_id}")[2])
-    assert doc["model"] == "a" and doc["effort"] == "high"
-    # 不在清单上的在头响应之前就拒，不开始流程、不算一轮
-    status, _, body = call(base, f"/studio/chats/{chat_id}/messages",
-                           {"text": "再来", "effort": "ultra"})
-    assert status == 400
-    assert "思考深度 'ultra' 不在清单上；可选：low, high" in json.loads(body)["error"]
-    assert not (tmp_path / "studio" / "chats" / chat_id / "turn-2").exists()
-    # null 与没给一样：沿用对话上记的（旋钮上没有「回缺省」这一项）
-    status, _, body = call(base, f"/studio/chats/{chat_id}/messages",
-                           {"text": "再来", "model": None, "effort": None})
-    assert status == 200 and chat.calls[-1]["tuning"] == Tuning(model="a", effort="high")
-    doc = json.loads(call(base, f"/studio/chats/{chat_id}")[2])
-    assert doc["model"] == "a" and doc["effort"] == "high" and doc["turns"] == 2
+    assert chat.calls[-1]["tuning"] == Tuning(model="b", effort="low")
     assert KNOBS.models[0].id == "a"  # 清单与剧本夹具对账
 
 
@@ -423,8 +411,6 @@ def test_error_status_codes(served, tmp_path):
     assert call(base, "/projects/p/chats/nope/messages", {"text": "x"})[0] == 404
     assert call(base, "/projects/nope/chats", {})[0] == 404
     assert call(base, "/projects/p/workspaces/w1/chats", {})[0] == 404  # 对话归项目，不归工作区
-    status, _, body = call(base, "/projects/p/chats", {"backend": "nope"})
-    assert status == 400 and "nope" in json.loads(body)["error"]
     chat_id = json.loads(call(base, "/projects/p/chats", {})[2])["chat_id"]
     assert call(base, f"/projects/p/chats/{chat_id}/messages", {"text": "  "})[0] == 400
     assert call(base, f"/projects/p/chats/{chat_id}/messages", {})[0] == 400
@@ -728,3 +714,35 @@ def test_chat_doc_shows_a_turn_running_elsewhere_and_jobs_still_to_wake_it(serve
     assert (doc["running"]["turn"], doc["running"]["origin"], doc["running"]["message"]) == (
         1, "框架", "作业跑完了")
     stream.close()
+
+
+def test_home_side_panel_endpoints(served, tmp_path):
+    """首页右栏（外层 #256）：/attention 跨项目列要人做的与在跑的；/usage?days= 汇总花费，
+    days 缺省 30、不是正整数是 422。"""
+    base, _ = served
+    spaces.make_workspace(tmp_path, "draft")  # 需求没确认：在等人
+    status, _, body = call(base, "/attention")
+    assert status == 200
+    assert [(i["kind"], i["workspace"]) for i in json.loads(body)] == [("requirement", "draft")]
+    status, _, body = call(base, "/usage")
+    got = json.loads(body)
+    assert status == 200 and got["days"] == 30 and len(got["by_day"]) == 30
+    assert got["total"] == {"cost_usd": None, "unknown": 0, "tokens": 0, "input_tokens": 0,
+                            "cached_tokens": 0, "count": 0}
+    assert json.loads(call(base, "/usage?days=7")[2])["days"] == 7
+    assert call(base, "/usage?days=0")[0] == 422
+    assert call(base, "/usage?days=x")[0] == 422
+
+
+def test_dev_proxy_lists_every_api_root():
+    """开发时 Vite 只把登记过的前缀转给 serve：server 加了端点、vite.config.ts 忘了登记，
+    页面拿到的是 index.html（外层 #256 加 /attention /usage 时撞过）。两边的清单一字不差。"""
+    import re
+    from pathlib import Path
+
+    from framework.chat.server import API_ROOTS
+    config_path = Path(__file__).parents[1] / "ui" / "web" / "vite.config.ts"
+    config = config_path.read_text(encoding="utf-8")
+    listed = re.search(r"const API_PREFIXES = \[([^\]]*)\]", config)
+    assert listed, "vite.config.ts 里找不到 API_PREFIXES"
+    assert re.findall(r"'/([a-z]+)'", listed.group(1)) == list(API_ROOTS)

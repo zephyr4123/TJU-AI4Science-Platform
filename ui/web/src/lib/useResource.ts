@@ -9,14 +9,16 @@ export interface Resource<T> {
   data: T | null
   error: string | null
   loading: boolean
+  /** 这份是几时取到的（毫秒）；这次还没取到过是 null（摆的是上次那份也算 null）。首页的「几分钟前同步」读它 */
+  at: number | null
   reload: () => Promise<void>
 }
 
-interface Fetched<T> { key: string | undefined; data: T | null; error: string | null }
+interface Fetched<T> { key: string | undefined; data: T | null; error: string | null; at: number | null }
 
 export function useResource<T>(loader: () => Promise<T>, deps: readonly unknown[], key?: string): Resource<T> {
   // 拿到的那份跟着名字走：名字换了（同一个组件换了路径）就不拿上一个名字的顶着，改摆新名字上次那份
-  const [fetched, setFetched] = useState<Fetched<T>>(() => ({ key, data: recall<T>(key), error: null }))
+  const [fetched, setFetched] = useState<Fetched<T>>(() => ({ key, data: recall<T>(key), error: null, at: null }))
   const [loading, setLoading] = useState(true)
   // 快速切换目标时，先发出去、后回来的旧响应不能盖住新的
   const ticket = useRef(0)
@@ -28,12 +30,13 @@ export function useResource<T>(loader: () => Promise<T>, deps: readonly unknown[
       const found = await loader()
       if (mine === ticket.current) {
         keep(key, found)
-        setFetched({ key, data: found, error: null })
+        setFetched({ key, data: found, error: null, at: Date.now() })
       }
     } catch (exc) {
       if (mine === ticket.current) {
         setFetched((prev) => ({ key, data: prev.key === key ? prev.data : recall<T>(key),
-                                error: exc instanceof Error ? exc.message : String(exc) }))
+                                error: exc instanceof Error ? exc.message : String(exc),
+                                at: prev.key === key ? prev.at : null }))
       }
     } finally {
       if (mine === ticket.current) setLoading(false)
@@ -46,5 +49,6 @@ export function useResource<T>(loader: () => Promise<T>, deps: readonly unknown[
   }, [reload])
 
   const mine = fetched.key === key
-  return { data: mine ? fetched.data : recall<T>(key), error: mine ? fetched.error : null, loading, reload }
+  return { data: mine ? fetched.data : recall<T>(key), error: mine ? fetched.error : null, at: mine ? fetched.at : null,
+           loading, reload }
 }

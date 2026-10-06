@@ -154,7 +154,8 @@ def cmd_list(args: argparse.Namespace) -> int:
     if isinstance(where, int):
         return where
     for conv in conversation.list_conversations(where.chats):
-        print(f"{conv.chat_id}\tturns={conv.turns}\tcost_usd={conv.cost_usd:.4f}"
+        cost = "nan" if conv.cost_usd is None else f"{conv.cost_usd:.4f}"  # 一轮都没报美元：未知
+        print(f"{conv.chat_id}\tturns={conv.turns}\tcost_usd={cost}"
               f"\tbackend={conv.backend}\tmodel={conv.model or '-'}\teffort={conv.effort or '-'}")
     return EXIT_OK
 

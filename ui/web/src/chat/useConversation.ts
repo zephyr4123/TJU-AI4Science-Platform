@@ -7,13 +7,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { api, type Scope, scopeKey } from '@/api/client'
 import { streamTurn } from '@/api/sse'
-import type { Backend, ChatDoc, ChatEvent, ChatMeta, Tuning } from '@/api/types'
+import type { Backend, ChatDoc, ChatEvent, ChatMeta } from '@/api/types'
+import { thinkingWord } from '@/lib/tuning'
 import { type Resource, useResource } from '@/lib/useResource'
 
 import { outcome, reduceTrace } from './trace'
 import { assembleTurns, type LiveTurn } from './turns'
 import type { Turn } from './TurnView'
-import { type TuningState, useTuning } from './useTuning'
 
 const POLL_MS = 3000
 
@@ -24,7 +24,8 @@ export interface Conversation {
   busy: boolean
   /** 开不出来、发不出去的那一句；换到别的对话就不带过去 */
   error: string | null
-  tuning: TuningState
+  /** 助理想着时那个词：按这段对话（还没开就是设置里这家新对话）的思考深度 */
+  thinking: string
   send: (text: string) => Promise<void>
 }
 
@@ -34,8 +35,8 @@ export function useConversation({ scope, chatId, current, backends, create, onTu
   chatId: string | null
   current: ChatMeta | null
   backends: Backend[] | null
-  /** 开一段（带上选的哪家与旋钮）；回来的那段由调用方随即当成 chatId */
-  create: (tuning: Tuning, backend: string | null) => Promise<ChatMeta>
+  /** 开一段（哪家、模型、深度照设置）；回来的那段由调用方随即当成 chatId */
+  create: () => Promise<ChatMeta>
   /** 一轮结束：助理可能运行了命令、改了需求，看板要重读 */
   onTurnDone: () => void
 }): Conversation {
@@ -46,7 +47,8 @@ export function useConversation({ scope, chatId, current, backends, create, onTu
   useEffect(() => { reload.current = doc.reload }, [doc.reload])
   const [live, setLive] = useState<LiveTurn | null>(null)
   const [failure, setFailure] = useState<{ chatId: string | null; text: string } | null>(null)
-  const t = useTuning(backends, current)
+  const knobs = backends?.find((b) => (current ? b.name === current.backend : b.default)) ?? null
+  const thinking = thinkingWord(current?.effort ?? knobs?.effort ?? '', knobs?.efforts ?? [])
   const turns = useMemo(() => assembleTurns(doc.data?.history ?? [], live, chatId, doc.data?.running ?? null),
                         [doc.data, live, chatId])
   const history = doc.data?.history ?? null
@@ -71,7 +73,7 @@ export function useConversation({ scope, chatId, current, backends, create, onTu
     let id = chatId
     if (!id) {
       try {
-        id = (await create(t.tuning, t.backendName)).chat_id
+        id = (await create()).chat_id
       } catch (exc) {
         setLive(null)
         setFailure({ chatId: null, text: exc instanceof Error ? exc.message : String(exc) })
@@ -81,7 +83,7 @@ export function useConversation({ scope, chatId, current, backends, create, onTu
       setLive(turn)
     }
     try {
-      await streamTurn(scope, id, text, t.tuning, (event: ChatEvent) => {
+      await streamTurn(scope, id, text, (event: ChatEvent) => {
         const done = event.kind === 'done' || event.kind === 'error' ? outcome(event) : turn.outcome
         turn = { ...turn, trace: reduceTrace(turn.trace, event), outcome: done }
         setLive(turn)
@@ -93,7 +95,7 @@ export function useConversation({ scope, chatId, current, backends, create, onTu
     await reload.current()
     setLive(null)
     onTurnDone()
-  }, [chatId, create, history, onTurnDone, scope, t.backendName, t.tuning])
+  }, [chatId, create, history, onTurnDone, scope])
 
-  return { doc, turns, busy: live !== null || elsewhere !== null, error: failure && failure.chatId === chatId ? failure.text : null, tuning: t, send }
+  return { doc, turns, busy: live !== null || elsewhere !== null, error: failure && failure.chatId === chatId ? failure.text : null, thinking, send }
 }

@@ -5,8 +5,8 @@ import { denialSentence, outputWord, requirementWord, stageSentence, wakeSentenc
 describe('需求与产出的句子', () => {
   it('需求状态', () => {
     expect(requirementWord({ confirmed: false, version: null, by: null, at: null, dirty: false })).toBe('需求未确认')
-    expect(requirementWord({ confirmed: true, version: 2, by: 'a', at: 't', dirty: false })).toBe('需求 v2')
-    expect(requirementWord({ confirmed: true, version: 2, by: 'a', at: 't', dirty: true })).toBe('需求 v2 · 有改动')
+    expect(requirementWord({ confirmed: true, version: 2, by: 'a', at: 't', dirty: false })).toBe('需求第 2 版')
+    expect(requirementWord({ confirmed: true, version: 2, by: 'a', at: 't', dirty: true })).toBe('需求第 2 版 · 有改动')
   })
   it('工作区走到哪', () => {
     const base = { id: 'w', title: 'w', root: '/w', running: 0, counts: { design: 0 } }
