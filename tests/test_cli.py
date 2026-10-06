@@ -531,7 +531,7 @@ def test_show_workflows_lists_stages_and_stops(tmp_path):
 
 
 def test_cli_reads_user_workflows_from_the_data_root(tmp_path):
-    """外层 #149：人在编辑台存的流程在数据根 studio/workflows/，CLI 的三条路都读得到——
+    """外层 #149：人在编辑台存的流程在平台的家里的 studio/workflows/，CLI 的三条路都读得到——
     `show workflows` 列出来带来源、`show caps` 的 used_by 算上它、`flow take` 取得到；
     `workflow remove` 只删这一层，出厂的拒。仓里的 workflows/ 一个字节不动。"""
     mine = tmp_path / "studio" / "workflows"
@@ -648,7 +648,7 @@ def test_cap_analysis_runs_the_capability_with_the_named_backend(tmp_path, monke
     run_dir, pack = rf.make_run(tmp_path)
     env_of(pack, monkeypatch)
     runner = ScriptedRunner([{"analysis.md": rf.good_analysis(run_dir)}])
-    monkeypatch.setattr("framework.cli._common.get_backend", lambda name: runner)
+    monkeypatch.setattr("framework.agents.runner", lambda name: runner)
     code = main(["cap", "analysis", "--from", "experiment/1"])
     assert code == EXIT_OK
     assert capsys.readouterr().out.startswith("analysis ok\tclaims=4")
@@ -696,7 +696,7 @@ def test_cap_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch
     scoring["budget"]["min_delta"] = 0.001  # 夹具训练是确定性的，门靠 min_delta 撑起来
     draft = {**GOOD_DRAFT, "scoring.yaml": pf.to_yaml(scoring)}
     runner = ScriptedRunner([draft, {"harness/launcher.sh": pf.BARE_PYTHON_LAUNCHER_SH}])
-    monkeypatch.setattr("framework.cli._common.get_backend", lambda name: runner)
+    monkeypatch.setattr("framework.agents.runner", lambda name: runner)
 
     code = main(["cap", "design"])
     out = capsys.readouterr().out
@@ -825,7 +825,7 @@ def test_chat_new_send_list_in_the_workspace_with_a_scripted_backend(tmp_path, m
 
     chat = ScriptedChat([with_tool("有一份需求。", "Bash", {"command": "ai4sci show workspace"},
                                    "ok w")])
-    monkeypatch.setattr("framework.cli.chat.get_chat", lambda name: chat)
+    monkeypatch.setattr("framework.agents.chat", lambda name, provider=None: chat)
     monkeypatch.setitem(guide.GUIDE_PATHS, guide.PROJECT, tmp_path / "README.md")
     (tmp_path / "README.md").write_text("# 指南\n用流程不造流程。", encoding="utf-8")
     ws = spaces.make_workspace(tmp_path, "w")
@@ -867,7 +867,7 @@ def test_chat_new_and_send_take_model_and_effort_from_the_backends_list(tmp_path
     from tests.fixtures.scripted_chat import ScriptedChat, reply
 
     chat = ScriptedChat([reply("好"), reply("好")])
-    monkeypatch.setattr("framework.cli.chat.get_chat", lambda name: chat)
+    monkeypatch.setattr("framework.agents.chat", lambda name, provider=None: chat)
     monkeypatch.setitem(guide.GUIDE_PATHS, guide.PROJECT, tmp_path / "README.md")
     (tmp_path / "README.md").write_text("# 指南\n", encoding="utf-8")
     ws = spaces.make_workspace(tmp_path, "w")
@@ -901,7 +901,7 @@ def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_p
     from tests.fixtures.scripted_chat import ScriptedChat, reply
 
     chat = ScriptedChat([reply("拼好了")])
-    monkeypatch.setattr("framework.cli.chat.get_chat", lambda name: chat)
+    monkeypatch.setattr("framework.agents.chat", lambda name, provider=None: chat)
     monkeypatch.setitem(guide.GUIDE_PATHS, guide.STUDIO, tmp_path / "studio.md")
     (tmp_path / "studio.md").write_text("# 造流程\n只写库。", encoding="utf-8")
     shipped = tmp_path / "lib" / "workflows"
@@ -916,7 +916,7 @@ def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_p
     capsys.readouterr()
     prompt = chat.calls[0]["system_prompt"]
     assert "只写库" in prompt and "流程助理" in prompt
-    # 站在数据根的 studio/ 里，只写人存的那层库；出厂的只读（外层 #149）
+    # 站在平台的家里的 studio/ 里，只写人存的那层库；出厂的只读（外层 #149）
     assert chat.calls[0]["cwd"] == tmp_path / "studio"
     assert chat.calls[0]["allowed_paths"] == [tmp_path / "studio" / "workflows"]
     assert chat.calls[0]["readable_paths"] == [shipped]

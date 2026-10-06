@@ -55,8 +55,10 @@ def test_use_writes_roles_and_defaults_and_checks_them_against_the_list():
         agents.use("codex", roles=("boss",), knobs=fake_knobs)
     doc = yaml.safe_load(agents.path().read_text(encoding="utf-8"))
     assert doc == {"chat": "claude_code", "executor": "codex",
-                   "agents": {"claude_code": {"model": "b", "effort": "low"},
-                              "codex": {"model": "g1", "effort": "medium"}}}
+                   "agents": {"claude_code": {"provider": "official", "model": "b",
+                                              "effort": "low"},
+                              "codex": {"provider": "official", "model": "g1",
+                                        "effort": "medium"}}}
 
 
 @pytest.mark.parametrize("text, why", [
@@ -65,6 +67,8 @@ def test_use_writes_roles_and_defaults_and_checks_them_against_the_list():
     ("agents:\n  claude_code: {model: zz}\n", "模型 'zz' 不在清单上"),
     ("agents:\n  claude_code: {model: 3}\n", "model 与 effort 要是字符串"),
     ("agents:\n  claude_code: [1]\n", "要是键值对"),
+    ("agents:\n  claude_code: {provider: groq}\n", "Claude Code 没有叫 'groq' 的供应商"),
+    ("agents:\n  codex: {provider: custom}\n", "自定义供应商要填地址和至少一个模型名"),
     ("- a\n", "顶层要是键值对"),
     ("a: [\n", "不是合法 YAML"),
 ])
@@ -83,7 +87,7 @@ def test_record_check_keeps_the_probe_with_a_timestamp():
     assert entry.last_check["at"].startswith("20") and entry.last_check["cost_usd"] is None
     reloaded = agents.load(fake_knobs).get("codex")
     assert reloaded.last_check["items"][1] == {"name": "登录", "ok": False, "note": "没登录"}
-    assert reloaded.summary().endswith("\tg1\tmedium\t检查未过")
+    assert reloaded.summary().endswith("\tofficial\tg1\tmedium\t检查未过")
     assert agents.load(fake_knobs).get("claude_code").summary().endswith("\t未检查")
 
 
@@ -92,3 +96,37 @@ def test_real_knobs_come_from_the_adapters():
     assert registry.get("claude_code").tuning == Tuning(model="sonnet", effort="medium")
     assert registry.get("codex").tuning == Tuning(model="gpt-6.1-sol", effort="medium")
     assert registry.get("codex").title == "Codex"
+
+
+def test_switching_provider_brings_its_own_models_and_the_link_its_key():
+    """外层 #266：模型跟着供应商走——换成 DeepSeek，模型回到它的起点，Opus 选不了；Link 带上家里那把
+    key，没填就是 None（适配器起会话时说清楚）。"""
+    from framework import keys
+
+    entry = agents.use("claude_code", provider="deepseek")
+    assert (entry.provider, entry.model, entry.effort) == ("deepseek", "deepseek-flash", "high")
+    assert [c.id for c in agents.knobs_of("claude_code").models] == ["deepseek-flash",
+                                                                     "deepseek-v4-pro"]
+    with pytest.raises(ValueError, match="模型 'opus' 不在清单上"):
+        agents.use("claude_code", model="opus")
+    with pytest.raises(ValueError, match="思考深度 'medium' 不在清单上"):  # DeepSeek 分不出「中」
+        agents.use("claude_code", effort="medium")
+    assert agents.link("claude_code").key is None
+    keys.put("deepseek", "sk-deepseek-0000")
+    link = agents.link("claude_code")
+    assert (link.provider, link.key) == ("deepseek", "sk-deepseek-0000")
+    assert agents.link("claude_code", provider="official").key is None  # 老对话照它记的接
+    agents.record_check("claude_code", AgentProbe(items=[("说话", True, "pong")]))
+    entry = agents.use("claude_code", provider="official")
+    assert (entry.provider, entry.model) == ("official", "sonnet")
+    assert entry.last_check is None  # 上次检查的是 DeepSeek，换了就不作数
+
+
+def test_custom_provider_takes_an_address_and_model_names():
+    entry = agents.use("codex", provider="custom", base_url=" https://llm.lab/v1 ",
+                       models=("qwen3-coder", " "))
+    assert (entry.provider, entry.base_url, entry.models, entry.model) == \
+        ("custom", "https://llm.lab/v1", ("qwen3-coder",), "qwen3-coder")
+    doc = yaml.safe_load(agents.path().read_text(encoding="utf-8"))["agents"]["codex"]
+    assert doc["base_url"] == "https://llm.lab/v1" and doc["models"] == ["qwen3-coder"]
+    assert agents.link("codex").base_url == "https://llm.lab/v1"

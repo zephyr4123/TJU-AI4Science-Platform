@@ -1,7 +1,8 @@
 """`ai4sci check [--only agents|computes|storage]`：冷启动自检（纲领 P-25）。
 
-底座每家 probe、算力每台 check、存放（数据根在哪、可写、余量），三项同一种形状「探测 → 报告 → 写
-last_check」，一行一项打出来；一项不过退出码非零，CI 跑得了不含登录的部分（`--only storage`）。
+底座每家 probe、算力每台 check、存放（平台的家在哪、每块多大、可写、余量），三项同一种形状
+「探测 → 报告 → 写 last_check」，一行一项打出来；一项不过退出码非零，CI 跑得了不含登录的部分
+（`--only storage`）。
 页面「设置」那块板走同一个函数（`chat/settings.check`）。
 """
 
@@ -9,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from backends import BackendNotFound
 from framework import agents, computes
@@ -42,13 +44,14 @@ def cmd_check(args: argparse.Namespace) -> int:
                     print(f"  {mark} {item.get('name')}\t{item.get('note')}")
     if args.only in (None, "all", "storage"):
         storage = report["storage"]
-        print(f"存放\t{storage['home']}\t{'可写' if storage['writable'] else '不可写'}"
+        print(f"平台的家\t{storage['home']}\t{'可写' if storage['writable'] else '不可写'}"
               f"\t剩 {storage['free_gb']} GB\t{storage['workspaces']} 个工作区")
+        for part in settings.storage_sizes(Path(storage["home"])):
+            print(f"  {part['label']}\t{part['bytes'] / 1e6:.1f} MB")
         mode = "仓库" if storage["mode"] == "source" else "装的包"
         built = "已构建" if storage["ui_built"] else "没构建，serve 只开接口"
         print(f"出厂件\t{storage['shipped']}\t{mode}")
         print(f"页面\t{storage['ui']}\t{built}")
-        print(f"配置\t{storage['config']}\nuv 缓存\t{storage['uv_cache']}")
     print(f"ok\t{'全部通过' if report['ok'] else '没过：' + '、'.join(report['failed'])}")
     return EXIT_OK if report["ok"] else EXIT_INVALID
 

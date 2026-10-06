@@ -20,22 +20,24 @@ BAD = AgentProbe(items=[("装了没", True, "/x"), ("登录", False, "没登录�
 @pytest.fixture
 def fake_probes(monkeypatch):
     calls: list[str] = []
-    monkeypatch.setattr(cc, "probe", lambda: calls.append("claude_code") or OK)
-    monkeypatch.setattr(cx, "probe", lambda: calls.append("codex") or BAD)
+    monkeypatch.setattr(cc, "probe", lambda link: calls.append("claude_code") or OK)
+    monkeypatch.setattr(cx, "probe", lambda link: calls.append("codex") or BAD)
     return calls
 
 
 def test_agent_list_shows_roles_and_defaults(capsys):
     assert main(["agent", "list"]) == 0
     out = capsys.readouterr().out.splitlines()
-    assert out[0].startswith("claude_code\tClaude Code\t-\tsonnet\tmedium\t未检查")
+    assert out[0].startswith("claude_code\tClaude Code\t-\tofficial\tsonnet\tmedium\t未检查")
     assert out[0].endswith("(对话用、执行用)")
-    assert out[1].startswith("codex\tCodex\t-\tgpt-6.1-sol\tmedium\t未检查") and "(" not in out[1]
+    assert out[1].startswith("codex\tCodex\t-\tofficial\tgpt-6.1-sol\tmedium\t未检查")
+    assert "(" not in out[1]
 
 
 def test_agent_use_switches_a_role_and_rejects_values_off_the_list(capsys):
     assert main(["agent", "use", "codex", "--for", "executor", "--model", "gpt-6-luna"]) == 0
-    assert capsys.readouterr().out.startswith("ok codex\tgpt-6-luna\tmedium\t执行用\t写入 ")
+    said = capsys.readouterr().out
+    assert said.startswith("ok codex\tofficial\tgpt-6-luna\tmedium\t执行用\t写入 ")
     registry = agents.load()
     assert registry.executor == "codex" and registry.chat == "claude_code"
     assert registry.get("codex").model == "gpt-6-luna"
@@ -45,6 +47,12 @@ def test_agent_use_switches_a_role_and_rejects_values_off_the_list(capsys):
     assert main(["agent", "use", "gemini", "--for", "chat"]) == 2
     assert main(["agent", "list"]) == 0
     assert "(执行用)" in capsys.readouterr().out.splitlines()[1]
+    # 换用谁的模型：DeepSeek 的清单上没有 GPT（外层 #266）
+    assert main(["agent", "use", "codex", "--provider", "deepseek"]) == 0
+    assert capsys.readouterr().out.startswith("ok codex\tdeepseek\tdeepseek-flash\thigh")
+    assert main(["agent", "use", "codex", "--model", "gpt-6-luna"]) == 2
+    assert main(["agent", "use", "codex", "--provider", "groq"]) == 2
+    assert "没有叫 'groq' 的供应商" in capsys.readouterr().err
 
 
 def test_agent_check_records_and_reports(capsys, fake_probes):
@@ -62,7 +70,7 @@ def test_agent_check_records_and_reports(capsys, fake_probes):
 def test_check_covers_agents_computes_storage_and_fails_on_any_item(capsys, fake_probes):
     assert main(["check", "--only", "storage"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith("存放\t") and "可写" in out and out.rstrip().endswith("ok\t全部通过")
+    assert out.startswith("平台的家\t") and "可写" in out and out.rstrip().endswith("ok\t全部通过")
     assert fake_probes == []  # 只查存放不碰 CLI
     assert main(["check"]) == 1
     out = capsys.readouterr().out

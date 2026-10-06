@@ -10,12 +10,12 @@ import type { SpendCell, SpendPrice, SpendSession, Spending as SpendingDoc } fro
 import { Aurora } from '@/components/Aurora'
 import { ErrorNote, Skeleton } from '@/components/bits'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { when } from '@/lib/format'
+import { money, when } from '@/lib/format'
 import { useEdgeFade } from '@/lib/useEdgeFade'
 import type { Resource } from '@/lib/useResource'
 import { cn } from '@/lib/utils'
 
-import { type Bucket, buckets, hitRate, type Metric, money, perMillion, type Range, RANGES, sorted, tokens, valueOf } from './usage'
+import { type Bucket, buckets, hitRate, type Metric, perMillion, type Range, RANGES, sorted, tokens, valueOf } from './usage'
 
 const FOOTNOTE = '按 API 公开价折算：Claude Code 自己报，Codex 照「定价」那张表算；订阅账号不是实扣'
 

@@ -16,32 +16,52 @@ from pathlib import Path
 
 import pytest
 
-from backends import AgentProbe, Chat, Runner, Tuning, available_backends, get_backend, get_chat
+from backends import (
+    AgentProbe,
+    Chat,
+    Link,
+    Runner,
+    Tuning,
+    available_backends,
+    get_backend,
+    get_chat,
+)
 from backends import codex as cx
 from backends import probe as probe_backend
 
 FIXTURE = Path(__file__).parent / "fixtures" / "codex_stream_sample.jsonl"
 
 
+from framework import paths  # noqa: E402
+
+# 真 CLI 的测试用平台家里那份私有目录（要先在平台里登录过，外层 #263）
+LIVE_LINK = Link(home=paths.DEFAULT_HOME / "codex")
+
+
 @pytest.fixture
-def home(tmp_path, monkeypatch) -> Path:
-    """私有 CODEX_HOME 指到 tmp；「真的」~/.codex 也伪造一份，auth.json 在里面。"""
-    real = tmp_path / "real-codex"
-    real.mkdir()
-    (real / cx.AUTH_NAME).write_text("{}", encoding="utf-8")
-    monkeypatch.setenv(cx.REAL_HOME_ENV, str(real))
-    monkeypatch.setenv(cx.HOME_ENV, str(tmp_path / "private-home"))
+def link(tmp_path, monkeypatch) -> Link:
+    """平台家里 Codex 的私有目录指到 tmp，根上一份 auth.json（平台自己登录过）。"""
+    root = tmp_path / "private-home"
+    root.mkdir()
+    (root / cx.AUTH_NAME).write_text("{}", encoding="utf-8")
     monkeypatch.setattr(cx, "USER_SKILLS", tmp_path / "no-user-skills")
     monkeypatch.setattr(cx, "ADMIN_SKILLS", tmp_path / "no-admin-skills")
-    return cx.codex_home("executor")
+    return Link(home=root)
+
+
+@pytest.fixture
+def home(link: Link) -> Path:
+    """执行层那一层的 home。"""
+    return cx.codex_home(link, "executor")
 
 
 # --- 端口 ---------------------------------------------------------------------
 
 
-def test_codex_is_a_registered_backend_with_both_ports():
+def test_codex_is_a_registered_backend_with_both_ports(tmp_path):
     assert "codex" in available_backends()
-    runner, chat = get_backend("codex"), get_chat("codex")
+    link = Link(home=tmp_path / "codex")
+    runner, chat = get_backend("codex", link), get_chat("codex", link)
     assert isinstance(runner, Runner) and isinstance(chat, Chat)
     assert runner.name == "codex" and chat.name == "codex" and chat.cost_reporting == "turn"
     knobs = chat.knobs()
@@ -56,26 +76,35 @@ def test_codex_is_a_registered_backend_with_both_ports():
 # --- 私有 CODEX_HOME 与要关的 skill ------------------------------------------------
 
 
-def test_codex_home_symlinks_the_real_auth_and_never_copies_it(home: Path, tmp_path, monkeypatch):
+def test_codex_home_shares_the_platform_login_between_layers(link: Link, home: Path, tmp_path):
+    """外层 #263：登录是平台自己的（根上的 auth.json），执行层软链到它——一次登录两层用；
+    不再软链用户的 ~/.codex。"""
     assert home == tmp_path / "private-home" / "executor"  # 一层一个 home（规则按 home 放）
-    link = home / cx.AUTH_NAME
-    assert link.is_symlink() and link.readlink() == tmp_path / "real-codex" / cx.AUTH_NAME
-    assert cx.codex_home("executor") == home  # 幂等
-    # 协调层就是根：老对话的 rollout 在那儿
-    assert cx.codex_home("chat") == tmp_path / "private-home"
-    assert (tmp_path / "private-home" / cx.AUTH_NAME).is_symlink()
+    auth = home / cx.AUTH_NAME
+    assert auth.is_symlink() and auth.readlink() == link.home / cx.AUTH_NAME
+    assert cx.codex_home(link, "executor") == home  # 幂等
+    # 协调层就是根：老对话的 rollout 在那儿，登录也在那儿
+    assert cx.codex_home(link, "chat") == link.home
+    assert not (link.home / cx.AUTH_NAME).is_symlink()
     with pytest.raises(AssertionError, match="层只有"):
-        cx.codex_home("probe")
-    # 真 home 换了地方：软链跟着改
-    other = tmp_path / "other-codex"
-    other.mkdir()
-    monkeypatch.setenv(cx.REAL_HOME_ENV, str(other))
-    assert cx.codex_home("executor").joinpath(cx.AUTH_NAME).readlink() == other / cx.AUTH_NAME
-    # 私有 home 里出现一份普通文件的凭据副本：当场炸，不悄悄用
-    link.unlink()
-    link.write_text("{}", encoding="utf-8")
-    with pytest.raises(AssertionError, match="不该有凭据副本"):
-        cx.codex_home("executor")
+        cx.codex_home(link, "probe")
+    # 旧版本留下的软链（指到用户的 ~/.codex）：重连到平台自己的
+    auth.unlink()
+    auth.symlink_to(tmp_path / "old-user-codex" / cx.AUTH_NAME)
+    assert cx.codex_home(link, "executor").joinpath(cx.AUTH_NAME).readlink() == \
+        link.home / cx.AUTH_NAME
+    # 执行层里出现一份普通文件的凭据：当场炸，不悄悄用
+    auth.unlink()
+    auth.write_text("{}", encoding="utf-8")
+    with pytest.raises(AssertionError, match="不该有自己的凭据"):
+        cx.codex_home(link, "executor")
+
+
+def test_login_and_logout_run_in_the_platform_codex_home(link: Link):
+    argv, env = cx.login_command(link)
+    assert argv[1:] == ["login"] and env["CODEX_HOME"] == str(link.home)
+    argv, env = cx.logout_command(link)
+    assert argv[1:] == ["logout"] and env["CODEX_HOME"] == str(link.home)
 
 
 def test_skill_off_paths_lists_every_skill_md_under_the_scanned_roots(home: Path, tmp_path):
@@ -118,12 +147,13 @@ def _config(argv: list[str]) -> dict[str, str]:
     return dict(p.split("=", 1) for p in pairs)
 
 
-def test_runner_argv_is_ephemeral_sandboxed_and_lists_writable_roots(home: Path, tmp_path):
+def test_runner_argv_is_ephemeral_sandboxed_and_lists_writable_roots(link: Link, home: Path,
+                                                                    tmp_path):
     (home / "skills" / ".system" / "imagegen").mkdir(parents=True)
     (home / "skills" / ".system" / "imagegen" / "SKILL.md").write_text("", encoding="utf-8")
     cwd = tmp_path / "pack"
     (cwd / "harness").mkdir(parents=True)
-    argv = cx.CodexRunner().build_argv(cwd, [cwd / "harness"], ("ai4sci skill",),
+    argv = cx.CodexRunner(link).build_argv(cwd, [cwd / "harness"], ("ai4sci skill",),
                                        Tuning(model="gpt-6-luna", effort="low"), home=home)
     assert argv[:2] == ["codex", "exec"] and argv[-1] == "-"  # prompt 走 stdin
     for flag in ("--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config"):
@@ -147,8 +177,9 @@ def test_runner_argv_is_ephemeral_sandboxed_and_lists_writable_roots(home: Path,
     assert "--dangerously-bypass-approvals-and-sandbox" not in argv and "--yolo" not in argv
 
 
-def test_chat_argv_opens_with_the_guide_and_resumes_by_thread_id(home: Path, tmp_path):
-    chat = cx.CodexChat()
+def test_chat_argv_opens_with_the_guide_and_resumes_by_thread_id(link: Link, home: Path,
+                                                                  tmp_path):
+    chat = cx.CodexChat(link)
     common = dict(system_prompt="你是研究助理。\n一条命令一行。", allowed_paths=[tmp_path],
                   bash_rules=("ai4sci", ".venv/bin/ai4sci"),
                   tuning=Tuning(model="gpt-5.6-terra", effort="high"), home=home)
@@ -176,32 +207,12 @@ def argv_index(argv: list[str], flag: str) -> int:
     return argv.index(flag)
 
 
-def test_codex_home_ignores_an_inherited_codex_home_that_is_itself(home: Path, tmp_path,
-                                                                    monkeypatch):
-    """助理 --detach 起的作业跑在上一层会话的 shell 里，
-    环境里的 CODEX_HOME 是我们给那一层的私有 home：
-    照它算「真的」就把 auth.json 软链指向自己（实测 401）。指到自己的不算数，退回 ~/.codex；已经指向
-    自己的死链也要重连。"""
-    chat_home = tmp_path / "private-home"
-    monkeypatch.setenv(cx.REAL_HOME_ENV, str(chat_home))  # 上一层（协调层）留下的
-    fake_home = tmp_path / "fake-user-home"
-    (fake_home / ".codex").mkdir(parents=True)
-    (fake_home / ".codex" / cx.AUTH_NAME).write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
-    link = home / cx.AUTH_NAME
-    link.unlink()
-    link.symlink_to(link)  # 演练里留下的死链：auth.json -> auth.json
-    assert cx.codex_home("executor") == home
-    assert link.readlink() == fake_home / ".codex" / cx.AUTH_NAME  # 私有根下的一律不算
-    assert link.is_file()
-
-
-def test_tool_guide_names_the_allowed_commands():
-    text = cx.CodexRunner().tool_guide(("ai4sci skill",))
+def test_tool_guide_names_the_allowed_commands(link: Link):
+    text = cx.CodexRunner(link).tool_guide(("ai4sci skill",))
     assert "## 工具怎么用" in text and "`ai4sci skill …`" in text and "apply_patch" in text
     assert "一条都不跑" in cx.tool_guide(())
     # 协调层那段：这家没有单独的读文件工具，看文件就是 shell 的只读命令；指南只在开线程时送到
-    chat = cx.CodexChat()
+    chat = cx.CodexChat(link)
     text = chat.tool_guide(("ai4sci",))
     assert "ls、cat" in text and "`ai4sci …`" in text and "不算「运行动作」" in text
 
@@ -332,12 +343,13 @@ echo "some warning" >&2
     return script
 
 
-def test_runner_run_reports_changed_files_report_and_nan_cost(home: Path, tmp_path):
+def test_runner_run_reports_changed_files_report_and_nan_cost(link: Link, home: Path, tmp_path):
     cli = _fake_codex(tmp_path / "bin")
     cwd = tmp_path / "pack"
     (cwd / "out").mkdir(parents=True)
-    result = cx.CodexRunner(cli=str(cli)).run("写点东西", cwd, 30, [cwd / "out"], ("ai4sci skill",),
-                                            tuning=Tuning(model="gpt-6-luna"))
+    result = cx.CodexRunner(link, cli=str(cli)).run("写点东西", cwd, 30, [cwd / "out"],
+                                                    ("ai4sci skill",),
+                                                    tuning=Tuning(model="gpt-6-luna"))
     assert result.exit_code == 0 and not result.timed_out
     assert result.changed_files == ["out/hello.txt"]  # 框架自己的快照 diff，不信 CLI 自报
     assert result.report == "pong" and math.isnan(result.cost_usd) and result.duration_s > 0
@@ -351,39 +363,42 @@ def test_runner_run_reports_changed_files_report_and_nan_cost(home: Path, tmp_pa
     assert cx.usage(events).model == "gpt-6-luna"
 
 
-def test_probe_walks_the_four_questions(home: Path, tmp_path):
+def test_probe_walks_the_four_questions(link: Link, home: Path, tmp_path):
     cli = _fake_codex(tmp_path / "bin")
-    result = cx.probe(cli=str(cli))
+    result = cx.probe(link, cli=str(cli))
     assert isinstance(result, AgentProbe) and result.ok and result.installed and result.logged_in
     assert result.version == "codex-cli 0.160.0" and result.spoke_s > 0
-    assert math.isnan(result.cost_usd)
+    # 报不出美元：照价目折算（外层 #266；订阅也按 API 公开价算，不是实扣）
+    assert result.cost_usd == pytest.approx(5.4e-05)
     assert [n for n, _, _ in result.items] == ["装了没", "版本", "登录", "说话"]
-    assert "15 tokens" in result.items[-1][2]
+    assert "按价目折算" in result.items[-1][2]
     doc = result.to_dict()
-    assert doc["ok"] and doc["cost_usd"] is None and doc["items"][3]["name"] == "说话"
+    assert doc["ok"] and doc["cost_usd"] == pytest.approx(5.4e-05)
+    assert doc["items"][3]["name"] == "说话"
 
     stale = _fake_codex(tmp_path / "old", version="codex-cli 0.147.0")
-    result = cx.probe(cli=str(stale))
+    result = cx.probe(link, cli=str(stale))
     assert not result.ok and [ok for _, ok, _ in result.items] == [True, False]
     assert "要 ≥ 0.160.0" in result.items[1][2]
 
     logged_out = _fake_codex(tmp_path / "out", logged_in=False)
-    result = cx.probe(cli=str(logged_out))
-    assert not result.ok and not result.logged_in and "codex login" in result.items[2][2]
+    result = cx.probe(link, cli=str(logged_out))
+    assert not result.ok and not result.logged_in
+    assert "ai4sci agent login codex" in result.items[2][2]
 
-    missing = cx.probe(cli=str(tmp_path / "nope" / "codex"))
+    missing = cx.probe(link, cli=str(tmp_path / "nope" / "codex"))
     assert not missing.installed and not missing.ok and "装 Codex CLI" in missing.items[0][2]
 
 
-def test_probe_is_reachable_through_the_port(home: Path, monkeypatch, tmp_path):
+def test_probe_is_reachable_through_the_port(link: Link, home: Path, monkeypatch, tmp_path):
     """`backends.probe("codex")` 调的是模块级 `probe()`：形状对不上要在端口那层炸。"""
     cli = _fake_codex(tmp_path / "bin")
     real = cx.probe
-    monkeypatch.setattr(cx, "probe", lambda: real(cli=str(cli)))
-    assert probe_backend("codex").ok
-    monkeypatch.setattr(cx, "probe", lambda: "nope")
+    monkeypatch.setattr(cx, "probe", lambda lk: real(lk, cli=str(cli)))
+    assert probe_backend("codex", link).ok
+    monkeypatch.setattr(cx, "probe", lambda lk: "nope")
     with pytest.raises(AssertionError, match="没有返回 AgentProbe"):
-        probe_backend("codex")
+        probe_backend("codex", link)
 
 
 # --- 真 CLI ---------------------------------------------------------------------
@@ -391,16 +406,16 @@ def test_probe_is_reachable_through_the_port(home: Path, monkeypatch, tmp_path):
 
 @pytest.mark.skipif(os.environ.get("AI4SCI_LIVE") != "1", reason="真 codex CLI，AI4SCI_LIVE=1 才跑")
 def test_live_probe_runner_and_two_turn_chat(tmp_path: Path, monkeypatch):
-    monkeypatch.delenv(cx.REAL_HOME_ENV, raising=False)  # 用本机真的 ~/.codex 登录态
-    result = cx.probe()
+    del monkeypatch
+    result = cx.probe(LIVE_LINK)  # 平台家里自己的登录（外层 #263）
     assert result.ok, result.items
     ws = tmp_path / "ws"
     (ws / "out").mkdir(parents=True)
     ask = "Write the single word hello into out/hello.txt, then reply exactly: wrote"
-    run = cx.CodexRunner().run(ask, ws, 180, [ws / "out"], ("ai4sci skill",),
+    run = cx.CodexRunner(LIVE_LINK).run(ask, ws, 180, [ws / "out"], ("ai4sci skill",),
                                tuning=Tuning(model="gpt-6-luna", effort="low"))
     assert run.exit_code == 0 and run.changed_files == ["out/hello.txt"] and run.report == "wrote"
-    chat = cx.CodexChat()
+    chat = cx.CodexChat(LIVE_LINK)
     common = dict(allowed_paths=[ws], bash_rules=("ai4sci",),
                   tuning=Tuning(effort="low"))  # 模型用起点那款（6.1 Sol），真打一遍它的 slug
     first = list(chat.turn("Remember the word: kiwi. Reply only: ok", ws, 180, session_id=None,
@@ -437,7 +452,8 @@ def test_prices_cover_every_listed_model_and_split_cached_tokens():
     """订阅报不出成本，首页照定价表折算：清单上每一款都有价；命中缓存的那部分按缓存价算。"""
     from backends import Usage, prices
     table = prices("codex")
-    assert set(table) == {c.id for c in cx.MODELS}
+    listed = {c.id for p in cx.PROVIDERS.values() for c in p.models}
+    assert set(table) == set(cx.PRICED) and listed <= set(table)  # 每个供应商的每款都有价
     sol = table["gpt-6.1-sol"]
     assert sol.title == "GPT-6.1 Sol"
     got = sol.cost(Usage(input_tokens=1_000_000, cached_tokens=800_000, output_tokens=10_000))
@@ -451,3 +467,55 @@ def test_usage_is_unknown_when_no_turn_completed():
 def test_read_usage_tells_codex_events_apart():
     name, got = read_usage([_DONE])
     assert name == "codex" and got.output_tokens == 5816
+
+
+# --- 供应商（外层 #266）---------------------------------------------------------
+def test_third_party_providers_ride_a_responses_provider_block_with_a_model_catalog(link, tmp_path,
+                                                                                   monkeypatch):
+    """照 cc-switch 的预设：写一个 `model_providers.ai4sci`（地址、Responses、key 从哪个变量读）
+    并选它，DeepSeek 再给模型说明；key 只放进这一个进程的环境，shell 里同名的去掉。"""
+    deepseek = Link(home=link.home, provider="deepseek", key="sk-ds")
+    argv = cx.CodexRunner(deepseek).build_argv(tmp_path, [tmp_path])
+    configs = [argv[i + 1] for i, a in enumerate(argv) if a == "-c"]
+    assert 'model_provider="ai4sci"' in configs
+    block = next(c for c in configs if c.startswith("model_providers.ai4sci="))
+    assert 'base_url="https://api.deepseek.com"' in block and 'wire_api="responses"' in block
+    assert 'env_key="AI4SCI_PROVIDER_KEY"' in block
+    assert 'shell_environment_policy.exclude=["AI4SCI_PROVIDER_KEY"]' in configs  # agent 看不见
+    catalog = next(c for c in configs if c.startswith("model_catalog_json="))
+    assert catalog.endswith('codex-deepseek.json"')
+    assert argv[argv.index("-m") + 1] == "deepseek-flash"
+    assert 'model_reasoning_effort="high"' in configs  # 它的思考档只有 low / high / max
+    # DeepSeek 的 Responses API 忽略 web_search（官方配置也关掉）：照实关掉，不发一个被忽略的设置
+    assert 'web_search="disabled"' in configs and 'web_search="live"' not in configs
+    monkeypatch.setenv(cx.PROVIDER_KEY_ENV, "from-shell")
+    assert cx.build_env(1.0, link.home, deepseek)[cx.PROVIDER_KEY_ENV] == "sk-ds"
+    assert cx.PROVIDER_KEY_ENV not in cx.build_env(1.0, link.home, link)  # 官方登录不带
+    official = cx.CodexRunner(link).build_argv(tmp_path, [tmp_path])
+    assert not any("model_provider" in a for a in official)
+    assert 'web_search="live"' in official
+    kimi = cx.CodexRunner(Link(home=link.home, provider="kimi", key="sk")).build_argv(tmp_path,
+                                                                                       [tmp_path])
+    assert 'web_search="live"' in kimi  # Kimi 的 Responses API 有服务端搜索
+
+
+def test_third_party_effort_lists_match_the_model_catalogs():
+    """档位表是唯一真相，随包的模型说明要和它对得上（外层 #266）：每家第三方的档位、起点与
+    模型说明里每款模型的 supported_reasoning_levels / default_reasoning_level 一致，清单上的模型
+    说明里都有。起点照各家官方缺省：DeepSeek high，Kimi max。"""
+    for name, path in cx.CATALOGS.items():
+        provider = cx.PROVIDERS[name]
+        models = {m["slug"]: m for m in json.loads(path.read_text(encoding="utf-8"))["models"]}
+        assert {c.id for c in provider.models} <= set(models), name
+        for slug in (c.id for c in provider.models):
+            levels = [lv["effort"] for lv in models[slug]["supported_reasoning_levels"]]
+            assert levels == [c.id for c in provider.efforts], slug
+            assert models[slug]["default_reasoning_level"] == provider.effort, slug
+    assert (cx.PROVIDERS["deepseek"].effort, cx.PROVIDERS["kimi"].effort) == ("high", "max")
+
+
+def test_codex_with_a_missing_key_says_so_instead_of_starting(link, tmp_path):
+    events = list(cx.CodexChat(Link(home=link.home, provider="kimi"), cli="/nonexistent")
+                  .turn("hi", tmp_path, 5, session_id=None, system_prompt="", allowed_paths=[],
+                        bash_rules=()))
+    assert [e.kind for e in events] == ["error"] and "Kimi 的 key 还没填" in events[0].text

@@ -15,15 +15,18 @@ agent 的一律可替换）。每家还要有一个模块级 `probe()`：装了�
 from __future__ import annotations
 
 import importlib
+import json
 import math
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 __all__ = ["RunResult", "Runner", "ChatEvent", "Choice", "Tuning", "Knobs", "Chat", "AgentProbe",
-           "Usage", "Price", "BackendNotFound", "get_backend", "get_chat", "probe", "read_usage",
-           "prices", "available_backends"]
+           "Usage", "Price", "Provider", "Link", "OFFICIAL", "CUSTOM", "KeyMissing",
+           "BackendNotFound", "get_backend", "get_chat", "probe", "login_command", "logout_command",
+           "read_usage", "price", "prices", "providers", "provider_of", "available_backends"]
 
 
 @dataclass
@@ -84,6 +87,67 @@ class Price:
                 + usage.output_tokens * self.output) / 1_000_000
 
 
+# 供应商里两个特殊的名字：官方登录（订阅，不要 key）与自定义（人填地址与模型名）
+OFFICIAL = "official"
+CUSTOM = "custom"
+CATALOG_DIR = Path(__file__).parent / "catalog"
+
+
+@dataclass(frozen=True)
+class Provider:
+    """一家 CLI 能接的一个供应商（外层 #266，主人 2026-10-06：照 cc-switch，Claude Code / Codex
+    都能切官方登录、官方 API、DeepSeek、Kimi、自定义）。目录在各家适配器的 `PROVIDERS`，地址与模型照
+    cc-switch 的预设，价目在 `catalog/prices.json`（`backends/catalog/README.md`）。
+
+    `key` 是这把 key 在平台的家里 `keys.yaml` 的名字，None 是官方登录、不要 key。`models` 是这家
+    在这个 CLI 上能用的模型——**模型跟着供应商走**：用 DeepSeek 的 key 就只有 DeepSeek 的模型。
+    `reports_cost` 说 CLI 自己报的美元可不可信：只有它认识的官方模型可信，第三方的它按自己的缺省价
+    乱算（2026-10-06 实测 DeepSeek 一句 pong 报 $0.084，实价约 $0.002），适配器报 NaN、读的人照价目
+    折算。`tested` 是实测记录，空串就是还没实测（页面照实写「未实测」）。`web_search` 是这家接口
+    能不能让这个 CLI 联网搜索，照官方文档登记：False 的设置里标「不能联网」、只提醒不拦（主人
+    2026-10-06，纲领 P-14 的例外），None 是不知道（自定义）。
+    """
+
+    id: str
+    title: str
+    models: tuple[Choice, ...]
+    efforts: tuple[Choice, ...]
+    model: str
+    effort: str
+    key: str | None = None
+    base_url: str = ""
+    reports_cost: bool = False
+    tested: str = ""
+    web_search: bool | None = True
+
+    def knobs(self) -> Knobs:
+        return Knobs(models=self.models, efforts=self.efforts, model=self.model,
+                     effort=self.effort)
+
+
+@dataclass(frozen=True)
+class Link:
+    """框架交给适配器的「这家 CLI 这次怎么接」（外层 #263 / #266）。
+
+    `home` 是这家 CLI 在平台的家里的私有目录：Claude Code 当 `CLAUDE_CONFIG_DIR`、Codex 当
+    `CODEX_HOME`，会话记录与平台自己的登录都在里面。适配器不自己定路径、不碰用户的
+    `~/.claude` `~/.codex`——平台的家由框架管（`framework/paths.py`），清除时整个删。
+    `provider` 是用谁的模型（这家 `PROVIDERS` 里的名字，或 `custom`），`key` 是框架从平台的家里
+    读出来的那把（官方登录是 None）；自定义的还带地址与模型名。适配器只把 key 交给它起的那一个
+    子进程，不读用户 shell 里的。
+    """
+
+    home: Path
+    provider: str = OFFICIAL
+    key: str | None = None
+    base_url: str = ""
+    models: tuple[str, ...] = ()
+
+
+class KeyMissing(ValueError):
+    """选了要 key 的供应商、平台的家里却没有这把 key：一句话说去设置里填。"""
+
+
 @dataclass(frozen=True)
 class Tuning:
     """一轮用什么：模型与思考深度。字段 None 是「这家适配器给的起点」（`Knobs.model` / `.effort`），
@@ -105,7 +169,7 @@ class Runner(Protocol):
     前缀写进 `tool_guide` 让它照做）；不给就一条命令都不放。
     有沙箱的 CLI（Codex）没有按工具名的白名单：`bash_rules` 翻成 execpolicy 规则，
     命中的命令在沙箱外跑，
-    平台自己的目录（数据根、按人的配置、uv 缓存）由此写得进去，不用加进可写根。
+    平台自己的目录（平台的家：项目、设置、uv 缓存）由此写得进去，不用加进可写根。
     `tuning` 是这次会话用什么模型、什么深度（从按人的设置来，P-25）；None 用适配器给的起点。
     `max_turns` / `max_budget_usd` 是这一次会话的轮数与花费上限，不给用适配器的缺省（环境变量）：
     读别人整个仓库再写壳的会话（复现）要比从零写一版的多得多——真跑时 30 轮在读完仓库、写完
@@ -248,8 +312,8 @@ class Chat(Protocol):
 
     def forget(self, session_id: str, cwd: Path) -> None:
         """把这家 CLI 自己存的那条会话删干净（删对话要级联到根，主人 2026-09-22）：
-        Claude Code 是 `~/.claude/projects/<按 cwd 编的目录>/<session>.jsonl` 与
-        `session-env/<session>`，Codex 是私有 home 下 `sessions/…/rollout-*-<thread>.jsonl`。
+        Claude Code 是私有目录下 `projects/<按 cwd 编的目录>/<session>.jsonl` 与
+        `session-env/<session>`，Codex 是私有目录下 `sessions/…/rollout-*-<thread>.jsonl`。
         不在就当已删（幂等）；删不掉抛 OSError。"""
         ...
 
@@ -325,11 +389,11 @@ def _module(name: str, layer: str):
     return importlib.import_module(module_path)
 
 
-def get_backend(name: str) -> Runner:
+def get_backend(name: str, link: Link) -> Runner:
     """按名字取适配器。名字不对就报错退出，绝不静默回退到某个默认后端（P-7）。
     名字贴在适配器上（`runner.name`）：起会话的那层按它查按人的设置里这家用什么模型。"""
     module = _module(name, "执行层")
-    runner = module.make_runner()
+    runner = module.make_runner(link)
     # 断言而不是信任：适配器模块是人写的，形状对不上要在这里就炸，别等到跑一半
     assert hasattr(runner, "run"), f"后端 {name!r} 的 make_runner() 没有返回带 run() 的对象"
     assert hasattr(runner, "tool_guide"), f"后端 {name!r} 的执行层适配器没有 tool_guide()"
@@ -337,17 +401,28 @@ def get_backend(name: str) -> Runner:
     return runner
 
 
-def get_chat(name: str) -> Chat:
+def get_chat(name: str, link: Link) -> Chat:
     """按名字取协调层适配器；同 `get_backend`，名字不对就报错，不回退。"""
     module = _module(name, "agent ")
     assert hasattr(module, "make_chat"), f"后端 {name!r} 还没有协调层适配器（make_chat）"
-    chat = module.make_chat()
+    chat = module.make_chat(link)
     assert hasattr(chat, "turn"), f"后端 {name!r} 的 make_chat() 没有返回带 turn() 的对象"
     assert hasattr(chat, "knobs"), \
         f"后端 {name!r} 的协调层适配器没有 knobs()：得报有哪些模型与思考深度"
     assert hasattr(chat, "tool_guide"), f"后端 {name!r} 的协调层适配器没有 tool_guide()"
     chat.name = name
     return chat
+
+
+def login_command(name: str, link: Link) -> tuple[list[str], dict[str, str]]:
+    """在平台的家里登录这家的官方账号：命令与环境（外层 #263）。CLI 自己的流程——开浏览器授权，
+    回来把凭据写进 `link.home`（Claude Code 记在系统钥匙串里、按配置目录分开）。"""
+    return _module(name, "agent ").login_command(link)
+
+
+def logout_command(name: str, link: Link) -> tuple[list[str], dict[str, str]]:
+    """登出平台家里这家的官方账号：清除家之前跑，钥匙串里不留平台那条。"""
+    return _module(name, "agent ").logout_command(link)
 
 
 def read_usage(events: list[dict]) -> tuple[str, Usage] | None:
@@ -361,16 +436,38 @@ def read_usage(events: list[dict]) -> tuple[str, Usage] | None:
     return None
 
 
+@cache
+def _price_table() -> dict[str, Price]:
+    doc = json.loads((CATALOG_DIR / "prices.json").read_text(encoding="utf-8"))
+    return {model: Price(row["title"], row["input"], row["cached"], row["output"])
+            for model, row in doc["models"].items()}
+
+
+def price(model: str) -> Price | None:
+    """一个模型的价目（键是 CLI 报的那一版：`claude-opus-5-5`、`deepseek-flash`）；
+    表里没有是 None。"""
+    return _price_table().get(model)
+
+
 def prices(name: str) -> dict[str, Price]:
-    """一家的定价表：模块级 `PRICES`，键是 `Usage.model`（CLI 报的那一版）。
-    名字不对是 BackendNotFound。"""
-    return _module(name, "agent ").PRICES
+    """一家 CLI 用得上的价目：它的 `PRICED` 里、表上有的。名字不对是 BackendNotFound。"""
+    return {m: p for m in _module(name, "agent ").PRICED if (p := price(m)) is not None}
 
 
-def probe(name: str) -> AgentProbe:
+def providers(name: str) -> dict[str, Provider]:
+    """一家 CLI 的供应商目录（不含自定义：自定义的模型名是人填的，见 `provider_of`）。"""
+    return _module(name, "agent ").PROVIDERS
+
+
+def provider_of(name: str, link: Link) -> Provider:
+    """这次接的是哪个供应商：目录里的那条，或照 `link` 现拼的自定义；名字不对是 ValueError。"""
+    return _module(name, "agent ").provider(link)
+
+
+def probe(name: str, link: Link) -> AgentProbe:
     """自检一家：模块级 `probe()`，装了没 / 版本 / 登录 / 说一句话。"""
     module = _module(name, "agent ")
     assert hasattr(module, "probe"), f"后端 {name!r} 没有 probe()：得会自检（纲领 P-25）"
-    result = module.probe()
+    result = module.probe(link)
     assert isinstance(result, AgentProbe), f"后端 {name!r} 的 probe() 没有返回 AgentProbe"
     return result

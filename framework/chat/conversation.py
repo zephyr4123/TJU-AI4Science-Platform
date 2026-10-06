@@ -41,7 +41,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from backends import Chat, ChatEvent, Tuning
+from backends import OFFICIAL, Chat, ChatEvent, Tuning
 from framework.files import write_atomic
 
 LOGGER = logging.getLogger("ai4sci.chat")
@@ -102,6 +102,9 @@ class Conversation:
     # 当时的缺省；测试里的剧本后端。适配器遇到 None 用自己的起点
     model: str | None = None
     effort: str | None = None
+    # 用谁的模型（外层 #266）：开对话时与模型一起从设置抄进来，续这段对话一直按它接——改设置只影响
+    # 之后开的对话（P-25）。老对话没记的是官方登录
+    provider: str = OFFICIAL
 
     @property
     def dir(self) -> Path:
@@ -126,7 +129,8 @@ class Conversation:
 
 
 def new_conversation(chats_dir: Path, backend: str, cwd: Path,
-                     chat_id: str | None = None, tuning: Tuning | None = None) -> Conversation:
+                     chat_id: str | None = None, tuning: Tuning | None = None,
+                     provider: str = OFFICIAL) -> Conversation:
     """建 `<chats_dir>/<id>/`。id 缺省 `chat-<UTC 时间戳>-<4 位随机>`：同一秒开两段也不撞。"""
     stamp = datetime.now(UTC)
     chat_id = chat_id or f"chat-{stamp:%Y%m%dT%H%M%SZ}-{secrets.token_hex(2)}"
@@ -137,12 +141,12 @@ def new_conversation(chats_dir: Path, backend: str, cwd: Path,
     picked = tuning or Tuning()
     conv = Conversation(chat_id=chat_id, backend=backend, cwd=str(Path(cwd).resolve()),
                         created_at=stamp.isoformat(timespec="seconds"),
-                        model=picked.model, effort=picked.effort)
+                        model=picked.model, effort=picked.effort, provider=provider)
     conv._dir = directory
     (directory / TRANSCRIPT_NAME).write_text(f"# 对话 {chat_id}\n", encoding="utf-8")
     conv.save()
-    LOGGER.info("chat_new chat_id=%s backend=%s cwd=%s model=%s effort=%s", chat_id, backend,
-                conv.cwd, conv.model or "-", conv.effort or "-")
+    LOGGER.info("chat_new chat_id=%s backend=%s provider=%s cwd=%s model=%s effort=%s", chat_id,
+                backend, provider, conv.cwd, conv.model or "-", conv.effort or "-")
     return conv
 
 

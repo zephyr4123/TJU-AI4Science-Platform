@@ -19,10 +19,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+from framework import paths
 from framework.skills.library import Skill, SkillInvalid, lock_path
 
 UV_RUN_ARGS = ("run", "--locked", "--script")
 UV_LOCK_CHECK_ARGS = ("lock", "--check", "--script")
+UV_CACHE_ENV = "UV_CACHE_DIR"
 UV_SYNC_ARGS = ("sync", "--locked", "--script")
 
 
@@ -38,9 +40,10 @@ def uv_argv() -> list[str]:
 
 
 def uv_env() -> dict[str, str]:
-    """起 uv 的环境：去掉 VIRTUAL_ENV——脚本环境在 uv 的缓存里，不是平台 venv，留着它 uv 每次都打一行
-    warning 到 stderr，agent 会当成出了错。"""
-    env = dict(os.environ)
+    """起 uv 的环境：缓存指到平台的家（外层 #263：不写本机的 `~/.cache/uv`，清除时一起走）；去掉
+    VIRTUAL_ENV——脚本环境在 uv 的缓存里，不是平台 venv，留着它 uv 每次都打一行 warning 到 stderr，
+    agent 会当成出了错。"""
+    env = {**os.environ, UV_CACHE_ENV: str(paths.uv_cache_dir())}
     env.pop("VIRTUAL_ENV", None)
     return env
 

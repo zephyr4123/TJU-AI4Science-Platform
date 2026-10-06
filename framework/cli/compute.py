@@ -1,7 +1,7 @@
 """`ai4sci compute add <名字> --ssh user@host[:port] --key <密钥路径> [--root <远端目录>]
 | check <名字> | list | remove <名字> | default <名字>`：接机器（纲领 P-23 算力归人）。
 
-在 cli 层。清单在按人的 `~/.config/ai4sci/computes.yaml`（`framework.computes`）；只有 SSH、只认
+在 cli 层。清单在平台的家里的 `computes.yaml`（`framework.computes`）；只有 SSH、只认
 密钥。
 `add` 写进文件后就地探测（连接、Python、uv 缺就装、GPU、磁盘、rsync）并一行一项打出来；探测不过
 也只是报告、记录照留，退出码说探测过没过。助理能跑这几条：人只给 ssh 那一行与密钥路径，

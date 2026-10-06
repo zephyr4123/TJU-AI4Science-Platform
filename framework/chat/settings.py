@@ -5,13 +5,14 @@
 `check()` 真探并记回。
 底座（agents.yaml）、算力（computes.yaml）
 各自的读写点仍在 `framework/agents.py` 与 `framework/computes.py`，
-这里只把它们摆成一张表；存放一项是数据根在哪、可写、余量，没有文件。
+这里只把它们摆成一张表；存放一项是平台的家在哪、每块多大、可写、余量，没有文件。
 自检不过只报告不拒绝保留，用的时候再拒（主人：不设自我感动的坎）。
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from collections.abc import Callable
 from dataclasses import asdict
@@ -19,8 +20,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from backends import AgentProbe, available_backends, probe
-from framework import agents, computes, paths
+from backends import CUSTOM, AgentProbe, available_backends, providers
+from framework import agents, computes, keys, paths
 from framework.agents import KnobsOf
 from framework.chat.conversation import Conversation
 
@@ -43,16 +44,30 @@ def ensure_tuned(conv: Conversation, knobs: KnobsOf = agents.knobs_of) -> Conver
 
 
 def agents_table(knobs: KnobsOf = agents.knobs_of) -> dict[str, Any]:
-    """底座那一段：两层各用哪家 + 每家一块（产品名、清单、缺省、上次自检）。"""
+    """底座那一段：两层各用哪家 + 每家一块（产品名、用谁的模型与它的清单、缺省、上次自检），外加
+    这家能接的供应商目录（外层 #266：名、要不要 key、key 的名字、实测过没有）。"""
     registry = agents.load(knobs)
     entries = []
     for name, entry in registry.entries.items():
         picked = knobs(name)
-        entries.append({"name": name, "title": entry.title, "model": entry.model,
-                        "effort": entry.effort, "models": [asdict(c) for c in picked.models],
+        entries.append({"name": name, "title": entry.title, "provider": entry.provider,
+                        "base_url": entry.base_url, "custom_models": list(entry.models),
+                        "providers": _providers(name),
+                        "model": entry.model, "effort": entry.effort,
+                        "models": [asdict(c) for c in picked.models],
                         "efforts": [asdict(c) for c in picked.efforts],
                         "last_check": entry.last_check})
     return {"chat": registry.chat, "executor": registry.executor, "entries": entries}
+
+
+def _providers(name: str) -> list[dict[str, Any]]:
+    """一家的供应商目录，最后一项是自定义（地址与模型名人填）。剧本后端（测试）没有目录。"""
+    if name not in available_backends():
+        return []
+    rows = [{"id": p.id, "title": p.title, "key": p.key, "base_url": p.base_url,
+             "tested": p.tested, "web_search": p.web_search} for p in providers(name).values()]
+    return [*rows, {"id": CUSTOM, "title": "自定义", "key": f"{CUSTOM}.{name}", "base_url": "",
+                    "tested": "", "web_search": None}]
 
 
 def computes_table() -> list[dict[str, Any]]:
@@ -67,22 +82,50 @@ def computes_table() -> list[dict[str, Any]]:
     return rows
 
 
+# 家里的几块（页面「存放」照这个顺序念，外层 #263）：给人看的名字、包含家里哪些东西
+PARTS = (("项目", ("projects",)), ("编辑台", ("studio",)),
+         ("会话与登录", tuple(available_backends())), ("依赖缓存", (paths.UV_CACHE_PARTS[0],)),
+         ("设置与 key", (paths.AGENTS_FILENAME, paths.COMPUTES_FILENAME, paths.KEYS_FILENAME)))
+
+
 def storage_table(home: Path | None = None) -> dict[str, Any]:
-    """存放只看不改：数据根、配置目录、uv 缓存在哪，可写吗，还剩多少。`home` 是服务起时定的数据根；
-    终端里就是 `paths.home()`。"""
+    """存放：平台的家在哪、可写吗、还剩多少、清除认不认它（有没有标记）。`home` 是服务起时定的家；
+    终端里就是 `paths.home()`。每块多大不在这里（`storage_sizes`）。"""
     home = paths.home() if home is None else Path(home)
     usage = shutil.disk_usage(home)
-    return {"home": str(home), "config": str(paths.config_dir()),
-            "uv_cache": str(paths.uv_cache_dir()),
+    projects = home / "projects"
+    return {"home": str(home), "resettable": (home / paths.MARKER_NAME).is_file(),
             # 在仓库里跑还是装的包在跑、出厂件从哪读、页面有没有构建（外层 #138）
             "mode": "source" if paths.from_source() else "package",
             "shipped": str(paths.shipped_home()),
             "ui": str(paths.ui_dir()), "ui_built": (paths.ui_dir() / "index.html").is_file(),
             "writable": _writable(home), "free_gb": round(usage.free / 1e9, 1),
-            "projects": sum(1 for _ in (home / "projects").glob("*/project.md"))
-            if (home / "projects").is_dir() else 0,
-            "workspaces": sum(1 for _ in (home / "projects").glob("*/workspaces/*/requirement.md"))
-            if (home / "projects").is_dir() else 0}
+            "projects": sum(1 for _ in projects.glob("*/project.md")) if projects.is_dir() else 0,
+            "workspaces": sum(1 for _ in projects.glob("*/workspaces/*/requirement.md"))
+            if projects.is_dir() else 0}
+
+
+def storage_sizes(home: Path | None = None) -> list[dict[str, Any]]:
+    """家里每块占多大。要走遍整棵树（开发用的家 3.5 GB、7 万个文件走一遍 1 秒多），所以不进
+    `snapshot`——不然每打开一次设置、每改一项都要等它；页面在「存放」那页打开时单独取
+    （外层 #268）。"""
+    home = paths.home() if home is None else Path(home)
+    return [{"label": label, "bytes": sum(_size(home / n) for n in names)}
+            for label, names in PARTS]
+
+
+def _size(path: Path) -> int:
+    """一个文件或一整棵目录占多少字节（不跟软链）；不在就是 0。"""
+    if path.is_symlink() or path.is_file():
+        return path.lstat().st_size
+    total = 0
+    for root, _, files in os.walk(path):
+        for name in files:
+            try:
+                total += (Path(root) / name).lstat().st_size
+            except OSError:
+                continue  # 数着数着被删了（缓存在写）：少算这一个，不拦页面
+    return total
 
 
 def _writable(directory: Path) -> bool:
@@ -97,9 +140,9 @@ def _writable(directory: Path) -> bool:
 
 
 def snapshot(knobs: KnobsOf = agents.knobs_of, home: Path | None = None) -> dict[str, Any]:
-    """页面「设置」那一整份，读盘不探。"""
+    """页面「设置」那一整份，读盘不探。key 只给末四位（外层 #265）。"""
     return {"agents": agents_table(knobs), "computes": computes_table(),
-            "storage": storage_table(home)}
+            "storage": storage_table(home), "keys": keys.masked()}
 
 
 def problems(snap: dict[str, Any] | None = None, knobs: KnobsOf = agents.knobs_of,
@@ -124,7 +167,7 @@ def problems(snap: dict[str, Any] | None = None, knobs: KnobsOf = agents.knobs_o
 
 
 def check(what: str = "all", name: str | None = None, *, knobs: KnobsOf = agents.knobs_of,
-          probe_agent: ProbeAgent = probe, home: Path | None = None) -> dict[str, Any]:
+          probe_agent: ProbeAgent = agents.probe, home: Path | None = None) -> dict[str, Any]:
     """真探：底座每家 `probe()`、算力每台 `check()`（记回 last_check），存放现算。返回新的一整份加
     `ok` 与 `failed`。`name` 给了只探那一个。"""
     assert what in WHATS, f"what 只认 {WHATS}，得到 {what!r}"
@@ -159,9 +202,10 @@ def check(what: str = "all", name: str | None = None, *, knobs: KnobsOf = agents
 
 def update_agents(body: dict[str, Any], knobs: KnobsOf = agents.knobs_of,
                   home: Path | None = None) -> dict[str, Any]:
-    """页面改「对话用 / 执行用」与每家的缺省：
-    `{"chat": name, "executor": name, "agents": {name: {model, effort}}}`，
-    给哪些改哪些；值过那家的清单，不在就 ValueError（调用方回 400）。"""
+    """页面改「对话用 / 执行用」与每家的供应商与缺省：
+    `{"chat": name, "executor": name, "agents": {name: {provider?, base_url?, models?, model?,
+    effort?}}}`，给哪些改哪些；换了供应商没给的模型回到它的起点；值过那家那个供应商的清单，
+    不在就 ValueError（调用方回 400）。"""
     for role in agents.ROLES:
         picked = body.get(role)
         if picked is not None:
@@ -171,9 +215,14 @@ def update_agents(body: dict[str, Any], knobs: KnobsOf = agents.knobs_of,
     for name, doc in (body.get("agents") or {}).items():
         if not isinstance(doc, dict):
             raise ValueError(f"agents.{name} 要是键值对")
-        model, effort = doc.get("model"), doc.get("effort")
-        if (model is not None and not isinstance(model, str)) or \
-                (effort is not None and not isinstance(effort, str)):
-            raise ValueError(f"agents.{name} 的 model / effort 要是字符串")
-        agents.use(str(name), model=model, effort=effort, knobs=knobs)
+        texts = {k: doc.get(k) for k in ("provider", "base_url", "model", "effort")}
+        if any(v is not None and not isinstance(v, str) for v in texts.values()):
+            raise ValueError(f"agents.{name} 的 provider / base_url / model / effort 要是字符串")
+        models = doc.get("models")
+        if models is not None and (not isinstance(models, list)
+                                   or not all(isinstance(m, str) for m in models)):
+            raise ValueError(f"agents.{name}.models 要是字符串列表")
+        agents.use(str(name), provider=texts["provider"], base_url=texts["base_url"],
+                   models=None if models is None else tuple(models), model=texts["model"],
+                   effort=texts["effort"], knobs=knobs)
     return snapshot(knobs, home)

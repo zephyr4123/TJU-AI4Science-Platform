@@ -271,9 +271,26 @@ export interface AgentCheck {
 }
 
 /** 设置 → AI 里的一家：Backend 那几样 + 上次自检 */
+/** 一家 CLI 能接的一个供应商（外层 #266）：要 key 的写 key 在家里 keys.yaml 的名字；没实测过 tested 是空串；
+ *  web_search 照官方文档登记这家接口能不能让 CLI 联网，null 是不知道（自定义） */
+export interface ProviderRow {
+  id: string
+  title: string
+  key: string | null
+  base_url: string
+  tested: string
+  web_search: boolean | null
+}
+
 export interface AgentEntry {
   name: string
   title: string
+  /** 用谁的模型（官方登录 official、DeepSeek…、自定义 custom）；模型清单跟着它走 */
+  provider: string
+  providers: ProviderRow[]
+  /** 只有自定义供应商才有：接口地址与人填的模型名 */
+  base_url: string
+  custom_models: string[]
   model: string
   effort: string
   models: Choice[]
@@ -306,8 +323,14 @@ export interface ComputeRow {
 export interface SettingsDoc {
   agents: { chat: string; executor: string; entries: AgentEntry[] }
   computes: ComputeRow[]
-  storage: { home: string; config: string; uv_cache: string; writable: boolean; free_gb: number; projects: number; workspaces: number }
+  /** 平台的家（外层 #263）：在哪、清除认不认它（平台建的家才有标记）；每块多大另取（`StoragePart`） */
+  storage: { home: string; resettable: boolean; writable: boolean; free_gb: number; projects: number; workspaces: number }
+  /** 家里存了哪几把 key：名字 → 末四位（外层 #265）；整把 key 从不到页面 */
+  keys: Record<string, string>
 }
+
+/** `GET /settings/storage`：家里一块多大（走遍整棵树，一秒上下，所以不在整份里，外层 #268） */
+export interface StoragePart { label: string; bytes: number }
 
 /** `POST /settings/check` 回来的：整份 + 过没过 + 没过的项 */
 export interface CheckReport extends SettingsDoc {

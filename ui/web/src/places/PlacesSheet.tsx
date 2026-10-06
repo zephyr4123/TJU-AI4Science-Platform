@@ -1,4 +1,4 @@
-// 窄屏的地方栏：页眉左端那枚标就是入口，点开一张从左边拉出来的清单，和宽屏的 Rail 同一份东西——首页、编辑台、设置。
+// 窄屏的地方栏：页眉左端那枚标就是入口，点开一张从左边拉出来的清单，和宽屏的 Rail 同一份东西——首页、编辑台、设置（弹窗）。
 import { Blueprint, GearSix, House, type Icon } from '@phosphor-icons/react'
 import { useState } from 'react'
 
@@ -47,7 +47,7 @@ export function PlacesSheet({ place, onHome, onStudio, settingsDot, onSettings }
         </div>
         <span className="flex-1" />
         <div className="border-t px-3 py-2">
-          {row('设置', GearSix, world === 'settings', onSettings, settingsDot)}
+          {row('设置', GearSix, false, onSettings, settingsDot)}
         </div>
       </SheetContent>
     </Sheet>

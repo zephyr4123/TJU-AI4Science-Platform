@@ -1,5 +1,5 @@
-"""paths：两种活法（外层 #138）——仓库里出厂件在仓根、数据根缺省仓根；装的包里出厂件在
-framework/shipped/、数据根缺省 ~/ai4sci。环境变量永远优先；指向的不是目录当场炸。"""
+"""paths：出厂件两种活法（外层 #138）——仓库里在仓根，装的包里在 framework/shipped/；平台的家
+与活法无关，缺省 ~/.ai4sci（外层 #263）。环境变量永远优先；指向的不是目录当场炸。"""
 
 from __future__ import annotations
 
@@ -10,13 +10,15 @@ import pytest
 from framework import paths
 
 
-def test_source_mode_reads_the_repo(monkeypatch):
+def test_source_mode_reads_shipped_from_the_repo_but_lives_in_the_home(monkeypatch, tmp_path):
+    """外层 #263：在仓库里跑也不再把仓库当家——家只有一个，`~/.ai4sci`。"""
     monkeypatch.delenv(paths.HOME_ENV, raising=False)
     monkeypatch.delenv(paths.WORKFLOWS_ROOT_ENV, raising=False)
+    monkeypatch.setattr(paths, "DEFAULT_HOME", tmp_path / ".ai4sci")
     assert paths.from_source()
-    assert paths.home() == paths.REPO_ROOT
+    assert paths.home() == tmp_path / ".ai4sci"
     assert paths.workflows_root() == paths.REPO_ROOT / "workflows"
-    assert paths.user_workflows_root() == paths.REPO_ROOT / "studio" / "workflows"
+    assert paths.user_workflows_root() == tmp_path / ".ai4sci" / "studio" / "workflows"
     assert paths.guides_root() == paths.REPO_ROOT / "coordinator"
     assert paths.ui_dir() == paths.REPO_ROOT / "ui" / "web" / "dist"
 
@@ -38,14 +40,14 @@ def test_package_mode_reads_shipped_and_makes_a_home(monkeypatch, tmp_path: Path
     assert not (tmp_path / "home" / "ai4sci").exists()
     assert paths.home() == tmp_path / "home" / "ai4sci"
     assert (tmp_path / "home" / "ai4sci").is_dir()
-    # 人存的流程在数据根下，不在 shipped/ 里：装的包升级不会把它们带走（外层 #149）
+    # 人存的流程在家里，不在 shipped/ 里：装的包升级不会把它们带走（外层 #149）
     assert paths.user_workflows_root() == tmp_path / "home" / "ai4sci" / "studio" / "workflows"
     assert paths.user_workflows_root().is_dir()
 
 
 def test_user_workflows_root_follows_the_home_it_is_given(monkeypatch, tmp_path: Path):
-    """用户库跟着数据根走：AI4SCI_HOME 指哪就在哪的 studio/workflows/，第一次用时建；服务端
-    持有自己的数据根时直接给。"""
+    """用户库跟着家走：AI4SCI_HOME 指哪就在哪的 studio/workflows/，第一次用时建；服务端
+    持有自己的家时直接给。"""
     monkeypatch.setenv(paths.HOME_ENV, str(tmp_path))
     assert paths.user_workflows_root() == tmp_path.resolve() / "studio" / "workflows"
     assert (tmp_path / "studio" / "workflows").is_dir()
@@ -60,3 +62,29 @@ def test_env_wins_and_a_missing_dir_fails_loudly(monkeypatch, tmp_path: Path):
     monkeypatch.setenv(paths.HOME_ENV, str(tmp_path / "nowhere"))
     with pytest.raises(AssertionError, match=paths.HOME_ENV):
         paths.home()
+
+
+def test_everything_private_lives_in_one_home(monkeypatch, tmp_path: Path):
+    """外层 #263：设置、key、两家 CLI 的私有目录、uv 缓存都在家里；一处给路径。"""
+    monkeypatch.setenv(paths.HOME_ENV, str(tmp_path))
+    assert paths.agents_file() == tmp_path / "agents.yaml"
+    assert paths.computes_file() == tmp_path / "computes.yaml"
+    assert paths.keys_file() == tmp_path / "keys.yaml"
+    assert paths.agent_home("codex") == tmp_path / "codex" and (tmp_path / "codex").is_dir()
+    assert paths.uv_cache_dir() == tmp_path / "cache" / "uv"
+
+
+def test_only_a_home_the_platform_made_carries_the_marker(monkeypatch, tmp_path: Path):
+    """清除只删有标记的家：新建的、空的才放标记；指到一个已有东西的目录（比如误设成 ~）不放。"""
+    monkeypatch.delenv(paths.HOME_ENV, raising=False)
+    monkeypatch.setattr(paths, "DEFAULT_HOME", tmp_path / "fresh")
+    assert (paths.home() / paths.MARKER_NAME).is_file()
+    busy = tmp_path / "busy"
+    busy.mkdir()
+    (busy / "notes.txt").write_text("别人的东西", encoding="utf-8")
+    monkeypatch.setenv(paths.HOME_ENV, str(busy))
+    assert paths.home() == busy and not (busy / paths.MARKER_NAME).exists()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    monkeypatch.setenv(paths.HOME_ENV, str(empty))
+    assert (paths.home() / paths.MARKER_NAME).is_file()

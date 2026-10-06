@@ -30,8 +30,7 @@ flowchart TB
     direction LR
     CC["coding agent CLI<br/>claude、codex"]
     MACH["算力<br/>本机 / 一台能 ssh 的 Linux"]
-    DATA["数据根<br/>projects/… studio/"]
-    CFG["按人的清单<br/>~/.config/ai4sci/<br/>agents.yaml computes.yaml"]
+    HOME["平台的家 ~/.ai4sci<br/>设置 · key · projects/ studio/<br/>两家 CLI 的会话与登录 · 依赖缓存"]
     SHIP["出厂件<br/>workflows/ templates/ domains/<br/>skills/ skills-curated/ coordinator/"]
   end
   UI --> SRV
@@ -43,8 +42,8 @@ flowchart TB
   CORE --> PORTS
   PORTS -- "起助理会话与执行层会话" --> CC
   PORTS -- "put / submit / wait / get" --> MACH
-  CORE --> DATA
-  CORE --> CFG
+  CORE --> HOME
+  PORTS -- "CLAUDE_CONFIG_DIR / CODEX_HOME" --> HOME
   CORE --> SHIP
 ```
 
@@ -74,14 +73,13 @@ flowchart TB
 platform/
 ├── framework/     Python 包 ai4sci：契约、工作区、能力、对话与页面后端、CLI；零模型调用（规矩见 framework/README.md）
 ├── backends/      agent 适配器：claude_code.py、codex.py（执行层 + 协调层 + 自检各一份）
-├── compute/       算力适配器：local.py 本机、ssh.py 一台能 ssh 上去的 Linux（按人的清单 ~/.config/ai4sci/computes.yaml 选）
+├── compute/       算力适配器：local.py 本机、ssh.py 一台能 ssh 上去的 Linux（按平台的家里那份 computes.yaml 选）
 ├── coordinator/   两位助理的指南（线上 prompt）：README.md 项目里的研究助理、studio.md 编辑台的流程助理
 ├── domains/       领域包：generic/ 兜底、petab/ 参数估计（docs/add-a-domain.md）
 ├── skills/        平台自带的 skill（常驻）：general/materials/ 下的 pdf 解析论文、download 拉材料（docs/add-a-skill.md）
 ├── skills-curated/ 收录的社区 skill：按 <架>/<tag>/ 分好（分类表 framework/skills/shelves.py），台账 provenance.yaml；挂到流程上才装载
-├── workflows/     出厂的流程：research（改进）、reproduce（论文复现）、literature-survey（文献调研），只读；人在编辑台存的在数据根 studio/workflows/，两层合起来是库，工作区取实例
+├── workflows/     出厂的流程：research（改进）、reproduce（论文复现）、literature-survey（文献调研），只读；人在编辑台存的在平台的家里 studio/workflows/，两层合起来是库，工作区取实例
 ├── templates/     需求模板库：generic / ai / cs / materials / reproduce
-├── projects/      数据根（源码模式）：一个项目一位助理，样例三个单工作区项目 mlp-regression、boehm-nll、rahman-nll
 ├── ui/            界面层：web/ 网页（React + Tailwind + shadcn；规矩见 ui/README.md），tui/ 留位置
 ├── docs/          手册：start-a-workspace / add-a-capability / add-a-skill / add-a-domain；PRODUCT.md、DESIGN.md
 ├── tests/         框架测试（怎么写见 tests/README.md）
@@ -106,7 +104,7 @@ ai4sci check                                # 底座（哪家 CLI 装了、登�
 ai4sci serve                                # 起服务，浏览器开 http://127.0.0.1:8765
 ```
 
-包里自带页面、流程、模板、skill、领域包、指南；数据落在 `~/ai4sci`（要放别处设 `AI4SCI_HOME`）；接机器、换底座都在页面「设置」里或对话里跟助理说。文献检索不要 key 也能跑；常用的话去 [openalex.org/settings/api](https://openalex.org/settings/api) 领一个免费 key，起服务前设 `OPENALEX_API_KEY`，额度大十倍（纲领 P-27）。
+包里自带页面、流程、模板、skill、领域包、指南；用起来长出的一切都在**平台的家** `~/.ai4sci` 里（要放别处设 `AI4SCI_HOME`），清除在页面「设置 → 存放」或 `ai4sci reset`；接机器、换底座都在页面「设置」里或对话里跟助理说。文献检索不要 key 也能跑；常用的话去 [openalex.org/settings/api](https://openalex.org/settings/api) 领一个免费 key，在页面「设置」里填进去，额度大十倍（纲领 P-27）。key 都存在平台的家里、只有你能读，不走环境变量。
 
 **改代码**：clone 仓库，前提是 uv + node 22 + git。
 
@@ -120,24 +118,28 @@ AI4SCI_LIVE_SSH=<名字> make test             # 连清单里那台真机器的�
 make package VERSION=X.Y.Z                  # 出 wheel（含页面与出厂件）+ sdist + sha256 到 dist/
 ```
 
-仓库里跑，出厂件在仓根、数据根不设就是仓根（样例项目在 `projects/`）；装的包跑，出厂件在包里 `framework/shipped/`、数据根 `~/ai4sci`——分辨在 `framework/paths.py` 一处。
+仓库里跑，出厂件在仓根；装的包跑，出厂件在包里 `framework/shipped/`。两种跑法的家都是 `~/.ai4sci`：设置、key、项目、两家 CLI 的会话记录与平台自己的登录、依赖缓存都在里面，平台不写你自己的 `~/.claude`、`~/.codex`（外层 #263）。位置只在 `framework/paths.py` 一处给。
 
 ## 在终端里走一遍
 
-样例项目已确认需求、已取流程实例 `flows/research.yaml`、已有 `design/1`。人在终端当协调层，框架不连跑，一条命令一步（下面省略 `.venv/bin/` 前缀）：
+页面上是助理和你对话、替你敲这些命令；人在终端当协调层也行，框架不连跑，一条命令一步（下面省略 `.venv/bin/` 前缀）：
 
 ```bash
-cd projects/mlp-regression && ../../.venv/bin/ai4sci show project   # 每个工作区一行：需求状态、流程走到哪、在等谁
-cd workspaces/mlp-regression                                     # cd 进工作区就不用 --ws
-ai4sci show flows                                                # 取来的流程实例走到哪；项目只跑实例上挂的能力（P-26）
+ai4sci project new mlp-demo --title "小 MLP 回归"                 # 在平台的家里起项目：~/.ai4sci/projects/mlp-demo/
+cd ~/.ai4sci/projects/mlp-demo
+ai4sci workspace new mlp --template ai                           # 起一个工作区，照模板起草 requirement.md
+cd workspaces/mlp                                                # cd 进工作区就不用 --ws；课题的代码与数据放进 materials/
+ai4sci requirement confirm                                       # 需求写清后人确认：框架唯一内置的门
+ai4sci flow take research                                        # 取一条流程实例；项目只跑实例上挂的能力（P-26）
+ai4sci cap design                                                # 开 design/1：评分脚本、基线
 ai4sci sign design/1 --note "评分脚本算的是我要的数"               # 断点：人签字，下游才能读它
 ai4sci cap auto-research --from design/1 --max-iters 5 --detach  # 开 experiment/1，一轮一轮改；后台作业，show job 看进度
 ai4sci cap analysis --from experiment/1                          # 执行层写 analysis/1/analysis.md
 ai4sci cap verify --from analysis/1 --from experiment/1          # 零模型核对数字 → verification/1，退出码就是 PASS / FAIL
-ai4sci show caps                                                 # 七个阶段、每个阶段的能力与五栏；show workflows 列流程
+ai4sci show project                                              # 每个工作区一行：需求状态、流程走到哪、在等谁
 ```
 
-助理与执行层各用哪家 coding agent、每家新对话用的模型与思考深度，是使用者自己的设置（纲领 P-25）：`~/.config/ai4sci/agents.yaml`，`ai4sci agent list | check | use` 维护，页面「设置」是同一份。超时与额度走环境变量（清单见 `framework/README.md` §5）。课题跑在自己的环境里：`cap design` 把 `materials/env/` 带进设计那包，实验按它建自己的 venv，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新课题看 [`docs/start-a-workspace.md`](docs/start-a-workspace.md)。
+助理与执行层各用哪家 coding agent、每家新对话用的模型与思考深度，是使用者自己的设置（纲领 P-25）：平台的家里的 `agents.yaml`，`ai4sci agent list | check | use` 维护，页面「设置」是同一份。超时与额度走环境变量（清单见 `framework/README.md` §5）。课题跑在自己的环境里：`cap design` 把 `materials/env/` 带进设计那包，实验按它建自己的 venv，harness 只经 `$AI4SCI_PYTHON` 起解释器，平台 venv 一个包不多装。接一个新课题看 [`docs/start-a-workspace.md`](docs/start-a-workspace.md)。
 
 ## 版本与发布
 
