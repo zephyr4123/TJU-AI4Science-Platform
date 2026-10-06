@@ -134,6 +134,10 @@
      杏色只做渐变的亮端与底下那团光；玫红对卡片底 ≥ 3:1（dataviz 校验过），不与琥珀（待确认）、砖红（出错）撞 */
   --spend: #C8407A;
   --spend-glow: #E0794F;
+  /* 平台的标（外层 #261）：三股靛、紫、天蓝，对页面底都 ≥ 3:1；深色提亮一档。public/favicon.svg 写死同样几种颜色，logo.test.ts 对账 */
+  --mark-1: #2F4BC9;
+  --mark-2: #6949DF;
+  --mark-3: #328EF2;
   /* 侧边栏与页眉的边（外层 #253）：一深一亮两层细线，两头渐隐，像刻出来的一道边 */
   --edge: rgb(28 34 48 / 0.11);
   --edge-glint: rgb(255 255 255 / 0.8);
@@ -182,6 +186,9 @@
     --aurora-2: #5CC6D6;
     --spend: #E0588C;
     --spend-glow: #E98A5E;
+    --mark-1: #6F87F3;
+    --mark-2: #9B7CF4;
+    --mark-3: #4FA8F8;
     --edge: rgb(255 255 255 / 0.09);
     --edge-glint: rgb(0 0 0 / 0.35);
     --key-shine: rgb(255 255 255 / 0.06);
@@ -226,6 +233,9 @@
   --aurora-2: #5CC6D6;
   --spend: #E0588C;
   --spend-glow: #E98A5E;
+  --mark-1: #6F87F3;
+  --mark-2: #9B7CF4;
+  --mark-3: #4FA8F8;
   --edge: rgb(255 255 255 / 0.09);
   --edge-glint: rgb(0 0 0 / 0.35);
   --key-shine: rgb(255 255 255 / 0.06);

@@ -1,32 +1,21 @@
-// 平台的标（外层 #139）：一只实心锥形瓶，瓶里一枚四角星芒与液面镂空——瓶是科学，星芒是 AI。主人 2026-09-23 用 ChatGPT Image
-// 出的四格里选的右下角，按原图描成一条 evenodd 路径（64 × 64，瓶高 60、宽 54，居中）。内联 SVG、currentColor：地方栏顶上那块靛色方块里
-// 是白的，对话入口里是靛（深色模式跟 --primary）。public/favicon.svg 是同一条路径，components/logo.test.ts 对账。
-import { cn } from '@/lib/utils'
+// 平台的标（外层 #261，主人 2026-10-06 换掉 #139 的锥形瓶）：三股一模一样的「A」——两条边上的直段在顶角相接、另一头向里折——
+// 转 120° 绕成一个结，每股的两头都压在另两股底下。主人用 ChatGPT Image 出的图里挑的，三股靛、紫、天蓝；原图三股并不全等，
+// 按各股分别拟合的平均重画成严格 120° 对称、一样宽（64 × 64，宽 60、居中）。颜色是 index.css 的 --mark-1/2/3，深色模式提亮一档。
+// public/favicon.svg 是同三条路径、同几种颜色，components/logo.test.ts 对账。
 
-export const LOGO_PATH =
-  'M22.3 2H41.7A3.2 3.2 0 0 1 44.9 5.2V5.8A3.2 3.2 0 0 1 41.7 9Q41 9 41 10.2V17.5Q41 19.7 42 21.7L58.45 53.2A6 6 0 0 1 53.1 62H10.9A6 6 0 0 1 5.55 53.2L22 21.7Q23 19.7 23 17.5V10.2Q23 9 22.3 9A3.2 3.2 0 0 1 19.1 5.8V5.2A3.2 3.2 0 0 1 22.3 2ZM32 23.3Q34.3 29.6 40.2 31.9Q34.3 34.2 32 40.5Q29.7 34.2 23.8 31.9Q29.7 29.6 32 23.3ZM14.5 43.8C16 42.4 18.7 41.8 20.7 41.8C27 41.8 31 47.4 38.5 47.4C43 47.4 45.5 45 48.3 45C49.6 45 50.9 46.4 51.7 48.1L55.26 54.93A2.5 2.5 0 0 1 53.04 58.6H10.96A2.5 2.5 0 0 1 8.74 54.93Z'
+/** 三股：靛（顶上那股）、紫（左下）、天蓝（右下）；后两股是第一股转 -120° / +120° */
+export const MARK = [
+  'M16.37 21.11L22.84 9.89A10.57 10.57 0 0 1 41.16 9.89L50.86 26.7A7.73 7.73 0 0 1 50.86 34.42L43.45 47.27L31.47 47.27L40.53 31.58A2.03 2.03 0 0 0 40.53 29.54L34 18.23A2.3 2.3 0 0 0 30 18.23L28.34 21.11Z',
+  'M25.52 59.4L12.57 59.4A10.57 10.57 0 0 1 3.42 43.54L13.12 26.73A7.73 7.73 0 0 1 19.81 22.87L34.64 22.87L40.63 33.24L22.51 33.24A2.03 2.03 0 0 0 20.75 34.25L14.22 45.57A2.3 2.3 0 0 0 16.21 49.03L19.54 49.03Z',
+  'M54.11 32.32L60.58 43.54A10.57 10.57 0 0 1 51.43 59.4L32.02 59.4A7.73 7.73 0 0 1 25.33 55.53L17.91 42.69L23.9 32.32L32.96 48.01A2.03 2.03 0 0 0 34.72 49.03L47.79 49.03A2.3 2.3 0 0 0 49.78 45.57L48.12 42.69Z',
+] as const
 
 /** 平台的标；给了 label 才是一枚图（role=img），不给就是装饰 */
 export function Logo({ className, label }: { className?: string; label?: string }) {
   return (
-    <svg viewBox="0 0 64 64" className={className} fill="currentColor" fillRule="evenodd"
+    <svg viewBox="0 0 64 64" className={className}
          role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
-      <path d={LOGO_PATH} />
+      {MARK.map((d, i) => <path key={d} d={d} fill={`var(--mark-${i + 1})`} />)}
     </svg>
-  )
-}
-
-/** 平台的标装在一块靛色圆角方块里（外层 #258，主人 2026-10-06：原来那枚玻璃图标——后面一块斜着的渐变方块、前面一层磨砂——
- *  看不出是标，像没对齐）：与字标「4S」、地方栏开着的键同一种靛，上亮下深、顶边一道高光、底下一团淡靛光，标是白的。
- *  地方栏顶上与窄屏页眉那枚都是它；首页的门牌拿它和字标连成一组 */
-export function LogoTile({ label, className }: { label: string; className?: string }) {
-  return (
-    <span role="img" aria-label={label}
-          className={cn('flex size-8 shrink-0 items-center justify-center rounded-[10px] text-primary-foreground',
-                        'bg-[linear-gradient(180deg,color-mix(in_oklab,var(--primary)_82%,white),var(--primary))]',
-                        'shadow-[inset_0_1px_0_rgb(255_255_255/0.28),0_6px_14px_-8px_color-mix(in_oklab,var(--primary)_80%,transparent)]',
-                        className)}>
-      <Logo className="size-[1.15rem]" />
-    </span>
   )
 }
