@@ -87,7 +87,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
              back={{ label: project.title, onClick: () => { setTalking(false); setShown(null) } }}
              title={current?.title ?? '新对话'}
              tail={<span className="ml-auto flex items-center gap-3">
-               {current && current.cost_usd > 0 && <span className="t-label whitespace-nowrap">{usd(current.cost_usd)}</span>}
+               {current && (current.cost_usd ?? 0) > 0 && <span className="t-label whitespace-nowrap">{usd(current.cost_usd)}</span>}
                {drawer}
              </span>} />
       )}

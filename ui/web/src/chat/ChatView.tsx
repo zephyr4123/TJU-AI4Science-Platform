@@ -48,7 +48,7 @@ export function ChatView({ scope, chatId, current, create, backends, onTurnDone,
         <span className="min-w-0 flex-1 truncate text-[0.875rem] text-muted-foreground">
           {current?.title ?? (inChat ? '新对话' : '')}
         </span>
-        {current && current.cost_usd > 0 && (
+        {current && (current.cost_usd ?? 0) > 0 && (
           <span className="t-label whitespace-nowrap">{usd(current.cost_usd)}</span>
         )}
         {onClose && (

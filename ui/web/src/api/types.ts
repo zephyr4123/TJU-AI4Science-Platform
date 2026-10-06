@@ -226,7 +226,8 @@ export interface ChatMeta {
   created_at: string
   session_id: string | null
   turns: number
-  cost_usd: number
+  /** 各轮花费之和；一轮都没报过美元（Codex 订阅）是 null，不是 0（外层 #256） */
+  cost_usd: number | null
   /** 这段对话记着的模型与思考深度；null 是后端缺省（外层 #86） */
   model: string | null
   effort: string | null
@@ -463,3 +464,36 @@ export interface Workflow {
 
 /** 删了什么（`POST …/remove`）：本机那部分已删；`leftovers` 是目录外没清干净的几句（CLI 那边的会话、机器上的镜像） */
 export interface Removed { removed: string; leftovers: string[] }
+
+/** `GET /attention` 的一行（外层 #256，首页右栏）：跨项目要人做的——需求未确认或有改动（`dirty`）、流程停在断点
+ *  （`flow` 与在等的那个阶段 `stage`）——与在跑的作业（`cap` 能力名、`since` 几时起的） */
+export interface AttentionItem {
+  project: string
+  project_title: string
+  workspace: string
+  workspace_title: string
+  kind: 'requirement' | 'sign' | 'running'
+  dirty?: boolean
+  flow?: string
+  stage?: string | null
+  cap?: string
+  since?: string
+}
+
+/** 花费的一格：折算美元（只加报了的；一次都没报过是 null，按天那一列没报是 0）、几次没报美元、token、几次 */
+export interface SpendCell {
+  cost_usd: number | null
+  unknown: number
+  tokens: number
+  count: number
+}
+
+/** `GET /usage?days=`（外层 #256）：近几天的合计、按天、按项目（id 为 null 是编辑台）、按模型、按对话与运行 */
+export interface Spending {
+  days: number
+  total: SpendCell
+  by_day: (SpendCell & { day: string })[]
+  by_project: (SpendCell & { id: string | null; title: string })[]
+  by_model: (SpendCell & { backend: string; model: string | null; backend_title: string; model_title: string })[]
+  by_kind: (SpendCell & { kind: 'chat' | 'run'; title: string })[]
+}
