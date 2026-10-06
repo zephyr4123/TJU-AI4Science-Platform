@@ -30,10 +30,11 @@ export function SyncBar({ busy, syncedAt, onSync, every, onEvery, className }: {
   const [open, setOpen] = useState(false)
   return (
     <div className={cn('flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[0.8125rem] text-muted-foreground', className)}>
+      {/* 前面写它属于哪一块（主人 2026-10-06：照 cc-switch「会话日志 · 刚刚同步」，让人知道是哪个板块的）；
+          刷新时不换成「同步中」：每 30 秒闪一下字很吵，转的箭头够了 */}
       <span aria-live="polite" title={syncedAt ? new Date(syncedAt).toLocaleString('zh-CN', { hour12: false }) : undefined}
             className="mr-1 tabular">
-        {/* 刷新时不换成「同步中」：每 30 秒闪一下字很吵，转的箭头够了 */}
-        {syncedLabel(syncedAt, now)}
+        统计面板 · {syncedLabel(syncedAt, now)}
       </span>
       <Button variant="outline" onClick={onSync} disabled={busy}
               className="rounded-full bg-card/70 backdrop-blur-sm disabled:opacity-100">
