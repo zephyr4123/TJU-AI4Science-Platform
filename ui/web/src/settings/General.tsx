@@ -4,14 +4,14 @@ import { Desktop, Moon, Sun } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
 import { api } from '@/api/client'
-import type { SettingsDoc } from '@/api/types'
+import type { AgentEntry, SettingsDoc } from '@/api/types'
 import { BrandIcon } from '@/components/BrandIcon'
 import CallChip from '@/components/reactbits/CallChip'
 import RubberSegment from '@/components/reactbits/RubberSegment'
 import { type ThemeChoice, useThemeChoice } from '@/lib/theme'
 
 import { type Ctx, Row, Section } from './kit'
-import { ROLES } from './status'
+import { noWebNote, ROLES } from './status'
 
 const CHECK_ALL_MS = 16000
 const THEMES: { value: ThemeChoice; label: string; icon: ReactNode }[] = [
@@ -28,7 +28,7 @@ export function General({ doc, ctx }: { doc: SettingsDoc; ctx: Ctx }) {
     <>
       <Section title="分工" note="只对之后开的对话生效">
         {ROLES.map(([role, label, note]) => (
-          <Row key={role} label={label} note={note}>
+          <Row key={role} label={label} note={<>{note}<RoleWarning entry={table.entries.find((e) => e.name === table[role])} /></>}>
             <RubberSegment aria-label={`${label}用哪家`} items={items} value={table[role]} size="md" radius={14} equalSlots={false}
                            disabled={ctx.busy !== null}
                            onChange={(name) => { if (name !== table[role]) void ctx.act(role, () => api.updateAgents({ [role]: name })) }} />
@@ -49,6 +49,12 @@ export function General({ doc, ctx }: { doc: SettingsDoc; ctx: Ctx }) {
       </Section>
     </>
   )
+}
+
+/** 这一层用的那家接的供应商不能联网：琥珀色一行，只提醒不拦（外层 #266） */
+function RoleWarning({ entry }: { entry?: AgentEntry }) {
+  const warning = entry && noWebNote(entry)
+  return warning ? <span className="mt-0.5 block text-wait">{warning}</span> : null
 }
 
 /** 全部检查算不算过：每家底座与每台算力上次检查都过了（本机不落盘、没记就算过） */

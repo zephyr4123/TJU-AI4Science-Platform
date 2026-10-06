@@ -762,6 +762,17 @@ def test_third_party_models_run_with_a_1m_context_window(tmp_path):
         assert "CLAUDE_CODE_AUTO_COMPACT_WINDOW" not in connect_env(link)
 
 
+def test_web_search_is_registered_per_provider_from_the_official_docs():
+    """能不能联网照官方文档登记（外层 #266）：DeepSeek 原生支持 Claude Code 的联网搜索（2026-10-06
+    真跑通过）；Kimi 的 Messages 接口工具只认 custom、没有服务端搜索；自定义不知道。"""
+    from backends.claude_code import PROVIDERS, provider
+
+    assert {name: p.web_search for name, p in PROVIDERS.items()} == {
+        "official": True, "anthropic": True, "deepseek": True, "kimi": False}
+    custom = Link(home=HOME, provider="custom", base_url="https://llm.lab", models=("m1",))
+    assert provider(custom).web_search is None
+
+
 def test_third_party_turn_cost_is_left_for_the_price_table(tmp_path):
     """第三方那一轮的 done 不带 CLI 报的美元（它按缺省价乱算），读的人照价目折算。"""
     from backends.claude_code import ClaudeCodeChat

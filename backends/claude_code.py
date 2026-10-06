@@ -102,9 +102,12 @@ PROVIDERS = {
                          THIRD_EFFORTS, "deepseek-flash", "high", key="deepseek",
                          base_url="https://api.deepseek.com/anthropic",
                          tested="2026-10-06 冒烟：pong 约 $0.005，本机 ~/.claude 没动，"
-                                "agent 的命令看不见 key"),
+                                "agent 的命令看不见 key；联网搜索与读网页都通"),
+    # Kimi 的 Messages 接口工具只认 custom 类型、没有服务端搜索，CLI 的联网搜索靠的就是它
+    # （https://platform.kimi.com/docs/api/messages ，2026-10-06；没 key，未实测）
     "kimi": Provider("kimi", "Kimi", (Choice("kimi-k3", "Kimi K3"),), THIRD_EFFORTS, "kimi-k3",
-                     "max", key="kimi", base_url="https://api.moonshot.cn/anthropic"),
+                     "max", key="kimi", base_url="https://api.moonshot.cn/anthropic",
+                     web_search=False),
 }
 # 1M 上下文（外层 #266，主人 2026-10-06：必须配）：第三方的模型名带 `[1m]`，CLI 才按 1M 算上下文
 # （本机抓包：不带 contextWindow 是 200000、早早压缩，带了 1000000；发出去的模型名去掉后缀，只多一个
@@ -185,7 +188,7 @@ def provider(link: Link) -> Provider:
             raise ValueError("自定义供应商要填地址和至少一个模型名")
         models = tuple(Choice(m, m) for m in link.models)
         return Provider(CUSTOM, "自定义", models, EFFORTS, models[0].id, "medium",
-                        key=f"{CUSTOM}.{NAME}", base_url=link.base_url)
+                        key=f"{CUSTOM}.{NAME}", base_url=link.base_url, web_search=None)
     try:
         return PROVIDERS[link.provider]
     except KeyError:

@@ -200,11 +200,21 @@ export default function GlideSelect({
     const onMove = (e: Event) => {
       if (!inside(e.target)) close('instant')
     }
+    // 开着时 Esc 只收菜单：在 window 的捕获阶段先接住、标成已处理——外面的弹窗（radix，在 document 的
+    // 捕获阶段听 Esc）见了 defaultPrevented 就不关自己（外层 #268：设置窗里按 Esc 连窗一起关了）
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      close('instant')
+      triggerRef.current?.focus({ preventScroll: true })
+    }
     document.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('keydown', onKey, true)
     window.addEventListener('scroll', onMove, true)
     window.addEventListener('resize', onMove)
     return () => {
       document.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('scroll', onMove, true)
       window.removeEventListener('resize', onMove)
     }

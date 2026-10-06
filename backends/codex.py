@@ -55,7 +55,8 @@
   （`model_instructions_file` 是整体替换，官方不建议）；换行与中文实测都行。AGENTS.md 一律不读：
   `project_doc_max_bytes=0`。
 - **联网搜索**：顶层 `web_search="live"`（`tools.web_search=true` 在 0.147 会被反序列化器丢掉），
-  搜索在服务端，沙箱没网也通；事件是 `web_search` item。
+  搜索在服务端，沙箱没网也通；事件是 `web_search` item。接 DeepSeek 写 `"disabled"`：它的 Responses
+  API 忽略内置工具，实测模型说没有搜索工具（外层 #266）。
 - **模型 / 深度**：`-m <slug>` + `-c model_reasoning_effort="<档>"`。0.160 随包的目录（二进制里的
   `models` 数组，外层 #247）按排序：gpt-6.1-sol（Latest workhorse，最低客户端 0.153）、gpt-6-astra
   （Frontier，0.153）、gpt-6-sol（Previous workhorse，0.155）、gpt-6-luna（Fast，0.155），往后是
@@ -144,7 +145,12 @@ PROVIDERS = {
                           Choice("deepseek-v4-pro", "DeepSeek V4 Pro", "强")),
                          THIRD_EFFORTS, "deepseek-flash", "high", key="deepseek",
                          base_url="https://api.deepseek.com",
-                         tested="2026-10-06 冒烟：pong 约 $0.003，agent 的命令看不见 key"),
+                         tested="2026-10-06 冒烟：pong 约 $0.003，agent 的命令看不见 key；"
+                                "联网搜不了（模型说没有搜索工具）",
+                         # Responses API 的 Tools 表里 web_search 等内置工具一律 Ignored，官方给
+                         # Codex 的配置也是 web_search = "disabled"
+                         # （https://api-docs.deepseek.com/guides/responses_api ，2026-10-06）
+                         web_search=False),
     "kimi": Provider("kimi", "Kimi", (Choice("kimi-k3", "Kimi K3"),), THIRD_EFFORTS, "kimi-k3",
                      "max", key="kimi", base_url="https://api.moonshot.cn/v1"),
 }
@@ -167,7 +173,6 @@ BASE_ARGS = ("--json", "--skip-git-repo-check", "--ignore-user-config")
 BASE_CONFIG = (
     'approval_policy="never"',         # exec 本就 never，写明
     "project_doc_max_bytes=0",         # 不读 AGENTS.md（源码行为，文档没给开关）
-    'web_search="live"',               # 自带的联网搜索（端口要求）
     'sandbox_mode="workspace-write"',  # resume 没有 -s，两种形态都用 -c
     "features.hooks=false",
     "features.memories=false",
@@ -274,7 +279,7 @@ def provider(link: Link) -> Provider:
             raise ValueError("自定义供应商要填地址和至少一个模型名")
         models = tuple(Choice(m, m) for m in link.models)
         return Provider(CUSTOM, "自定义", models, EFFORTS, models[0].id, "medium",
-                        key=f"{CUSTOM}.{NAME}", base_url=link.base_url)
+                        key=f"{CUSTOM}.{NAME}", base_url=link.base_url, web_search=None)
     try:
         return PROVIDERS[link.provider]
     except KeyError:
@@ -310,7 +315,9 @@ def config_args(link: Link, writable: list[Path], *, tuning: Tuning | None,
     picked = provider(link).knobs().fill(tuning)
     roots = ", ".join(toml_str(str(Path(p).resolve())) for p in writable)
     off = ", ".join("{path=" + toml_str(str(p)) + ", enabled=false}" for p in skills_off)
-    items = [*BASE_CONFIG, *connect_config(link),
+    # 自带的联网搜索（端口要求）：供应商的接口不认的照实关掉（DeepSeek），不发一个被忽略的设置
+    search = "disabled" if provider(link).web_search is False else "live"
+    items = [*BASE_CONFIG, f"web_search={toml_str(search)}", *connect_config(link),
              f"sandbox_workspace_write.writable_roots=[{roots}]", f"skills.config=[{off}]",
              f"model_reasoning_effort={toml_str(picked.effort)}"]
     if developer_instructions:

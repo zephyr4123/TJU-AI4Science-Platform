@@ -384,6 +384,9 @@ def test_settings_endpoints_snapshot_check_and_computes(served, tmp_path):
     assert codex["title"] == "Codex" and codex["last_check"] is None
     assert codex["models"][0]["id"] == "a"  # 清单跟着服务接的那家适配器（剧本）走
     assert [c["name"] for c in snap["computes"]] == ["local"]
+    # 每个供应商能不能联网照官方文档登记，页面标「不能联网」只提醒不拦；自定义不知道（外层 #266）
+    rows = {p["id"]: p["web_search"] for p in codex["providers"]}
+    assert rows["official"] is True and rows["deepseek"] is False and rows["custom"] is None
     assert snap["storage"]["home"] == str(tmp_path) and snap["storage"]["writable"] is True
     # 家里每块多大要走遍整棵树，不在这一份里，存放页打开时单独取（外层 #268）
     assert "parts" not in snap["storage"]

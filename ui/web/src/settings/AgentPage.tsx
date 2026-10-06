@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 import { CHECK_MS, type Ctx, KeyField, Row, Section, StatusLine, Value } from './kit'
-import { agentStatus, shortVersion } from './status'
+import { agentStatus, providerTag, shortVersion } from './status'
 
 export function AgentPage({ entry, roles, keys, ctx }: {
   entry: AgentEntry; roles: string[]; keys: Record<string, string>; ctx: Ctx
@@ -38,9 +38,9 @@ export function AgentPage({ entry, roles, keys, ctx }: {
         <Row label="分工"><Value className={roles.length ? '' : 'text-muted-foreground'}>{roles.join('、') || '无'}</Value></Row>
       </Section>
       <Section title="模型">
-        <Row label="供应商" note={provider && !provider.tested && provider.id !== 'custom' ? '未实测' : undefined}>
+        <Row label="供应商" note={provider && providerTag(provider)}>
           <GlideSelect ariaLabel={`${entry.title} 用谁的模型`} value={shown} disabled={busy} size="md" align="right" placement="bottom"
-                       options={entry.providers.map((p) => ({ value: p.id, label: p.title, tag: p.tested || p.id === 'custom' ? undefined : '未实测' }))}
+                       options={entry.providers.map((p) => ({ value: p.id, label: p.title, tag: providerTag(p) }))}
                        onChange={(value) => tune('provider', value)} />
         </Row>
         {provider?.id === 'custom' && <CustomRows entry={entry} ctx={ctx} onSaved={() => setPickingCustom(false)} />}

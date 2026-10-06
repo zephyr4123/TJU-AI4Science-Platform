@@ -486,11 +486,17 @@ def test_third_party_providers_ride_a_responses_provider_block_with_a_model_cata
     assert catalog.endswith('codex-deepseek.json"')
     assert argv[argv.index("-m") + 1] == "deepseek-flash"
     assert 'model_reasoning_effort="high"' in configs  # 它的思考档只有 low / high / max
+    # DeepSeek 的 Responses API 忽略 web_search（官方配置也关掉）：照实关掉，不发一个被忽略的设置
+    assert 'web_search="disabled"' in configs and 'web_search="live"' not in configs
     monkeypatch.setenv(cx.PROVIDER_KEY_ENV, "from-shell")
     assert cx.build_env(1.0, link.home, deepseek)[cx.PROVIDER_KEY_ENV] == "sk-ds"
     assert cx.PROVIDER_KEY_ENV not in cx.build_env(1.0, link.home, link)  # 官方登录不带
     official = cx.CodexRunner(link).build_argv(tmp_path, [tmp_path])
     assert not any("model_provider" in a for a in official)
+    assert 'web_search="live"' in official
+    kimi = cx.CodexRunner(Link(home=link.home, provider="kimi", key="sk")).build_argv(tmp_path,
+                                                                                       [tmp_path])
+    assert 'web_search="live"' in kimi  # Kimi 的 Responses API 有服务端搜索
 
 
 def test_third_party_effort_lists_match_the_model_catalogs():

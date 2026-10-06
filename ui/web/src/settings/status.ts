@@ -1,7 +1,7 @@
 // 设置那块板上的纯函数（外层 #134）：一家底座 / 一台算力上次检查的状态——一个词、几项事实、一种色调，
 // 不是一句话（主人 2026-09-22：能用词就用词，短句也少）；贴进来的 ssh 一行怎么拆、机器名怎么起。
 // 都不碰 DOM，vitest 直接测。
-import type { AgentCheck, CheckItem, ComputeCheck } from '@/api/types'
+import type { AgentCheck, AgentEntry, CheckItem, ComputeCheck, ProviderRow } from '@/api/types'
 import { money } from '@/lib/format'
 
 export type Tone = 'ok' | 'bad' | 'neutral'
@@ -94,4 +94,17 @@ export function suggestComputeName(ssh: string): string {
   const host = ssh.split('@')[1]?.split(':')[0] ?? ''
   const word = host.split('.')[0].toLowerCase().replace(/[^a-z0-9-]/g, '')
   return word || 'box'
+}
+
+/** 供应商的小签（外层 #266）：接口不能联网写「不能联网」（照官方文档，主人 2026-10-06：只提醒不拦），
+ *  没实测写「未实测」；自定义两样都不知道，不写 */
+export function providerTag(p: ProviderRow): string | undefined {
+  const tags = [p.web_search === false && '不能联网', !p.tested && p.id !== 'custom' && '未实测'].filter(Boolean)
+  return tags.length ? tags.join(' · ') : undefined
+}
+
+/** 分工那一行的提醒：这一层用的那家此刻接的供应商不能联网（纲领 P-14 要两层都能联网） */
+export function noWebNote(entry: AgentEntry): string | undefined {
+  const p = entry.providers.find((row) => row.id === entry.provider)
+  return p?.web_search === false ? `${entry.title} 用 ${p.title} 时不能联网` : undefined
 }

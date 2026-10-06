@@ -271,13 +271,15 @@ export interface AgentCheck {
 }
 
 /** 设置 → AI 里的一家：Backend 那几样 + 上次自检 */
-/** 一家 CLI 能接的一个供应商（外层 #266）：要 key 的写 key 在家里 keys.yaml 的名字；没实测过 tested 是空串 */
+/** 一家 CLI 能接的一个供应商（外层 #266）：要 key 的写 key 在家里 keys.yaml 的名字；没实测过 tested 是空串；
+ *  web_search 照官方文档登记这家接口能不能让 CLI 联网，null 是不知道（自定义） */
 export interface ProviderRow {
   id: string
   title: string
   key: string | null
   base_url: string
   tested: string
+  web_search: boolean | null
 }
 
 export interface AgentEntry {

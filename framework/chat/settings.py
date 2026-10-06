@@ -65,9 +65,9 @@ def _providers(name: str) -> list[dict[str, Any]]:
     if name not in available_backends():
         return []
     rows = [{"id": p.id, "title": p.title, "key": p.key, "base_url": p.base_url,
-             "tested": p.tested} for p in providers(name).values()]
+             "tested": p.tested, "web_search": p.web_search} for p in providers(name).values()]
     return [*rows, {"id": CUSTOM, "title": "自定义", "key": f"{CUSTOM}.{name}", "base_url": "",
-                    "tested": ""}]
+                    "tested": "", "web_search": None}]
 
 
 def computes_table() -> list[dict[str, Any]]:
