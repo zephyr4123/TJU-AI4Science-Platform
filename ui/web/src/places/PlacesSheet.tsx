@@ -11,9 +11,9 @@ import { type PlacesProps, worldOf } from './place'
 
 const ROW = 'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-[0.9375rem] font-medium transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring'
 
-export function PlacesSheet({ place, onHome, onStudio, settingsOpen, settingsDot, onSettings }: PlacesProps) {
+export function PlacesSheet({ place, onHome, onStudio, settingsDot, onSettings }: PlacesProps) {
   const [open, setOpen] = useState(false)
-  const world = settingsOpen ? null : worldOf(place)
+  const world = worldOf(place)
   const go = (action: () => void) => () => { action(); setOpen(false) }
   const row = (label: string, icon: Icon, active: boolean, onClick: () => void, dot = false) => {
     const Glyph = icon
@@ -45,7 +45,7 @@ export function PlacesSheet({ place, onHome, onStudio, settingsOpen, settingsDot
         </div>
         <span className="flex-1" />
         <div className="border-t px-3 py-2">
-          {row('设置', GearSix, settingsOpen, onSettings, settingsDot)}
+          {row('设置', GearSix, world === 'settings', onSettings, settingsDot)}
         </div>
       </SheetContent>
     </Sheet>

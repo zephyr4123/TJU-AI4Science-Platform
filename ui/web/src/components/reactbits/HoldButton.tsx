@@ -1,4 +1,4 @@
-// 设置板上「移除」一台算力的键，从 reactbits 的 HoldButton 捞来改装（MIT，https://reactbits.dev/components/hold-button）：
+// 设置页上「移除」一台算力的键，从 reactbits 的 HoldButton 捞来改装（MIT，https://reactbits.dev/components/hold-button）：
 // 按住不放，红色从左往右像水一样涨满才算数，中途松手就退回去——删东西不该一点就没。原版三档尺寸都太大，
 // 加一档 xs 配这一行；颜色走 tokens（底是站内的片色、涨的是 --bad）；不发光；减少动效时不画水波、只淡入。
 import { type CSSProperties, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'

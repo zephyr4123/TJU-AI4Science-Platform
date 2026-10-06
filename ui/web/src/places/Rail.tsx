@@ -1,5 +1,5 @@
 // 地方栏（外层 #79 #80 #136）：只剩三个键——首页、编辑台、设置。项目不在这里列（主人 2026-09-22：侧边栏展示项目很鸡肋），
-// 首页就是项目清单，进了项目再往下走。首页 / 编辑台是两个平行的世界（纲领 P-15 P-16），设置是全局的一块（P-25），归人，
+// 首页就是项目清单，进了项目再往下走。首页 / 编辑台是两个平行的世界（纲领 P-15 P-16），设置是全局一份（P-25），归人，
 // 沉在最底下，旁边一个点，有一项自检没过才亮。每个键都带字（主人：没字用户不知道是啥）。
 // 宽屏常驻最左一列；窄屏收进页眉的玻璃标记里，点开是一张清单（PlacesSheet）。
 // 外层 #253（主人 2026-10-06：分割线太普通、看着劣质）：底与页眉同一种磨砂（底图糊开 + 纱幕），两块连成一个 L 形框；
@@ -15,8 +15,8 @@ import { cn } from '@/lib/utils'
 
 import { type PlacesProps, worldOf } from './place'
 
-export function Rail({ place, onHome, onStudio, settingsOpen, settingsDot, onSettings }: PlacesProps) {
-  const world = settingsOpen ? null : worldOf(place)
+export function Rail({ place, onHome, onStudio, settingsDot, onSettings }: PlacesProps) {
+  const world = worldOf(place)
   return (
     <Band picture={ASSETS.backdrop} veil="wash" blur className="edge-r w-[4.5rem] shrink-0">
       <nav aria-label="地方" className="flex h-full flex-col items-center">
@@ -29,7 +29,7 @@ export function Rail({ place, onHome, onStudio, settingsOpen, settingsDot, onSet
         </div>
         <span className="flex-1" />
         <div className="pb-3">
-          <Key label="设置" icon={GearSix} active={settingsOpen} onClick={onSettings}
+          <Key label="设置" icon={GearSix} active={world === 'settings'} onClick={onSettings}
                title={settingsDot ? '设置：有一项没过检查' : undefined} dot={settingsDot} />
         </div>
       </nav>
