@@ -91,19 +91,27 @@ EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
 # 思考深度，low / high / max，缺省 max，K2.7 Code 不认、思考恒开，所以清单只放 K3
 # （https://platform.kimi.com/docs/api/models-overview ，2026-10-06）
 THIRD_EFFORTS = (Choice("low", "低"), Choice("high", "高"), Choice("max", "最高"))
+# 联网搜索（外层 #271）：模型调 WebSearch 时，CLI 向同一个地址另发一个只带服务端工具
+# `web_search_20250305` 的请求，搜索由那家的服务端跑（本机转发抓包，2026-10-06）。能不能搜看那家的
+# Messages 接口实没实现它：Anthropic 自家缺省开着、管理员可在 Console 关
+# （https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool ，2026-10-06）
 PROVIDERS = {
     OFFICIAL: Provider(OFFICIAL, "Claude 订阅", MODELS, EFFORTS, "sonnet", "medium",
-                       reports_cost=True, tested="2.1.291 在平台的私有目录里登录后用"),
+                       reports_cost=True, tested="2.1.291 在平台的私有目录里登录后用",
+                       web_search=True),
     "anthropic": Provider("anthropic", "Anthropic API", MODELS, EFFORTS, "sonnet", "medium",
-                          key="anthropic", reports_cost=True),
+                          key="anthropic", reports_cost=True, web_search=True),
+    # DeepSeek 的兼容表里 server_tool_use、web_search_tool_result 都标 Supported
+    # （https://api-docs.deepseek.com/guides/anthropic_api ，2026-10-06），抓包见它回搜索结果
     "deepseek": Provider("deepseek", "DeepSeek",
                          (Choice("deepseek-flash", "DeepSeek V4.1 Flash", "快"),
                           Choice("deepseek-v4-pro", "DeepSeek V4 Pro", "强")),
                          THIRD_EFFORTS, "deepseek-flash", "high", key="deepseek",
                          base_url="https://api.deepseek.com/anthropic",
                          tested="2026-10-06 冒烟：pong 约 $0.005，本机 ~/.claude 没动，"
-                                "agent 的命令看不见 key；联网搜索与读网页都通"),
-    # Kimi 的 Messages 接口工具只认 custom 类型、没有服务端搜索，CLI 的联网搜索靠的就是它
+                                "agent 的命令看不见 key；联网搜索与读网页都通",
+                         web_search=True),
+    # Kimi 的 Messages 接口工具只认 custom 类型、没有服务端搜索
     # （https://platform.kimi.com/docs/api/messages ，2026-10-06；没 key，未实测）
     "kimi": Provider("kimi", "Kimi", (Choice("kimi-k3", "Kimi K3"),), THIRD_EFFORTS, "kimi-k3",
                      "max", key="kimi", base_url="https://api.moonshot.cn/anthropic",

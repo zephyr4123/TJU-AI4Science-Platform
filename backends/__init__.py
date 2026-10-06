@@ -104,8 +104,10 @@ class Provider:
     `reports_cost` 说 CLI 自己报的美元可不可信：只有它认识的官方模型可信，第三方的它按自己的缺省价
     乱算（2026-10-06 实测 DeepSeek 一句 pong 报 $0.084，实价约 $0.002），适配器报 NaN、读的人照价目
     折算。`tested` 是实测记录，空串就是还没实测（页面照实写「未实测」）。`web_search` 是这家接口
-    能不能让这个 CLI 联网搜索，照官方文档登记：False 的设置里标「不能联网」、只提醒不拦（主人
-    2026-10-06，纲领 P-14 的例外），None 是不知道（自定义）。
+    能不能让这个 CLI 联网搜索：搜索在供应商的服务端跑，看的是它在这个 CLI 用的那套接口里实没实现
+    （同一家在两个 CLI 上可以相反），照官方文档一格一格登记、旁边写出处，没有缺省值，不登记构造
+    不出来（外层 #271）。False 的设置里标「不能联网」、只提醒不拦（主人 2026-10-06，纲领 P-14 的
+    例外），None 是不知道（自定义）。
     """
 
     id: str
@@ -118,7 +120,7 @@ class Provider:
     base_url: str = ""
     reports_cost: bool = False
     tested: str = ""
-    web_search: bool | None = True
+    web_search: bool | None = field(kw_only=True)
 
     def knobs(self) -> Knobs:
         return Knobs(models=self.models, efforts=self.efforts, model=self.model,

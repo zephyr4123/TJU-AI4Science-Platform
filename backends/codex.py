@@ -135,11 +135,13 @@ THIRD_EFFORTS = (Choice("low", "低"), Choice("high", "高"), Choice("max", "最
 # 供应商目录（外层 #266）：地址与模型照 cc-switch 的 src/config/codexProviderPresets.ts（a4d07f31，
 # 2026-10-06），都是原生 Responses（`wire_api="responses"`），不用中间转发。第三方要带一份模型说明
 # （`model_catalog_json`，CATALOGS），不然 Codex 不知道这些模型怎么调工具
+# 联网搜索（外层 #271）：`web_search` 是 Responses API 的内置工具，搜索由那家的服务端跑，能不能搜看
+# 它的 Responses 接口实没实现——同一家在 Claude Code 那边可以相反（DeepSeek、Kimi 正好反过来）
 PROVIDERS = {
     OFFICIAL: Provider(OFFICIAL, "ChatGPT 登录", MODELS, EFFORTS, "gpt-6.1-sol", "medium",
-                       tested="0.160.0 在平台的私有目录里登录后用"),
+                       tested="0.160.0 在平台的私有目录里登录后用", web_search=True),
     "openai": Provider("openai", "OpenAI API", MODELS, EFFORTS, "gpt-6.1-sol", "medium",
-                       key="openai", base_url="https://api.openai.com/v1"),
+                       key="openai", base_url="https://api.openai.com/v1", web_search=True),
     "deepseek": Provider("deepseek", "DeepSeek",
                          (Choice("deepseek-flash", "DeepSeek V4.1 Flash", "快"),
                           Choice("deepseek-v4-pro", "DeepSeek V4 Pro", "强")),
@@ -151,8 +153,10 @@ PROVIDERS = {
                          # Codex 的配置也是 web_search = "disabled"
                          # （https://api-docs.deepseek.com/guides/responses_api ，2026-10-06）
                          web_search=False),
+    # Kimi 的 Responses API 认 web_search，「由服务端执行」
+    # （https://platform.kimi.com/docs/api/responses ，2026-10-06；没 key，未实测）
     "kimi": Provider("kimi", "Kimi", (Choice("kimi-k3", "Kimi K3"),), THIRD_EFFORTS, "kimi-k3",
-                     "max", key="kimi", base_url="https://api.moonshot.cn/v1"),
+                     "max", key="kimi", base_url="https://api.moonshot.cn/v1", web_search=True),
 }
 CATALOGS = {"deepseek": CATALOG_DIR / "codex-deepseek.json",
             "kimi": CATALOG_DIR / "codex-kimi.json"}
