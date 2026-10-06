@@ -109,7 +109,7 @@ def cmd_new_workflow(args: argparse.Namespace) -> int:
 
 
 def cmd_remove_workflow(args: argparse.Namespace) -> int:
-    """删库里人自己存的一条流程（数据根 studio/workflows/）；出厂的拒。"""
+    """删库里人自己存的一条流程（平台的家里的 studio/workflows/）；出厂的拒。"""
     try:
         library().remove(args.name)
     except FileNotFoundError as exc:
@@ -137,7 +137,7 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     removing.set_defaults(func=cmd_remove)
 
     lib = groups.add_parser(
-        "workflow", help="流程库：人存的流程文件（数据根 studio/workflows/*.yaml）；出厂的只读")
+        "workflow", help="流程库：人存的流程文件（家里的 studio/workflows/*.yaml）；出厂的只读")
     lib_actions = lib.add_subparsers(dest="action", required=True)
     making = lib_actions.add_parser(
         "new", help="起一条：--from <名字> 从库里一条派生（名字平台起），或 <name> --title 从零起")

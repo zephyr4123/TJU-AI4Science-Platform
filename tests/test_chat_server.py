@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import getpass
 import json
+import os
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -87,7 +89,8 @@ def served(tmp_path):
                         workflows=lambda: WORKFLOWS, check_workflow=check_workflow,
                         save_workflow=save_workflow, descriptors=descriptors,
                         stage_table=stage_table, chat_factory=factory, probe_agent=probe_agent,
-                        add_compute=add_compute, system_prompts=PROMPTS, ui_dir=ui_dir(tmp_path))
+                        add_compute=add_compute, system_prompts=PROMPTS, ui_dir=ui_dir(tmp_path),
+                        logout_agent=lambda name: ([sys.executable, "-c", ""], dict(os.environ)))
     server.added = added
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -276,7 +279,7 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
     assert events[-1]["cost_usd"] == pytest.approx(0.01) and events[-1]["session_id"]
     call_ = chat.calls[-1]
     if prefix == "/studio":
-        # 流程助理站在服务的数据根的 studio/ 里，只写人存的那层库；出厂的只读（外层 #149）
+        # 流程助理站在服务的平台的家里的 studio/ 里，只写人存的那层库；出厂的只读（外层 #149）
         assert call_["system_prompt"] == "流程助理指南"
         assert call_["cwd"] == tmp_path / "studio"
         assert call_["allowed_paths"] == [tmp_path / "studio" / "workflows"]
@@ -664,7 +667,7 @@ def test_remove_endpoints_cascade_and_refuse(served, tmp_path):
     assert call(base, "/projects/p/workspaces/w1/outputs/experiment/1/remove", {})[0] == 200
     assert call(base, "/projects/p/workspaces/w1/flows/research/remove", {})[0] == 200
     assert not d2.exists() and not (ws.flows / "research.yaml").exists()
-    # 库里的流程：出厂的 403，没有的 404；人存的在服务的数据根 studio/workflows/ 下，删得掉
+    # 库里的流程：出厂的 403，没有的 404；人存的在服务的平台的家里的 studio/workflows/ 下，删得掉
     status, _, body = call(base, "/workflows/research/remove", {})
     assert status == 403 and "出厂" in json.loads(body)["error"]
     assert call(base, "/workflows/nope/remove", {})[0] == 404
@@ -746,3 +749,17 @@ def test_dev_proxy_lists_every_api_root():
     listed = re.search(r"const API_PREFIXES = \[([^\]]*)\]", config)
     assert listed, "vite.config.ts 里找不到 API_PREFIXES"
     assert re.findall(r"'/([a-z]+)'", listed.group(1)) == list(API_ROOTS)
+
+
+def test_reset_needs_the_word_and_a_home_the_platform_made(served, tmp_path):
+    """外层 #263：设置页「清除全部数据」——要带「清除」两个字；不是平台建的家（没有标记）409，
+    清完留一个只有标记的空家。"""
+    base, _ = served
+    assert call(base, "/settings/reset", {})[0] == 400
+    status, _, body = call(base, "/settings/reset", {"confirm": "清除"})
+    assert status == 409 and "标记" in json.loads(body)["error"]
+    paths.mark(tmp_path)
+    (tmp_path / "keys.yaml").write_text("deepseek: sk-test\n", encoding="utf-8")
+    status, _, body = call(base, "/settings/reset", {"confirm": "清除"})
+    assert status == 200 and json.loads(body)["done"][-1].startswith("已清空")
+    assert [p.name for p in tmp_path.iterdir()] == [paths.MARKER_NAME]

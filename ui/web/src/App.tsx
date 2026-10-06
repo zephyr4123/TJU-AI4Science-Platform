@@ -34,7 +34,7 @@ export default function App() {
   const [picked, setPlace] = useState<Place>(HOME)
   const wide = useMediaQuery(WIDE)
   const healthy = health.loading && !health.data ? null : health.data?.ok === true
-  // 站着的项目已经不在了（另一处删了、换了数据根）：当作在首页。清单还没回来时不挂项目——不能先去取，取回 404 再跳
+  // 站着的项目已经不在了（另一处删了、换了家）：当作在首页。清单还没回来时不挂项目——不能先去取，取回 404 再跳
   const inside = projectOf(picked)
   const known = projects.data !== null && inside !== null && projects.data.some((p) => p.id === inside)
   const stale = projects.data !== null && inside !== null && !known

@@ -77,7 +77,7 @@ _SEEN: dict[Path, tuple[tuple[int, int], Spend | None]] = {}
 
 
 def records(home: Path) -> list[Spend]:
-    """数据根下全部的调用：各项目的对话与每次产出的执行层会话、编辑台的对话。"""
+    """家里全部的调用：各项目的对话与每次产出的执行层会话、编辑台的对话。"""
     found: list[Spend | None] = []
     for proj in project_mod.list_projects(project_mod.projects_root(home)):
         found += [_cached(events, partial(_turn, project=proj.id)) for events in _turns(proj.chats)]

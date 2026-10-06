@@ -306,7 +306,8 @@ export interface ComputeRow {
 export interface SettingsDoc {
   agents: { chat: string; executor: string; entries: AgentEntry[] }
   computes: ComputeRow[]
-  storage: { home: string; config: string; uv_cache: string; writable: boolean; free_gb: number; projects: number; workspaces: number }
+  /** 平台的家（外层 #263）：在哪、每块多大、清除认不认它（平台建的家才有标记） */
+  storage: { home: string; resettable: boolean; parts: { label: string; bytes: number }[]; writable: boolean; free_gb: number; projects: number; workspaces: number }
 }
 
 /** `POST /settings/check` 回来的：整份 + 过没过 + 没过的项 */

@@ -15,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-from backends import BackendNotFound, ChatEvent, Tuning, get_chat
+from backends import BackendNotFound, ChatEvent, Tuning
 from framework import agents, paths
 from framework.chat import conversation, guide, notify, removal, scope, settings
 from framework.cli._common import (
@@ -41,7 +41,7 @@ def _tuning(args: argparse.Namespace, current: Tuning, backend: str) -> Tuning |
     if args.model is None and args.effort is None:
         return None
     try:
-        chat = get_chat(backend)
+        chat = agents.chat(backend)
     except BackendNotFound as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
@@ -59,7 +59,7 @@ def cmd_new(args: argparse.Namespace) -> int:
     """开一段：哪家、什么模型与深度都从按人的设置来（P-25：旋钮上只有具体值），命令行上给的压过它。"""
     try:
         backend = args.backend or agents.role_backend("chat")
-        get_chat(backend)
+        agents.chat(backend)
         start = agents.tuning_for(backend)
     except (BackendNotFound, agents.AgentsInvalid) as exc:
         print(str(exc), file=sys.stderr)
@@ -93,7 +93,7 @@ def cmd_send(args: argparse.Namespace) -> int:
             return EXIT_USAGE
         text = path.read_text(encoding="utf-8")
     try:
-        chat = get_chat(conv.backend)
+        chat = agents.chat(conv.backend)
         system_prompt = where.system_prompt(chat)
     except (guide.GuideMissing, BackendNotFound) as exc:
         print(str(exc), file=sys.stderr)
@@ -139,7 +139,7 @@ def cmd_remove(args: argparse.Namespace) -> int:
     if isinstance(where, int):
         return where
     try:
-        removed = removal.remove_chat(where, args.chat_id, get_chat)
+        removed = removal.remove_chat(where, args.chat_id, agents.chat)
     except conversation.ConversationNotFound as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE

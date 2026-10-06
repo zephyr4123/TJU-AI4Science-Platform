@@ -73,6 +73,8 @@ export const api = {
     request<SettingsDoc>('/settings/computes', post(body)),
   removeCompute: (name: string) =>
     request<SettingsDoc>(`/settings/computes/${encodeURIComponent(name)}/remove`, post({})),
+  /** 清除平台的家：登出两家、清空（外层 #263）；要带「清除」两个字 */
+  resetHome: () => request<SettingsDoc & { done: string[] }>('/settings/reset', post({ confirm: '清除' })),
   stages: () => request<StageInfo[]>('/stages'),
   templates: () => request<Template[]>('/templates'),
   capabilities: () => request<Capability[]>('/cap'),

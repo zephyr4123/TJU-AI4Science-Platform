@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from backends import BackendNotFound, Runner, RunResult, available_backends, get_backend
+from backends import BackendNotFound, Link, Runner, RunResult, available_backends, get_backend
 from backends._snapshot import diff, snapshot
 from backends.claude_code import (
     WEB_TOOLS,
@@ -27,6 +27,12 @@ from backends.claude_code import (
     kill_tree,
     parse_events,
 )
+from framework import paths
+
+# 测试里的私有目录：只拼 argv、环境的用不着它真在；真 CLI 的测试用平台家里那份（要先在平台里登录过）
+HOME = Path("/nonexistent/ai4sci-home/claude_code")
+LINK = Link(home=HOME)
+LIVE_LINK = Link(home=paths.DEFAULT_HOME / "claude_code")
 
 FIXTURE = Path(__file__).parent / "fixtures" / "claude_stream_sample.jsonl"
 
@@ -42,17 +48,18 @@ def sample_events() -> list[dict]:
 
 
 def test_get_backend_returns_runner_shaped_object():
-    runner = get_backend("claude_code")
+    runner = get_backend("claude_code", LINK)
     assert isinstance(runner, Runner)
 
 
 def test_backend_not_found_lists_available_names():
     with pytest.raises(BackendNotFound) as excinfo:
-        get_backend("nope")
+        get_backend("nope", LINK)
     # 报错必须把可用名字带上，否则调用方只能去翻源码
     assert "claude_code" in str(excinfo.value) and "codex" in str(excinfo.value)
     assert available_backends() == ["claude_code", "codex"]
-    assert get_backend("claude_code").name == "claude_code"  # 名字贴在适配器上（P-25 按名字查设置）
+    # 名字贴在适配器上（P-25 按名字查设置）
+    assert get_backend("claude_code", LINK).name == "claude_code"
 
 
 # --- argv 组装 ------------------------------------------------------------
@@ -61,7 +68,7 @@ def test_backend_not_found_lists_available_names():
 def test_argv_turns_allowed_paths_into_absolute_tool_rules(tmp_path: Path):
     code = tmp_path / "code"
     code.mkdir()
-    argv = ClaudeCodeRunner().build_argv("改点东西", tmp_path, [code])
+    argv = ClaudeCodeRunner(LINK).build_argv("改点东西", tmp_path, [code])
     rules = argv[argv.index("--allowedTools") + 1 : argv.index("--max-turns")]
     # `//` 前缀是实测结论：单个 `/` 会被当成项目根相对路径，规则不生效
     assert f"Edit(//{str(code).lstrip('/')}/**)" in rules
@@ -70,18 +77,18 @@ def test_argv_turns_allowed_paths_into_absolute_tool_rules(tmp_path: Path):
     # 没给 bash_rules 就一条 Bash 规则都不该有：Bash 是绕开路径白名单的口子
     assert not [r for r in rules if r.startswith("Bash(")]
     # 端口给的是与 CLI 无关的命令前缀，这家翻成 `Bash(<前缀> *)`
-    with_skill = ClaudeCodeRunner().build_argv("改点东西", tmp_path, [code], ("ai4sci skill",))
+    with_skill = ClaudeCodeRunner(LINK).build_argv("改点东西", tmp_path, [code], ("ai4sci skill",))
     assert "Bash(ai4sci skill *)" in with_skill[with_skill.index("--allowedTools"):]
     assert "ai4sci skill" not in with_skill  # 裸前缀不进 argv
 
 
 def test_runner_argv_takes_per_session_turn_and_budget_limits(tmp_path: Path):
     """外层 #122：读别人整个仓库再写壳的会话要比缺省的 30 轮多；能力给的上限进 argv，不给用缺省。"""
-    argv = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path], max_turns=80,
+    argv = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path], max_turns=80,
                                          max_budget_usd=6.0)
     assert argv[argv.index("--max-turns") + 1] == "80"
     assert argv[argv.index("--max-budget-usd") + 1] == "6.0"
-    default = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path])
+    default = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path])
     assert default[default.index("--max-turns") + 1] == "30"
 
 
@@ -91,8 +98,8 @@ def test_argv_grants_the_clis_own_web_tools_on_both_layers(tmp_path: Path):
     from backends.claude_code import ClaudeCodeChat
 
     assert WEB_TOOLS == ("WebSearch", "WebFetch")
-    runner = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path])
-    chat = ClaudeCodeChat().build_argv("hi", tmp_path, session_id=None, system_prompt="",
+    runner = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path])
+    chat = ClaudeCodeChat(LINK).build_argv("hi", tmp_path, session_id=None, system_prompt="",
                                        allowed_paths=[], bash_rules=())
     for argv in (runner, chat):
         rules = argv[argv.index("--allowedTools") + 1:argv.index("--max-turns")]
@@ -120,7 +127,7 @@ def test_runner_uses_the_same_env_as_chat_so_bare_ai4sci_resolves(monkeypatch, t
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
     monkeypatch.setenv("PATH", "/usr/bin")
     with pytest.raises(RuntimeError, match="没有 result 事件"):
-        ClaudeCodeRunner().run("hi", tmp_path, 7.0, [tmp_path])
+        ClaudeCodeRunner(LINK).run("hi", tmp_path, 7.0, [tmp_path])
     env = seen["env"]
     assert env["PATH"].endswith(str(Path(sys.executable).parent))
     assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
@@ -128,7 +135,7 @@ def test_runner_uses_the_same_env_as_chat_so_bare_ai4sci_resolves(monkeypatch, t
 
 
 def test_argv_carries_isolation_flags_and_never_bypasses_permissions(tmp_path: Path):
-    argv = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path])
+    argv = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path])
     for flag in ("--no-session-persistence", "--strict-mcp-config", "--disable-slash-commands",
                  "--setting-sources", "--output-format", "stream-json", "--verbose"):
         assert flag in argv
@@ -142,7 +149,7 @@ def test_argv_carries_isolation_flags_and_never_bypasses_permissions(tmp_path: P
 def test_env_config_has_read_points_and_defaults(tmp_path: Path, monkeypatch):
     from backends import Tuning
 
-    argv = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path])
+    argv = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path])
     assert argv[argv.index("--max-turns") + 1] == "30"
     assert argv[argv.index("--max-budget-usd") + 1] == "2.0"
     # 模型与深度永远显式传（P-25：从不让 CLI 自己猜）：没给用起点 sonnet / medium
@@ -154,19 +161,20 @@ def test_env_config_has_read_points_and_defaults(tmp_path: Path, monkeypatch):
 
     monkeypatch.setenv("AI4SCI_EXECUTOR_MAX_TURNS", "7")
     monkeypatch.setenv("AI4SCI_EXECUTOR_MAX_BUDGET_USD", "0.5")
-    argv = ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path], tuning=Tuning(model="opus"))
+    argv = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path],
+                                             tuning=Tuning(model="opus"))
     assert argv[argv.index("--max-turns") + 1] == "7"
     assert argv[argv.index("--max-budget-usd") + 1] == "0.5"
     assert argv[argv.index("--model") + 1] == "opus"
     with pytest.raises(ValueError, match="模型 'gpt' 不在清单上"):
-        ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path], tuning=Tuning(model="gpt"))
+        ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path], tuning=Tuning(model="gpt"))
 
 
 @pytest.mark.parametrize("value", ["0", "-3"])
 def test_env_config_rejects_nonsense_instead_of_falling_back(tmp_path: Path, monkeypatch, value):
     monkeypatch.setenv("AI4SCI_EXECUTOR_MAX_TURNS", value)
     with pytest.raises(AssertionError):
-        ClaudeCodeRunner().build_argv("hi", tmp_path, [tmp_path])
+        ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path])
 
 
 # --- 事件解析 --------------------------------------------------------------
@@ -303,7 +311,7 @@ def test_live_smoke_writes_only_inside_allowed_path(tmp_path: Path):
     harness.mkdir()
     (harness / "evaluate.py").write_text("SCORE = 0.5\n", encoding="utf-8")
 
-    result: RunResult = get_backend("claude_code").run(
+    result: RunResult = get_backend("claude_code", LIVE_LINK).run(
         prompt=f"在 {code}/ 下新建文件 hello.txt，内容写一行 ai4sci。直接做，不要问。",
         cwd=tmp_path, timeout_s=180.0, allowed_paths=[code],
     )
@@ -335,7 +343,7 @@ def test_run_drains_stderr_instead_of_deadlocking(tmp_path: Path):
     fake.chmod(0o755)
     cwd = tmp_path / "work"
     cwd.mkdir()
-    runner = ClaudeCodeRunner(cli=str(fake))
+    runner = ClaudeCodeRunner(LINK, cli=str(fake))
     result = runner.run("noop", cwd=cwd, timeout_s=10.0, allowed_paths=[cwd])
     assert result.timed_out is False
     assert result.cost_usd == 0.01
@@ -352,15 +360,15 @@ SID = "d1fc75c5-dec5-427a-88f9-e9f810e42c89"
 
 
 def test_get_chat_returns_chat_shaped_object():
-    assert isinstance(get_chat("claude_code"), Chat)
+    assert isinstance(get_chat("claude_code", LINK), Chat)
     with pytest.raises(BackendNotFound):
-        get_chat("nope")
+        get_chat("nope", LINK)
 
 
 def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
     """外层 #57：长命令不许被 CLI 挪到后台，Bash 超时抬到本轮超时，杀它的只能是我们的定时器。"""
     monkeypatch.setenv("KEEP_ME", "1")
-    env = build_env(900.0)
+    env = build_env(900.0, HOME)
     assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
     assert env["BASH_DEFAULT_TIMEOUT_MS"] == env["BASH_MAX_TIMEOUT_MS"] == "900000"
     assert env["KEEP_ME"] == "1"  # 继承本进程环境（AI4SCI_EXECUTOR_MODEL 等要传给协调 agent）
@@ -369,8 +377,37 @@ def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
 def test_sessions_do_not_carry_the_persons_auto_memory():
     """外层 #222：`--setting-sources ""` 挡不住 CLI 的自动记忆，会话所在仓库的 MEMORY.md
     整段进上下文（实测一次筛选会话多读 7700 token、多花三成）。两层会话都关。"""
-    assert build_env(1.0)["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
-    assert build_env(1.0, "chat-1")["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+    assert build_env(1.0, HOME)["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+    assert build_env(1.0, HOME, "chat-1")["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+
+
+def test_sessions_live_in_the_platform_home_not_the_persons_claude_dir(tmp_path: Path):
+    """外层 #263：配置目录指到平台家里这家的私有目录——会话记录、平台自己的登录都在那里，
+    用户的 `~/.claude` 一个字节不写；删对话也只删那里的。"""
+    home = tmp_path / "claude_code"
+    assert build_env(1.0, home)["CLAUDE_CONFIG_DIR"] == str(home)
+    chat = ClaudeCodeChat(Link(home=home))
+    cwd = tmp_path / "ws"
+    encoded = str(cwd.resolve()).replace("/", "-")
+    session = home / "projects" / encoded / f"{SID}.jsonl"
+    session.parent.mkdir(parents=True)
+    session.write_text("{}\n", encoding="utf-8")
+    (home / "session-env" / SID).mkdir(parents=True)
+    chat.forget(SID, cwd)
+    assert not session.exists() and not (home / "session-env" / SID).exists()
+    chat.forget(SID, cwd)  # 幂等
+
+
+def test_login_and_logout_run_in_the_platform_home(tmp_path: Path):
+    """官方订阅在平台里单独登录：CLI 在私有配置目录下不认用户本机的登录（2026-10-06 实测）。"""
+    from backends.claude_code import login_command, logout_command
+
+    link = Link(home=tmp_path / "claude_code")
+    argv, env = login_command(link)
+    assert argv[1:] == ["auth", "login", "--claudeai"]
+    assert env["CLAUDE_CONFIG_DIR"] == str(link.home)
+    argv, env = logout_command(link)
+    assert argv[1:] == ["auth", "logout"] and env["CLAUDE_CONFIG_DIR"] == str(link.home)
 
 
 def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatch):
@@ -382,11 +419,11 @@ def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatc
     import sys
 
     monkeypatch.setenv("PATH", "/usr/bin")
-    env = build_env(1.0)
+    env = build_env(1.0, HOME)
     assert env["PATH"].startswith(f"/usr/bin{os.pathsep}")  # 追加在后，系统命令在前
     assert shutil.which("ai4sci", path=env["PATH"]) == str(Path(sys.executable).parent / "ai4sci")
     monkeypatch.delenv("PATH")
-    assert build_env(1.0)["PATH"] == str(Path(sys.executable).parent)
+    assert build_env(1.0, HOME)["PATH"] == str(Path(sys.executable).parent)
 
 
 def test_translate_turns_text_deltas_into_delta_events_and_ignores_thinking():
@@ -407,7 +444,7 @@ def test_translate_turns_text_deltas_into_delta_events_and_ignores_thinking():
 
 
 def test_chat_argv_asks_for_partial_messages(tmp_path: Path):
-    argv = ClaudeCodeChat().build_argv("hi", tmp_path, session_id=None, system_prompt="",
+    argv = ClaudeCodeChat(LINK).build_argv("hi", tmp_path, session_id=None, system_prompt="",
                                        allowed_paths=[], bash_rules=())
     assert "--include-partial-messages" in argv
 
@@ -416,14 +453,14 @@ def test_chat_argv_adds_readable_dirs_without_write_rules(tmp_path: Path):
     """纲领 P-16：研究助理看得见库（--add-dir 让 Read 在 dontAsk 下不被拒），但库不进写的白名单。"""
     library = tmp_path / "workflows"
     library.mkdir()
-    argv = ClaudeCodeChat().build_argv("hi", tmp_path / "ws", session_id=None, system_prompt="",
+    argv = ClaudeCodeChat(LINK).build_argv("hi", tmp_path / "ws", session_id=None, system_prompt="",
                                        allowed_paths=[tmp_path / "ws" / "flows"], bash_rules=(),
                                        readable_paths=[library])
     assert argv[argv.index("--add-dir") + 1] == str(library.resolve())
     rules = argv[argv.index("--allowedTools") + 1:argv.index("--max-turns")]
     assert f"Read(//{library.resolve().as_posix().lstrip('/')}/**)" in rules
     assert not any(r.startswith(("Edit(", "Write(")) and "workflows" in r for r in rules)
-    plain = ClaudeCodeChat().build_argv("hi", tmp_path, session_id=None, system_prompt="",
+    plain = ClaudeCodeChat(LINK).build_argv("hi", tmp_path, session_id=None, system_prompt="",
                                         allowed_paths=[], bash_rules=())
     assert "--add-dir" not in plain
 
@@ -433,15 +470,15 @@ def test_chat_env_carries_the_chat_id_to_the_buttons_the_agent_presses(monkeypat
     from framework.workspace.jobs import CHAT_ID_ENV
 
     assert CHAT_ID_ENV == "AI4SCI_CHAT_ID"  # 适配器抄的那份名字与 framework 的对账
-    assert build_env(1.0, "chat-1")[CHAT_ID_ENV] == "chat-1"
+    assert build_env(1.0, HOME, "chat-1")[CHAT_ID_ENV] == "chat-1"
     monkeypatch.setenv(CHAT_ID_ENV, "chat-stale")
-    assert CHAT_ID_ENV not in build_env(1.0)
+    assert CHAT_ID_ENV not in build_env(1.0, HOME)
 
 
 def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
     from backends import Tuning
 
-    chat = ClaudeCodeChat()
+    chat = ClaudeCodeChat(LINK)
     common = dict(system_prompt="指南", allowed_paths=[tmp_path / "tasks"],
                   bash_rules=(".venv/bin/ai4sci",))
     first = chat.build_argv("你好", tmp_path, session_id=None, **common)
@@ -467,9 +504,9 @@ def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
 def test_tool_guides_teach_only_tools_this_cli_has():
     """P-25：「工具怎么用」是这家的。2.1.289 起没有 Glob / Grep 工具，照旧指南找文件白耗几轮
     （外层 #219）：读文件用 Read，找文件、搜内容用单条的只读命令（dontAsk 下自动放行）。"""
-    chat = ClaudeCodeChat()
+    chat = ClaudeCodeChat(LINK)
     for text in (chat.tool_guide(("ai4sci", ".venv/bin/ai4sci")),
-                 ClaudeCodeRunner().tool_guide(("ai4sci skill",))):
+                 ClaudeCodeRunner(LINK).tool_guide(("ai4sci skill",))):
         assert "Glob" not in text and "Grep" not in text
         assert "Read" in text and "find" in text and "grep" in text
         assert "Bash 里会改东西的只放行" in text
@@ -480,7 +517,7 @@ def test_chat_knobs_list_models_and_efforts_with_a_concrete_start():
     from backends import Knobs, Tuning
     from backends.claude_code import EFFORTS, MODELS
 
-    knobs = ClaudeCodeChat().knobs()
+    knobs = ClaudeCodeChat(LINK).knobs()
     assert isinstance(knobs, Knobs) and knobs.models == MODELS and knobs.efforts == EFFORTS
     assert knobs.model == "sonnet" and knobs.effort == "medium"
     assert [c.id for c in knobs.efforts] == ["low", "medium", "high", "xhigh", "max"]
@@ -500,7 +537,7 @@ def test_chat_argv_always_passes_model_and_effort(tmp_path: Path):
     """P-25：对话 meta 里记的是具体值；没给的用起点；从不让 CLI 自己猜。"""
     from backends import Tuning
 
-    chat = ClaudeCodeChat()
+    chat = ClaudeCodeChat(LINK)
     common = dict(session_id=None, system_prompt="", allowed_paths=[], bash_rules=())
     bare = chat.build_argv("x", tmp_path, **common)
     assert bare[bare.index("--model") + 1] == "sonnet"
@@ -548,7 +585,7 @@ def test_chat_event_rejects_unknown_kind():
 def test_live_chat_two_turns_remember_across_resume(tmp_path: Path):
     from backends import Tuning
 
-    chat = ClaudeCodeChat()
+    chat = ClaudeCodeChat(LIVE_LINK)
     common = dict(system_prompt="你是测试助手，回答极短。", allowed_paths=[], bash_rules=())
     first = list(chat.turn("记住这个数字：17。只回“好”。", tmp_path, 120, session_id=None,
                            tuning=Tuning(model="sonnet", effort="low"), **common))

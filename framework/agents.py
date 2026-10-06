@@ -1,11 +1,12 @@
-"""按人的底座清单：`~/.config/ai4sci/agents.yaml` 的唯一读写点（纲领 P-25 底座归人）。
+"""按人的底座清单：平台的家里 `agents.yaml` 的唯一读写点（纲领 P-25 底座归人；位置由
+`paths.agents_file()` 给，外层 #263）。
 
 与算力清单并列（一个文件一个生产者，P-13）：助理用哪家 coding agent CLI、
 执行层用哪家（两层可以不同），
 每家新对话用的模型与思考深度——一律具体值，没有「跟缺省」这一项；文件里没填的那家用适配器给的起点
 （`Knobs.model` / `.effort`）。上次自检（`last_check`）也记在这里，
 页面与 `agent list` 读文件不再连。
-文件永远不进 git、不进工作区、不进数据根；`AI4SCI_AGENTS` 可指向别处（测试）。
+文件永远不进 git、不进工作区。
 
 有哪几家不是这里定的：`backends._BACKENDS` 那张表就是「有哪些」，加一家是加一个适配器文件，没有
 `agent add`。文件里写了 `_BACKENDS` 没有的名字、或清单外的模型 / 深度，读到就报错（AgentsInvalid），
@@ -14,7 +15,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -23,18 +23,22 @@ from typing import Any
 
 import yaml
 
+import backends
 from backends import (
     TITLES,
     AgentProbe,
     BackendNotFound,
+    Chat,
     Knobs,
+    Link,
+    Runner,
     Tuning,
     available_backends,
+    get_backend,
     get_chat,
 )
+from framework import paths
 
-PATH_ENV = "AI4SCI_AGENTS"
-DEFAULT_PATH = Path.home() / ".config" / "ai4sci" / "agents.yaml"
 ROLES = ("chat", "executor")
 ROLE_LABELS = {"chat": "对话用", "executor": "执行用"}
 FALLBACK = "claude_code"
@@ -86,13 +90,43 @@ class Registry:
 
 
 def path() -> Path:
-    raw = os.environ.get(PATH_ENV)
-    return Path(raw).expanduser() if raw else DEFAULT_PATH
+    return paths.agents_file()
+
+
+def link(name: str) -> Link:
+    """这家 CLI 这次怎么接（外层 #263）：私有目录在平台的家里。框架起适配器只走下面几个函数，
+    `Link` 只在这里造。"""
+    return Link(home=paths.agent_home(name))
+
+
+def chat(name: str) -> Chat:
+    """协调层适配器。名字不在 `_BACKENDS` 里就是 BackendNotFound。"""
+    return get_chat(name, link(name))
+
+
+def runner(name: str) -> Runner:
+    """执行层适配器。"""
+    return get_backend(name, link(name))
+
+
+def probe(name: str) -> AgentProbe:
+    """自检一家（四句人话，P-25）。"""
+    return backends.probe(name, link(name))
+
+
+def login_command(name: str) -> tuple[list[str], dict[str, str]]:
+    """在平台的家里登录这家的官方账号：命令与环境。"""
+    return backends.login_command(name, link(name))
+
+
+def logout_command(name: str) -> tuple[list[str], dict[str, str]]:
+    """登出平台家里这家的官方账号。"""
+    return backends.logout_command(name, link(name))
 
 
 def knobs_of(name: str) -> Knobs:
     """这家的清单与起点（适配器自报）。名字不在 `_BACKENDS` 里就是 BackendNotFound。"""
-    return get_chat(name).knobs()
+    return chat(name).knobs()
 
 
 # 谁来报清单：缺省是真适配器；服务把自己接的适配器传进来（测试里是剧本），清单与校验才对得上

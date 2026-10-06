@@ -1,19 +1,25 @@
-"""仓根与几个根目录的读取点，全框架只此一处（纲领 P-15：读数据根的只有这里）。
+"""仓根与平台的家：全框架读这些位置只在这一处（纲领 P-15：读家在哪的只有这里）。
 
 两类目录分开想：随代码走的**出厂件**——出厂的流程 `workflows/`、需求模板 `templates/`、领域包
 `domains/`、平台自带的 skill `skills/`、收录的社区 skill `skills-curated/`、两位助理的指南
-`coordinator/`、页面构建 `ui/web/dist`；随使用长出
-来的**数据**——项目 `projects/`、编辑台的对话 `studio/chats/`、人在编辑台存的流程 `studio/workflows/`
-——根是 `AI4SCI_HOME`。流程库是两层合起来看：出厂的只读，人存的在数据根（外层 #149）。
+`coordinator/`、页面构建 `ui/web/dist`；随使用长出来的一切都在**平台的家** `~/.ai4sci`
+（外层 #263，主人 2026-10-06：像 Claude Code 的 `~/.claude`，平台的私有东西收在一处、一把清除）：
 
-平台有两种活法（外层 #138）：
-- **源码**：clone 了仓库、`make up` 起，出厂件就在仓根下，数据根不设也落在仓根（样例项目在那）。
-- **包**：`uv tool install` 装的 wheel，出厂件由 `make package` 拷进 `framework/shipped/` 随包带走，
-  数据根缺省 `~/ai4sci`（第一次用时建）。分辨只看一件事：仓根下有没有 `pyproject.toml`。
+    ~/.ai4sci/            AI4SCI_HOME 可指向别处（开发、测试）
+      agents.yaml         用哪家、每家的供应商 / 模型 / 思考深度（读写点 framework/agents.py）
+      computes.yaml       算力（framework/computes.py）
+      keys.yaml           key，只有本人能读（framework/keys.py）
+      projects/ studio/   项目与编辑台
+      claude_code/ codex/ 两家 CLI 的私有目录：会话记录、平台自己的登录
+      cache/uv/           skill 与实验环境的依赖缓存
+
+平台不再写用户自己的 `~/.claude`、`~/.codex`、`~/.config`。流程库是两层合起来看：出厂的只读，
+人存的在家里的 `studio/workflows/`（外层 #149）。
+
+出厂件有两种活法（外层 #138）：**源码**（clone 了仓库、`make up` 起）出厂件就在仓根下；**包**
+（`uv tool install` 装的 wheel）出厂件由 `make package` 拷进 `framework/shipped/` 随包带走。分辨只看
+一件事：仓根下有没有 `pyproject.toml`。家在哪与活法无关。
 六个环境变量各自只在这里读一次、断言一次：指向的不是目录当场炸，不静默回落（P-7 / P-8）。
-按人的配置目录 `~/.config/ai4sci/`（算力清单、底座清单，纲领 P-23 P-25）与 uv 的缓存也在这里
-给出（页面「设置 → 存放」念给人看）；两份清单各自的读写点仍在 `framework/computes.py` 与
-`framework/agents.py`。
 
 `parents[1]` 是 framework/paths.py 往上两级，即仓根——搬包时这个数字要跟着改，所以它只在这一处出现。
 """
@@ -39,16 +45,20 @@ SKILLS_DIRNAME = "skills"
 CURATED_SKILLS_DIRNAME = "skills-curated"
 GUIDES_DIRNAME = "coordinator"
 UI_DIRNAME = "ui"
-STUDIO_DIRNAME = "studio"  # 数据根下编辑台的家：chats/ 对话、workflows/ 人存的流程
+STUDIO_DIRNAME = "studio"  # 家里编辑台那一块：chats/ 对话、workflows/ 人存的流程
 # 出厂件里每一样在仓根下的位置（页面在 ui/web/dist，包里搬平成 ui/）
 SHIPPED = {WORKFLOWS_DIRNAME: Path(WORKFLOWS_DIRNAME), DOMAINS_DIRNAME: Path(DOMAINS_DIRNAME),
            TEMPLATES_DIRNAME: Path(TEMPLATES_DIRNAME), SKILLS_DIRNAME: Path(SKILLS_DIRNAME),
            CURATED_SKILLS_DIRNAME: Path(CURATED_SKILLS_DIRNAME),
            GUIDES_DIRNAME: Path(GUIDES_DIRNAME), UI_DIRNAME: Path("ui") / "web" / "dist"}
-DEFAULT_HOME = Path.home() / "ai4sci"
-CONFIG_DIR = Path.home() / ".config" / "ai4sci"
-UV_CACHE_ENV = "UV_CACHE_DIR"
-DEFAULT_UV_CACHE = Path.home() / ".cache" / "uv"
+DEFAULT_HOME = Path.home() / ".ai4sci"
+# 家的标记：平台建的家里才有它；清除（framework/chat/reset.py）只删有标记的目录，
+# AI4SCI_HOME 指错了也删不到别处
+MARKER_NAME = ".ai4sci-home"
+AGENTS_FILENAME = "agents.yaml"
+COMPUTES_FILENAME = "computes.yaml"
+KEYS_FILENAME = "keys.yaml"
+UV_CACHE_PARTS = ("cache", "uv")
 
 
 def from_source() -> bool:
@@ -57,15 +67,50 @@ def from_source() -> bool:
 
 
 def home() -> Path:
-    """数据根：项目、编辑台的对话与人存的流程都长在它下面。不设：仓库里就是仓根（样例项目在那），
-    装的包是 ~/ai4sci。"""
+    """平台的家：缺省 `~/.ai4sci`，第一次用时建、放下标记；`AI4SCI_HOME` 指的目录得已经在。
+    指到的目录空着才放标记——指到一个已有东西的目录（比如误设成 `~`）平台照样能用，
+    只是清除不认它。"""
     raw = os.environ.get(HOME_ENV)
-    if raw:
-        return _existing(HOME_ENV, Path(raw).resolve())
-    if from_source():
-        return REPO_ROOT
-    DEFAULT_HOME.mkdir(parents=True, exist_ok=True)
-    return DEFAULT_HOME
+    root = _existing(HOME_ENV, Path(raw).resolve()) if raw else DEFAULT_HOME
+    root.mkdir(parents=True, exist_ok=True)
+    if not (root / MARKER_NAME).exists() and not any(root.iterdir()):
+        mark(root)
+    return root
+
+
+def mark(root: Path) -> None:
+    """放下家的标记：新建的家、清除后留下的空家、迁移脚本搬好的家。"""
+    (root / MARKER_NAME).write_text("ai4sci 的家（外层 #263）：清除只删有这个文件的目录。\n",
+                                    encoding="utf-8")
+
+
+def agents_file() -> Path:
+    """用哪家、每家的供应商 / 模型 / 思考深度（纲领 P-25）。"""
+    return home() / AGENTS_FILENAME
+
+
+def computes_file() -> Path:
+    """算力清单（纲领 P-23）。"""
+    return home() / COMPUTES_FILENAME
+
+
+def keys_file() -> Path:
+    """key：只有本人能读（外层 #263）。"""
+    return home() / KEYS_FILENAME
+
+
+def agent_home(name: str) -> Path:
+    """一家 CLI 在家里的私有目录（Claude Code 的 CLAUDE_CONFIG_DIR、Codex 的 CODEX_HOME）：
+    会话记录与平台自己的登录在里面；名字就是适配器的名字。"""
+    root = home() / name
+    root.mkdir(exist_ok=True)
+    return root
+
+
+def uv_cache_dir() -> Path:
+    """uv 的缓存：skill 脚本与实验环境的依赖都装在这；平台起 uv 时显式交给它（`UV_CACHE_DIR`），
+    不用本机的 `~/.cache/uv`，清除时一起走。"""
+    return home().joinpath(*UV_CACHE_PARTS)
 
 
 def workflows_root() -> Path:
@@ -74,9 +119,9 @@ def workflows_root() -> Path:
 
 
 def user_workflows_root(home_dir: Path | None = None) -> Path:
-    """人在编辑台存的流程：数据根的 `studio/workflows/`，编辑台的对话在旁边的 `studio/chats/`。
-    第一次用时建（与 `DEFAULT_HOME` 同理）：适配器把它作为可写目录交给 agent，目录得先在。
-    给了 `home_dir` 就按它算（服务端持有自己的数据根，测试也从这里换）。"""
+    """人在编辑台存的流程：家里的 `studio/workflows/`，编辑台的对话在旁边的 `studio/chats/`。
+    第一次用时建：适配器把它作为可写目录交给 agent，目录得先在。
+    给了 `home_dir` 就按它算（服务端持有自己的家，测试也从这里换）。"""
     root = (home() if home_dir is None else Path(home_dir)) / STUDIO_DIRNAME / WORKFLOWS_DIRNAME
     root.mkdir(parents=True, exist_ok=True)
     return root
@@ -118,18 +163,6 @@ def ui_dir() -> Path:
 def shipped_home() -> Path:
     """出厂件的家：仓库里是仓根，包里是 framework/shipped/。"""
     return REPO_ROOT if from_source() else SHIPPED_DIR
-
-
-def config_dir() -> Path:
-    """按人的配置目录：算力清单与底座清单的家（两份文件各自可用环境变量指向别处，读写点在各自模块）。"""
-    return CONFIG_DIR
-
-
-def uv_cache_dir() -> Path:
-    """uv 的缓存：skill 脚本 `uv run --locked` 建环境要往里写；uv 自己认 `UV_CACHE_DIR`，这里照它。
-    """
-    raw = os.environ.get(UV_CACHE_ENV)
-    return Path(raw).expanduser() if raw else DEFAULT_UV_CACHE
 
 
 def _library(env: str | None, dirname: str) -> Path:

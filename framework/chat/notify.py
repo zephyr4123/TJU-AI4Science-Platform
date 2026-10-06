@@ -17,7 +17,8 @@ import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 
-from backends import BackendNotFound, Chat, ChatEvent, get_chat
+from backends import BackendNotFound, Chat, ChatEvent
+from framework import agents
 from framework.chat import conversation, guide, scope, settings
 from framework.workspace import jobs, project
 from framework.workspace.jobs import Job
@@ -68,7 +69,7 @@ def wake(workspace: Workspace, job: Job, *, settle_s: float = SETTLE_S,
     try:
         where = scope.for_project(project.of(workspace))
         conv = settings.ensure_tuned(conversation.load_conversation(where.chats, job.chat_id))
-        chat = get_chat(conv.backend)
+        chat = agents.chat(conv.backend)
         system_prompt = where.system_prompt(chat)
     except (project.ProjectNotFound, conversation.ConversationNotFound, BackendNotFound,
             guide.GuideMissing) as exc:

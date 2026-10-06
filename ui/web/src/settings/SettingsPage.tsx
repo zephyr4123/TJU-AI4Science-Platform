@@ -6,7 +6,7 @@
 // 「添加」在块头，点了才在清单末尾展开。存放：三个数（项目、工作区、剩余空间）在上，三条路径在下。外观：三张缩略图选深浅色。
 // 状态照旧是一枚点 + 一个词 + 几项数（过了的点外一圈心跳，没过静止的红点，没检查空心圈），没过时机器的原话小字一行。
 // 键与开关沿用 reactbits 的改装件：「检查」CallChip、「移除」HoldButton（按住才算数）、两排滑块 RubberSegment、下拉 GlideSelect。
-// 一切改动即刻写回按人的两份清单（`~/.config/ai4sci/`）。
+// 一切改动即刻写回平台的家里的两份清单（外层 #263）。
 import { ArrowsClockwise, Check, HardDrives, Laptop, Plus } from '@phosphor-icons/react'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
 
@@ -23,6 +23,7 @@ import RubberSegment from '@/components/reactbits/RubberSegment'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { bytes } from '@/lib/format'
 import { type ThemeChoice, useThemeChoice } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
@@ -87,7 +88,7 @@ export function SettingsPage({ menu, onChanged }: {
           <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <Agents doc={doc} ctx={ctx} />
             <Computes doc={doc} ctx={ctx} />
-            <Storage doc={doc} />
+            <Storage doc={doc} ctx={ctx} />
             <Look />
           </div>
         )}
@@ -321,14 +322,12 @@ function AddCompute({ ctx, onDone }: { ctx: Ctx; onDone: () => void }) {
   )
 }
 
-/** 存放：三个数在上（项目、工作区、剩余空间，不可写时红字说出来），三条路径在下，家目录缩成 ~、悬停看全 */
-function Storage({ doc }: { doc: SettingsDoc }) {
+/** 存放（外层 #263）：三个数在上（项目、工作区、剩余空间，不可写时红字说出来）；下面平台的家在哪、每块多大；
+ *  最底下「清除全部数据」，按住才算数——平台建的家才有这一键（AI4SCI_HOME 指到别处的不认） */
+function Storage({ doc, ctx }: { doc: SettingsDoc; ctx: Ctx }) {
   const s = doc.storage
   const figures: [string, string, string?][] = [
     ['项目', `${s.projects}`, '个'], ['工作区', `${s.workspaces}`, '个'], ['剩余空间', `${Math.round(s.free_gb)}`, 'GB'],
-  ]
-  const paths: [string, string, string][] = [
-    ['数据', s.home, s.writable ? '项目与对话' : '不可写'], ['设置', s.config, 'AI 与算力清单'], ['缓存', s.uv_cache, 'skill 环境'],
   ]
   return (
     <Panel title="存放">
@@ -342,17 +341,27 @@ function Storage({ doc }: { doc: SettingsDoc }) {
           </div>
         ))}
       </dl>
-      <dl className="mt-5 grid grid-cols-[3rem_minmax(0,1fr)] gap-x-3 gap-y-2.5">
-        {paths.map(([label, path, what]) => (
-          <div key={label} className="contents">
-            <dt className="text-[0.8125rem] font-medium">{label}</dt>
-            <dd className="min-w-0">
-              <span className="block truncate text-[0.8125rem] tabular" title={path}>{tildify(path)}</span>
-              <span className={cn('block text-[0.6875rem]', what === '不可写' ? 'text-bad' : 'text-muted-foreground')}>{what}</span>
-            </dd>
+      <p className="mt-5 flex items-baseline gap-2 text-[0.8125rem]">
+        <span className="shrink-0 font-medium">平台的家</span>
+        <span className="min-w-0 truncate tabular text-muted-foreground" title={s.home}>{tildify(s.home)}</span>
+        {!s.writable && <span className="shrink-0 text-bad">不可写</span>}
+      </p>
+      <dl className="mt-2.5 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5">
+        {s.parts.map((part) => (
+          <div key={part.label} className="contents text-[0.8125rem]">
+            <dt className="text-muted-foreground">{part.label}</dt>
+            <dd className="text-right tabular">{bytes(part.bytes)}</dd>
           </div>
         ))}
       </dl>
+      {s.resettable && (
+        <div className="mt-5 flex items-center gap-3 border-t border-foreground/[0.06] pt-4">
+          <span className="mr-auto text-[0.75rem] text-muted-foreground">登出两家、删掉以上全部，回到刚装好的样子</span>
+          <HoldButton disabled={ctx.busy !== null} onHold={() => void ctx.act('reset', () => api.resetHome())}>
+            清除全部数据
+          </HoldButton>
+        </div>
+      )}
     </Panel>
   )
 }

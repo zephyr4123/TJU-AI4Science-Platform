@@ -22,8 +22,8 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 __all__ = ["RunResult", "Runner", "ChatEvent", "Choice", "Tuning", "Knobs", "Chat", "AgentProbe",
-           "Usage", "Price", "BackendNotFound", "get_backend", "get_chat", "probe", "read_usage",
-           "prices", "available_backends"]
+           "Usage", "Price", "Link", "BackendNotFound", "get_backend", "get_chat", "probe",
+           "login_command", "logout_command", "read_usage", "prices", "available_backends"]
 
 
 @dataclass
@@ -85,6 +85,18 @@ class Price:
 
 
 @dataclass(frozen=True)
+class Link:
+    """框架交给适配器的「这家 CLI 这次怎么接」（外层 #263）。
+
+    `home` 是这家 CLI 在平台的家里的私有目录：Claude Code 当 `CLAUDE_CONFIG_DIR`、Codex 当
+    `CODEX_HOME`，会话记录与平台自己的登录都在里面。适配器不自己定路径、不碰用户的
+    `~/.claude` `~/.codex`——平台的家由框架管（`framework/paths.py`），清除时整个删。
+    """
+
+    home: Path
+
+
+@dataclass(frozen=True)
 class Tuning:
     """一轮用什么：模型与思考深度。字段 None 是「这家适配器给的起点」（`Knobs.model` / `.effort`），
     适配器不替人猜别的；对话 meta 与设置里记的一律是具体值（纲领 P-25）。"""
@@ -105,7 +117,7 @@ class Runner(Protocol):
     前缀写进 `tool_guide` 让它照做）；不给就一条命令都不放。
     有沙箱的 CLI（Codex）没有按工具名的白名单：`bash_rules` 翻成 execpolicy 规则，
     命中的命令在沙箱外跑，
-    平台自己的目录（数据根、按人的配置、uv 缓存）由此写得进去，不用加进可写根。
+    平台自己的目录（平台的家：项目、设置、uv 缓存）由此写得进去，不用加进可写根。
     `tuning` 是这次会话用什么模型、什么深度（从按人的设置来，P-25）；None 用适配器给的起点。
     `max_turns` / `max_budget_usd` 是这一次会话的轮数与花费上限，不给用适配器的缺省（环境变量）：
     读别人整个仓库再写壳的会话（复现）要比从零写一版的多得多——真跑时 30 轮在读完仓库、写完
@@ -248,8 +260,8 @@ class Chat(Protocol):
 
     def forget(self, session_id: str, cwd: Path) -> None:
         """把这家 CLI 自己存的那条会话删干净（删对话要级联到根，主人 2026-09-22）：
-        Claude Code 是 `~/.claude/projects/<按 cwd 编的目录>/<session>.jsonl` 与
-        `session-env/<session>`，Codex 是私有 home 下 `sessions/…/rollout-*-<thread>.jsonl`。
+        Claude Code 是私有目录下 `projects/<按 cwd 编的目录>/<session>.jsonl` 与
+        `session-env/<session>`，Codex 是私有目录下 `sessions/…/rollout-*-<thread>.jsonl`。
         不在就当已删（幂等）；删不掉抛 OSError。"""
         ...
 
@@ -325,11 +337,11 @@ def _module(name: str, layer: str):
     return importlib.import_module(module_path)
 
 
-def get_backend(name: str) -> Runner:
+def get_backend(name: str, link: Link) -> Runner:
     """按名字取适配器。名字不对就报错退出，绝不静默回退到某个默认后端（P-7）。
     名字贴在适配器上（`runner.name`）：起会话的那层按它查按人的设置里这家用什么模型。"""
     module = _module(name, "执行层")
-    runner = module.make_runner()
+    runner = module.make_runner(link)
     # 断言而不是信任：适配器模块是人写的，形状对不上要在这里就炸，别等到跑一半
     assert hasattr(runner, "run"), f"后端 {name!r} 的 make_runner() 没有返回带 run() 的对象"
     assert hasattr(runner, "tool_guide"), f"后端 {name!r} 的执行层适配器没有 tool_guide()"
@@ -337,17 +349,28 @@ def get_backend(name: str) -> Runner:
     return runner
 
 
-def get_chat(name: str) -> Chat:
+def get_chat(name: str, link: Link) -> Chat:
     """按名字取协调层适配器；同 `get_backend`，名字不对就报错，不回退。"""
     module = _module(name, "agent ")
     assert hasattr(module, "make_chat"), f"后端 {name!r} 还没有协调层适配器（make_chat）"
-    chat = module.make_chat()
+    chat = module.make_chat(link)
     assert hasattr(chat, "turn"), f"后端 {name!r} 的 make_chat() 没有返回带 turn() 的对象"
     assert hasattr(chat, "knobs"), \
         f"后端 {name!r} 的协调层适配器没有 knobs()：得报有哪些模型与思考深度"
     assert hasattr(chat, "tool_guide"), f"后端 {name!r} 的协调层适配器没有 tool_guide()"
     chat.name = name
     return chat
+
+
+def login_command(name: str, link: Link) -> tuple[list[str], dict[str, str]]:
+    """在平台的家里登录这家的官方账号：命令与环境（外层 #263）。CLI 自己的流程——开浏览器授权，
+    回来把凭据写进 `link.home`（Claude Code 记在系统钥匙串里、按配置目录分开）。"""
+    return _module(name, "agent ").login_command(link)
+
+
+def logout_command(name: str, link: Link) -> tuple[list[str], dict[str, str]]:
+    """登出平台家里这家的官方账号：清除家之前跑，钥匙串里不留平台那条。"""
+    return _module(name, "agent ").logout_command(link)
 
 
 def read_usage(events: list[dict]) -> tuple[str, Usage] | None:
@@ -367,10 +390,10 @@ def prices(name: str) -> dict[str, Price]:
     return _module(name, "agent ").PRICES
 
 
-def probe(name: str) -> AgentProbe:
+def probe(name: str, link: Link) -> AgentProbe:
     """自检一家：模块级 `probe()`，装了没 / 版本 / 登录 / 说一句话。"""
     module = _module(name, "agent ")
     assert hasattr(module, "probe"), f"后端 {name!r} 没有 probe()：得会自检（纲领 P-25）"
-    result = module.probe()
+    result = module.probe(link)
     assert isinstance(result, AgentProbe), f"后端 {name!r} 的 probe() 没有返回 AgentProbe"
     return result

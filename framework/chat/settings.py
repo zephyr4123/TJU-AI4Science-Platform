@@ -5,13 +5,14 @@
 `check()` 真探并记回。
 底座（agents.yaml）、算力（computes.yaml）
 各自的读写点仍在 `framework/agents.py` 与 `framework/computes.py`，
-这里只把它们摆成一张表；存放一项是数据根在哪、可写、余量，没有文件。
+这里只把它们摆成一张表；存放一项是平台的家在哪、每块多大、可写、余量，没有文件。
 自检不过只报告不拒绝保留，用的时候再拒（主人：不设自我感动的坎）。
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from collections.abc import Callable
 from dataclasses import asdict
@@ -19,7 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from backends import AgentProbe, available_backends, probe
+from backends import AgentProbe, available_backends
 from framework import agents, computes, paths
 from framework.agents import KnobsOf
 from framework.chat.conversation import Conversation
@@ -67,22 +68,43 @@ def computes_table() -> list[dict[str, Any]]:
     return rows
 
 
+# 家里的几块（页面「存放」照这个顺序念，外层 #263）：给人看的名字、包含家里哪些东西
+PARTS = (("项目", ("projects",)), ("编辑台", ("studio",)),
+         ("会话与登录", tuple(available_backends())), ("依赖缓存", (paths.UV_CACHE_PARTS[0],)),
+         ("设置与 key", (paths.AGENTS_FILENAME, paths.COMPUTES_FILENAME, paths.KEYS_FILENAME)))
+
+
 def storage_table(home: Path | None = None) -> dict[str, Any]:
-    """存放只看不改：数据根、配置目录、uv 缓存在哪，可写吗，还剩多少。`home` 是服务起时定的数据根；
-    终端里就是 `paths.home()`。"""
+    """存放：平台的家在哪、每块占多大、可写吗、还剩多少、清除认不认它（有没有标记）。`home` 是服务
+    起时定的家；终端里就是 `paths.home()`。"""
     home = paths.home() if home is None else Path(home)
     usage = shutil.disk_usage(home)
-    return {"home": str(home), "config": str(paths.config_dir()),
-            "uv_cache": str(paths.uv_cache_dir()),
+    projects = home / "projects"
+    return {"home": str(home), "resettable": (home / paths.MARKER_NAME).is_file(),
+            "parts": [{"label": label, "bytes": sum(_size(home / n) for n in names)}
+                      for label, names in PARTS],
             # 在仓库里跑还是装的包在跑、出厂件从哪读、页面有没有构建（外层 #138）
             "mode": "source" if paths.from_source() else "package",
             "shipped": str(paths.shipped_home()),
             "ui": str(paths.ui_dir()), "ui_built": (paths.ui_dir() / "index.html").is_file(),
             "writable": _writable(home), "free_gb": round(usage.free / 1e9, 1),
-            "projects": sum(1 for _ in (home / "projects").glob("*/project.md"))
-            if (home / "projects").is_dir() else 0,
-            "workspaces": sum(1 for _ in (home / "projects").glob("*/workspaces/*/requirement.md"))
-            if (home / "projects").is_dir() else 0}
+            "projects": sum(1 for _ in projects.glob("*/project.md")) if projects.is_dir() else 0,
+            "workspaces": sum(1 for _ in projects.glob("*/workspaces/*/requirement.md"))
+            if projects.is_dir() else 0}
+
+
+def _size(path: Path) -> int:
+    """一个文件或一整棵目录占多少字节（不跟软链）；不在就是 0。"""
+    if path.is_symlink() or path.is_file():
+        return path.lstat().st_size
+    total = 0
+    for root, _, files in os.walk(path):
+        for name in files:
+            try:
+                total += (Path(root) / name).lstat().st_size
+            except OSError:
+                continue  # 数着数着被删了（缓存在写）：少算这一个，不拦页面
+    return total
 
 
 def _writable(directory: Path) -> bool:
@@ -124,7 +146,7 @@ def problems(snap: dict[str, Any] | None = None, knobs: KnobsOf = agents.knobs_o
 
 
 def check(what: str = "all", name: str | None = None, *, knobs: KnobsOf = agents.knobs_of,
-          probe_agent: ProbeAgent = probe, home: Path | None = None) -> dict[str, Any]:
+          probe_agent: ProbeAgent = agents.probe, home: Path | None = None) -> dict[str, Any]:
     """真探：底座每家 `probe()`、算力每台 `check()`（记回 last_check），存放现算。返回新的一整份加
     `ok` 与 `failed`。`name` 给了只探那一个。"""
     assert what in WHATS, f"what 只认 {WHATS}，得到 {what!r}"

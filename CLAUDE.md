@@ -6,7 +6,7 @@
 
 - 科研全自动化平台的生产代码，Python 包 `ai4sci`（入口 `framework.cli:main`），页面在 `ui/web/`。四层：协调层（人 + 助理）做科研判断，框架是零模型的诚实执行基底，执行层 coding agent 是唯一写代码的，skill 脚本是确定性工具。
 - 本仓是**内仓**：外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 把它 clone 到 `platform/`，外层对它的 git 不知情。产品纲领（P-1 到 P-27）、流程细则、未决问题、案例卡都在外层 `docs/`；issue 也开在外层。只 clone 了本仓的人先去外层读 `docs/architecture/README.md`。
-- 两种跑法：源码（clone + `make up`）出厂件在仓根、数据根缺省仓根；包（`uv tool install` wheel）出厂件在 `framework/shipped/`、数据根 `~/ai4sci`。分辨只在 `framework/paths.py` 一处。
+- 两种跑法：源码（clone + `make up`）出厂件在仓根；包（`uv tool install` wheel）出厂件在 `framework/shipped/`。两种都住在**平台的家** `~/.ai4sci`（设置、key、项目、两家 CLI 的会话与登录、依赖缓存，外层 #263），平台不写用户的 `~/.claude` `~/.codex`。位置只在 `framework/paths.py` 一处给。
 
 ## 1. 开工前先读哪份
 
@@ -83,8 +83,8 @@
 
 下面三条是**产品运行时的规矩**，约束的是助理与框架的行为，改相关代码时要守：
 
-12. **助理面前只有 `ai4sci`**（P-14）：协调层放行的命令前缀是 `ai4sci`，执行层只有 `ai4sci skill`（`chat/guide.py::BASH_RULES`、`skills.EXECUTOR_BASH_RULES`）；配置归环境变量与按人的两份清单，命令上不带路径、不挂前缀、不接管道（`tests/test_chat_guide.py` 守着）。agent 需要而没有的动作是平台缺口：加能力，不放行裸命令。
-13. **造流程与用流程分权**（P-16）：项目里的研究助理只用流程（`flow take` 取实例、改参数、照着走），编辑台的流程助理只写数据根的 `studio/workflows/`（出厂的 `workflows/` 谁都不写）；分权靠 `chat/scope.py` 的可写目录与按域分前缀的端点，不靠指南里的「请不要」。
+12. **助理面前只有 `ai4sci`**（P-14）：协调层放行的命令前缀是 `ai4sci`，执行层只有 `ai4sci skill`（`chat/guide.py::BASH_RULES`、`skills.EXECUTOR_BASH_RULES`）；配置归环境变量与平台的家里的清单，命令上不带路径、不挂前缀、不接管道（`tests/test_chat_guide.py` 守着）。agent 需要而没有的动作是平台缺口：加能力，不放行裸命令。
+13. **造流程与用流程分权**（P-16）：项目里的研究助理只用流程（`flow take` 取实例、改参数、照着走），编辑台的流程助理只写平台的家里的 `studio/workflows/`（出厂的 `workflows/` 谁都不写）；分权靠 `chat/scope.py` 的可写目录与按域分前缀的端点，不靠指南里的「请不要」。
 14. **框架只管文件夹怎么摆，不管里面装什么**（P-19 / P-20）：框架认的文件只有 `requirement.md` / `requirement.lock` / `meta.yaml` / `signed.json` / 流程文件 / 描述符；族内约定（`scoring.yaml` 这类）放族包 `framework/experiment/`，不进 `contracts/`。需求确认是唯一内置的门，断点几个、放哪由拼流程的人定。能力是纯函数：`--from` 点名输入，没有「缺省读最新」。阶段主文件按阶段定名（`capabilities.MAIN_FILES`），不按能力定。
 15. **能力按项目装载**（P-26）：项目里研究助理与执行层只装平台自带的 skill 加本项目流程实例上挂的，读取点只有 `framework/workspace/loadout.py`；装载之外的 `skill show / run`、`cap` 拒（`tests/test_workspace_loadout.py`）。
 16. **不要 key 也能用，有 key 用得更多**（P-27）：可选的 key 只许做量上的加法（现在只有 `OPENALEX_API_KEY`），只走环境变量、一个读取点；三处库里不许出现要第三方凭据的用法，门禁查用法不查字眼（`framework/skills/library.py` 的 `KEY_*`，`make skills`）；收录社区 skill 不为过门禁改上游字眼，许可证只收 MIT / Apache-2.0 / BSD / ISC，台账 `skills-curated/provenance.yaml` 对账。

@@ -5,22 +5,20 @@
 （github.com/openai/codex 的 rust-v0.147.0：exec/src/cli.rs、exec/src/exec_events.rs）；外层 #131。
 2026-10-05 升到 0.160.0 后 live 复测过（探测、执行层写文件、协调层两轮续接，外层 #247）。
 
-- **隔离的承重位是私有 `CODEX_HOME`**（`~/.config/ai4sci/codex-home/`，`AI4SCI_CODEX_HOME` 可指向
-  别的根；协调层用根、执行层用 `executor/` 子目录，因为 execpolicy 规则是按 home 放的、两层放行的
-  命令不同；协调层留在根上是为了老对话的 rollout 还在原处、续得上）：本机的
-  config.toml、plugins、MCP、hooks、memories、用户 skills 都不进；`auth.json` 软链到真的
-  `~/.codex/auth.json`（登录共用、凭据不复制；token 刷新写穿软链），真的不在就是「没登录」。协调层
-  的会话 rollout 也落在私有 home 下，续接靠它。`--ignore-user-config` 照带（自动化的官方开关）。
-  「真的」home 是用户自己的 `CODEX_HOME`；但作业跑在上一层会话的 shell 里，环境里的 `CODEX_HOME` 是
-  我们给那一层的私有 home——照它算就把软链指向自己（实测 401「Missing bearer」），所以指到私有根
-  下面的一律不算，退回 `~/.codex`。
+- **隔离的承重位是私有 `CODEX_HOME`**：平台的家里这家的目录（`Link.home`，框架给，外层 #263）。
+  协调层用根、执行层用 `executor/` 子目录，因为 execpolicy 规则是按 home 放的、两层放行的命令不同。
+  本机的 config.toml、plugins、MCP、hooks、memories、用户 skills 都不进；**登录是平台自己的**：
+  在这个目录里 `codex login`（`login_command`），`auth.json` 落在根上，执行层的 `auth.json` 软链到
+  根上那份（一次登录两层用；token 刷新写穿软链）。不再软链用户的 `~/.codex/auth.json`——平台的
+  登录归平台，清除家时一起走。协调层的会话 rollout 也落在私有 home 下，续接靠它。
+  `--ignore-user-config` 照带（自动化的官方开关）。
 - **`ai4sci` 在沙箱外跑，其余命令都在沙箱里**：Codex 没有 Claude Code 那种按工具名的白名单，但
   execpolicy 的 `.rules` 能做「这个前缀的命令在沙箱外跑」（`prefix_rule(decision="allow")`，实测
   `/bin/zsh -lc 'ai4sci …'` 也命中、写到了 HOME 下）。端口的 `bash_rules`（协调层 `ai4sci`，执行层
   `ai4sci skill`）
   就翻成私有 home 的 `rules/ai4sci.rules`——与 Claude Code 的 `Bash(ai4sci *)` 一个模型：
   平台自己的 CLI 是放行的那扇门，能写平台自己的目录、能联网、起作业不嵌套沙箱；agent 敲的别的命令
-  留在沙箱里（只能写工作区、没网）。所以不用 `--ignore-rules`，也不把数据根、uv 缓存加进可写根。
+  留在沙箱里（只能写工作区、没网）。所以不用 `--ignore-rules`，也不把平台的家加进可写根。
   嵌套的沙箱走不通：作业若在沙箱里起、里面的执行层 codex 连自己的可写根都写不进（实测 apply_patch
   「Operation not permitted」），这就是要把 `ai4sci` 放到沙箱外的原因。
 - **skills 关不干净得自己关**：
@@ -79,19 +77,18 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import AgentProbe, ChatEvent, Choice, Knobs, Price, RunResult, Tuning, Usage
+from backends import AgentProbe, ChatEvent, Choice, Knobs, Link, Price, RunResult, Tuning, Usage
 from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
 __all__ = ["CodexRunner", "CodexChat", "KNOBS", "MODELS", "EFFORTS", "PRICES", "LAYERS",
            "codex_home", "write_rules", "build_env", "config_args", "skill_off_paths", "toml_str",
            "tool_guide", "chat_tool_guide", "parse_events", "Translator", "final_report", "usage",
-           "probe", "parse_version", "make_runner", "make_chat"]
+           "probe", "parse_version", "make_runner", "make_chat", "login_command",
+           "logout_command"]
 
 NAME = "codex"
-HOME_ENV = "AI4SCI_CODEX_HOME"
-REAL_HOME_ENV = "CODEX_HOME"
-DEFAULT_ROOT = Path.home() / ".config" / "ai4sci" / "codex-home"
+HOME_ENV = "CODEX_HOME"
 LAYERS = ("chat", "executor")
 AUTH_NAME = "auth.json"
 RULES_NAME = "ai4sci.rules"
@@ -171,26 +168,23 @@ def toml_str(text: str) -> str:
     return json.dumps(text, ensure_ascii=False).replace("\x7f", "\\u007f")
 
 
-def codex_home(layer: str) -> Path:
-    """这一层的私有 CODEX_HOME：建目录、把真的 auth.json 软链进来（不复制凭据）。真的没登录就是
-    悬空软链，`codex login status` 会说 Not logged in，自检把这句原样给人。协调层就是根（老对话的
-    rollout 在那儿，挪了就 no rollout found），执行层是根下的 `executor/`。文件头写了为什么环境里的
-    `CODEX_HOME` 指到私有根下面时不算。"""
+def codex_home(link: Link, layer: str) -> Path:
+    """这一层的私有 CODEX_HOME：协调层就是 `link.home`（老对话的 rollout 在那儿，挪了就
+    no rollout found），执行层是它下面的 `executor/`，`auth.json` 软链到根上那份——平台登录一次，
+    两层都用。根上还没登录就是悬空软链，`codex login status` 说 Not logged in，自检原样给人。"""
     assert layer in LAYERS, f"层只有 {LAYERS}，得到 {layer!r}"
-    root = Path(os.environ.get(HOME_ENV) or DEFAULT_ROOT).expanduser()
+    root = link.home
     home = root if layer == "chat" else root / layer
     home.mkdir(parents=True, exist_ok=True)
-    raw = os.environ.get(REAL_HOME_ENV)
-    candidate = Path(raw).expanduser() if raw else Path.home() / ".codex"
-    if candidate.resolve().is_relative_to(root.resolve()):
-        candidate = Path.home() / ".codex"  # 私有根自己、或它下面的执行层 home：都不是「真的」
-    real = candidate / AUTH_NAME
-    link = home / AUTH_NAME
-    if link.is_symlink() and link.readlink() != real:
-        link.unlink()  # 指错了（含指向自己的死循环）：重连
-    if not link.is_symlink():
-        assert not link.exists(), f"{link} 是普通文件不是软链：私有 home 里不该有凭据副本"
-        link.symlink_to(real)
+    if layer == "chat":
+        return home
+    real = root / AUTH_NAME
+    auth = home / AUTH_NAME
+    if auth.is_symlink() and auth.readlink() != real:
+        auth.unlink()  # 指错了（旧版本软链到用户的 ~/.codex）：重连
+    if not auth.is_symlink():
+        assert not auth.exists(), f"{auth} 是普通文件不是软链：执行层不该有自己的凭据"
+        auth.symlink_to(real)
     return home
 
 
@@ -251,7 +245,7 @@ def build_env(timeout_s: float, home: Path, chat_id: str | None = None) -> dict[
     bin_dir = str(Path(sys.executable).parent)
     inherited = os.environ.get("PATH", "")
     env = {**os.environ, "PATH": f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir,
-           REAL_HOME_ENV: str(home)}
+           HOME_ENV: str(home)}
     env.pop(CHAT_ID_ENV, None)
     if chat_id:
         env[CHAT_ID_ENV] = chat_id
@@ -326,7 +320,8 @@ def _write_stdin(proc: subprocess.Popen, text: str) -> None:
 class CodexRunner:
     name = NAME
 
-    def __init__(self, cli: str = "codex") -> None:
+    def __init__(self, link: Link, cli: str = "codex") -> None:
+        self.link = link
         self.cli = cli
 
     @staticmethod
@@ -337,7 +332,7 @@ class CodexRunner:
                    tuning: Tuning | None = None, *, home: Path | None = None) -> list[str]:
         """一次性会话：`--ephemeral`（不留 rollout）。可写根 = 只许改的目录；放行的命令前缀写进
         这一层 home 的规则。`--ephemeral` 与 `--color` 只在根形态有（resume 没有）。"""
-        home = codex_home("executor") if home is None else home
+        home = codex_home(self.link, "executor") if home is None else home
         write_rules(home, bash_rules)
         return [self.cli, "exec", *BASE_ARGS, "--ephemeral", "--color", "never",
                 "-C", str(Path(cwd).resolve()),
@@ -350,7 +345,7 @@ class CodexRunner:
             tuning: Tuning | None = None, max_turns: int | None = None,
             max_budget_usd: float | None = None) -> RunResult:
         # max_turns / max_budget_usd：Codex 没有这两个闸（文档与 --help 都没有），超时是唯一的闸
-        home = codex_home("executor")
+        home = codex_home(self.link, "executor")
         before = snapshot(cwd)
         argv = self.build_argv(cwd, allowed_paths, bash_rules, tuning, home=home)
         raw: list[str] = []
@@ -490,20 +485,20 @@ class CodexChat:
     name = NAME
     cost_reporting = "turn"
 
-    def __init__(self, cli: str = "codex") -> None:
+    def __init__(self, link: Link, cli: str = "codex") -> None:
+        self.link = link
         self.cli = cli
 
     @staticmethod
     def knobs() -> Knobs:
         return KNOBS
 
-    @staticmethod
-    def forget(session_id: str, cwd: Path) -> None:
+    def forget(self, session_id: str, cwd: Path) -> None:
         """删这条线程在私有 home 里的 rollout（实测 0.147.0 的布局：`sessions/<年>/<月>/<日>/
         rollout-<时间>-<thread_id>.jsonl`；官方文档不写存哪、也没有删会话的命令）。cwd 用不上——
         Codex 的会话不按目录分。"""
         del cwd
-        home = codex_home("chat")
+        home = codex_home(self.link, "chat")
         for path in (home / "sessions").glob(f"*/*/*/rollout-*-{session_id}.jsonl"):
             path.unlink()
 
@@ -514,7 +509,7 @@ class CodexChat:
     def build_argv(self, cwd: Path, *, session_id: str | None, system_prompt: str,
                    allowed_paths: list[Path], bash_rules: tuple[str, ...] = (),
                    tuning: Tuning | None = None, home: Path | None = None) -> list[str]:
-        home = codex_home("chat") if home is None else home
+        home = codex_home(self.link, "chat") if home is None else home
         write_rules(home, bash_rules)
         skills_off = skill_off_paths(home, Path(cwd))
         if session_id:
@@ -534,7 +529,7 @@ class CodexChat:
         tuning: Tuning | None = None,
     ) -> Iterator[ChatEvent]:
         # readable_paths 用不上：沙箱里读是全盘放开的
-        home = codex_home("chat")
+        home = codex_home(self.link, "chat")
         argv = self.build_argv(cwd, session_id=session_id, system_prompt=system_prompt,
                                allowed_paths=allowed_paths, bash_rules=bash_rules, tuning=tuning,
                                home=home)
@@ -584,11 +579,11 @@ class CodexChat:
                             duration_s=time.monotonic() - started, raw={"stderr_tail": tail})
 
 
-def probe(cli: str = "codex", speak_timeout_s: float = 120.0) -> AgentProbe:
+def probe(link: Link, cli: str = "codex", speak_timeout_s: float = 120.0) -> AgentProbe:
     """四句人话（纲领 P-25）：装了没、版本够不够、登录了没、能不能说话。
 
-    登录看 `codex login status` 的退出码（0 / 1，文字在 stderr），在私有 CODEX_HOME 下跑——软链指着
-    真的 auth.json，所以答案与本机一致；说话真跑一句 pong，走与真会话同一组隔离参数。
+    登录看 `codex login status` 的退出码（0 / 1，文字在 stderr），在平台的 CODEX_HOME 下跑——问的是
+    平台自己的登录，不是用户本机的；说话真跑一句 pong，走与真会话同一组隔离参数。
     """
     result = AgentProbe()
     exe = shutil.which(cli)
@@ -609,14 +604,15 @@ def probe(cli: str = "codex", speak_timeout_s: float = 120.0) -> AgentProbe:
         result.items.append(("版本", False, f"{raw}，要 ≥ {want}（这版实测过的 flag）"))
         return result
     result.items.append(("版本", True, raw))
-    home = codex_home("chat")
+    home = codex_home(link, "chat")
     env = build_env(30.0, home)
     status = subprocess.run([cli, "login", "status"], capture_output=True, text=True, timeout=30,
                             env=env)
     result.logged_in = status.returncode == 0
     if not result.logged_in:
         said = (status.stderr or status.stdout).strip() or "Not logged in"
-        result.items.append(("登录", False, f"{said}：在终端跑 `codex login`，登录后再检查"))
+        result.items.append(("登录", False,
+                             f"{said}：平台里还没登录，设置里点「登录」，在浏览器里授权后再检查"))
         return result
     result.items.append(("登录", True, (status.stderr or status.stdout).strip() or "已登录"))
     started = time.monotonic()
@@ -647,9 +643,20 @@ def probe(cli: str = "codex", speak_timeout_s: float = 120.0) -> AgentProbe:
     return result
 
 
-def make_runner() -> CodexRunner:
-    return CodexRunner()
+def login_command(link: Link, cli: str = "codex") -> tuple[list[str], dict[str, str]]:
+    """在平台的 CODEX_HOME 里登录 ChatGPT：CLI 自己开浏览器授权，`auth.json` 落在那里
+    （外层 #263）。"""
+    return [cli, "login"], build_env(600.0, codex_home(link, "chat"))
 
 
-def make_chat() -> CodexChat:
-    return CodexChat()
+def logout_command(link: Link, cli: str = "codex") -> tuple[list[str], dict[str, str]]:
+    """登出平台 CODEX_HOME 里的登录（删 `auth.json`）。"""
+    return [cli, "logout"], build_env(60.0, codex_home(link, "chat"))
+
+
+def make_runner(link: Link) -> CodexRunner:
+    return CodexRunner(link)
+
+
+def make_chat(link: Link) -> CodexChat:
+    return CodexChat(link)

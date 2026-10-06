@@ -24,16 +24,17 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import AgentProbe, ChatEvent, Choice, Knobs, Price, RunResult, Tuning, Usage
+from backends import AgentProbe, ChatEvent, Choice, Knobs, Link, Price, RunResult, Tuning, Usage
 from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
 __all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "KNOBS", "MODELS", "EFFORTS", "PRICES",
            "WEB_TOOLS", "usage", "build_env", "bash_rule", "tool_guide", "parse_events",
            "final_metrics", "final_report", "kill_tree", "probe", "parse_version", "make_runner",
-           "make_chat"]
+           "make_chat", "login_command", "logout_command"]
 
 NAME = "claude_code"
+CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
 # 不读 user/project/local 任何设置源：会话因此不继承本机的 CLAUDE.md、hook、plugin、
 # 自定义 agent（P-11）；自动记忆不归设置源管，靠环境变量关（build_env，外层 #222）。执行层再加
 # --no-session-persistence（一次性会话，不留）；协调层不加：多轮靠 --resume 续接，靠的就是
@@ -116,8 +117,13 @@ def chat_tool_guide(bash_rules: tuple[str, ...]) -> str:
     return CHAT_TOOL_GUIDE.format(commands=_commands(bash_rules))
 
 
-def build_env(timeout_s: float, chat_id: str | None = None) -> dict[str, str]:
-    """两层会话共用的子进程环境：继承本进程，外加 venv 的 bin 进 PATH、关后台、Bash 超时对齐本轮。
+def build_env(timeout_s: float, home: Path, chat_id: str | None = None) -> dict[str, str]:
+    """两层会话共用的子进程环境：继承本进程，外加配置目录指到平台的家、venv 的 bin 进 PATH、关后台、
+    Bash 超时对齐本轮。
+
+    配置目录（外层 #263）：`CLAUDE_CONFIG_DIR` 指到 `home`（平台家里这家的私有目录），会话记录、
+    平台自己的登录都在那里，不写用户的 `~/.claude`；CLI 在这个目录下不认用户本机的登录
+    （2026-10-06 实测 `auth status` 是 loggedIn:false），平台要自己登录一次（`login_command`）。
 
     agent 敲的是裸 `ai4sci`（纲领 P-14：它面前只有这一个入口，不写路径不挂前缀），
     所以起它的服务得让这个名字找得到：把自己解释器所在的 bin 目录**追加**到 PATH 末尾。
@@ -138,7 +144,8 @@ def build_env(timeout_s: float, chat_id: str | None = None) -> dict[str, str]:
     bin_dir = str(Path(sys.executable).parent)
     inherited = os.environ.get("PATH", "")
     path = f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir
-    env = {**os.environ, "PATH": path, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+    env = {**os.environ, "PATH": path, CONFIG_DIR_ENV: str(home),
+           "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
            "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis,
            "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
     env.pop(CHAT_ID_ENV, None)
@@ -156,7 +163,8 @@ def _abs_glob(path: Path) -> str:
 class ClaudeCodeRunner:
     name = NAME
 
-    def __init__(self, cli: str = "claude") -> None:
+    def __init__(self, link: Link, cli: str = "claude") -> None:
+        self.link = link
         self.cli = cli
 
     @staticmethod
@@ -198,7 +206,8 @@ class ClaudeCodeRunner:
         # 环境与协调层同一份：裸 `ai4sci` 找得到、关后台、Bash 超时对齐本轮（skill 脚本会跑几分钟）
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True, env=build_env(timeout_s))
+                                text=True, start_new_session=True,
+                                env=build_env(timeout_s, self.link.home))
         # stdout 与 stderr 各一个线程排空。只读 stdout 的话，CLI 往 stderr 写满管道缓冲区
         # 就会卡住，表面上是"超时"，真正原因是没人读它（实测 CLI 会往 stderr 打 Warning）
         readers = [threading.Thread(target=lambda: raw.extend(proc.stdout), daemon=True),
@@ -328,7 +337,8 @@ class ClaudeCodeChat:
     name = NAME
     cost_reporting = "session"
 
-    def __init__(self, cli: str = "claude") -> None:
+    def __init__(self, link: Link, cli: str = "claude") -> None:
+        self.link = link
         self.cli = cli
 
     @staticmethod
@@ -336,12 +346,10 @@ class ClaudeCodeChat:
         """有哪些模型、哪几档思考深度，以及起点（按人的设置里没填这家时用；P-25）。"""
         return KNOBS
 
-    @staticmethod
-    def forget(session_id: str, cwd: Path) -> None:
-        """删这条会话在本机的痕迹（实测 2.1.278 的布局，官方没有删会话的命令）：
-        `~/.claude/projects/<cwd 里的 / 换成 ->/<session>.jsonl` 与
-        `~/.claude/session-env/<session>`。"""
-        home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    def forget(self, session_id: str, cwd: Path) -> None:
+        """删这条会话的痕迹（实测 2.1.278 的布局，官方没有删会话的命令）：配置目录（平台家里的
+        私有目录）下 `projects/<cwd 里的 / 换成 ->/<session>.jsonl` 与 `session-env/<session>`。"""
+        home = self.link.home
         encoded = str(Path(cwd).resolve()).replace("/", "-")
         for path in (home / "projects" / encoded / f"{session_id}.jsonl",
                      home / "session-env" / session_id):
@@ -399,7 +407,7 @@ class ClaudeCodeChat:
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, start_new_session=True,
-                                env=build_env(timeout_s, chat_id))
+                                env=build_env(timeout_s, self.link.home, chat_id))
         drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
         drain.start()
         # 超时由定时器杀树：主线程在逐行读 stdout，不能同时 wait(timeout)
@@ -511,7 +519,7 @@ def parse_version(text: str) -> tuple[int, ...] | None:
     return tuple(int(p) for p in parts[:3])
 
 
-def probe(cli: str = "claude", speak_timeout_s: float = 120.0) -> AgentProbe:
+def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> AgentProbe:
     """四句人话（纲领 P-25）：装了没、版本够不够、登录了没、能不能说话。
 
     登录看 `claude auth status`（实测 2.1.278 打一份 JSON，`loggedIn` 布尔）；说话是真跑一句 pong，
@@ -537,14 +545,16 @@ def probe(cli: str = "claude", speak_timeout_s: float = 120.0) -> AgentProbe:
         result.items.append(("版本", False, f"{raw}，要 ≥ {want}（`--effort` 与隔离参数）"))
         return result
     result.items.append(("版本", True, raw))
-    status = subprocess.run([cli, "auth", "status"], capture_output=True, text=True, timeout=30)
+    status = subprocess.run([cli, "auth", "status"], capture_output=True, text=True, timeout=30,
+                            env=build_env(30.0, link.home))
     try:
         doc = json.loads(status.stdout or "{}")
     except json.JSONDecodeError:
         doc = {}
     result.logged_in = status.returncode == 0 and bool(doc.get("loggedIn"))
     if not result.logged_in:
-        result.items.append(("登录", False, "没登录：在终端跑 `claude`，按提示登录后再检查"))
+        result.items.append(("登录", False,
+                             "平台里还没登录：设置里点「登录」，在浏览器里授权后再检查"))
         return result
     result.items.append(("登录", True, str(doc.get("authMethod") or "已登录")))
     started = time.monotonic()
@@ -553,7 +563,7 @@ def probe(cli: str = "claude", speak_timeout_s: float = 120.0) -> AgentProbe:
             *EXECUTOR_ISOLATION_ARGS, "--max-turns", "1", "--model", KNOBS.model]
     try:
         spoke = subprocess.run(argv, capture_output=True, text=True, timeout=speak_timeout_s,
-                               stdin=subprocess.DEVNULL, env=build_env(speak_timeout_s))
+                               stdin=subprocess.DEVNULL, env=build_env(speak_timeout_s, link.home))
     except subprocess.TimeoutExpired:
         result.items.append(("说话", False, f"{speak_timeout_s:g} 秒没回话"))
         return result
@@ -569,9 +579,19 @@ def probe(cli: str = "claude", speak_timeout_s: float = 120.0) -> AgentProbe:
     return result
 
 
-def make_runner() -> ClaudeCodeRunner:
-    return ClaudeCodeRunner()
+def login_command(link: Link, cli: str = "claude") -> tuple[list[str], dict[str, str]]:
+    """在平台的配置目录里登录 Claude 订阅：CLI 自己开浏览器授权（外层 #263）。"""
+    return [cli, "auth", "login", "--claudeai"], build_env(600.0, link.home)
 
 
-def make_chat() -> ClaudeCodeChat:
-    return ClaudeCodeChat()
+def logout_command(link: Link, cli: str = "claude") -> tuple[list[str], dict[str, str]]:
+    """登出平台配置目录里的登录：凭据在系统钥匙串里、按配置目录分开，清除家之前要先登出。"""
+    return [cli, "auth", "logout"], build_env(60.0, link.home)
+
+
+def make_runner(link: Link) -> ClaudeCodeRunner:
+    return ClaudeCodeRunner(link)
+
+
+def make_chat(link: Link) -> ClaudeCodeChat:
+    return ClaudeCodeChat(link)

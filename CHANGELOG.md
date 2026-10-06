@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### 变更
+
+- 平台的一切私有东西收进**平台的家** `~/.ai4sci`（`AI4SCI_HOME` 可改）：设置、项目、两家 CLI 的会话记录与平台自己的登录、依赖缓存；不再写 `~/.claude` `~/.codex` `~/.config/ai4sci`；`ai4sci reset` 与设置页一键清除；源码模式不再以仓库为家，样例项目删除。旧数据跑外层 `scripts/oneoff/migrate-to-home-263.py`（外层 #264）
+
 ## [1.6.1] - 2026-10-06
 
 ### 变更

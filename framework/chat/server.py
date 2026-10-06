@@ -23,6 +23,8 @@
     真探并记回，带 ok / failed
     POST /settings/computes                 {"name", "ssh", "key", "root"?} 接一台机器（探测后记回）
     POST /settings/computes/<name>/remove   删一台
+    POST /settings/reset                    {"confirm": "清除"} 清除平台的家（登出两家、清空），
+                                            有作业在跑或不是平台建的家 409（外层 #263）
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
     GET  /cap                               能力描述符清单：每个带 stage、五栏与 used_by
     GET  /skills                            能力库里 tag 为 skill 的：名字、一行、出处、脚本名、
@@ -101,11 +103,19 @@ from backends import (
     ChatEvent,
     Tuning,
     available_backends,
-    get_chat,
-    probe,
 )
 from framework import agents, computes, paths
-from framework.chat import boards, conversation, guide, notify, removal, scope, settings, spending
+from framework.chat import (
+    boards,
+    conversation,
+    guide,
+    notify,
+    removal,
+    reset,
+    scope,
+    settings,
+    spending,
+)
 from framework.contracts import output, requirement, stages, workflow_library, workflows
 from framework.contracts.capability import Capability
 from framework.workspace import jobs, outputs, project, root
@@ -117,6 +127,8 @@ MAX_BODY = 1 << 20
 # 不要署名），记登录名，与 CLI 的 `--by` 缺省一样
 SIGNER = getpass.getuser()
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
+# 清除平台的家要页面带上这两个字（按住确认之外再一道，误调接口删不了）
+CONFIRM_RESET = "清除"
 API_ROOTS = ("health", "backends", "settings", "stages", "cap", "skills", "workflows", "templates",
              "projects", "studio", "attention", "usage")
 
@@ -141,9 +153,10 @@ class ChatServer(ThreadingHTTPServer):
                  check_workflow: Callable[[dict[str, Any]], dict[str, Any]],
                  save_workflow: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  descriptors: Callable[[], dict[str, Capability]] = dict,
-                 chat_factory: Callable[[str], Chat] = get_chat,
+                 chat_factory: Callable[[str], Chat] = agents.chat,
                  add_compute: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-                 probe_agent: Callable[[str], AgentProbe] = probe,
+                 probe_agent: Callable[[str], AgentProbe] = agents.probe,
+                 logout_agent: reset.Logout = agents.logout_command,
                  system_prompts: dict[str, str] | None = None,
                  ui_dir: Path | None = None) -> None:
         super().__init__(address, Handler)
@@ -164,6 +177,8 @@ class ChatServer(ThreadingHTTPServer):
         # 设置那块板要的清单与自检都跟着接的是哪家适配器走（测试里是剧本，不跑真 CLI）
         self.knobs_of = lambda name: chat_factory(name).knobs()
         self.probe_agent = probe_agent
+        # 清除前登出两家：测试里换成不碰 CLI 的
+        self.logout_agent = logout_agent
         # 接一台机器：cli 注入（要就地探测，与 `ai4sci compute add` 同一段代码）；
         # None 是这个服务不开这功能
         self.add_compute = add_compute or _no_add_compute
@@ -540,7 +555,7 @@ class Handler(BaseHTTPRequestHandler):
             self._sse(event)
 
     def _post_settings(self, rest: list[str], body: dict[str, Any]) -> None:
-        """设置那块板的四个动作，都落到 chat/settings 与两份清单的读写点。"""
+        """设置那块板的五个动作，都落到 chat/settings、两份清单的读写点与清除。"""
         try:
             if rest == ["agents"]:
                 return self._json(settings.update_agents(body, self.server.knobs_of,
@@ -559,6 +574,14 @@ class Handler(BaseHTTPRequestHandler):
             if len(rest) == 3 and rest[0] == "computes" and rest[2] == "remove":
                 computes.remove(rest[1])
                 return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+            if rest == ["reset"]:
+                if body.get("confirm") != CONFIRM_RESET:
+                    return self._error(HTTPStatus.BAD_REQUEST, f"要带 confirm: {CONFIRM_RESET}")
+                done = reset.reset(self.server.home, self.server.logout_agent)
+                return self._json({"done": done,
+                                   **settings.snapshot(self.server.knobs_of, self.server.home)})
+        except reset.ResetRefused as exc:
+            return self._error(HTTPStatus.CONFLICT, str(exc))
         except ValueError as exc:
             # 名字不对（BackendNotFound / ComputeNotFound）、清单不合形状、值不在清单上：都是配置值
             # 非法

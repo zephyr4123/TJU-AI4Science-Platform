@@ -28,7 +28,7 @@ describe('设置：一个词的状态', () => {
     expect(tildify('/Users/me/coding/x')).toBe('~/coding/x')
     expect(tildify('/home/me')).toBe('~')
     expect(tildify('/opt/data')).toBe('/opt/data')
-    expect(tildify('/Users/me2/.config/ai4sci')).toBe('~/.config/ai4sci')
+    expect(tildify('/Users/me2/.ai4sci')).toBe('~/.ai4sci')
   })
   it('版本串只留版本号', () => {
     expect(shortVersion('2.1.278 (Claude Code)')).toBe('2.1.278')

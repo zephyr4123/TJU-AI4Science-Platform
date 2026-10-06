@@ -47,13 +47,13 @@ flowchart TB
 | `capabilities/` | 能力库的「步骤」那一半：一个步骤一个子包，互不 import，各导出 `DESCRIPTOR` 与 `run(output_dir, inputs, ports, **params)`；`discover()` 扫目录并断言签名；`abilities.py` 是能力库的出处（步骤 + skill 两个 tag）；`MAIN_FILES` 阶段主文件表 | 现有八个：`literature_search` `literature_read` `design` `reproduction` `auto_research` `analysis` `reproducibility` `verify` |
 | `cli/` | 命令行，一类一个模块，`__init__.py` 逐行装配（没有注册表，加一条就加一行）；`_common.py` 退出码、当前项目与工作区、按名字取端口、`refuse_if_assistant` | 清单以 `ai4sci --help` 为准 |
 
-分层之外的三个顶层模块是**唯一读取点**：`paths.py`（仓根、出厂件、数据根、五个 `*_ROOT` 环境变量）、`computes.py`（`~/.config/ai4sci/computes.yaml`）、`agents.py`（`agents.yaml`）。分层包可以 import 它们，它们不许 import 分层包。
+分层之外的三个顶层模块是**唯一读取点**：`paths.py`（仓根、出厂件、平台的家与家里每样东西的位置、五个 `*_ROOT` 环境变量）、`computes.py`（家里的 `computes.yaml`）、`agents.py`（家里的 `agents.yaml`，以及起适配器时交给它的 `Link`）。分层包可以 import 它们，它们不许 import 分层包。
 
 两个**端口**在包外：`backends/`（`Runner` 执行层一次会话、`Chat` 协调层多轮续接，两个 Protocol；适配器 `claude_code.py`、`codex.py` 各一个文件，`_procs.py` 杀进程树、`_snapshot.py` 前后快照 diff）与 `compute/`（`Compute` Protocol；`local.py`、`ssh.py`）。端口不 import framework，相互也不 import；按名字取适配器走显式字典 `_BACKENDS` / `_COMPUTES`，名字不对抛 `BackendNotFound` / `ComputeNotFound`，绝不回退。
 
 下层要用上层的东西怎么办：**由上层注入函数或回调**，不反向 import。`chat/server.py` 不认识 `capabilities`，能力清单、流程检查、描述符表由 `cli/serve.py` 以函数传进 `ChatServer`；`workspace/removal.py` 通过回调接 `chat/removal.py`。
 
-两种跑法只在 `paths.py` 分辨：仓根有 `pyproject.toml` 就是源码模式（出厂件在仓根、数据根缺省仓根），否则是装的包（出厂件在 `framework/shipped/`，数据根 `~/ai4sci`）。
+两种跑法只在 `paths.py` 分辨：仓根有 `pyproject.toml` 就是源码模式（出厂件在仓根），否则是装的包（出厂件在 `framework/shipped/`）。**平台的家**与跑法无关，都是 `~/.ai4sci`（外层 #263）：`agents.yaml` `computes.yaml` `keys.yaml`、`projects/` `studio/`、两家 CLI 的私有目录 `claude_code/` `codex/`（`CLAUDE_CONFIG_DIR` / `CODEX_HOME`，会话记录与平台自己的登录）、`cache/uv/`。平台不写用户的 `~/.claude` `~/.codex` `~/.config`；清除走 `chat/reset.py`（`ai4sci reset` 与设置页同一段），只删有标记的家。
 
 ## 2. 技术栈
 
@@ -156,25 +156,23 @@ sequenceDiagram
 
 ## 5. 配置与环境变量
 
-配置归环境变量与按人的两份 YAML，命令上不带（纲领 P-14）。每个变量只有一个读取点：
+配置归环境变量与平台的家里的几份 YAML，命令上不带（纲领 P-14）。每个变量只有一个读取点：
 
 | 变量 | 读取点 | 意思 |
 |---|---|---|
-| `AI4SCI_HOME` | `paths.py` | 数据根（项目、编辑台对话、人存的流程 `studio/workflows/`）；不设：源码模式仓根、包模式 `~/ai4sci` |
+| `AI4SCI_HOME` | `paths.py` | 平台的家（设置、key、项目、编辑台、两家 CLI 的私有目录、uv 缓存）；不设是 `~/.ai4sci`，指的目录得已经在 |
 | `AI4SCI_WORKFLOWS_ROOT` `AI4SCI_DOMAINS_ROOT` `AI4SCI_TEMPLATES_ROOT` `AI4SCI_SKILLS_ROOT` `AI4SCI_CURATED_SKILLS_ROOT` | `paths.py` | 五种出厂件库的位置（平台自带的 skill 与收录的分两处）；指向的不是目录当场炸 |
 | `AI4SCI_PROJECT` | `workspace/project.py` | 当前项目（不设从 cwd 往上找 `project.md`） |
-| `AI4SCI_COMPUTES` `AI4SCI_AGENTS` | `computes.py` `agents.py` | 两份按人的清单的位置（缺省 `~/.config/ai4sci/`） |
 | `AI4SCI_CHAT_ID` | `workspace/jobs.py`、`cli/_common.py`；适配器 `build_env` 设 | 调命令的那段对话：作业记下来，跑完把结果排进它的收件箱；人的动作据此拒助理 |
 | `AI4SCI_JOB_ID` | `workspace/jobs.py` | 子进程凭它知道自己是哪个作业 |
 | `AI4SCI_COORDINATOR_TIMEOUT_S` `_MAX_TURNS` `_MAX_BUDGET_USD` | `chat/conversation.py` | 协调层一轮的上限 |
 | `AI4SCI_EXECUTOR_TIMEOUT_S` `_MAX_TURNS` `_MAX_BUDGET_USD` | `executor/session.py` | 执行层一次会话的上限 |
 | `AI4SCI_ENV_BUILD_TIMEOUT_S` | `experiment/env.py` | 建课题 venv 的超时 |
 | `AI4SCI_PYTHON` `AI4SCI_BUDGET_S` `AI4SCI_INNER_K` `AI4SCI_START_EPOCH` | `experiment/env.py`（框架**保证**给 harness） | harness 拿不到必须停，写默认值判不合法；`AI4SCI_SEED` 是唯一允许缺省的 |
-| `AI4SCI_CODEX_HOME` | `backends/codex.py` | Codex 的私有 home |
-| `UV_CACHE_DIR` | `paths.py` | uv 缓存（skill 脚本的环境在这） |
+| `UV_CACHE_DIR` | 平台**设给** uv（`skills/run.py`、`experiment/env.py`） | uv 缓存在家里的 `cache/uv/`；不读用户 shell 里的这个变量 |
 | `OPENALEX_API_KEY` | `capabilities/literature_search/openalex.py` | 可选：文献检索查 OpenAlex 的 key，设了每天额度 10000 积分、不设 1000（纲领 P-27：不要 key 也能用，有 key 用得更多）；放请求头，不进 URL 与日志 |
 
-模型、思考深度、哪家 agent 归 `~/.config/ai4sci/agents.yaml`（`ai4sci agent use`），算力归 `computes.yaml`（`ai4sci compute add`）；两份都不进 git、不进数据根。测试里两份都指到 tmp（`tests/conftest.py`）。
+模型、思考深度、哪家 agent 归家里的 `agents.yaml`（`ai4sci agent use`），算力归 `computes.yaml`（`ai4sci compute add`）；两份都不进 git。测试里整个家指到 tmp（`tests/conftest.py`）。
 
 ## 6. 已知盲点
 

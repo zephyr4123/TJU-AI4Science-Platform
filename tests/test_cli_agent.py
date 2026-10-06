@@ -20,8 +20,8 @@ BAD = AgentProbe(items=[("装了没", True, "/x"), ("登录", False, "没登录�
 @pytest.fixture
 def fake_probes(monkeypatch):
     calls: list[str] = []
-    monkeypatch.setattr(cc, "probe", lambda: calls.append("claude_code") or OK)
-    monkeypatch.setattr(cx, "probe", lambda: calls.append("codex") or BAD)
+    monkeypatch.setattr(cc, "probe", lambda link: calls.append("claude_code") or OK)
+    monkeypatch.setattr(cx, "probe", lambda link: calls.append("codex") or BAD)
     return calls
 
 
@@ -62,7 +62,7 @@ def test_agent_check_records_and_reports(capsys, fake_probes):
 def test_check_covers_agents_computes_storage_and_fails_on_any_item(capsys, fake_probes):
     assert main(["check", "--only", "storage"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith("存放\t") and "可写" in out and out.rstrip().endswith("ok\t全部通过")
+    assert out.startswith("平台的家\t") and "可写" in out and out.rstrip().endswith("ok\t全部通过")
     assert fake_probes == []  # 只查存放不碰 CLI
     assert main(["check"]) == 1
     out = capsys.readouterr().out
