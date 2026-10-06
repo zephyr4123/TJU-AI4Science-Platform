@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-10-06
+
 ### 变更
 
 - 供应商能不能联网改成每家必须显式登记（`Provider.web_search` 去掉缺省值，不登记构造不出来），两个适配器每格写上官方出处；Codex 接 Kimi 原来靠缺省值显示能联网，补上 Kimi Responses 文档（外层 #271）
@@ -275,7 +277,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.5.1...v1.6.0
