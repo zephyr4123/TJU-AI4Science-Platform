@@ -54,7 +54,7 @@ from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
 __all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "MODELS", "EFFORTS", "THIRD_EFFORTS", "PROVIDERS",
-           "PRICED", "provider", "connect_env",
+           "PRICED", "LONG_CONTEXT", "provider", "connect_env", "model_arg",
            "WEB_TOOLS", "usage", "build_env", "bash_rule", "tool_guide", "parse_events",
            "final_metrics", "final_report", "kill_tree", "probe", "parse_version", "make_runner",
            "make_chat", "login_command", "logout_command", "session_dirname"]
@@ -106,6 +106,13 @@ PROVIDERS = {
     "kimi": Provider("kimi", "Kimi", (Choice("kimi-k3", "Kimi K3"),), THIRD_EFFORTS, "kimi-k3",
                      "max", key="kimi", base_url="https://api.moonshot.cn/anthropic"),
 }
+# 1M 上下文（外层 #266，主人 2026-10-06：必须配）：第三方的模型名带 `[1m]`，CLI 才按 1M 算上下文
+# （本机抓包：不带 contextWindow 是 200000、早早压缩，带了 1000000；发出去的模型名去掉后缀，只多一个
+# context-1m 的 beta 头，DeepSeek、Kimi 的 /messages 都忽略 beta 头）；两家的模型都是 1M。自动压缩的
+# 窗口照各家官方给 Claude Code 的配置（2026-10-06）：DeepSeek 786432
+# （https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code），Kimi 1000000
+# （https://platform.kimi.com/docs/guide/claude-code-kimi）。自定义不知道多长，不加
+LONG_CONTEXT = {"deepseek": 786432, "kimi": 1_000_000}
 # 价目表里这家用得上的（CLI 报的那一版）：三档别名解析成哪版由 CLI 定（2.1.291 留档实测
 # sonnet → claude-sonnet-5、opus → claude-opus-5），所以两代都列；加第三方的模型要在这里加，
 # `backends/catalog/prices.json` 也得有（测试对账）
@@ -188,14 +195,22 @@ def provider(link: Link) -> Provider:
 
 def connect_env(link: Link) -> dict[str, str]:
     """接这个供应商要加的环境（外层 #266，照 cc-switch 的预设）：官方两家什么都不加；第三方给地址、
-    haiku 的映射，外加长超时、不发非必要的流量（那些请求是发给 Anthropic 的）。key 不在这里：
-    见 `key_args`。"""
+    haiku 的映射，外加长超时、不发非必要的流量（那些请求是发给 Anthropic 的），长上下文的再给
+    自动压缩的窗口。key 不在这里：见 `key_args`。"""
     picked = provider(link)
     if not picked.base_url:
         return {}
-    return {"ANTHROPIC_BASE_URL": picked.base_url,
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL": picked.models[0].id, "API_TIMEOUT_MS": "600000",
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+    env = {"ANTHROPIC_BASE_URL": picked.base_url,
+           "ANTHROPIC_DEFAULT_HAIKU_MODEL": picked.models[0].id, "API_TIMEOUT_MS": "600000",
+           "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+    if picked.id in LONG_CONTEXT:
+        env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(LONG_CONTEXT[picked.id])
+    return env
+
+
+def model_arg(link: Link, model: str) -> str:
+    """`--model` 上写什么：长上下文的供应商带 `[1m]`（LONG_CONTEXT），别的照模型名。"""
+    return f"{model}[1m]" if provider(link).id in LONG_CONTEXT else model
 
 
 def key_args(link: Link) -> list[str]:
@@ -291,7 +306,8 @@ class ClaudeCodeRunner:
                                    if max_turns is None else int(max_turns)),
                 "--max-budget-usd", str(_env_num("AI4SCI_EXECUTOR_MAX_BUDGET_USD", 2.0, float)
                                         if max_budget_usd is None else float(max_budget_usd)),
-                "--model", picked.model, "--effort", picked.effort, *key_args(self.link)]
+                "--model", model_arg(self.link, picked.model), "--effort", picked.effort,
+                *key_args(self.link)]
 
     def run(self, prompt: str, cwd: Path, timeout_s: float,
             allowed_paths: list[Path], bash_rules: tuple[str, ...] = (),
@@ -497,7 +513,8 @@ class ClaudeCodeChat:
             argv += ["--append-system-prompt", system_prompt]
         # 对话 meta 里记的具体值；没给用起点（P-25：从不让 CLI 自己猜）
         picked = self.knobs().fill(tuning)
-        return [*argv, "--model", picked.model, "--effort", picked.effort, *key_args(self.link)]
+        return [*argv, "--model", model_arg(self.link, picked.model), "--effort", picked.effort,
+                *key_args(self.link)]
 
     def turn(
         self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
@@ -682,7 +699,7 @@ def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> Ag
     started = time.monotonic()
     argv = [cli, "-p", "Reply with exactly the word pong and nothing else.",
             "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
-            *EXECUTOR_ISOLATION_ARGS, "--max-turns", "1", "--model", picked.model,
+            *EXECUTOR_ISOLATION_ARGS, "--max-turns", "1", "--model", model_arg(link, picked.model),
             *key_args(link)]
     try:
         spoke = subprocess.run(argv, capture_output=True, text=True, timeout=speak_timeout_s,

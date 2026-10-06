@@ -14,6 +14,7 @@
 - key 不再走环境变量：存在平台的家里的 `keys.yaml`（只有本人能读，读写点 `framework/keys.py`），设置页填、页面只见末四位；OpenAlex 的 key 也从这里读，shell 里的 `OPENALEX_API_KEY` 不再认（外层 #265）
 - Claude Code、Codex 各自能切**供应商**：官方登录、官方 API、DeepSeek、Kimi、自定义（照 cc-switch 的预设；价目与 Codex 的模型说明从 cc-switch 搬，`backends/catalog/`）；模型跟着供应商走，第三方的成本照价目折算；对话记住开它时的供应商；key 不进环境变量，agent 的命令看不见（外层 #266）
 - 思考深度照各家官方文档一档对一档：DeepSeek、Kimi 只给低 / 高 / 最高（DeepSeek 把中、超高都当高），起点照官方缺省（DeepSeek 高、Kimi 最高）；Claude Code 接 Kimi 改用 K3（K2.7 Code 不认思考深度）；Codex 的模型说明与档位表对账（外层 #266）
+- Claude Code 接 DeepSeek、Kimi 开 1M 上下文：模型名带 `[1m]`、自动压缩窗口照官方（DeepSeek 786432、Kimi 1000000）；原来按 200k 算，长任务早早压缩丢上下文（Codex 的模型说明本来就是 1M）（外层 #266）
 - 设置改成 Claude 应用那样的弹窗：左栏分类（常规、AI 下每家、能力下文献检索、平台下算力与存放），右边一页按小标题分节、一项一行；每家可选供应商、粘贴 key（只露末四位）、填自定义地址；OpenAlex 的 key 有了填的地方；设置不再是地方栏里的一个地方（外层 #267 #268）
 - `GET /settings` 不再带家里每块多大（走遍整棵树要一秒多），改由 `GET /settings/storage` 单独给，存放页打开时才取；设置窗打开与每次改动从一秒多降到几十毫秒（外层 #268）
 

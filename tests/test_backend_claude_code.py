@@ -715,7 +715,7 @@ def test_models_follow_the_provider_and_third_party_ids_go_straight_to_the_cli(t
     knobs = ClaudeCodeChat(link).knobs()
     assert [c.id for c in knobs.models] == ["deepseek-flash", "deepseek-v4-pro"]
     argv = ClaudeCodeRunner(link).build_argv("hi", tmp_path, [tmp_path])
-    assert argv[argv.index("--model") + 1] == "deepseek-flash"
+    assert argv[argv.index("--model") + 1] == "deepseek-flash[1m]"
     custom = Link(home=HOME, provider="custom", base_url="https://llm.lab", models=("m1",))
     assert [c.id for c in ClaudeCodeChat(custom).knobs().models] == ["m1"]
     with pytest.raises(ValueError, match="要填地址和至少一个模型名"):
@@ -736,6 +736,30 @@ def test_third_party_effort_lists_only_the_levels_the_provider_tells_apart():
     assert [c.id for c in PROVIDERS["kimi"].models] == ["kimi-k3"]
     official = ["low", "medium", "high", "xhigh", "max"]  # 官方两家是 CLI 自己的五档
     assert [c.id for c in PROVIDERS["anthropic"].efforts] == official
+
+
+def test_third_party_models_run_with_a_1m_context_window(tmp_path):
+    """1M 上下文（外层 #266，主人 2026-10-06：必须配）：DeepSeek、Kimi 的模型名带 `[1m]`，CLI 才按
+    1M 算上下文（本机抓包：不带是 200000，带了 1000000；发出去的模型名去掉后缀），自动压缩的窗口照
+    各家官方给 Claude Code 的配置。官方两家与自定义（不知道多长）不加。"""
+    from backends.claude_code import ClaudeCodeChat, connect_env
+
+    for name, model, window in (("deepseek", "deepseek-flash", "786432"),
+                                ("kimi", "kimi-k3", "1000000")):
+        link = Link(home=tmp_path / name, provider=name, key="sk")
+        runner = ClaudeCodeRunner(link).build_argv("hi", tmp_path, [tmp_path])
+        chat = ClaudeCodeChat(link).build_argv("hi", tmp_path, session_id=None, system_prompt="",
+                                               allowed_paths=[], bash_rules=())
+        for argv in (runner, chat):
+            assert argv[argv.index("--model") + 1] == f"{model}[1m]"
+        assert connect_env(link)["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == window
+        assert connect_env(link)["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == model  # 后台小活不带后缀
+    for link in (Link(home=tmp_path / "o"),
+                 Link(home=tmp_path / "c", provider="custom", key="sk", base_url="https://llm.lab",
+                      models=("m1",))):
+        argv = ClaudeCodeRunner(link).build_argv("hi", tmp_path, [tmp_path])
+        assert "[1m]" not in argv[argv.index("--model") + 1]
+        assert "CLAUDE_CODE_AUTO_COMPACT_WINDOW" not in connect_env(link)
 
 
 def test_third_party_turn_cost_is_left_for_the_price_table(tmp_path):
