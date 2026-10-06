@@ -290,6 +290,7 @@ def use(name: str, *, roles: tuple[str, ...] = (), provider: str | None = None,
         picked = provider_of(name, new, url, names).knobs()
         if new != entry.provider or picked.models != knobs(name).models:
             entry.model, entry.effort = picked.model, picked.effort
+            entry.last_check = None  # 上次检查的是别的供应商，不作数了
         entry.provider = new
         entry.base_url, entry.models = (url, names) if new == CUSTOM else ("", ())
     else:

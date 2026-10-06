@@ -95,7 +95,8 @@ PROVIDERS = {
                           Choice("deepseek-v4-pro", "DeepSeek V4 Pro", "强")),
                          EFFORTS, "deepseek-flash", "medium", key="deepseek",
                          base_url="https://api.deepseek.com/anthropic",
-                         tested="2026-10-06 冒烟：两款都回 pong，本机 ~/.claude 一个字节没动"),
+                         tested="2026-10-06 冒烟：pong 约 $0.005，本机 ~/.claude 没动，"
+                                "agent 的命令看不见 key"),
     "kimi": Provider("kimi", "Kimi", (Choice("kimi-k2.7-code", "Kimi K2.7 Code"),), EFFORTS,
                      "kimi-k2.7-code", "medium", key="kimi",
                      base_url="https://api.moonshot.cn/anthropic"),

@@ -139,7 +139,8 @@ PROVIDERS = {
                          (Choice("deepseek-flash", "DeepSeek V4.1 Flash", "快"),
                           Choice("deepseek-v4-pro", "DeepSeek V4 Pro", "强")),
                          THIRD_EFFORTS, "deepseek-flash", "high", key="deepseek",
-                         base_url="https://api.deepseek.com"),
+                         base_url="https://api.deepseek.com",
+                         tested="2026-10-06 冒烟：pong 约 $0.003，agent 的命令看不见 key"),
     "kimi": Provider("kimi", "Kimi", (Choice("kimi-k3", "Kimi K3"),), THIRD_EFFORTS, "kimi-k3",
                      "high", key="kimi", base_url="https://api.moonshot.cn/v1"),
 }

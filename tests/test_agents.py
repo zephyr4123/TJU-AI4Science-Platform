@@ -114,8 +114,10 @@ def test_switching_provider_brings_its_own_models_and_the_link_its_key():
     link = agents.link("claude_code")
     assert (link.provider, link.key) == ("deepseek", "sk-deepseek-0000")
     assert agents.link("claude_code", provider="official").key is None  # 老对话照它记的接
+    agents.record_check("claude_code", AgentProbe(items=[("说话", True, "pong")]))
     entry = agents.use("claude_code", provider="official")
     assert (entry.provider, entry.model) == ("official", "sonnet")
+    assert entry.last_check is None  # 上次检查的是 DeepSeek，换了就不作数
 
 
 def test_custom_provider_takes_an_address_and_model_names():
