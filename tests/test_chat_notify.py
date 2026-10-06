@@ -35,7 +35,7 @@ def _job(chat_id: str | None, exit_code: int = 0) -> jobs.Job:
 @pytest.fixture
 def scripted(monkeypatch):
     chat = ScriptedChat([])
-    monkeypatch.setattr(notify.agents, "chat", lambda name: chat)
+    monkeypatch.setattr(notify.agents, "chat", lambda name, provider=None: chat)
     monkeypatch.setattr(notify.guide, "system_prompt",
                         lambda kind, tool_guide="", project=None: "指南")
     return chat
@@ -117,7 +117,8 @@ def test_wake_records_missing_conversation_or_backend_instead_of_raising(tmp_pat
     assert status.startswith("failed: 对话不存在")
     conv = conv_mod.new_conversation(project_mod.of(ws).chats, "nope", ws.root)
     monkeypatch.setattr(notify.agents, "chat",
-                        lambda name: (_ for _ in ()).throw(BackendNotFound(f"未知 {name}")))
+                        lambda name, provider=None: (_ for _ in ()).throw(
+                            BackendNotFound(f"未知 {name}")))
     assert notify.wake(ws, _job(conv.chat_id)) == "failed: 未知 nope"
     with pytest.raises(AssertionError):
         notify.wake(ws, _job(None))

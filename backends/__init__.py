@@ -15,15 +15,18 @@ agent 的一律可替换）。每家还要有一个模块级 `probe()`：装了�
 from __future__ import annotations
 
 import importlib
+import json
 import math
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 __all__ = ["RunResult", "Runner", "ChatEvent", "Choice", "Tuning", "Knobs", "Chat", "AgentProbe",
-           "Usage", "Price", "Link", "BackendNotFound", "get_backend", "get_chat", "probe",
-           "login_command", "logout_command", "read_usage", "prices", "available_backends"]
+           "Usage", "Price", "Provider", "Link", "OFFICIAL", "CUSTOM", "KeyMissing",
+           "BackendNotFound", "get_backend", "get_chat", "probe", "login_command", "logout_command",
+           "read_usage", "price", "prices", "providers", "provider_of", "available_backends"]
 
 
 @dataclass
@@ -84,16 +87,62 @@ class Price:
                 + usage.output_tokens * self.output) / 1_000_000
 
 
+# 供应商里两个特殊的名字：官方登录（订阅，不要 key）与自定义（人填地址与模型名）
+OFFICIAL = "official"
+CUSTOM = "custom"
+CATALOG_DIR = Path(__file__).parent / "catalog"
+
+
+@dataclass(frozen=True)
+class Provider:
+    """一家 CLI 能接的一个供应商（外层 #266，主人 2026-10-06：照 cc-switch，Claude Code / Codex
+    都能切官方登录、官方 API、DeepSeek、Kimi、自定义）。目录在各家适配器的 `PROVIDERS`，地址与模型照
+    cc-switch 的预设，价目在 `catalog/prices.json`（`backends/catalog/README.md`）。
+
+    `key` 是这把 key 在平台的家里 `keys.yaml` 的名字，None 是官方登录、不要 key。`models` 是这家
+    在这个 CLI 上能用的模型——**模型跟着供应商走**：用 DeepSeek 的 key 就只有 DeepSeek 的模型。
+    `reports_cost` 说 CLI 自己报的美元可不可信：只有它认识的官方模型可信，第三方的它按自己的缺省价
+    乱算（2026-10-06 实测 DeepSeek 一句 pong 报 $0.084，实价约 $0.002），适配器报 NaN、读的人照价目
+    折算。`tested` 是实测记录，空串就是还没实测（页面照实写「未实测」）。
+    """
+
+    id: str
+    title: str
+    models: tuple[Choice, ...]
+    efforts: tuple[Choice, ...]
+    model: str
+    effort: str
+    key: str | None = None
+    base_url: str = ""
+    reports_cost: bool = False
+    tested: str = ""
+
+    def knobs(self) -> Knobs:
+        return Knobs(models=self.models, efforts=self.efforts, model=self.model,
+                     effort=self.effort)
+
+
 @dataclass(frozen=True)
 class Link:
-    """框架交给适配器的「这家 CLI 这次怎么接」（外层 #263）。
+    """框架交给适配器的「这家 CLI 这次怎么接」（外层 #263 / #266）。
 
     `home` 是这家 CLI 在平台的家里的私有目录：Claude Code 当 `CLAUDE_CONFIG_DIR`、Codex 当
     `CODEX_HOME`，会话记录与平台自己的登录都在里面。适配器不自己定路径、不碰用户的
     `~/.claude` `~/.codex`——平台的家由框架管（`framework/paths.py`），清除时整个删。
+    `provider` 是用谁的模型（这家 `PROVIDERS` 里的名字，或 `custom`），`key` 是框架从平台的家里
+    读出来的那把（官方登录是 None）；自定义的还带地址与模型名。适配器只把 key 交给它起的那一个
+    子进程，不读用户 shell 里的。
     """
 
     home: Path
+    provider: str = OFFICIAL
+    key: str | None = None
+    base_url: str = ""
+    models: tuple[str, ...] = ()
+
+
+class KeyMissing(ValueError):
+    """选了要 key 的供应商、平台的家里却没有这把 key：一句话说去设置里填。"""
 
 
 @dataclass(frozen=True)
@@ -384,10 +433,32 @@ def read_usage(events: list[dict]) -> tuple[str, Usage] | None:
     return None
 
 
+@cache
+def _price_table() -> dict[str, Price]:
+    doc = json.loads((CATALOG_DIR / "prices.json").read_text(encoding="utf-8"))
+    return {model: Price(row["title"], row["input"], row["cached"], row["output"])
+            for model, row in doc["models"].items()}
+
+
+def price(model: str) -> Price | None:
+    """一个模型的价目（键是 CLI 报的那一版：`claude-opus-5-5`、`deepseek-flash`）；
+    表里没有是 None。"""
+    return _price_table().get(model)
+
+
 def prices(name: str) -> dict[str, Price]:
-    """一家的定价表：模块级 `PRICES`，键是 `Usage.model`（CLI 报的那一版）。
-    名字不对是 BackendNotFound。"""
-    return _module(name, "agent ").PRICES
+    """一家 CLI 用得上的价目：它的 `PRICED` 里、表上有的。名字不对是 BackendNotFound。"""
+    return {m: p for m in _module(name, "agent ").PRICED if (p := price(m)) is not None}
+
+
+def providers(name: str) -> dict[str, Provider]:
+    """一家 CLI 的供应商目录（不含自定义：自定义的模型名是人填的，见 `provider_of`）。"""
+    return _module(name, "agent ").PROVIDERS
+
+
+def provider_of(name: str, link: Link) -> Provider:
+    """这次接的是哪个供应商：目录里的那条，或照 `link` 现拼的自定义；名字不对是 ValueError。"""
+    return _module(name, "agent ").provider(link)
 
 
 def probe(name: str, link: Link) -> AgentProbe:

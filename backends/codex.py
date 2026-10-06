@@ -12,6 +12,12 @@
   根上那份（一次登录两层用；token 刷新写穿软链）。不再软链用户的 `~/.codex/auth.json`——平台的
   登录归平台，清除家时一起走。协调层的会话 rollout 也落在私有 home 下，续接靠它。
   `--ignore-user-config` 照带（自动化的官方开关）。
+- **供应商**（外层 #266，0.160.0 实测）：官方登录在平台的 CODEX_HOME 里；OpenAI API 与第三方
+  （DeepSeek、Kimi、自定义）走 `-c model_providers.ai4sci={base_url, wire_api="responses",
+  env_key}` + `model_provider="ai4sci"`，第三方再给模型说明 `model_catalog_json`（cc-switch 的，见
+  `backends/catalog/README.md`）。key 放进 `AI4SCI_PROVIDER_KEY` 交给 Codex；它缺省把整个环境透传给
+  agent 跑的命令、带 KEY 的也不例外（实测看得见），所以 `shell_environment_policy.exclude` 挡掉它，
+  挡完看不见。DeepSeek 冒烟：pong 约 $0.003。Kimi 没 key、未实测。
 - **`ai4sci` 在沙箱外跑，其余命令都在沙箱里**：Codex 没有 Claude Code 那种按工具名的白名单，但
   execpolicy 的 `.rules` 能做「这个前缀的命令在沙箱外跑」（`prefix_rule(decision="allow")`，实测
   `/bin/zsh -lc 'ai4sci …'` 也命中、写到了 HOME 下）。端口的 `bash_rules`（协调层 `ai4sci`，执行层
@@ -77,11 +83,27 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import AgentProbe, ChatEvent, Choice, Knobs, Link, Price, RunResult, Tuning, Usage
+from backends import (
+    CATALOG_DIR,
+    CUSTOM,
+    OFFICIAL,
+    AgentProbe,
+    ChatEvent,
+    Choice,
+    KeyMissing,
+    Knobs,
+    Link,
+    Provider,
+    RunResult,
+    Tuning,
+    Usage,
+    price,
+)
 from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
-__all__ = ["CodexRunner", "CodexChat", "KNOBS", "MODELS", "EFFORTS", "PRICES", "LAYERS",
+__all__ = ["CodexRunner", "CodexChat", "MODELS", "EFFORTS", "PROVIDERS", "PRICED", "LAYERS",
+           "provider", "connect_config",
            "codex_home", "write_rules", "build_env", "config_args", "skill_off_paths", "toml_str",
            "tool_guide", "chat_tool_guide", "parse_events", "Translator", "final_report", "usage",
            "probe", "parse_version", "make_runner", "make_chat", "login_command",
@@ -103,14 +125,34 @@ MODELS = (Choice("gpt-6.1-sol", "GPT-6.1 Sol", "主力"),
           Choice("gpt-5.6-terra", "GPT-5.6 Terra", "上一代"))
 EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
            Choice("xhigh", "超高"))
-KNOBS = Knobs(models=MODELS, efforts=EFFORTS, model="gpt-6.1-sol", effort="medium")
-# 定价表（外层 #256；美元 / 百万 token：输入、命中缓存、输出）：订阅报不出成本，首页照它折算。
-# 标准短上下文价，照 cc-switch 的内置定价表（2026-10-06，那边逐条对过 OpenAI 价页）；>272K 的
-# 长上下文档与写缓存的加价（5.6 起 1.25×，本机留档里写缓存的 token 全是 0）不计。清单上加一款就得
-# 在这里加它的价，不然 import 就炸
-_RATES = {"gpt-6.1-sol": (2, 0.10, 10), "gpt-6-astra": (10, 1, 50),
-          "gpt-6-luna": (0.10, 0.01, 0.50), "gpt-5.6-terra": (2, 0.20, 12)}
-PRICES = {c.id: Price(c.label, *_RATES[c.id]) for c in MODELS}
+# 第三方的思考档照它们的模型说明（cc-switch 的 codex_deepseek_catalog_template.json、Kimi 预设）
+THIRD_EFFORTS = (Choice("low", "低"), Choice("high", "高"), Choice("max", "最高"))
+# 供应商目录（外层 #266）：地址与模型照 cc-switch 的 src/config/codexProviderPresets.ts（a4d07f31，
+# 2026-10-06），都是原生 Responses（`wire_api="responses"`），不用中间转发。第三方要带一份模型说明
+# （`model_catalog_json`，CATALOGS），不然 Codex 不知道这些模型怎么调工具
+PROVIDERS = {
+    OFFICIAL: Provider(OFFICIAL, "ChatGPT 登录", MODELS, EFFORTS, "gpt-6.1-sol", "medium",
+                       tested="0.160.0 在平台的私有目录里登录后用"),
+    "openai": Provider("openai", "OpenAI API", MODELS, EFFORTS, "gpt-6.1-sol", "medium",
+                       key="openai", base_url="https://api.openai.com/v1"),
+    "deepseek": Provider("deepseek", "DeepSeek",
+                         (Choice("deepseek-flash", "DeepSeek V4.1 Flash", "快"),
+                          Choice("deepseek-v4-pro", "DeepSeek V4 Pro", "强")),
+                         THIRD_EFFORTS, "deepseek-flash", "high", key="deepseek",
+                         base_url="https://api.deepseek.com"),
+    "kimi": Provider("kimi", "Kimi", (Choice("kimi-k3", "Kimi K3"),), THIRD_EFFORTS, "kimi-k3",
+                     "high", key="kimi", base_url="https://api.moonshot.cn/v1"),
+}
+CATALOGS = {"deepseek": CATALOG_DIR / "codex-deepseek.json",
+            "kimi": CATALOG_DIR / "codex-kimi.json"}
+# 价目表里这家用得上的（Codex 报不出美元，首页照这些折算；标准短上下文价，>272K 的长上下文档与写缓存
+# 的加价不计）。加模型要在这里加，`backends/catalog/prices.json` 也得有（测试对账）
+PRICED = ("gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-terra", "deepseek-flash",
+          "deepseek-v4-pro", "kimi-k3")
+# 第三方的连接：`-c` 里写一个叫这个名字的供应商，key 放进这个环境变量交给 Codex（`env_key`），
+# 再用 `shell_environment_policy.exclude` 挡在 agent 跑的命令外面
+PROVIDER_NAME = "ai4sci"
+PROVIDER_KEY_ENV = "AI4SCI_PROVIDER_KEY"
 # 执行层留档的第一行：Codex 的事件里不写模型，适配器记下这次用的哪个（外层 #256：首页按模型数花费）
 MODEL_EVENT = "ai4sci.model"
 # 两层共用的 exec 参数：JSONL、不查 git 仓库（工作区不是仓库）、不读本机配置；execpolicy 规则要读
@@ -219,14 +261,53 @@ def skill_off_paths(home: Path, cwd: Path) -> list[Path]:
     return found
 
 
-def config_args(writable: list[Path], *, tuning: Tuning | None, skills_off: list[Path],
-                developer_instructions: str = "") -> list[str]:
-    """`-c` 那一串：基本项、可写根、要关的 skill、模型深度，协调层开新线程时再加指南。"""
-    picked = KNOBS.fill(tuning)
+def provider(link: Link) -> Provider:
+    """这次接的供应商：目录里的那条，或照 `link` 拼的自定义（兼容 OpenAI Responses 的地址 +
+    人填的模型名）。"""
+    if link.provider == CUSTOM:
+        if not link.base_url or not link.models:
+            raise ValueError("自定义供应商要填地址和至少一个模型名")
+        models = tuple(Choice(m, m) for m in link.models)
+        return Provider(CUSTOM, "自定义", models, EFFORTS, models[0].id, "medium",
+                        key=f"{CUSTOM}.{NAME}", base_url=link.base_url)
+    try:
+        return PROVIDERS[link.provider]
+    except KeyError:
+        raise ValueError(f"Codex 没有叫 {link.provider!r} 的供应商；"
+                         f"有：{', '.join([*PROVIDERS, CUSTOM])}") from None
+
+
+def connect_config(link: Link) -> list[str]:
+    """接这个供应商要加的 `-c`（外层 #266，照 cc-switch 的预设）：官方登录什么都不加；其余写一个
+    `model_providers.ai4sci`（地址、Responses、key 从哪个变量读）并选它，第三方再给模型说明。
+    要 key 却没填：KeyMissing。"""
+    picked = provider(link)
+    if picked.key is None:
+        return []
+    if not link.key:
+        raise KeyMissing(f"{picked.title} 的 key 还没填：设置 → AI 里粘贴")
+    table = (f"{{name={toml_str(picked.title)}, base_url={toml_str(picked.base_url)}, "
+             f"env_key={toml_str(PROVIDER_KEY_ENV)}, wire_api=\"responses\"}}")
+    items = [f"model_provider={toml_str(PROVIDER_NAME)}",
+             f"model_providers.{PROVIDER_NAME}={table}",
+             # Codex 缺省把整个环境透传给 agent 跑的命令，带 KEY 的也不例外（2026-10-06 实测
+             # 看得见）：挡掉这一个，agent 一个 printenv 不会把 key 打进对话记录与产出
+             f"shell_environment_policy.exclude=[{toml_str(PROVIDER_KEY_ENV)}]"]
+    if picked.id in CATALOGS:
+        items.append(f"model_catalog_json={toml_str(str(CATALOGS[picked.id]))}")
+    return items
+
+
+def config_args(link: Link, writable: list[Path], *, tuning: Tuning | None,
+                skills_off: list[Path], developer_instructions: str = "") -> list[str]:
+    """`-c` 那一串：基本项、接哪个供应商、可写根、要关的 skill、模型深度，协调层开新线程时再加
+    指南。"""
+    picked = provider(link).knobs().fill(tuning)
     roots = ", ".join(toml_str(str(Path(p).resolve())) for p in writable)
     off = ", ".join("{path=" + toml_str(str(p)) + ", enabled=false}" for p in skills_off)
-    items = [*BASE_CONFIG, f"sandbox_workspace_write.writable_roots=[{roots}]",
-             f"skills.config=[{off}]", f"model_reasoning_effort={toml_str(picked.effort)}"]
+    items = [*BASE_CONFIG, *connect_config(link),
+             f"sandbox_workspace_write.writable_roots=[{roots}]", f"skills.config=[{off}]",
+             f"model_reasoning_effort={toml_str(picked.effort)}"]
     if developer_instructions:
         items.append(f"developer_instructions={toml_str(developer_instructions)}")
     argv: list[str] = []
@@ -235,17 +316,22 @@ def config_args(writable: list[Path], *, tuning: Tuning | None, skills_off: list
     return [*argv, "-m", picked.model]
 
 
-def build_env(timeout_s: float, home: Path, chat_id: str | None = None) -> dict[str, str]:
+def build_env(timeout_s: float, home: Path, link: Link,
+              chat_id: str | None = None) -> dict[str, str]:
     """子进程环境：继承本进程，venv 的 bin **追加**进 PATH（裸 `ai4sci` 找得到，
     同 Claude Code 的教训）、
     `CODEX_HOME` 指到这一层的私有 home、`AI4SCI_CHAT_ID` 告诉它调用的命令属于哪段对话。Codex 缺省把
     整个环境透传给它跑的命令（`shell_environment_policy.inherit = all`），AI4SCI_* 不用另外放行。
-    `timeout_s` 留着与 Claude Code 的签名对齐：Codex 没有每条命令的超时，agent 自己等。"""
+    `timeout_s` 留着与 Claude Code 的签名对齐：Codex 没有每条命令的超时，agent 自己等。
+    用 key 的供应商：key 放进 `AI4SCI_PROVIDER_KEY`（只这一个进程有；shell 里的同名变量先去掉）。"""
     assert timeout_s > 0
     bin_dir = str(Path(sys.executable).parent)
     inherited = os.environ.get("PATH", "")
     env = {**os.environ, "PATH": f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir,
            HOME_ENV: str(home)}
+    env.pop(PROVIDER_KEY_ENV, None)
+    if provider(link).key is not None and link.key:
+        env[PROVIDER_KEY_ENV] = link.key
     env.pop(CHAT_ID_ENV, None)
     if chat_id:
         env[CHAT_ID_ENV] = chat_id
@@ -336,7 +422,7 @@ class CodexRunner:
         write_rules(home, bash_rules)
         return [self.cli, "exec", *BASE_ARGS, "--ephemeral", "--color", "never",
                 "-C", str(Path(cwd).resolve()),
-                *config_args(list(allowed_paths), tuning=tuning,
+                *config_args(self.link, list(allowed_paths), tuning=tuning,
                              skills_off=skill_off_paths(home, Path(cwd))),
                 "-"]
 
@@ -353,7 +439,8 @@ class CodexRunner:
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True, env=build_env(timeout_s, home))
+                                text=True, start_new_session=True,
+                                env=build_env(timeout_s, home, self.link))
         _write_stdin(proc, prompt)
         readers = [threading.Thread(target=lambda: raw.extend(proc.stdout), daemon=True),
                    threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)]
@@ -370,7 +457,7 @@ class CodexRunner:
             reader.join(timeout=5)
         wall_s = time.monotonic() - started
         events, junk = parse_events(raw)
-        _persist(cwd, raw, err, model=KNOBS.fill(tuning).model)
+        _persist(cwd, raw, err, model=provider(self.link).knobs().fill(tuning).model)
         # 成功也是 NaN：订阅账号报不出美元（端口：绝不填 0），
         # token 用量在 turn.completed 的 usage 里
         return RunResult(exit_code=proc.returncode, events=events,
@@ -489,9 +576,9 @@ class CodexChat:
         self.link = link
         self.cli = cli
 
-    @staticmethod
-    def knobs() -> Knobs:
-        return KNOBS
+    def knobs(self) -> Knobs:
+        """有哪些模型、哪几档思考深度、起点：跟着供应商走（外层 #266）。"""
+        return provider(self.link).knobs()
 
     def forget(self, session_id: str, cwd: Path) -> None:
         """删这条线程在私有 home 里的 rollout（实测 0.147.0 的布局：`sessions/<年>/<月>/<日>/
@@ -516,10 +603,11 @@ class CodexChat:
             # resume 没有 -C / -s / --add-dir / --color；线程的 cwd 记在 rollout 里，
             # 沙箱与可写根靠 -c
             return [self.cli, "exec", "resume", *BASE_ARGS,
-                    *config_args(list(allowed_paths), tuning=tuning, skills_off=skills_off),
+                    *config_args(self.link, list(allowed_paths), tuning=tuning,
+                                 skills_off=skills_off),
                     session_id, "-"]
         return [self.cli, "exec", *BASE_ARGS, "--color", "never", "-C", str(Path(cwd).resolve()),
-                *config_args(list(allowed_paths), tuning=tuning, skills_off=skills_off,
+                *config_args(self.link, list(allowed_paths), tuning=tuning, skills_off=skills_off,
                              developer_instructions=system_prompt), "-"]
 
     def turn(
@@ -530,15 +618,19 @@ class CodexChat:
     ) -> Iterator[ChatEvent]:
         # readable_paths 用不上：沙箱里读是全盘放开的
         home = codex_home(self.link, "chat")
-        argv = self.build_argv(cwd, session_id=session_id, system_prompt=system_prompt,
-                               allowed_paths=allowed_paths, bash_rules=bash_rules, tuning=tuning,
-                               home=home)
+        try:
+            argv = self.build_argv(cwd, session_id=session_id, system_prompt=system_prompt,
+                                   allowed_paths=allowed_paths, bash_rules=bash_rules,
+                                   tuning=tuning, home=home)
+        except KeyMissing as exc:  # 选了要 key 的供应商却没填：这一轮说清楚，不起 CLI
+            yield ChatEvent("error", text=str(exc), is_error=True)
+            return
         err: list[str] = []
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, start_new_session=True,
-                                env=build_env(timeout_s, home, chat_id))
+                                env=build_env(timeout_s, home, self.link, chat_id))
         _write_stdin(proc, message)
         drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
         drain.start()
@@ -605,25 +697,32 @@ def probe(link: Link, cli: str = "codex", speak_timeout_s: float = 120.0) -> Age
         return result
     result.items.append(("版本", True, raw))
     home = codex_home(link, "chat")
-    env = build_env(30.0, home)
-    status = subprocess.run([cli, "login", "status"], capture_output=True, text=True, timeout=30,
-                            env=env)
-    result.logged_in = status.returncode == 0
-    if not result.logged_in:
-        said = (status.stderr or status.stdout).strip() or "Not logged in"
-        result.items.append(("登录", False,
-                             f"{said}：平台里还没登录，设置里点「登录」，在浏览器里授权后再检查"))
-        return result
-    result.items.append(("登录", True, (status.stderr or status.stdout).strip() or "已登录"))
+    picked = provider(link)
+    if picked.key is None:  # 官方登录：问平台私有目录里的登录，不是用户本机的
+        status = subprocess.run([cli, "login", "status"], capture_output=True, text=True,
+                                timeout=30, env=build_env(30.0, home, link))
+        result.logged_in = status.returncode == 0
+        if not result.logged_in:
+            said = (status.stderr or status.stdout).strip() or "Not logged in"
+            result.items.append(("登录", False, f"{said}：平台里还没登录，终端里跑 `ai4sci agent "
+                                 "login codex`，浏览器里授权后再检查"))
+            return result
+        result.items.append(("登录", True, (status.stderr or status.stdout).strip() or "已登录"))
+    else:  # 用 key 的供应商：key 在平台的家里（外层 #265），这里只看填了没有
+        result.logged_in = bool(link.key)
+        if not result.logged_in:
+            result.items.append(("登录", False, f"{picked.title} 的 key 还没填：设置 → AI 里粘贴"))
+            return result
+        result.items.append(("登录", True, f"{picked.title} 的 key 已填"))
     started = time.monotonic()
     write_rules(home, ())
     argv = [cli, "exec", *BASE_ARGS, "--ephemeral", "--color", "never", "-C", str(home),
-            *config_args([], tuning=None, skills_off=skill_off_paths(home, home)), "-"]
+            *config_args(link, [], tuning=None, skills_off=skill_off_paths(home, home)), "-"]
     try:
         # cwd 也放在私有 home 里：说一句话不该在谁的目录里留下东西
         spoke = subprocess.run(argv, capture_output=True, text=True, timeout=speak_timeout_s,
                                input="Reply with exactly the word pong and nothing else.",
-                               env=build_env(speak_timeout_s, home), cwd=str(home))
+                               env=build_env(speak_timeout_s, home, link), cwd=str(home))
     except subprocess.TimeoutExpired:
         result.items.append(("说话", False, f"{speak_timeout_s:g} 秒没回话"))
         return result
@@ -636,22 +735,24 @@ def probe(link: Link, cli: str = "codex", speak_timeout_s: float = 120.0) -> Age
         result.items.append(("说话", False, f"退出码 {spoke.returncode}：{why[-300:]}"))
         return result
     result.spoke_s = time.monotonic() - started
-    usage = next((e.get("usage") or {} for e in events if e.get("type") == "turn.completed"), {})
-    tokens = int(usage.get("input_tokens") or 0) + int(usage.get("output_tokens") or 0)
-    result.items.append(("说话", True,
-                         f"pong，{result.spoke_s:.1f} 秒，{tokens} tokens（订阅，不计美元）"))
+    # Codex 报不出美元：照价目折算（订阅也是，按 API 公开价算的，不是实扣）
+    used = usage([{"type": MODEL_EVENT, "model": picked.model}, *events])
+    rate = price(picked.model)
+    result.cost_usd = rate.cost(used) if rate and used else math.nan
+    said = f"约 ${result.cost_usd:.4f}（按价目折算）" if rate and used else "成本未知"
+    result.items.append(("说话", True, f"pong，{result.spoke_s:.1f} 秒，{said}"))
     return result
 
 
 def login_command(link: Link, cli: str = "codex") -> tuple[list[str], dict[str, str]]:
     """在平台的 CODEX_HOME 里登录 ChatGPT：CLI 自己开浏览器授权，`auth.json` 落在那里
     （外层 #263）。"""
-    return [cli, "login"], build_env(600.0, codex_home(link, "chat"))
+    return [cli, "login"], build_env(600.0, codex_home(link, "chat"), link)
 
 
 def logout_command(link: Link, cli: str = "codex") -> tuple[list[str], dict[str, str]]:
     """登出平台 CODEX_HOME 里的登录（删 `auth.json`）。"""
-    return [cli, "logout"], build_env(60.0, codex_home(link, "chat"))
+    return [cli, "logout"], build_env(60.0, codex_home(link, "chat"), link)
 
 
 def make_runner(link: Link) -> CodexRunner:

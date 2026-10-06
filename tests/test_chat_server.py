@@ -13,7 +13,7 @@ import urllib.request
 import pytest
 
 from backends import AgentProbe, BackendNotFound, available_backends
-from framework import keys, paths
+from framework import agents, keys, paths
 from framework.capabilities import stage_table
 from framework.chat.server import ChatServer
 from framework.cli import serve as serve_cli
@@ -58,10 +58,13 @@ def ui_dir(tmp_path):
 def served(tmp_path):
     chat = ScriptedChat([reply("你好"), with_tool("三个", "Bash", {"command": "ls"}, "a\nb")])
 
-    def factory(name: str):
+    chat.providers_asked = []  # 每次起适配器按的哪个供应商（老对话照它开时记的，外层 #266）
+
+    def factory(name: str, provider: str | None = None):
         # 顶着真适配器的名字（P-25 按人的设置按名字查每家的清单），两家都是同一份剧本
         if name not in available_backends():
             raise BackendNotFound(f"未知的 agent 后端 {name!r}")
+        chat.providers_asked.append(provider)
         return chat
 
     def save_workflow(doc: dict) -> dict:
@@ -778,3 +781,18 @@ def test_keys_are_saved_in_the_home_and_only_the_last_four_come_back(served):
     assert call(base, "/settings/keys", {"name": "deepseek"})[0] == 400
     status, _, body = call(base, "/settings/keys/deepseek/remove", {})
     assert status == 200 and json.loads(body)["keys"] == {} and keys.get("deepseek") is None
+
+
+def test_a_chat_keeps_the_provider_it_was_opened_with(served):
+    """外层 #266 / P-25：开对话把供应商与模型一起抄进 meta，续这段对话照它接——改了设置只影响
+    之后开的。"""
+    base, chat = served
+    agents.path().write_text(
+        "agents:\n  claude_code: {provider: deepseek, model: a, effort: low}\n", encoding="utf-8")
+    status, _, body = call(base, "/projects/p/chats", {})
+    assert status == 201 and json.loads(body)["provider"] == "deepseek"
+    chat_id = json.loads(body)["chat_id"]
+    agents.path().write_text("agents:\n  claude_code: {provider: official, model: a}\n",
+                             encoding="utf-8")
+    call(base, f"/projects/p/chats/{chat_id}/messages", {"text": "你好"})
+    assert chat.providers_asked[-1] == "deepseek"

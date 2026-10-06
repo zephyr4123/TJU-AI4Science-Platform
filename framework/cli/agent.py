@@ -1,5 +1,5 @@
-"""`ai4sci agent list | check <名字> | use <名字> [--for chat|executor] [--model] [--effort] |
-login <名字>`：底座（纲领 P-25）。
+"""`ai4sci agent list | check <名字> | use <名字> [--for chat|executor] [--provider] [--model]
+[--effort] | login <名字>`：底座（纲领 P-25）。
 
 在 cli 层。清单在平台的家里的 `agents.yaml`（`framework.agents`，外层 #263）；
 有哪几家是 `backends._BACKENDS`
@@ -49,17 +49,21 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 def cmd_use(args: argparse.Namespace) -> int:
     roles = tuple(args.roles or ())
-    if not roles and args.model is None and args.effort is None:
-        print("要么 --for chat|executor 换用哪家，要么 --model / --effort 改缺省，至少给一样",
-              file=sys.stderr)
+    models = None if args.models is None else tuple(args.models.split(","))
+    if not roles and all(v is None for v in (args.provider, args.base_url, models, args.model,
+                                             args.effort)):
+        print("要么 --for chat|executor 换用哪家，要么 --provider 换用谁的模型，要么 --model / "
+              "--effort 改缺省，至少给一样", file=sys.stderr)
         return EXIT_USAGE
     try:
-        entry = agents.use(args.name, roles=roles, model=args.model, effort=args.effort)
+        entry = agents.use(args.name, roles=roles, provider=args.provider, base_url=args.base_url,
+                           models=models, model=args.model, effort=args.effort)
     except (BackendNotFound, agents.AgentsInvalid, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
     used = "、".join(agents.ROLE_LABELS[r] for r in roles)
-    print(f"ok {entry.name}\t{entry.model}\t{entry.effort}" + (f"\t{used}" if used else "")
+    print(f"ok {entry.name}\t{entry.provider}\t{entry.model}\t{entry.effort}"
+          + (f"\t{used}" if used else "")
           + f"\t写入 {agents.path()}")
     return EXIT_OK
 
@@ -93,6 +97,11 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     using.add_argument("name")
     using.add_argument("--for", dest="roles", action="append", choices=agents.ROLES,
                        help="chat 是对话的助理，executor 是写代码的执行层；可重复")
+    using.add_argument("--provider", default=None,
+                       help="用谁的模型：official、anthropic / openai、deepseek、kimi、custom；"
+                            "key 在设置页填（外层 #266）")
+    using.add_argument("--base-url", default=None, help="自定义供应商的接口地址")
+    using.add_argument("--models", default=None, help="自定义供应商的模型名，逗号隔开")
     using.add_argument("--model", default=None, help="新对话用的模型：那家清单里的名字")
     using.add_argument("--effort", default=None, help="新对话用的思考深度：那家清单里的档位")
     using.set_defaults(func=cmd_use)

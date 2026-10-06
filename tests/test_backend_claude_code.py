@@ -368,7 +368,7 @@ def test_get_chat_returns_chat_shaped_object():
 def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
     """外层 #57：长命令不许被 CLI 挪到后台，Bash 超时抬到本轮超时，杀它的只能是我们的定时器。"""
     monkeypatch.setenv("KEEP_ME", "1")
-    env = build_env(900.0, HOME)
+    env = build_env(900.0, LINK)
     assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
     assert env["BASH_DEFAULT_TIMEOUT_MS"] == env["BASH_MAX_TIMEOUT_MS"] == "900000"
     assert env["KEEP_ME"] == "1"  # 继承本进程环境（AI4SCI_EXECUTOR_MODEL 等要传给协调 agent）
@@ -377,15 +377,15 @@ def test_chat_env_forbids_background_tasks_and_aligns_bash_timeout(monkeypatch):
 def test_sessions_do_not_carry_the_persons_auto_memory():
     """外层 #222：`--setting-sources ""` 挡不住 CLI 的自动记忆，会话所在仓库的 MEMORY.md
     整段进上下文（实测一次筛选会话多读 7700 token、多花三成）。两层会话都关。"""
-    assert build_env(1.0, HOME)["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
-    assert build_env(1.0, HOME, "chat-1")["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+    assert build_env(1.0, LINK)["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+    assert build_env(1.0, LINK, "chat-1")["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
 
 
 def test_sessions_live_in_the_platform_home_not_the_persons_claude_dir(tmp_path: Path):
     """外层 #263：配置目录指到平台家里这家的私有目录——会话记录、平台自己的登录都在那里，
     用户的 `~/.claude` 一个字节不写；删对话也只删那里的。"""
     home = tmp_path / "claude_code"
-    assert build_env(1.0, home)["CLAUDE_CONFIG_DIR"] == str(home)
+    assert build_env(1.0, Link(home=home))["CLAUDE_CONFIG_DIR"] == str(home)
     chat = ClaudeCodeChat(Link(home=home))
     cwd = tmp_path / "my_ws"
     encoded = str(cwd.resolve()).replace("/", "-").replace("_", "-")  # CLI 把下划线也换掉
@@ -419,11 +419,11 @@ def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatc
     import sys
 
     monkeypatch.setenv("PATH", "/usr/bin")
-    env = build_env(1.0, HOME)
+    env = build_env(1.0, LINK)
     assert env["PATH"].startswith(f"/usr/bin{os.pathsep}")  # 追加在后，系统命令在前
     assert shutil.which("ai4sci", path=env["PATH"]) == str(Path(sys.executable).parent / "ai4sci")
     monkeypatch.delenv("PATH")
-    assert build_env(1.0, HOME)["PATH"] == str(Path(sys.executable).parent)
+    assert build_env(1.0, LINK)["PATH"] == str(Path(sys.executable).parent)
 
 
 def test_translate_turns_text_deltas_into_delta_events_and_ignores_thinking():
@@ -470,9 +470,9 @@ def test_chat_env_carries_the_chat_id_to_the_buttons_the_agent_presses(monkeypat
     from framework.workspace.jobs import CHAT_ID_ENV
 
     assert CHAT_ID_ENV == "AI4SCI_CHAT_ID"  # 适配器抄的那份名字与 framework 的对账
-    assert build_env(1.0, HOME, "chat-1")[CHAT_ID_ENV] == "chat-1"
+    assert build_env(1.0, LINK, "chat-1")[CHAT_ID_ENV] == "chat-1"
     monkeypatch.setenv(CHAT_ID_ENV, "chat-stale")
-    assert CHAT_ID_ENV not in build_env(1.0, HOME)
+    assert CHAT_ID_ENV not in build_env(1.0, LINK)
 
 
 def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
@@ -628,12 +628,27 @@ def test_usage_has_no_model_without_init():
     assert usage([_RESULT]).model is None
 
 
-def test_prices_name_every_version_the_aliases_resolve_to():
-    """定价表只给人看（成本 CLI 自己报）：每一版有名字与三档价，命中缓存的比读进去的便宜。"""
+def test_prices_cover_every_version_and_every_third_party_model():
+    """价目从 cc-switch 搬（外层 #266，`backends/catalog/prices.json`）：别名解析成的每一版、
+    每个第三方供应商的每款模型都要有价——第三方的成本只能照它折算；命中缓存的比读进去的便宜。"""
     from backends import prices
+    from backends.claude_code import PRICED, PROVIDERS
+
     table = prices("claude_code")
-    assert table["claude-opus-5"].title == "Opus 5" and table["claude-sonnet-5"].title == "Sonnet 5"
+    assert set(table) == set(PRICED)
+    assert table["claude-opus-5"].title == "Claude Opus 5"
+    third = {c.id for p in PROVIDERS.values() if p.base_url for c in p.models}
+    assert third and third <= set(table)
     assert all(p.cached < p.input < p.output for p in table.values())
+
+
+def test_the_cli_is_only_trusted_on_dollars_for_its_own_models():
+    """CLI 按自己的缺省价乱算第三方的成本（2026-10-06 实测 DeepSeek 一句 pong 报 $0.084，实价约
+    $0.002）：只有 claude-* 的报数可信，别的是 NaN，读的人照价目折算。"""
+    third = {**_INIT, "model": "deepseek-flash"}
+    assert math.isnan(usage([third, _RESULT]).cost_usd)
+    assert usage([third, _RESULT]).model == "deepseek-flash"
+    assert not math.isnan(usage([_INIT, _RESULT]).cost_usd)
 
 
 def test_usage_is_unknown_without_a_result_event():
@@ -644,3 +659,81 @@ def test_usage_is_unknown_without_a_result_event():
 def test_read_usage_finds_which_cli_wrote_the_events():
     assert read_usage([_INIT, _RESULT]) == ("claude_code", usage([_INIT, _RESULT]))
     assert read_usage([{"type": "unknown"}]) is None
+
+
+# --- 供应商（外层 #266）---------------------------------------------------------
+def test_deepseek_gets_its_address_and_haiku_mapping_and_nothing_from_the_shell(monkeypatch):
+    """照 cc-switch 的预设接第三方：地址、后台小活映射到它的快档；shell 里的 ANTHROPIC_* 一律不
+    继承——起服务的终端里设了 ANTHROPIC_API_KEY 也不能让平台悄悄改走按量计费（外层 #265）。"""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-from-shell")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://elsewhere")
+    env = build_env(1.0, Link(home=HOME, provider="deepseek", key="sk-ds"))
+    assert env["ANTHROPIC_BASE_URL"] == "https://api.deepseek.com/anthropic"
+    assert env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "deepseek-flash"
+    assert "sk-ds" not in env.values() and "ANTHROPIC_API_KEY" not in env
+    official = build_env(1.0, LINK)
+    assert not any(k.startswith("ANTHROPIC_") for k in official)  # 官方订阅：登录在私有目录里
+
+
+def test_the_key_reaches_the_cli_through_a_private_file_not_env_or_argv(tmp_path):
+    """外层 #266：key 在环境里，CLI 的 Bash 工具就继承得到，agent 一个 printenv 就打出来
+    （2026-10-06 实测）；改成私有配置目录里只有本人能读的文件，`apiKeyHelper` 让 CLI 自己读，
+    命令行上只有路径。"""
+    import stat
+
+    from backends.claude_code import KEY_FILE, key_args
+
+    link = Link(home=tmp_path / "cc", provider="deepseek", key="sk-ds-secret")
+    argv = ClaudeCodeRunner(link).build_argv("hi", tmp_path, [tmp_path])
+    assert not any("sk-ds-secret" in a for a in argv)
+    helper = json.loads(argv[argv.index("--settings") + 1])["apiKeyHelper"]
+    key_file = link.home / KEY_FILE
+    assert helper == f"cat {key_file}" and key_file.read_text(encoding="utf-8") == "sk-ds-secret"
+    assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+    assert key_args(Link(home=tmp_path / "cc")) == []  # 官方订阅不要 key
+    anthropic = Link(home=tmp_path / "cc", provider="anthropic", key="sk-ant")
+    assert key_args(anthropic)[0] == "--settings" and "ANTHROPIC_BASE_URL" not in build_env(
+        1.0, anthropic)
+
+
+def test_a_missing_key_says_where_to_fill_it_instead_of_starting_the_cli():
+    from backends import KeyMissing
+    from backends.claude_code import ClaudeCodeChat, key_args
+
+    with pytest.raises(KeyMissing, match="DeepSeek 的 key 还没填"):
+        key_args(Link(home=HOME, provider="deepseek"))
+    events = list(ClaudeCodeChat(Link(home=HOME, provider="deepseek"), cli="/nonexistent")
+                  .turn("hi", Path("/tmp"), 5, session_id=None, system_prompt="",
+                        allowed_paths=[], bash_rules=()))
+    assert [e.kind for e in events] == ["error"] and "设置" in events[0].text
+
+
+def test_models_follow_the_provider_and_third_party_ids_go_straight_to_the_cli(tmp_path):
+    from backends.claude_code import ClaudeCodeChat
+
+    link = Link(home=tmp_path / "cc", provider="deepseek", key="sk-ds")
+    knobs = ClaudeCodeChat(link).knobs()
+    assert [c.id for c in knobs.models] == ["deepseek-flash", "deepseek-v4-pro"]
+    argv = ClaudeCodeRunner(link).build_argv("hi", tmp_path, [tmp_path])
+    assert argv[argv.index("--model") + 1] == "deepseek-flash"
+    custom = Link(home=HOME, provider="custom", base_url="https://llm.lab", models=("m1",))
+    assert [c.id for c in ClaudeCodeChat(custom).knobs().models] == ["m1"]
+    with pytest.raises(ValueError, match="要填地址和至少一个模型名"):
+        ClaudeCodeChat(Link(home=HOME, provider="custom")).knobs()
+
+
+def test_third_party_turn_cost_is_left_for_the_price_table(tmp_path):
+    """第三方那一轮的 done 不带 CLI 报的美元（它按缺省价乱算），读的人照价目折算。"""
+    from backends.claude_code import ClaudeCodeChat
+
+    fake = tmp_path / "claude"
+    fake.write_text("#!/bin/sh\necho '" + json.dumps(_RESULT) + "'\n", encoding="utf-8")
+    fake.chmod(0o755)
+    third = ClaudeCodeChat(Link(home=tmp_path, provider="deepseek", key="sk"), cli=str(fake))
+    done = [e for e in third.turn("hi", tmp_path, 10, session_id=None, system_prompt="",
+                                  allowed_paths=[], bash_rules=()) if e.kind == "done"]
+    assert len(done) == 1 and math.isnan(done[0].cost_usd)
+    own = ClaudeCodeChat(Link(home=tmp_path), cli=str(fake))
+    done = [e for e in own.turn("hi", tmp_path, 10, session_id=None, system_prompt="",
+                                allowed_paths=[], bash_rules=()) if e.kind == "done"]
+    assert done[0].cost_usd == pytest.approx(1.2065)

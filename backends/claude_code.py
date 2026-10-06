@@ -8,6 +8,14 @@
 - `--strict-mcp-config` 清空 MCP（mcp_servers 从 6 个变 0），`--disable-slash-commands` 清空 skill。
 - 权限一律走 `--permission-mode dontAsk` + `--allowedTools` 白名单，
   绝不用 `--dangerously-skip-permissions` / `bypassPermissions`。
+
+供应商（外层 #266，2.1.291 实测）：官方订阅在平台的私有配置目录里登录；Anthropic API 与第三方
+（DeepSeek、Kimi、自定义）给 key。第三方是 `ANTHROPIC_BASE_URL` + `--model <那家的模型名>`
+（CLI 警告不认识这个名、照样用），后台小活的 haiku 映射到那家快档。key 不进环境变量：CLI 的
+Bash 工具继承它的环境，实测 agent `sh -c 'test -n "$ANTHROPIC_AUTH_TOKEN"'` 看得见；改成私有目录里
+0600 的文件 + `--settings` 的 `apiKeyHelper`（`--setting-sources ""` 下照样生效），看不见。第三方的
+美元 CLI 按缺省价乱算（DeepSeek 一句 pong 报 $0.084），报 NaN、读的人照价目折算。DeepSeek 冒烟：
+两款都通、一句 pong 约 $0.005。
 """
 
 from __future__ import annotations
@@ -16,6 +24,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -25,17 +34,34 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import AgentProbe, ChatEvent, Choice, Knobs, Link, Price, RunResult, Tuning, Usage
+from backends import (
+    CUSTOM,
+    OFFICIAL,
+    AgentProbe,
+    ChatEvent,
+    Choice,
+    KeyMissing,
+    Knobs,
+    Link,
+    Provider,
+    RunResult,
+    Tuning,
+    Usage,
+    price,
+)
 from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
-__all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "KNOBS", "MODELS", "EFFORTS", "PRICES",
+__all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "MODELS", "EFFORTS", "PROVIDERS", "PRICED",
+           "provider", "connect_env",
            "WEB_TOOLS", "usage", "build_env", "bash_rule", "tool_guide", "parse_events",
            "final_metrics", "final_report", "kill_tree", "probe", "parse_version", "make_runner",
            "make_chat", "login_command", "logout_command", "session_dirname"]
 
 NAME = "claude_code"
 CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
+# 私有配置目录里放 key 的文件（`key_args`），清除平台的家时一起走
+KEY_FILE = "provider-key"
 # 不读 user/project/local 任何设置源：会话因此不继承本机的 CLAUDE.md、hook、plugin、
 # 自定义 agent（P-11）；自动记忆不归设置源管，靠环境变量关（build_env，外层 #222）。执行层再加
 # --no-session-persistence（一次性会话，不留）；协调层不加：多轮靠 --resume 续接，靠的就是
@@ -48,24 +74,44 @@ WEB_TOOLS = ("WebSearch", "WebFetch")
 # 名字抄一份，测试对账
 CHAT_ID_ENV = "AI4SCI_CHAT_ID"
 EXECUTOR_ISOLATION_ARGS = ("--no-session-persistence", *ISOLATION_ARGS)
-# 模型写 CLI 认的别名（`--model` 也收全名）；起点 sonnet / medium（纲领 P-25：按人的设置里没填这家时
-# 用它，旋钮上只有具体值）。`--effort` 的五档按 2.1.276 的 --help，顺序就是从浅到深
+# 官方两家用 CLI 认的别名（`--model` 也收全名）；起点 sonnet / medium（纲领 P-25：按人的设置里没填
+# 这家时用它，旋钮上只有具体值）。`--effort` 的五档按 2.1.276 的 --help，顺序就是从浅到深
 MODELS = (Choice("sonnet", "Sonnet", "快"), Choice("opus", "Opus", "强"),
           Choice("fable", "Fable", "最强"))
 EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
            Choice("xhigh", "超高"), Choice("max", "最高"))
-KNOBS = Knobs(models=MODELS, efforts=EFFORTS, model="sonnet", effort="medium")
-# 定价表（外层 #256 首页「定价」；美元 / 百万 token：输入、命中缓存、输出）：键是 init 事件报的
-# 那一版——三档别名解析成哪版由 CLI 定（本机 2.1.291 留档实测 sonnet → claude-sonnet-5、
-# opus → claude-opus-5），所以两代都列。成本 CLI 自己报（result.total_cost_usd），这张表对
-# Claude Code 只是给人看。价照 cc-switch 的内置定价表（2026-10-06，那边逐条对过 Anthropic 价页）
-PRICES = {
-    "claude-sonnet-5": Price("Sonnet 5", 2, 0.20, 10),
-    "claude-opus-5": Price("Opus 5", 5, 0.50, 25),
-    "claude-opus-5-5": Price("Opus 5.5", 4, 0.20, 20),
-    "claude-fable-5": Price("Fable 5", 10, 1.00, 50),
-    "claude-fable-5-1": Price("Fable 5.1", 10, 0.25, 50),
+# 供应商目录（外层 #266）：地址、交 key 的方式、模型照 cc-switch 的
+# src/config/claudeProviderPresets.ts（a4d07f31，2026-10-06）。官方两家用别名，CLI 自己解析成
+# 哪一版；第三方直接写那家的模型名（`--model deepseek-flash`），后台的小活（标题、摘要）
+# 用的 haiku 映射到那家第一款（快的那款）。第三方的 `--effort` CLI 照传、那家接受不报错，
+# 管不管用没实测（2026-10-06）
+PROVIDERS = {
+    OFFICIAL: Provider(OFFICIAL, "Claude 订阅", MODELS, EFFORTS, "sonnet", "medium",
+                       reports_cost=True, tested="2.1.291 在平台的私有目录里登录后用"),
+    "anthropic": Provider("anthropic", "Anthropic API", MODELS, EFFORTS, "sonnet", "medium",
+                          key="anthropic", reports_cost=True),
+    "deepseek": Provider("deepseek", "DeepSeek",
+                         (Choice("deepseek-flash", "DeepSeek V4.1 Flash", "快"),
+                          Choice("deepseek-v4-pro", "DeepSeek V4 Pro", "强")),
+                         EFFORTS, "deepseek-flash", "medium", key="deepseek",
+                         base_url="https://api.deepseek.com/anthropic",
+                         tested="2026-10-06 冒烟：两款都回 pong，本机 ~/.claude 一个字节没动"),
+    "kimi": Provider("kimi", "Kimi", (Choice("kimi-k2.7-code", "Kimi K2.7 Code"),), EFFORTS,
+                     "kimi-k2.7-code", "medium", key="kimi",
+                     base_url="https://api.moonshot.cn/anthropic"),
 }
+# 价目表里这家用得上的（CLI 报的那一版）：三档别名解析成哪版由 CLI 定（2.1.291 留档实测
+# sonnet → claude-sonnet-5、opus → claude-opus-5），所以两代都列；加第三方的模型要在这里加，
+# `backends/catalog/prices.json` 也得有（测试对账）
+PRICED = ("claude-sonnet-5", "claude-opus-5", "claude-opus-5-5", "claude-fable-5",
+          "claude-fable-5-1", "deepseek-flash", "deepseek-v4-pro", "kimi-k2.7-code")
+# 用户 shell 里可能有的连接变量：一律不继承——key 只在平台的家里（外层 #265），起服务的终端里设了
+# ANTHROPIC_API_KEY 也不能让平台悄悄改走按量计费
+INHERITED_DROPPED = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+                     "ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
+                     "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                     "ANTHROPIC_DEFAULT_OPUS_MODEL", "CLAUDE_CODE_OAUTH_TOKEN",
+                     "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX")
 # 自检认的最低版本：`--effort` 与 `--setting-sources` 都是这之后才有的
 MIN_VERSION = (2, 1, 276)
 _TAIL_CHARS = 4000
@@ -118,12 +164,59 @@ def chat_tool_guide(bash_rules: tuple[str, ...]) -> str:
     return CHAT_TOOL_GUIDE.format(commands=_commands(bash_rules))
 
 
-def build_env(timeout_s: float, home: Path, chat_id: str | None = None) -> dict[str, str]:
+def provider(link: Link) -> Provider:
+    """这次接的供应商：目录里的那条，或照 `link` 拼的自定义（兼容 Anthropic 的地址 +
+    人填的模型名）。"""
+    if link.provider == CUSTOM:
+        if not link.base_url or not link.models:
+            raise ValueError("自定义供应商要填地址和至少一个模型名")
+        models = tuple(Choice(m, m) for m in link.models)
+        return Provider(CUSTOM, "自定义", models, EFFORTS, models[0].id, "medium",
+                        key=f"{CUSTOM}.{NAME}", base_url=link.base_url)
+    try:
+        return PROVIDERS[link.provider]
+    except KeyError:
+        raise ValueError(f"Claude Code 没有叫 {link.provider!r} 的供应商；"
+                         f"有：{', '.join([*PROVIDERS, CUSTOM])}") from None
+
+
+def connect_env(link: Link) -> dict[str, str]:
+    """接这个供应商要加的环境（外层 #266，照 cc-switch 的预设）：官方两家什么都不加；第三方给地址、
+    haiku 的映射，外加长超时、不发非必要的流量（那些请求是发给 Anthropic 的）。key 不在这里：
+    见 `key_args`。"""
+    picked = provider(link)
+    if not picked.base_url:
+        return {}
+    return {"ANTHROPIC_BASE_URL": picked.base_url,
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL": picked.models[0].id, "API_TIMEOUT_MS": "600000",
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+
+
+def key_args(link: Link) -> list[str]:
+    """把 key 交给 CLI 的参数：写进私有配置目录里一个只有本人能读的文件，`--settings` 的
+    `apiKeyHelper` 让 CLI 自己去读（外层 #266）。不放环境变量：CLI 的 Bash 工具继承它的环境，
+    agent 一个 printenv 就把 key 打进对话记录与产出（2026-10-06 实测看得见；改成这样后看不见），
+    命令行上也只有文件的路径。官方订阅不要 key；要却没填：KeyMissing。"""
+    picked = provider(link)
+    if picked.key is None:
+        return []
+    if not link.key:
+        raise KeyMissing(f"{picked.title} 的 key 还没填：设置 → AI 里粘贴")
+    path = link.home / KEY_FILE
+    link.home.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{KEY_FILE}.{os.getpid()}.tmp")  # 几个会话同时写：换过去，不读到半截
+    tmp.write_text(link.key, encoding="utf-8")
+    tmp.chmod(0o600)
+    os.replace(tmp, path)
+    return ["--settings", json.dumps({"apiKeyHelper": f"cat {shlex.quote(str(path))}"})]
+
+
+def build_env(timeout_s: float, link: Link, chat_id: str | None = None) -> dict[str, str]:
     """两层会话共用的子进程环境：继承本进程，外加配置目录指到平台的家、venv 的 bin 进 PATH、关后台、
     Bash 超时对齐本轮。
 
-    配置目录（外层 #263）：`CLAUDE_CONFIG_DIR` 指到 `home`（平台家里这家的私有目录），会话记录、
-    平台自己的登录都在那里，不写用户的 `~/.claude`；CLI 在这个目录下不认用户本机的登录
+    配置目录（外层 #263）：`CLAUDE_CONFIG_DIR` 指到 `link.home`（平台家里这家的私有目录），
+    会话记录、平台自己的登录都在那里，不写用户的 `~/.claude`；CLI 在这个目录下不认用户本机的登录
     （2026-10-06 实测 `auth status` 是 loggedIn:false），平台要自己登录一次（`login_command`）。
 
     agent 敲的是裸 `ai4sci`（纲领 P-14：它面前只有这一个入口，不写路径不挂前缀），
@@ -143,9 +236,10 @@ def build_env(timeout_s: float, home: Path, chat_id: str | None = None) -> dict[
     2.1.289 实测：探针问「上下文里有没有 MEMORY.md」，关前抄得出第一行、关后没有。"""
     millis = str(int(timeout_s * 1000))
     bin_dir = str(Path(sys.executable).parent)
-    inherited = os.environ.get("PATH", "")
-    path = f"{inherited}{os.pathsep}{bin_dir}" if inherited else bin_dir
-    env = {**os.environ, "PATH": path, CONFIG_DIR_ENV: str(home),
+    shell_path = os.environ.get("PATH", "")
+    path = f"{shell_path}{os.pathsep}{bin_dir}" if shell_path else bin_dir
+    inherited = {k: v for k, v in os.environ.items() if k not in INHERITED_DROPPED}
+    env = {**inherited, **connect_env(link), "PATH": path, CONFIG_DIR_ENV: str(link.home),
            "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
            "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis,
            "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
@@ -182,7 +276,8 @@ class ClaudeCodeRunner:
             rules += [f"Edit({_abs_glob(path)})", f"Write({_abs_glob(path)})"]
         rules.append(f"Read({_abs_glob(cwd)})")  # 读整个工作目录：harness 与 data 要看得见
         rules += [*(bash_rule(p) for p in bash_rules), *WEB_TOOLS]
-        picked = KNOBS.fill(tuning)  # 按人的设置里这家用什么；没给用起点，从不让 CLI 自己猜
+        # 按人的设置里这家用什么；没给用这个供应商的起点，从不让 CLI 自己猜
+        picked = provider(self.link).knobs().fill(tuning)
         return [self.cli, "-p", prompt, "--output-format", "stream-json", "--verbose",
                 "--permission-mode", "dontAsk", *EXECUTOR_ISOLATION_ARGS,
                 "--allowedTools", *rules,
@@ -190,7 +285,7 @@ class ClaudeCodeRunner:
                                    if max_turns is None else int(max_turns)),
                 "--max-budget-usd", str(_env_num("AI4SCI_EXECUTOR_MAX_BUDGET_USD", 2.0, float)
                                         if max_budget_usd is None else float(max_budget_usd)),
-                "--model", picked.model, "--effort", picked.effort]
+                "--model", picked.model, "--effort", picked.effort, *key_args(self.link)]
 
     def run(self, prompt: str, cwd: Path, timeout_s: float,
             allowed_paths: list[Path], bash_rules: tuple[str, ...] = (),
@@ -208,7 +303,7 @@ class ClaudeCodeRunner:
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, start_new_session=True,
-                                env=build_env(timeout_s, self.link.home))
+                                env=build_env(timeout_s, self.link))
         # stdout 与 stderr 各一个线程排空。只读 stdout 的话，CLI 往 stderr 写满管道缓冲区
         # 就会卡住，表面上是"超时"，真正原因是没人读它（实测 CLI 会往 stderr 打 Warning）
         readers = [threading.Thread(target=lambda: raw.extend(proc.stdout), daemon=True),
@@ -228,6 +323,8 @@ class ClaudeCodeRunner:
         events, junk = parse_events(raw)
         self._persist(cwd, raw, err)
         cost, duration_s = final_metrics(events, timed_out, wall_s, proc.returncode)
+        if not provider(self.link).reports_cost:
+            cost = math.nan  # 第三方的美元 CLI 按缺省价乱算：读的人照价目折算（外层 #266）
         return RunResult(exit_code=proc.returncode, events=events,
                          changed_files=diff(before, snapshot(cwd)), cost_usd=cost,
                          duration_s=duration_s, timed_out=timed_out,
@@ -286,7 +383,8 @@ def final_metrics(
 
 def usage(events: list[dict]) -> Usage | None:
     """用量只认最终 result 事件（外层 #256）：读进去的 = 没缓存的 + 写缓存的 + 读缓存的，
-    花费照它报的；模型取 init 事件里写的那一版（`claude-opus-5[1m]` → claude-opus-5）。
+    花费照它报的——只对 Claude 自家的模型（第三方的 NaN，外层 #266）；模型取 init 事件里写的那一版
+    （`claude-opus-5[1m]` → claude-opus-5）。
     没有 result（超时被杀、崩了）就是 None：用了多少不知道，不编。"""
     result = next((e for e in reversed(events)
                    if e.get("type") == "result" and "usage" in e), None)
@@ -298,12 +396,14 @@ def usage(events: list[dict]) -> Usage | None:
             + cached)
     init = next((e for e in events if e.get("type") == "system" and e.get("subtype") == "init"), {})
     model = init.get("model")
+    # 「claude-opus-5[1m]」：方括号里是上下文档，不是另一版
+    model = model.split("[", 1)[0] if isinstance(model, str) else None
     cost = result.get("total_cost_usd")
+    # CLI 只认得自家的模型：第三方的（deepseek-flash）它按缺省价算，报的数不可信，读的人照价目折算
+    trusted = isinstance(cost, (int, float)) and bool(model) and model.startswith("claude-")
     return Usage(input_tokens=read, cached_tokens=cached,
-                 output_tokens=int(raw.get("output_tokens") or 0),
-                 # 「claude-opus-5[1m]」：方括号里是上下文档，不是另一版
-                 model=model.split("[", 1)[0] if isinstance(model, str) else None,
-                 cost_usd=float(cost) if isinstance(cost, (int, float)) else math.nan)
+                 output_tokens=int(raw.get("output_tokens") or 0), model=model,
+                 cost_usd=float(cost) if trusted else math.nan)
 
 
 def final_report(events: list[dict]) -> str:
@@ -342,10 +442,9 @@ class ClaudeCodeChat:
         self.link = link
         self.cli = cli
 
-    @staticmethod
-    def knobs() -> Knobs:
-        """有哪些模型、哪几档思考深度，以及起点（按人的设置里没填这家时用；P-25）。"""
-        return KNOBS
+    def knobs(self) -> Knobs:
+        """有哪些模型、哪几档思考深度，以及起点（按人的设置里没填这家时用；P-25）：跟着供应商走。"""
+        return provider(self.link).knobs()
 
     def forget(self, session_id: str, cwd: Path) -> None:
         """删这条会话的痕迹（实测 2.1.278 的布局，官方没有删会话的命令）：配置目录（平台家里的
@@ -391,8 +490,8 @@ class ClaudeCodeChat:
         elif system_prompt:
             argv += ["--append-system-prompt", system_prompt]
         # 对话 meta 里记的具体值；没给用起点（P-25：从不让 CLI 自己猜）
-        picked = KNOBS.fill(tuning)
-        return [*argv, "--model", picked.model, "--effort", picked.effort]
+        picked = self.knobs().fill(tuning)
+        return [*argv, "--model", picked.model, "--effort", picked.effort, *key_args(self.link)]
 
     def turn(
         self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
@@ -400,15 +499,21 @@ class ClaudeCodeChat:
         readable_paths: list[Path] = (), chat_id: str | None = None,
         tuning: Tuning | None = None,
     ) -> Iterator[ChatEvent]:
-        argv = self.build_argv(message, cwd, session_id=session_id, system_prompt=system_prompt,
-                               allowed_paths=allowed_paths, bash_rules=bash_rules,
-                               readable_paths=readable_paths, tuning=tuning)
+        try:
+            argv = self.build_argv(message, cwd, session_id=session_id,
+                                   system_prompt=system_prompt, allowed_paths=allowed_paths,
+                                   bash_rules=bash_rules, readable_paths=readable_paths,
+                                   tuning=tuning)
+            env = build_env(timeout_s, self.link, chat_id)
+        except KeyMissing as exc:  # 选了要 key 的供应商却没填：这一轮说清楚，不起 CLI
+            yield ChatEvent("error", text=str(exc), is_error=True)
+            return
+        trust_cost = provider(self.link).reports_cost
         err: list[str] = []
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True,
-                                env=build_env(timeout_s, self.link.home, chat_id))
+                                text=True, start_new_session=True, env=env)
         drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
         drain.start()
         # 超时由定时器杀树：主线程在逐行读 stdout，不能同时 wait(timeout)
@@ -427,6 +532,8 @@ class ClaudeCodeChat:
                 if event is None:
                     continue
                 seen_result = seen_result or event.kind == "done"
+                if event.kind == "done" and not trust_cost:
+                    event.cost_usd = math.nan  # 第三方的美元 CLI 按缺省价乱算（外层 #266）
                 yield event
         finally:
             timer.cancel()
@@ -546,25 +653,34 @@ def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> Ag
         result.items.append(("版本", False, f"{raw}，要 ≥ {want}（`--effort` 与隔离参数）"))
         return result
     result.items.append(("版本", True, raw))
-    status = subprocess.run([cli, "auth", "status"], capture_output=True, text=True, timeout=30,
-                            env=build_env(30.0, link.home))
-    try:
-        doc = json.loads(status.stdout or "{}")
-    except json.JSONDecodeError:
-        doc = {}
-    result.logged_in = status.returncode == 0 and bool(doc.get("loggedIn"))
-    if not result.logged_in:
-        result.items.append(("登录", False,
-                             "平台里还没登录：设置里点「登录」，在浏览器里授权后再检查"))
-        return result
-    result.items.append(("登录", True, str(doc.get("authMethod") or "已登录")))
+    picked = provider(link)
+    if picked.key is None:  # 官方订阅：问平台私有目录里的登录，不是用户本机的
+        status = subprocess.run([cli, "auth", "status"], capture_output=True, text=True,
+                                timeout=30, env=build_env(30.0, link))
+        try:
+            doc = json.loads(status.stdout or "{}")
+        except json.JSONDecodeError:
+            doc = {}
+        result.logged_in = status.returncode == 0 and bool(doc.get("loggedIn"))
+        if not result.logged_in:
+            result.items.append(("登录", False, "平台里还没登录：终端里跑 `ai4sci agent login "
+                                 "claude_code`，浏览器里授权后再检查"))
+            return result
+        result.items.append(("登录", True, str(doc.get("authMethod") or "已登录")))
+    else:  # 用 key 的供应商：key 在平台的家里（外层 #265），这里只看填了没有
+        result.logged_in = bool(link.key)
+        if not result.logged_in:
+            result.items.append(("登录", False, f"{picked.title} 的 key 还没填：设置 → AI 里粘贴"))
+            return result
+        result.items.append(("登录", True, f"{picked.title} 的 key 已填"))
     started = time.monotonic()
     argv = [cli, "-p", "Reply with exactly the word pong and nothing else.",
             "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
-            *EXECUTOR_ISOLATION_ARGS, "--max-turns", "1", "--model", KNOBS.model]
+            *EXECUTOR_ISOLATION_ARGS, "--max-turns", "1", "--model", picked.model,
+            *key_args(link)]
     try:
         spoke = subprocess.run(argv, capture_output=True, text=True, timeout=speak_timeout_s,
-                               stdin=subprocess.DEVNULL, env=build_env(speak_timeout_s, link.home))
+                               stdin=subprocess.DEVNULL, env=build_env(speak_timeout_s, link))
     except subprocess.TimeoutExpired:
         result.items.append(("说话", False, f"{speak_timeout_s:g} 秒没回话"))
         return result
@@ -575,8 +691,15 @@ def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> Ag
         result.items.append(("说话", False, f"退出码 {spoke.returncode}：{tail}"))
         return result
     result.spoke_s = time.monotonic() - started
-    result.cost_usd, _ = final_metrics(events, False, result.spoke_s, spoke.returncode)
-    result.items.append(("说话", True, f"pong，{result.spoke_s:.1f} 秒，${result.cost_usd:.3f}"))
+    if picked.reports_cost:
+        result.cost_usd, _ = final_metrics(events, False, result.spoke_s, spoke.returncode)
+        said = f"${result.cost_usd:.3f}"
+    else:  # 第三方：CLI 报的美元不可信，照价目折算
+        used = usage(events)
+        rate = price(used.model) if used and used.model else None
+        result.cost_usd = rate.cost(used) if rate and used else math.nan
+        said = f"约 ${result.cost_usd:.4f}（按价目折算）" if rate else "成本未知（价目里没有这款）"
+    result.items.append(("说话", True, f"pong，{result.spoke_s:.1f} 秒，{said}"))
     return result
 
 
@@ -589,12 +712,12 @@ def session_dirname(cwd: Path) -> str:
 
 def login_command(link: Link, cli: str = "claude") -> tuple[list[str], dict[str, str]]:
     """在平台的配置目录里登录 Claude 订阅：CLI 自己开浏览器授权（外层 #263）。"""
-    return [cli, "auth", "login", "--claudeai"], build_env(600.0, link.home)
+    return [cli, "auth", "login", "--claudeai"], build_env(600.0, link)
 
 
 def logout_command(link: Link, cli: str = "claude") -> tuple[list[str], dict[str, str]]:
     """登出平台配置目录里的登录：凭据在系统钥匙串里、按配置目录分开，清除家之前要先登出。"""
-    return [cli, "auth", "logout"], build_env(60.0, link.home)
+    return [cli, "auth", "logout"], build_env(60.0, link)
 
 
 def make_runner(link: Link) -> ClaudeCodeRunner:

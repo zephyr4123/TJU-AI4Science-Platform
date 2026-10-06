@@ -156,7 +156,7 @@ class ChatServer(ThreadingHTTPServer):
                  check_workflow: Callable[[dict[str, Any]], dict[str, Any]],
                  save_workflow: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  descriptors: Callable[[], dict[str, Capability]] = dict,
-                 chat_factory: Callable[[str], Chat] = agents.chat,
+                 chat_factory: Callable[..., Chat] = agents.chat,
                  add_compute: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  probe_agent: Callable[[str], AgentProbe] = agents.probe,
                  logout_agent: reset.Logout = agents.logout_command,
@@ -420,14 +420,17 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             try:
                 knobs = self.server.knobs_of
-                backend = agents.role_backend("chat", knobs)
+                registry = agents.load(knobs)
+                backend = registry.chat
                 chat = self.server.chat_factory(backend)  # 名字不对现在就报，别等发消息
-                # 新对话从按人的设置抄具体值（P-25）；剧本后端不在设置里就用起点
-                tuning = (agents.tuning_for(backend, knobs) if backend in available_backends()
+                # 新对话从按人的设置抄具体值与供应商（P-25、外层 #266）；剧本后端不在设置里就用起点
+                tuning = (registry.get(backend).tuning if backend in available_backends()
                           else chat.knobs().fill(None))
+                provider = registry.get(backend).provider
             except (BackendNotFound, agents.AgentsInvalid) as exc:
                 return self._error(HTTPStatus.BAD_REQUEST, str(exc))
-            conv = conversation.new_conversation(where.chats, backend, where.cwd, tuning=tuning)
+            conv = conversation.new_conversation(where.chats, backend, where.cwd, tuning=tuning,
+                                                 provider=provider)
             return self._json(conv.to_dict(), HTTPStatus.CREATED)
         if len(rest) == 3 and rest[0] == "chats" and rest[2] == "messages":
             conv = self._conversation(where, rest[1])
@@ -439,8 +442,9 @@ class Handler(BaseHTTPRequestHandler):
             if self._tuned_in_body(body):
                 return None
             try:
-                chat = self.server.chat_factory(conv.backend)
-            except BackendNotFound as exc:
+                # 续这段对话按它开时的供应商接，改设置不影响它（P-25、外层 #266）
+                chat = self.server.chat_factory(conv.backend, provider=conv.provider)
+            except (BackendNotFound, ValueError) as exc:
                 return self._error(HTTPStatus.BAD_REQUEST, str(exc))
             return self._stream(where, conv, chat, text, conv.tuning)
         if ws is None:

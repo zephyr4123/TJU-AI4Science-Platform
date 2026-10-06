@@ -69,7 +69,7 @@ def wake(workspace: Workspace, job: Job, *, settle_s: float = SETTLE_S,
     try:
         where = scope.for_project(project.of(workspace))
         conv = settings.ensure_tuned(conversation.load_conversation(where.chats, job.chat_id))
-        chat = agents.chat(conv.backend)
+        chat = agents.chat(conv.backend, provider=conv.provider)
         system_prompt = where.system_prompt(chat)
     except (project.ProjectNotFound, conversation.ConversationNotFound, BackendNotFound,
             guide.GuideMissing) as exc:

@@ -35,13 +35,14 @@ def _scope(args: argparse.Namespace) -> scope.Scope | int:
     return found if isinstance(found, int) else scope.for_project(found)
 
 
-def _tuning(args: argparse.Namespace, current: Tuning, backend: str) -> Tuning | None | int:
-    """命令行上的 `--model` / `--effort`：没给的沿用 current；给了就对着后端的清单核，不对退 2。
-    两个都没给回 None（对话层沿用上次的，什么都不写）。"""
+def _tuning(args: argparse.Namespace, current: Tuning, backend: str,
+            provider: str | None = None) -> Tuning | None | int:
+    """命令行上的 `--model` / `--effort`：没给的沿用 current；给了就对着这家这个供应商的清单核，
+    不对退 2。两个都没给回 None（对话层沿用上次的，什么都不写）。"""
     if args.model is None and args.effort is None:
         return None
     try:
-        chat = agents.chat(backend)
+        chat = agents.chat(backend, provider=provider)
     except BackendNotFound as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
@@ -60,7 +61,8 @@ def cmd_new(args: argparse.Namespace) -> int:
     try:
         backend = args.backend or agents.role_backend("chat")
         agents.chat(backend)
-        start = agents.tuning_for(backend)
+        entry = agents.load().get(backend)
+        start = entry.tuning
     except (BackendNotFound, agents.AgentsInvalid) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_USAGE
@@ -70,7 +72,8 @@ def cmd_new(args: argparse.Namespace) -> int:
     where = _scope(args)
     if isinstance(where, int):
         return where
-    conv = conversation.new_conversation(where.chats, backend, where.cwd, tuning=tuning or start)
+    conv = conversation.new_conversation(where.chats, backend, where.cwd, tuning=tuning or start,
+                                         provider=entry.provider)
     studio = " --studio" if args.studio else ""
     print(f"ok {conv.chat_id}\t{conv.dir}\tnext=ai4sci chat send {conv.chat_id}{studio} \"<说话>\"")
     return EXIT_OK
@@ -93,12 +96,12 @@ def cmd_send(args: argparse.Namespace) -> int:
             return EXIT_USAGE
         text = path.read_text(encoding="utf-8")
     try:
-        chat = agents.chat(conv.backend)
+        chat = agents.chat(conv.backend, provider=conv.provider)
         system_prompt = where.system_prompt(chat)
     except (guide.GuideMissing, BackendNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
-    tuning = _tuning(args, conv.tuning, conv.backend)
+    tuning = _tuning(args, conv.tuning, conv.backend, conv.provider)
     if isinstance(tuning, int):
         return tuning
     setup_logging()

@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from backends import AgentProbe, available_backends
+from backends import CUSTOM, AgentProbe, available_backends, providers
 from framework import agents, computes, keys, paths
 from framework.agents import KnobsOf
 from framework.chat.conversation import Conversation
@@ -44,16 +44,30 @@ def ensure_tuned(conv: Conversation, knobs: KnobsOf = agents.knobs_of) -> Conver
 
 
 def agents_table(knobs: KnobsOf = agents.knobs_of) -> dict[str, Any]:
-    """底座那一段：两层各用哪家 + 每家一块（产品名、清单、缺省、上次自检）。"""
+    """底座那一段：两层各用哪家 + 每家一块（产品名、用谁的模型与它的清单、缺省、上次自检），外加
+    这家能接的供应商目录（外层 #266：名、要不要 key、key 的名字、实测过没有）。"""
     registry = agents.load(knobs)
     entries = []
     for name, entry in registry.entries.items():
         picked = knobs(name)
-        entries.append({"name": name, "title": entry.title, "model": entry.model,
-                        "effort": entry.effort, "models": [asdict(c) for c in picked.models],
+        entries.append({"name": name, "title": entry.title, "provider": entry.provider,
+                        "base_url": entry.base_url, "custom_models": list(entry.models),
+                        "providers": _providers(name),
+                        "model": entry.model, "effort": entry.effort,
+                        "models": [asdict(c) for c in picked.models],
                         "efforts": [asdict(c) for c in picked.efforts],
                         "last_check": entry.last_check})
     return {"chat": registry.chat, "executor": registry.executor, "entries": entries}
+
+
+def _providers(name: str) -> list[dict[str, Any]]:
+    """一家的供应商目录，最后一项是自定义（地址与模型名人填）。剧本后端（测试）没有目录。"""
+    if name not in available_backends():
+        return []
+    rows = [{"id": p.id, "title": p.title, "key": p.key, "base_url": p.base_url,
+             "tested": p.tested} for p in providers(name).values()]
+    return [*rows, {"id": CUSTOM, "title": "自定义", "key": f"{CUSTOM}.{name}", "base_url": "",
+                    "tested": ""}]
 
 
 def computes_table() -> list[dict[str, Any]]:
@@ -181,9 +195,10 @@ def check(what: str = "all", name: str | None = None, *, knobs: KnobsOf = agents
 
 def update_agents(body: dict[str, Any], knobs: KnobsOf = agents.knobs_of,
                   home: Path | None = None) -> dict[str, Any]:
-    """页面改「对话用 / 执行用」与每家的缺省：
-    `{"chat": name, "executor": name, "agents": {name: {model, effort}}}`，
-    给哪些改哪些；值过那家的清单，不在就 ValueError（调用方回 400）。"""
+    """页面改「对话用 / 执行用」与每家的供应商与缺省：
+    `{"chat": name, "executor": name, "agents": {name: {provider?, base_url?, models?, model?,
+    effort?}}}`，给哪些改哪些；换了供应商没给的模型回到它的起点；值过那家那个供应商的清单，
+    不在就 ValueError（调用方回 400）。"""
     for role in agents.ROLES:
         picked = body.get(role)
         if picked is not None:
@@ -193,9 +208,14 @@ def update_agents(body: dict[str, Any], knobs: KnobsOf = agents.knobs_of,
     for name, doc in (body.get("agents") or {}).items():
         if not isinstance(doc, dict):
             raise ValueError(f"agents.{name} 要是键值对")
-        model, effort = doc.get("model"), doc.get("effort")
-        if (model is not None and not isinstance(model, str)) or \
-                (effort is not None and not isinstance(effort, str)):
-            raise ValueError(f"agents.{name} 的 model / effort 要是字符串")
-        agents.use(str(name), model=model, effort=effort, knobs=knobs)
+        texts = {k: doc.get(k) for k in ("provider", "base_url", "model", "effort")}
+        if any(v is not None and not isinstance(v, str) for v in texts.values()):
+            raise ValueError(f"agents.{name} 的 provider / base_url / model / effort 要是字符串")
+        models = doc.get("models")
+        if models is not None and (not isinstance(models, list)
+                                   or not all(isinstance(m, str) for m in models)):
+            raise ValueError(f"agents.{name}.models 要是字符串列表")
+        agents.use(str(name), provider=texts["provider"], base_url=texts["base_url"],
+                   models=None if models is None else tuple(models), model=texts["model"],
+                   effort=texts["effort"], knobs=knobs)
     return snapshot(knobs, home)

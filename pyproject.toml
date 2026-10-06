@@ -34,6 +34,7 @@ include = ["framework*", "backends*", "compute*"]
 #   framework/shipped/（make package 拷进来的出厂件：流程库、模板、领域、skill、指南、页面；paths.py 读）
 [tool.setuptools.package-data]
 "framework" = ["shipped/**/*"]
+"backends" = ["catalog/*.json"]
 "framework.experiment" = ["schemas/*.json", "harness_contract.md"]
 "framework.capabilities.design" = ["prompt.md"]
 "framework.capabilities.auto_research" = ["prompt.md"]

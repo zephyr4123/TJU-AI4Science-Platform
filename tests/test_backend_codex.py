@@ -368,11 +368,13 @@ def test_probe_walks_the_four_questions(link: Link, home: Path, tmp_path):
     result = cx.probe(link, cli=str(cli))
     assert isinstance(result, AgentProbe) and result.ok and result.installed and result.logged_in
     assert result.version == "codex-cli 0.160.0" and result.spoke_s > 0
-    assert math.isnan(result.cost_usd)
+    # 报不出美元：照价目折算（外层 #266；订阅也按 API 公开价算，不是实扣）
+    assert result.cost_usd == pytest.approx(5.4e-05)
     assert [n for n, _, _ in result.items] == ["装了没", "版本", "登录", "说话"]
-    assert "15 tokens" in result.items[-1][2]
+    assert "按价目折算" in result.items[-1][2]
     doc = result.to_dict()
-    assert doc["ok"] and doc["cost_usd"] is None and doc["items"][3]["name"] == "说话"
+    assert doc["ok"] and doc["cost_usd"] == pytest.approx(5.4e-05)
+    assert doc["items"][3]["name"] == "说话"
 
     stale = _fake_codex(tmp_path / "old", version="codex-cli 0.147.0")
     result = cx.probe(link, cli=str(stale))
@@ -381,7 +383,8 @@ def test_probe_walks_the_four_questions(link: Link, home: Path, tmp_path):
 
     logged_out = _fake_codex(tmp_path / "out", logged_in=False)
     result = cx.probe(link, cli=str(logged_out))
-    assert not result.ok and not result.logged_in and "设置里点「登录」" in result.items[2][2]
+    assert not result.ok and not result.logged_in
+    assert "ai4sci agent login codex" in result.items[2][2]
 
     missing = cx.probe(link, cli=str(tmp_path / "nope" / "codex"))
     assert not missing.installed and not missing.ok and "装 Codex CLI" in missing.items[0][2]
@@ -449,7 +452,8 @@ def test_prices_cover_every_listed_model_and_split_cached_tokens():
     """订阅报不出成本，首页照定价表折算：清单上每一款都有价；命中缓存的那部分按缓存价算。"""
     from backends import Usage, prices
     table = prices("codex")
-    assert set(table) == {c.id for c in cx.MODELS}
+    listed = {c.id for p in cx.PROVIDERS.values() for c in p.models}
+    assert set(table) == set(cx.PRICED) and listed <= set(table)  # 每个供应商的每款都有价
     sol = table["gpt-6.1-sol"]
     assert sol.title == "GPT-6.1 Sol"
     got = sol.cost(Usage(input_tokens=1_000_000, cached_tokens=800_000, output_tokens=10_000))
@@ -463,3 +467,34 @@ def test_usage_is_unknown_when_no_turn_completed():
 def test_read_usage_tells_codex_events_apart():
     name, got = read_usage([_DONE])
     assert name == "codex" and got.output_tokens == 5816
+
+
+# --- 供应商（外层 #266）---------------------------------------------------------
+def test_third_party_providers_ride_a_responses_provider_block_with_a_model_catalog(link, tmp_path,
+                                                                                   monkeypatch):
+    """照 cc-switch 的预设：写一个 `model_providers.ai4sci`（地址、Responses、key 从哪个变量读）
+    并选它，DeepSeek 再给模型说明；key 只放进这一个进程的环境，shell 里同名的去掉。"""
+    deepseek = Link(home=link.home, provider="deepseek", key="sk-ds")
+    argv = cx.CodexRunner(deepseek).build_argv(tmp_path, [tmp_path])
+    configs = [argv[i + 1] for i, a in enumerate(argv) if a == "-c"]
+    assert 'model_provider="ai4sci"' in configs
+    block = next(c for c in configs if c.startswith("model_providers.ai4sci="))
+    assert 'base_url="https://api.deepseek.com"' in block and 'wire_api="responses"' in block
+    assert 'env_key="AI4SCI_PROVIDER_KEY"' in block
+    assert 'shell_environment_policy.exclude=["AI4SCI_PROVIDER_KEY"]' in configs  # agent 看不见
+    catalog = next(c for c in configs if c.startswith("model_catalog_json="))
+    assert catalog.endswith('codex-deepseek.json"')
+    assert argv[argv.index("-m") + 1] == "deepseek-flash"
+    assert 'model_reasoning_effort="high"' in configs  # 它的思考档只有 low / high / max
+    monkeypatch.setenv(cx.PROVIDER_KEY_ENV, "from-shell")
+    assert cx.build_env(1.0, link.home, deepseek)[cx.PROVIDER_KEY_ENV] == "sk-ds"
+    assert cx.PROVIDER_KEY_ENV not in cx.build_env(1.0, link.home, link)  # 官方登录不带
+    official = cx.CodexRunner(link).build_argv(tmp_path, [tmp_path])
+    assert not any("model_provider" in a for a in official)
+
+
+def test_codex_with_a_missing_key_says_so_instead_of_starting(link, tmp_path):
+    events = list(cx.CodexChat(Link(home=link.home, provider="kimi"), cli="/nonexistent")
+                  .turn("hi", tmp_path, 5, session_id=None, system_prompt="", allowed_paths=[],
+                        bash_rules=()))
+    assert [e.kind for e in events] == ["error"] and "Kimi 的 key 还没填" in events[0].text

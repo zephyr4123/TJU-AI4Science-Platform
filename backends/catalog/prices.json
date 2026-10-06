@@ -1,0 +1,83 @@
+{
+ "source": "cc-switch a4d07f31 2026-10-06（MIT，src-tauri/src/database/schema.rs 的 seed_model_pricing）；美元 / 百万 token：input 没命中缓存的输入、cached 命中缓存的输入、output 输出",
+ "models": {
+  "claude-fable-5": {
+   "title": "Claude Fable 5",
+   "input": 10.0,
+   "cached": 1.0,
+   "output": 50.0
+  },
+  "claude-fable-5-1": {
+   "title": "Claude Fable 5.1",
+   "input": 10.0,
+   "cached": 0.25,
+   "output": 50.0
+  },
+  "claude-opus-5": {
+   "title": "Claude Opus 5",
+   "input": 5.0,
+   "cached": 0.5,
+   "output": 25.0
+  },
+  "claude-opus-5-5": {
+   "title": "Claude Opus 5.5",
+   "input": 4.0,
+   "cached": 0.2,
+   "output": 20.0
+  },
+  "claude-sonnet-5": {
+   "title": "Claude Sonnet 5",
+   "input": 2.0,
+   "cached": 0.2,
+   "output": 10.0
+  },
+  "deepseek-flash": {
+   "title": "DeepSeek V4.1 Flash",
+   "input": 0.3,
+   "cached": 0.006,
+   "output": 1.2
+  },
+  "deepseek-v4-pro": {
+   "title": "DeepSeek V4 Pro",
+   "input": 1.32,
+   "cached": 0.044,
+   "output": 3.96
+  },
+  "gpt-5.6-terra": {
+   "title": "GPT-5.6 Terra",
+   "input": 2.0,
+   "cached": 0.2,
+   "output": 12.0
+  },
+  "gpt-6-astra": {
+   "title": "GPT-6 Astra",
+   "input": 10.0,
+   "cached": 1.0,
+   "output": 50.0
+  },
+  "gpt-6-luna": {
+   "title": "GPT-6 Luna",
+   "input": 0.1,
+   "cached": 0.01,
+   "output": 0.5
+  },
+  "gpt-6.1-sol": {
+   "title": "GPT-6.1 Sol",
+   "input": 2.0,
+   "cached": 0.1,
+   "output": 10.0
+  },
+  "kimi-k2.7-code": {
+   "title": "Kimi K2.7 Code",
+   "input": 0.95,
+   "cached": 0.19,
+   "output": 4.0
+  },
+  "kimi-k3": {
+   "title": "Kimi K3",
+   "input": 3.0,
+   "cached": 0.3,
+   "output": 15.0
+  }
+ }
+}

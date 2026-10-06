@@ -825,7 +825,7 @@ def test_chat_new_send_list_in_the_workspace_with_a_scripted_backend(tmp_path, m
 
     chat = ScriptedChat([with_tool("有一份需求。", "Bash", {"command": "ai4sci show workspace"},
                                    "ok w")])
-    monkeypatch.setattr("framework.agents.chat", lambda name: chat)
+    monkeypatch.setattr("framework.agents.chat", lambda name, provider=None: chat)
     monkeypatch.setitem(guide.GUIDE_PATHS, guide.PROJECT, tmp_path / "README.md")
     (tmp_path / "README.md").write_text("# 指南\n用流程不造流程。", encoding="utf-8")
     ws = spaces.make_workspace(tmp_path, "w")
@@ -867,7 +867,7 @@ def test_chat_new_and_send_take_model_and_effort_from_the_backends_list(tmp_path
     from tests.fixtures.scripted_chat import ScriptedChat, reply
 
     chat = ScriptedChat([reply("好"), reply("好")])
-    monkeypatch.setattr("framework.agents.chat", lambda name: chat)
+    monkeypatch.setattr("framework.agents.chat", lambda name, provider=None: chat)
     monkeypatch.setitem(guide.GUIDE_PATHS, guide.PROJECT, tmp_path / "README.md")
     (tmp_path / "README.md").write_text("# 指南\n", encoding="utf-8")
     ws = spaces.make_workspace(tmp_path, "w")
@@ -901,7 +901,7 @@ def test_chat_studio_talks_to_the_flow_builder_and_only_writes_the_library(tmp_p
     from tests.fixtures.scripted_chat import ScriptedChat, reply
 
     chat = ScriptedChat([reply("拼好了")])
-    monkeypatch.setattr("framework.agents.chat", lambda name: chat)
+    monkeypatch.setattr("framework.agents.chat", lambda name, provider=None: chat)
     monkeypatch.setitem(guide.GUIDE_PATHS, guide.STUDIO, tmp_path / "studio.md")
     (tmp_path / "studio.md").write_text("# 造流程\n只写库。", encoding="utf-8")
     shipped = tmp_path / "lib" / "workflows"
