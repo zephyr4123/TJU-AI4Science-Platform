@@ -292,7 +292,7 @@ function Loose({ outputs, pending, names, onOpen }: {
         <Info className="size-3.5 self-center text-muted-foreground" aria-hidden />
         <span className="text-[0.8125rem] text-muted-foreground tabular">{outputs.length}</span>
       </h2>
-      <Aurora quiet className="mt-3">
+      <Aurora tone="quiet" className="mt-3">
         {groups.map((g) => {
           const stage = names.stage(g.slug)
           return (

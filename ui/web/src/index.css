@@ -55,6 +55,9 @@
   --color-warn-soft: var(--wait-soft);
   --color-bad: var(--bad);
   --color-bad-soft: var(--bad-soft);
+  /* 首页右栏的花费：数据的颜色（不表示状态） */
+  --color-spend: var(--spend);
+  --color-spend-glow: var(--spend-glow);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -127,6 +130,10 @@
   /* 玻璃上的两团极光（外层 #249）：靛压左上、青压右下，只拿来垫底与描边，不表示状态 */
   --aurora-1: #2F4BC9;
   --aurora-2: #1C9AB0;
+  /* 首页右栏的花费（外层 #256）：与项目清单的冷色（靛、青）对着的一对暖色——玫红是数据的颜色（柱子、条），
+     杏色只做渐变的亮端与底下那团光；玫红对卡片底 ≥ 3:1（dataviz 校验过），不与琥珀（待确认）、砖红（出错）撞 */
+  --spend: #C8407A;
+  --spend-glow: #E0794F;
   /* 侧边栏与页眉的边（外层 #253）：一深一亮两层细线，两头渐隐，像刻出来的一道边 */
   --edge: rgb(28 34 48 / 0.11);
   --edge-glint: rgb(255 255 255 / 0.8);
@@ -173,6 +180,8 @@
     --glass-shine: rgb(255 255 255 / 0.08);
     --aurora-1: #8FA3F5;
     --aurora-2: #5CC6D6;
+    --spend: #E0588C;
+    --spend-glow: #E98A5E;
     --edge: rgb(255 255 255 / 0.09);
     --edge-glint: rgb(0 0 0 / 0.35);
     --key-shine: rgb(255 255 255 / 0.06);
@@ -215,6 +224,8 @@
   --glass-shine: rgb(255 255 255 / 0.08);
   --aurora-1: #8FA3F5;
   --aurora-2: #5CC6D6;
+  --spend: #E0588C;
+  --spend-glow: #E98A5E;
   --edge: rgb(255 255 255 / 0.09);
   --edge-glint: rgb(0 0 0 / 0.35);
   --key-shine: rgb(255 255 255 / 0.06);

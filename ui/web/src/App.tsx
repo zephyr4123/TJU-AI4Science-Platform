@@ -99,7 +99,7 @@ export default function App() {
             )
             : place.kind === 'home'
               ? <Home projects={projects} menu={menu} onOpen={(id) => go({ kind: 'project', id })} onNew={() => go({ kind: 'door' })}
-                    onRemove={removeProject} />
+                    onOpenWorkspace={(project, id) => go({ kind: 'workspace', project, id })} onRemove={removeProject} />
               : place.kind === 'door'
                 ? <NewProject existing={projects.data ?? []} menu={menu}
                               onCreated={async (id) => { await projects.reload(); go({ kind: 'project', id }) }}
