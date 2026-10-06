@@ -6,10 +6,10 @@
 // 搜中的字标出来。一个项目都没有：一句「还没有项目」加一枚「新建项目」。
 // 外层 #256（主人 2026-10-06：只有一列居中的清单，两边太空）：宽屏左半边是清单，右半边横纵结合（不越拉越长）——
 // 上面「待你确认」「运行中」两张小卡并排，下面一张「花费」；右半边是另一个模块，配色换成与清单对着映衬的暖调。
-// 窄屏右半边折到清单下面。最底下一行素的页脚：平台叫什么、靠什么搭起来、源码在哪（主人 2026-10-06）。
+// 窄屏右半边折到清单下面。右半边顶上一行同步（上次同步多久以前、立即同步、自动刷新隔多久），与「项目」那行齐。最底下一行素的页脚：平台叫什么、靠什么搭起来、源码在哪（主人 2026-10-06）。
 import { GithubLogo, MagnifyingGlass, Plus, X } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useCallback, useState } from 'react'
 
 import { api } from '@/api/client'
 
@@ -33,6 +33,8 @@ import { ProjectMenu } from '@/project/ProjectMenu'
 import { Attention } from './Attention'
 import { findProjects, marks, newestFirst, wordsOf } from './derive'
 import { Spending } from './Spending'
+import { EVERY, type Every } from './sync'
+import { SyncBar } from './SyncBar'
 import { type Metric, type Range, RANGES } from './usage'
 
 export function Home({ projects, onOpen, onOpenWorkspace, onNew, onRemove, menu }: {
@@ -48,6 +50,13 @@ export function Home({ projects, onOpen, onOpenWorkspace, onNew, onRemove, menu 
   const [metric, setMetric] = useState<Metric>(() => remembered('home:metric', ['usd', 'tokens'] as const, 'usd'))
   const attention = useResource(api.attention, [], 'attention')
   const usage = useResource(() => api.usage(range), [range], `usage:${range}`)
+  // 右上角的同步：首页读盘的数一起重取（清单、待你确认 / 运行中、花费）
+  const [every, setEvery] = useState<Every>(() => remembered('home:refresh', EVERY, 30))
+  const reloadProjects = projects.reload
+  const reloadAttention = attention.reload
+  const reloadUsage = usage.reload
+  const sync = useCallback(() => { void Promise.all([reloadProjects(), reloadAttention(), reloadUsage()]) },
+                           [reloadProjects, reloadAttention, reloadUsage])
   const list = projects.data ? newestFirst(projects.data) : null
   const shown = list ? findProjects(list, query) : null
   const words = wordsOf(query)
@@ -95,6 +104,9 @@ export function Home({ projects, onOpen, onOpenWorkspace, onNew, onRemove, menu 
             <p className="t-label mt-2">名字和目标里都没有「{query.trim()}」</p>
           )}
         </div>
+        <SyncBar busy={projects.loading || attention.loading || usage.loading} onSync={sync} syncedAt={oldest(projects.at, attention.at, usage.at)}
+                 every={every} onEvery={(e) => { setEvery(e); remember('home:refresh', e) }}
+                 className="justify-end lg:col-start-2 lg:row-start-1" />
         <aside aria-label="概览" className="grid grid-rows-[auto_1fr] gap-5 sm:grid-cols-2 lg:col-start-2 lg:row-start-2">
           <Attention items={attention} onOpen={onOpenWorkspace} />
           <div className="sm:col-span-2">
@@ -123,6 +135,11 @@ function Footer() {
       </a>
     </footer>
   )
+}
+
+/** 几份数里最旧的那份是几时取到的；有一份还没取到过就是 null */
+function oldest(...times: (number | null)[]): number | null {
+  return times.some((t) => t === null) ? null : Math.min(...(times as number[]))
 }
 
 /** 右栏的范围与看法记在本机（只是这个人的顺手：读不到就用缺省，存不了就不存） */
