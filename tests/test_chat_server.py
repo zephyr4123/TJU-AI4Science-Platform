@@ -745,3 +745,17 @@ def test_home_side_panel_endpoints(served, tmp_path):
     assert json.loads(call(base, "/usage?days=7")[2])["days"] == 7
     assert call(base, "/usage?days=0")[0] == 422
     assert call(base, "/usage?days=x")[0] == 422
+
+
+def test_dev_proxy_lists_every_api_root():
+    """开发时 Vite 只把登记过的前缀转给 serve：server 加了端点、vite.config.ts 忘了登记，
+    页面拿到的是 index.html（外层 #256 加 /attention /usage 时撞过）。两边的清单一字不差。"""
+    import re
+    from pathlib import Path
+
+    from framework.chat.server import API_ROOTS
+    config_path = Path(__file__).parents[1] / "ui" / "web" / "vite.config.ts"
+    config = config_path.read_text(encoding="utf-8")
+    listed = re.search(r"const API_PREFIXES = \[([^\]]*)\]", config)
+    assert listed, "vite.config.ts 里找不到 API_PREFIXES"
+    assert re.findall(r"'/([a-z]+)'", listed.group(1)) == list(API_ROOTS)

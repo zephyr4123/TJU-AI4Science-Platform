@@ -5,8 +5,9 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 // 开发时页面由 Vite 端出来，接口转给 `ai4sci serve`（缺省 8765）；打包后由 serve 一并端出，同源不用代理。
-// 前缀清单与 server.py 的 API_ROOTS 一致，加端点两边都要登记。
-const API_PREFIXES = ['/health', '/backends', '/settings', '/stages', '/cap', '/skills', '/workflows', '/templates', '/projects', '/studio']
+// 前缀清单与 server.py 的 API_ROOTS 一致，加端点两边都要登记（tests/test_chat_server.py 对账）。
+const API_PREFIXES = ['/health', '/backends', '/settings', '/stages', '/cap', '/skills', '/workflows', '/templates', '/projects', '/studio',
+                      '/attention', '/usage']
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
