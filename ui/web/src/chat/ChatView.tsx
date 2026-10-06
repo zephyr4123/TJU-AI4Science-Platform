@@ -63,7 +63,7 @@ export function ChatView({ scope, chatId, current, create, backends, onTurnDone,
             </div>
           </div>
         )}
-      <Composer busy={conv.busy} thinking={conv.thinking} above={running}
+      <Composer busy={conv.busy} thinking={conv.thinking} above={running} docked
                 onSend={(text) => void conv.send(text)} />
     </div>
   )
