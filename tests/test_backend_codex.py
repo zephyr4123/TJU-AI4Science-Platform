@@ -514,6 +514,19 @@ def test_third_party_effort_lists_match_the_model_catalogs():
     assert (cx.PROVIDERS["deepseek"].effort, cx.PROVIDERS["kimi"].effort) == ("high", "max")
 
 
+def test_web_search_is_registered_per_provider_from_the_official_docs():
+    """能不能联网照官方文档一家一家登记（外层 #271）：DeepSeek 的 Responses API 忽略内置工具；
+    Kimi 的有服务端搜索；自定义不知道。不登记就构造不出来，免得新加的一家默认「能联网」。"""
+    from backends import Provider
+
+    assert {name: p.web_search for name, p in cx.PROVIDERS.items()} == {
+        "official": True, "openai": True, "deepseek": False, "kimi": True}
+    custom = Link(home=Path("/h"), provider="custom", base_url="https://llm.lab", models=("m1",))
+    assert cx.provider(custom).web_search is None
+    with pytest.raises(TypeError, match="web_search"):
+        Provider("x", "X", (), (), "m", "e")
+
+
 def test_codex_with_a_missing_key_says_so_instead_of_starting(link, tmp_path):
     events = list(cx.CodexChat(Link(home=link.home, provider="kimi"), cli="/nonexistent")
                   .turn("hi", tmp_path, 5, session_id=None, system_prompt="", allowed_paths=[],
