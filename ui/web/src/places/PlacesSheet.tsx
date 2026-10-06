@@ -1,10 +1,9 @@
-// 窄屏的地方栏：页眉左端的玻璃标记就是入口，点开一张从左边拉出来的清单，和宽屏的 Rail 同一份东西——首页、编辑台、设置。
+// 窄屏的地方栏：页眉左端那块靛色的标就是入口，点开一张从左边拉出来的清单，和宽屏的 Rail 同一份东西——首页、编辑台、设置。
 import { Blueprint, GearSix, House, type Icon } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import { BRAND } from '@/brand'
-import { Logo } from '@/components/Logo'
-import { GlassIcon } from '@/components/reactbits/GlassIcon'
+import { LogoTile } from '@/components/Logo'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Wordmark } from '@/components/Wordmark'
 import { cn } from '@/lib/utils'
@@ -33,8 +32,8 @@ export function PlacesSheet({ place, onHome, onStudio, settingsDot, onSettings }
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button type="button" aria-label="换个地方"
-                className="rounded-[28%] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-          <GlassIcon icon={<Logo className="size-[1.15em]" />} label={BRAND.name} />
+                className="rounded-[10px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+          <LogoTile label={BRAND.name} />
         </button>
       </SheetTrigger>
       <SheetContent side="left" className="w-[18rem] gap-0 p-0" aria-describedby={undefined}>
