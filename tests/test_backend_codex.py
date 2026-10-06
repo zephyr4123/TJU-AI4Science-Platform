@@ -433,6 +433,17 @@ def test_usage_sums_turns_and_reports_no_dollars():
     assert math.isnan(got.cost_usd)
 
 
+def test_prices_cover_every_listed_model_and_split_cached_tokens():
+    """订阅报不出成本，首页照定价表折算：清单上每一款都有价；命中缓存的那部分按缓存价算。"""
+    from backends import Usage, prices
+    table = prices("codex")
+    assert set(table) == {c.id for c in cx.MODELS}
+    sol = table["gpt-6.1-sol"]
+    assert sol.title == "GPT-6.1 Sol"
+    got = sol.cost(Usage(input_tokens=1_000_000, cached_tokens=800_000, output_tokens=10_000))
+    assert got == pytest.approx(0.2 * sol.input + 0.8 * sol.cached + 0.01 * sol.output)
+
+
 def test_usage_is_unknown_when_no_turn_completed():
     assert cx.usage([{"type": "thread.started", "thread_id": "t"}, {"type": "turn.failed"}]) is None
 

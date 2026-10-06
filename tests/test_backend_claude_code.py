@@ -579,17 +579,24 @@ _RESULT = {"type": "result", "subtype": "success", "total_cost_usd": 1.2065,
                      "cache_read_input_tokens": 582738, "output_tokens": 5072}}
 
 
-def test_usage_reads_tokens_dollars_and_the_listed_model():
-    """读进去的 = 没缓存的 + 写缓存的 + 读缓存的；模型写成清单上的名（opus），页面才对得上标题。"""
+def test_usage_reads_tokens_dollars_and_the_reported_model():
+    """读进去的 = 没缓存的 + 写缓存的 + 读缓存的；模型是 CLI 报的那一版（别名 opus 解析成哪版
+    以它为准），去掉 [1m] 这类上下文后缀——定价表按它查。"""
     assert usage([_INIT, _RESULT]) == Usage(input_tokens=22 + 77824 + 582738,
                                             cached_tokens=582738, output_tokens=5072,
-                                            model="opus", cost_usd=1.2065)
+                                            model="claude-opus-5", cost_usd=1.2065)
 
 
-def test_usage_keeps_a_model_off_the_list_as_reported_and_none_without_init():
-    haiku = {**_INIT, "model": "claude-haiku-4-5-20251001"}
-    assert usage([haiku, _RESULT]).model == "claude-haiku-4-5-20251001"
+def test_usage_has_no_model_without_init():
     assert usage([_RESULT]).model is None
+
+
+def test_prices_name_every_version_the_aliases_resolve_to():
+    """定价表只给人看（成本 CLI 自己报）：每一版有名字与三档价，命中缓存的比读进去的便宜。"""
+    from backends import prices
+    table = prices("claude_code")
+    assert table["claude-opus-5"].title == "Opus 5" and table["claude-sonnet-5"].title == "Sonnet 5"
+    assert all(p.cached < p.input < p.output for p in table.values())
 
 
 def test_usage_is_unknown_without_a_result_event():

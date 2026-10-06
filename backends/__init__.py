@@ -22,8 +22,8 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 __all__ = ["RunResult", "Runner", "ChatEvent", "Choice", "Tuning", "Knobs", "Chat", "AgentProbe",
-           "Usage", "BackendNotFound", "get_backend", "get_chat", "probe", "read_usage",
-           "available_backends"]
+           "Usage", "Price", "BackendNotFound", "get_backend", "get_chat", "probe", "read_usage",
+           "prices", "available_backends"]
 
 
 @dataclass
@@ -54,9 +54,10 @@ class Usage:
     """一次调用（对话的一轮、执行层的一次会话）用掉多少：各家适配器从自家 CLI 的原生事件里取
     （框架不解析原生事件，端口方向；外层 #256 首页的花费读它）。
 
-    `input_tokens` 是读进去的全部、含命中缓存的，`cached_tokens` 是其中命中缓存的；`model` 写成这家
-    清单上的名（`Knobs.models` 的 id），事件里写的不在清单上就照原样，没写是 None。`cost_usd` 是 CLI
-    报的美元，报不出是 NaN（Codex 用订阅登录）；Claude Code 续接的会话报的是会话累计，单轮由框架减。
+    `input_tokens` 是读进去的全部、含命中缓存的，`cached_tokens` 是其中命中缓存的；`model` 是
+    CLI 报的那一版（定价表 `PRICES` 按它查；Claude Code 的别名解析成哪版以它为准），没写是 None。
+    `cost_usd` 是 CLI 报的美元，报不出是 NaN（Codex 用订阅登录，读的人照 `prices` 折算）；
+    Claude Code 续接的会话报的是会话累计，单轮由框架减。
     """
 
     input_tokens: int
@@ -64,6 +65,23 @@ class Usage:
     output_tokens: int
     model: str | None = None
     cost_usd: float = math.nan
+
+
+@dataclass(frozen=True)
+class Price:
+    """一个模型的 API 公开价（外层 #256 首页的「定价」）：美元 / 百万 token——读进去没命中缓存的、
+    命中缓存的、写出来的；`title` 是给人看的名。CLI 报不出成本时（Codex 用订阅登录）读的人照它折算；
+    写缓存的加价、长上下文档不在表里（报得出成本的 CLI 自己算，表对它只是给人看）。"""
+
+    title: str
+    input: float
+    cached: float
+    output: float
+
+    def cost(self, usage: Usage) -> float:
+        fresh = usage.input_tokens - usage.cached_tokens
+        return (fresh * self.input + usage.cached_tokens * self.cached
+                + usage.output_tokens * self.output) / 1_000_000
 
 
 @dataclass(frozen=True)
@@ -341,6 +359,12 @@ def read_usage(events: list[dict]) -> tuple[str, Usage] | None:
         if got is not None:
             return name, got
     return None
+
+
+def prices(name: str) -> dict[str, Price]:
+    """一家的定价表：模块级 `PRICES`，键是 `Usage.model`（CLI 报的那一版）。
+    名字不对是 BackendNotFound。"""
+    return _module(name, "agent ").PRICES
 
 
 def probe(name: str) -> AgentProbe:

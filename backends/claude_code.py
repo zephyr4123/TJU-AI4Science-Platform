@@ -24,13 +24,14 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import AgentProbe, ChatEvent, Choice, Knobs, RunResult, Tuning, Usage
+from backends import AgentProbe, ChatEvent, Choice, Knobs, Price, RunResult, Tuning, Usage
 from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
-__all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "KNOBS", "MODELS", "EFFORTS", "WEB_TOOLS", "usage",
-           "build_env", "bash_rule", "tool_guide", "parse_events", "final_metrics", "final_report",
-           "kill_tree", "probe", "parse_version", "make_runner", "make_chat"]
+__all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "KNOBS", "MODELS", "EFFORTS", "PRICES",
+           "WEB_TOOLS", "usage", "build_env", "bash_rule", "tool_guide", "parse_events",
+           "final_metrics", "final_report", "kill_tree", "probe", "parse_version", "make_runner",
+           "make_chat"]
 
 NAME = "claude_code"
 # 不读 user/project/local 任何设置源：会话因此不继承本机的 CLAUDE.md、hook、plugin、
@@ -52,6 +53,17 @@ MODELS = (Choice("sonnet", "Sonnet", "快"), Choice("opus", "Opus", "强"),
 EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
            Choice("xhigh", "超高"), Choice("max", "最高"))
 KNOBS = Knobs(models=MODELS, efforts=EFFORTS, model="sonnet", effort="medium")
+# 定价表（外层 #256 首页「定价」；美元 / 百万 token：输入、命中缓存、输出）：键是 init 事件报的
+# 那一版——三档别名解析成哪版由 CLI 定（本机 2.1.291 留档实测 sonnet → claude-sonnet-5、
+# opus → claude-opus-5），所以两代都列。成本 CLI 自己报（result.total_cost_usd），这张表对
+# Claude Code 只是给人看。价照 cc-switch 的内置定价表（2026-10-06，那边逐条对过 Anthropic 价页）
+PRICES = {
+    "claude-sonnet-5": Price("Sonnet 5", 2, 0.20, 10),
+    "claude-opus-5": Price("Opus 5", 5, 0.50, 25),
+    "claude-opus-5-5": Price("Opus 5.5", 4, 0.20, 20),
+    "claude-fable-5": Price("Fable 5", 10, 1.00, 50),
+    "claude-fable-5-1": Price("Fable 5.1", 10, 0.25, 50),
+}
 # 自检认的最低版本：`--effort` 与 `--setting-sources` 都是这之后才有的
 MIN_VERSION = (2, 1, 276)
 _TAIL_CHARS = 4000
@@ -264,7 +276,7 @@ def final_metrics(
 
 def usage(events: list[dict]) -> Usage | None:
     """用量只认最终 result 事件（外层 #256）：读进去的 = 没缓存的 + 写缓存的 + 读缓存的，
-    花费照它报的；模型取 init 事件里写的，含清单上哪个名就记那个名（`claude-opus-5[1m]` → opus）。
+    花费照它报的；模型取 init 事件里写的那一版（`claude-opus-5[1m]` → claude-opus-5）。
     没有 result（超时被杀、崩了）就是 None：用了多少不知道，不编。"""
     result = next((e for e in reversed(events)
                    if e.get("type") == "result" and "usage" in e), None)
@@ -276,12 +288,11 @@ def usage(events: list[dict]) -> Usage | None:
             + cached)
     init = next((e for e in events if e.get("type") == "system" and e.get("subtype") == "init"), {})
     model = init.get("model")
-    if isinstance(model, str):
-        model = next((c.id for c in MODELS if c.id in model.lower()), model)
     cost = result.get("total_cost_usd")
     return Usage(input_tokens=read, cached_tokens=cached,
                  output_tokens=int(raw.get("output_tokens") or 0),
-                 model=model if isinstance(model, str) else None,
+                 # 「claude-opus-5[1m]」：方括号里是上下文档，不是另一版
+                 model=model.split("[", 1)[0] if isinstance(model, str) else None,
                  cost_usd=float(cost) if isinstance(cost, (int, float)) else math.nan)
 
 

@@ -79,15 +79,14 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backends import AgentProbe, ChatEvent, Choice, Knobs, RunResult, Tuning, Usage
+from backends import AgentProbe, ChatEvent, Choice, Knobs, Price, RunResult, Tuning, Usage
 from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
 
-__all__ = ["CodexRunner", "CodexChat", "KNOBS", "MODELS", "EFFORTS", "LAYERS", "codex_home",
-           "write_rules", "build_env", "config_args", "skill_off_paths", "toml_str", "tool_guide",
-           "chat_tool_guide", "parse_events", "Translator", "final_report", "usage", "probe",
-           "parse_version",
-           "make_runner", "make_chat"]
+__all__ = ["CodexRunner", "CodexChat", "KNOBS", "MODELS", "EFFORTS", "PRICES", "LAYERS",
+           "codex_home", "write_rules", "build_env", "config_args", "skill_off_paths", "toml_str",
+           "tool_guide", "chat_tool_guide", "parse_events", "Translator", "final_report", "usage",
+           "probe", "parse_version", "make_runner", "make_chat"]
 
 NAME = "codex"
 HOME_ENV = "AI4SCI_CODEX_HOME"
@@ -108,6 +107,13 @@ MODELS = (Choice("gpt-6.1-sol", "GPT-6.1 Sol", "主力"),
 EFFORTS = (Choice("low", "低"), Choice("medium", "中"), Choice("high", "高"),
            Choice("xhigh", "超高"))
 KNOBS = Knobs(models=MODELS, efforts=EFFORTS, model="gpt-6.1-sol", effort="medium")
+# 定价表（外层 #256；美元 / 百万 token：输入、命中缓存、输出）：订阅报不出成本，首页照它折算。
+# 标准短上下文价，照 cc-switch 的内置定价表（2026-10-06，那边逐条对过 OpenAI 价页）；>272K 的
+# 长上下文档与写缓存的加价（5.6 起 1.25×，本机留档里写缓存的 token 全是 0）不计。清单上加一款就得
+# 在这里加它的价，不然 import 就炸
+_RATES = {"gpt-6.1-sol": (2, 0.10, 10), "gpt-6-astra": (10, 1, 50),
+          "gpt-6-luna": (0.10, 0.01, 0.50), "gpt-5.6-terra": (2, 0.20, 12)}
+PRICES = {c.id: Price(c.label, *_RATES[c.id]) for c in MODELS}
 # 执行层留档的第一行：Codex 的事件里不写模型，适配器记下这次用的哪个（外层 #256：首页按模型数花费）
 MODEL_EVENT = "ai4sci.model"
 # 两层共用的 exec 参数：JSONL、不查 git 仓库（工作区不是仓库）、不读本机配置；execpolicy 规则要读

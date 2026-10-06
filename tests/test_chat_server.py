@@ -741,7 +741,8 @@ def test_home_side_panel_endpoints(served, tmp_path):
     status, _, body = call(base, "/usage")
     got = json.loads(body)
     assert status == 200 and got["days"] == 30 and len(got["by_day"]) == 30
-    assert got["total"] == {"cost_usd": None, "unknown": 0, "tokens": 0, "count": 0}
+    assert got["total"] == {"cost_usd": None, "unknown": 0, "tokens": 0, "input_tokens": 0,
+                            "cached_tokens": 0, "count": 0}
     assert json.loads(call(base, "/usage?days=7")[2])["days"] == 7
     assert call(base, "/usage?days=0")[0] == 422
     assert call(base, "/usage?days=x")[0] == 422
