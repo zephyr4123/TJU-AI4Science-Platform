@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-06
+
 ### 新增
 
 - 端点 `GET /attention`（跨项目要人做的与在跑的）与 `GET /usage?days=`（花费汇总）；适配器端口加 `Usage` 与各家 `usage()`、`Price` 与各家定价表 `PRICES`（价照 cc-switch 的内置表），Codex 执行层留档第一行记下用的模型（外层 #256）
@@ -244,7 +246,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.3.1...v1.4.0
