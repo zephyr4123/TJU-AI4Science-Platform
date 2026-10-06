@@ -41,6 +41,10 @@
     POST /workflows/<name>/remove           删人存的一条流程（出厂的拒 403）
     GET  /templates                         需求模板的库：名字、标题、一句说明、原文
     GET  /projects                          项目清单：标题、几个工作区、有没有作业在跑
+    GET  /attention                         首页右栏：跨项目要人做的（需求未确认或有改动、
+                                            流程停在断点）与在跑的作业（外层 #256）
+    GET  /usage?days=30                     首页的花费：近几天的合计、按天 / 项目 / 模型 / 对话与
+                                            运行，折算美元（报不出的另数）与 token
     POST /projects                          {"id", "title"?, "goal"?} → 新项目（写 project.md）
     GET  /projects/<p>                      项目 + 目标原文 + 每个工作区一行（需求状态、每个阶段几次
                                             产出、每条流程走到哪、在等谁、跑着的作业）
@@ -102,7 +106,7 @@ from backends import (
     probe,
 )
 from framework import agents, computes, paths
-from framework.chat import boards, conversation, guide, notify, removal, scope, settings
+from framework.chat import boards, conversation, guide, notify, removal, scope, settings, spending
 from framework.contracts import output, requirement, stages, workflow_library, workflows
 from framework.contracts.capability import Capability
 from framework.workspace import jobs, outputs, project, root
@@ -115,7 +119,7 @@ MAX_BODY = 1 << 20
 SIGNER = getpass.getuser()
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
 API_ROOTS = ("health", "backends", "settings", "stages", "cap", "skills", "workflows", "templates",
-             "projects", "studio")
+             "projects", "studio", "attention", "usage")
 
 
 def _no_add_compute(body: dict[str, Any]) -> dict[str, Any]:
@@ -250,6 +254,15 @@ class Handler(BaseHTTPRequestHandler):
         if parts == ["projects"]:
             return self._json([boards.project_summary(p) for p in
                                project.list_projects(self.server.projects_root)])
+        if parts == ["attention"]:
+            projects = project.list_projects(self.server.projects_root)
+            return self._json(boards.attention(projects, self.server.descriptors(),
+                                               self.server.skill_names()))
+        if parts == ["usage"]:
+            raw = parse_qs(url.query).get("days", ["30"])[0]
+            if not raw.isdigit() or int(raw) < 1:
+                raise ValueError(f"days 要是正整数，得到 {raw!r}")
+            return self._json(spending.summary(self.server.home, days=int(raw)))
         found = self._scope(parts)
         if found is None:
             return None

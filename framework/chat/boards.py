@@ -63,6 +63,37 @@ def project_detail(project: Project, catalog: dict[str, Capability],
     return {**project_summary(project), "text": project.text(), "workspaces": rows}
 
 
+def attention(projects: list[Project], catalog: dict[str, Capability],
+              skills: Collection[str] = ()) -> list[dict[str, Any]]:
+    """首页右栏（外层 #256）：跨项目一张单——人要做的在前（需求未确认或有改动待确认、流程停在断点
+    等人确认），在跑的在后（作业）。每行带项目与工作区的名字，点了去那个工作区；断点那行写是哪个阶段
+    的产出在等（断点前面那个阶段），在跑那行写哪个能力、几时起的。"""
+    waits: list[dict[str, Any]] = []
+    runs: list[dict[str, Any]] = []
+    for proj in projects:
+        for ws in proj.workspaces():
+            detail = workspace_detail(ws, catalog, skills)
+            where = {"project": proj.id, "project_title": proj.title(), "workspace": ws.id,
+                     "workspace_title": detail["title"]}
+            state = detail["requirement"]
+            if not state["confirmed"] or state["dirty"]:
+                waits.append({**where, "kind": "requirement", "dirty": bool(state["confirmed"])})
+            for flow in detail["flows"]:
+                if flow.get("waiting") != progress.WAITING_SIGN:
+                    continue
+                before = [i for i in flow["items"]
+                          if i["kind"] == "stage" and i["index"] <= flow["step"]]
+                waits.append({**where, "kind": "sign", "flow": flow.get("title") or flow["name"],
+                              "stage": before[-1]["stage"] if before else None})
+            for job in detail["jobs"]:
+                if job["effective_status"] != "running":
+                    continue
+                cap = catalog.get(job["cap"])
+                runs.append({**where, "kind": "running", "cap": cap.title if cap else job["cap"],
+                             "since": job["started_at"]})
+    return waits + runs
+
+
 # ── 工作区 ───────────────────────────────────────────────────────────────
 def workspace_summary(workspace: Workspace) -> dict[str, Any]:
     """地方栏用的一行：标题、需求状态、每个阶段有几次产出、有没有作业在跑。"""

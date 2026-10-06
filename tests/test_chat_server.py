@@ -728,3 +728,20 @@ def test_chat_doc_shows_a_turn_running_elsewhere_and_jobs_still_to_wake_it(serve
     assert (doc["running"]["turn"], doc["running"]["origin"], doc["running"]["message"]) == (
         1, "框架", "作业跑完了")
     stream.close()
+
+
+def test_home_side_panel_endpoints(served, tmp_path):
+    """首页右栏（外层 #256）：/attention 跨项目列要人做的与在跑的；/usage?days= 汇总花费，
+    days 缺省 30、不是正整数是 422。"""
+    base, _ = served
+    spaces.make_workspace(tmp_path, "draft")  # 需求没确认：在等人
+    status, _, body = call(base, "/attention")
+    assert status == 200
+    assert [(i["kind"], i["workspace"]) for i in json.loads(body)] == [("requirement", "draft")]
+    status, _, body = call(base, "/usage")
+    got = json.loads(body)
+    assert status == 200 and got["days"] == 30 and len(got["by_day"]) == 30
+    assert got["total"] == {"cost_usd": None, "unknown": 0, "tokens": 0, "count": 0}
+    assert json.loads(call(base, "/usage?days=7")[2])["days"] == 7
+    assert call(base, "/usage?days=0")[0] == 422
+    assert call(base, "/usage?days=x")[0] == 422
