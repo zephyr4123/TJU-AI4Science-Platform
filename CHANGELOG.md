@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-06
+
 ### 变更
 
 - 平台的一切私有东西收进**平台的家** `~/.ai4sci`（`AI4SCI_HOME` 可改）：设置、项目、两家 CLI 的会话记录与平台自己的登录、依赖缓存；不再写 `~/.claude` `~/.codex` `~/.config/ai4sci`；`ai4sci reset` 与设置页一键清除；源码模式不再以仓库为家，样例项目删除。旧数据跑外层 `scripts/oneoff/migrate-to-home-263.py`（外层 #264）
@@ -269,7 +271,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.5.0...v1.5.1
