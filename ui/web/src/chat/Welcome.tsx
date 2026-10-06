@@ -22,7 +22,7 @@ export function Welcome({ copy, error, className }: { copy: WelcomeCopy; error?:
   const still = useReducedMotion()
   return (
     <div className={cn('flex flex-col items-center text-center', className)}>
-      <Logo className="size-12 text-primary" />
+      <Logo className="size-12" />
       {still
         ? <h2 className={cn(TITLE, 'mt-6')}>{copy.headline}</h2>
         : <BlurText text={copy.headline} delay={50} animateBy="words" direction="top" className={cn(TITLE, 'mt-6 justify-center')} />}

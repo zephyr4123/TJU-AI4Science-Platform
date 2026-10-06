@@ -109,7 +109,7 @@ flowchart TB
 
 - vitest，node 环境，只收 `src/**/*.test.ts`（`*.test.tsx` 不会被收集，不要写）。
 - **只测纯函数**：`derive` / `model` / `trace` / `turns` / `humanize` / `diff` / `slug` / `format` / `status` / `place` 各有单测；组件、hooks、api 层不写单元测试，靠浏览器闭环。
-- **扫源码当 lint 的测试**：`copy.test.ts`（禁用词、退役词、`font-mono` 只许在文件镜头与代码块；先断言扫到 40 个以上文件，防空转）、`logo.test.ts`（页面里的标与 favicon 是同一条路径）、`assets.test.ts`（CDN origin）。
+- **扫源码当 lint 的测试**：`copy.test.ts`（禁用词、退役词、`font-mono` 只许在文件镜头与代码块；先断言扫到 40 个以上文件，防空转）、`logo.test.ts`（页面里的标与 favicon 是同三条路径，favicon 的颜色与 `index.css` 的 `--mark-*` 一致）、`assets.test.ts`（CDN origin）。
 - `npm run check` = `tsc -b` + `oxlint`（只有 rules-of-hooks 是 error）+ `vitest run` + `vite build`；`make ui-check` 在它前面加素材检查，并入 `make check` 与 CI。没有覆盖率门槛。
 
 ## 5. 浏览器闭环

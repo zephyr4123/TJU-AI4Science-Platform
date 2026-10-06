@@ -117,7 +117,7 @@ export function ProjectPlace({ projectId, summary, wsId, healthy, backends, menu
         <Scene picture={ASSETS.backdrop} veil="mist" />
         <div className="absolute top-3 left-4 z-10 flex items-center gap-3 sm:left-5">{menu}<Back label="首页" onClick={onHome} /></div>
         <div className="relative mx-auto w-full max-w-[47rem] px-6 pt-[10vh]">
-          <Logo className="mx-auto size-12 text-primary" />
+          <Logo className="mx-auto size-12" />
           <h1 className="mt-5 text-center font-serif text-[2rem] leading-[1.25] font-semibold tracking-tight text-balance">{summary?.title ?? projectId}</h1>
           {summary?.goal && <p className="t-body mx-auto mt-3 text-center text-muted-foreground">{summary.goal}</p>}
           <div className="mt-8">{doc.error ? <ErrorNote text={doc.error} /> : <Skeleton lines={3} />}</div>

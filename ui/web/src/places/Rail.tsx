@@ -1,7 +1,7 @@
 // 地方栏（外层 #79 #80 #136）：只剩三个键——首页、编辑台、设置。项目不在这里列（主人 2026-09-22：侧边栏展示项目很鸡肋），
 // 首页就是项目清单，进了项目再往下走。首页 / 编辑台是两个平行的世界（纲领 P-15 P-16），设置是全局一份（P-25），归人，
 // 沉在最底下，旁边一个点，有一项自检没过才亮。每个键都带字（主人：没字用户不知道是啥）。
-// 宽屏常驻最左一列，顶上一块靛色的标（LogoTile）；窄屏收进页眉左端那块标里，点开是一张清单（PlacesSheet）。
+// 宽屏常驻最左一列，顶上是平台的标（三色，不垫底）；窄屏收进页眉左端那枚标里，点开是一张清单（PlacesSheet）。
 // 外层 #253（主人 2026-10-06：分割线太普通、看着劣质）：底与页眉同一种磨砂（底图糊开 + 纱幕），两块连成一个 L 形框；
 // 右边是两头渐隐的双层细线（index.css 的 edge-r，页眉那一段淡掉，左上角不交成「T」）。键：开着的靛色上亮下深、
 // 顶边一道高光、底下一团淡靛光；关着的去掉框，半透明软底，悬停变实，按下轻轻缩一下。
@@ -10,7 +10,7 @@ import { Blueprint, GearSix, House, type Icon } from '@phosphor-icons/react'
 import { ASSETS } from '@/assets'
 import { BRAND } from '@/brand'
 import { Band } from '@/components/Band'
-import { LogoTile } from '@/components/Logo'
+import { Logo } from '@/components/Logo'
 import { cn } from '@/lib/utils'
 
 import { type PlacesProps, worldOf } from './place'
@@ -21,7 +21,7 @@ export function Rail({ place, onHome, onStudio, settingsDot, onSettings }: Place
     <Band picture={ASSETS.backdrop} veil="wash" blur className="edge-r w-[4.5rem] shrink-0">
       <nav aria-label="地方" className="flex h-full flex-col items-center">
         <div className="flex h-14 shrink-0 items-center">
-          <LogoTile label={BRAND.name} />
+          <Logo label={BRAND.name} className="size-9" />
         </div>
         <div className="flex flex-col items-center gap-3 pt-1">
           <Key label="首页" icon={House} active={world === 'projects'} onClick={onHome} />

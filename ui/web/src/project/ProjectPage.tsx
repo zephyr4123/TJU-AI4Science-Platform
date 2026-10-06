@@ -107,7 +107,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
             <div className="relative mx-auto flex min-h-full w-full max-w-[47rem] flex-col px-6 pt-[14vh] pb-16">
               {/* 平台的标紧挨着项目名、一行居中（外层 #139 #258）：像 Claude 首页的「✳ 晚间随想」；名字长了折行时标对着整块的中线 */}
               <h1 className="flex items-center justify-center gap-3.5 font-serif text-[2rem] leading-[1.25] font-semibold tracking-tight">
-                <Logo className="size-9 shrink-0 text-primary" />
+                <Logo className="size-9 shrink-0" />
                 <span className="min-w-0 text-balance">{project.title}</span>
               </h1>
               {composer('mt-9')}

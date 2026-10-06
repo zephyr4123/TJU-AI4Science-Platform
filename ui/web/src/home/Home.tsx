@@ -7,7 +7,7 @@
 // 外层 #256（主人 2026-10-06：只有一列居中的清单，两边太空）：宽屏左半边是清单，右半边横纵结合（不越拉越长）——
 // 上面「待你确认」「运行中」两张小卡并排，下面一张「花费」；右半边是另一个模块，配色换成与清单对着映衬的暖调。
 // 窄屏右半边折到清单下面。最上面一行门牌（外层 #258）：字标「AAAI4S」与一句口号，和地方栏顶上那枚标同一高度、连成一组，
-// 只在首页有（其它页的页眉留给当前地方）；窄屏跟在左上那枚玻璃标后面。右半边顶上一行同步（上次同步多久以前、立即同步、自动刷新隔多久），与「项目」那行齐。最底下一行素的页脚：平台叫什么、靠什么搭起来、源码在哪（主人 2026-10-06）。
+// 只在首页有（其它页的页眉留给当前地方）；窄屏跟在左上那枚标后面。右半边顶上一行同步（上次同步多久以前、立即同步、自动刷新隔多久），与「项目」那行齐。最底下一行素的页脚：平台叫什么、靠什么搭起来、源码在哪（主人 2026-10-06）。
 import { GithubLogo, MagnifyingGlass, Plus, X } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
 import { type ReactNode, useCallback, useState } from 'react'
@@ -136,7 +136,7 @@ function Footer() {
   return (
     <footer className="relative mx-auto mt-auto flex w-full max-w-[92rem] flex-wrap items-center gap-x-6 gap-y-1.5 px-6 pb-6 text-[0.75rem] text-muted-foreground sm:px-8">
       <span className="flex items-center gap-1.5">
-        <Logo className="size-3.5 text-primary" /><Wordmark className="text-[0.8125rem] text-foreground/80" />
+        <Logo className="size-3.5" /><Wordmark className="text-[0.8125rem] text-foreground/80" />
         <span>· {BRAND.full}</span>
       </span>
       <span className="sm:ml-auto">Powered by Claude Code · Codex · React · Tailwind CSS · Python</span>
