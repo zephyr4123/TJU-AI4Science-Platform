@@ -1,6 +1,6 @@
 // 地方栏（外层 #79 #80 #136）：只剩三个键——首页、编辑台、设置。项目不在这里列（主人 2026-09-22：侧边栏展示项目很鸡肋），
 // 首页就是项目清单，进了项目再往下走。首页 / 编辑台是两个平行的世界（纲领 P-15 P-16），设置是全局一份（P-25），归人，
-// 沉在最底下，旁边一个点，有一项自检没过才亮。每个键都带字（主人：没字用户不知道是啥）。
+// 沉在最底下、点了弹设置窗（外层 #268），旁边一个点，有一项自检没过才亮。每个键都带字（主人：没字用户不知道是啥）。
 // 宽屏常驻最左一列，顶上是平台的标（三色，不垫底）；窄屏收进页眉左端那枚标里，点开是一张清单（PlacesSheet）。
 // 外层 #253（主人 2026-10-06：分割线太普通、看着劣质）：底与页眉同一种磨砂（底图糊开 + 纱幕），两块连成一个 L 形框；
 // 右边是两头渐隐的双层细线（index.css 的 edge-r，页眉那一段淡掉，左上角不交成「T」）。键：开着的靛色上亮下深、
@@ -29,7 +29,7 @@ export function Rail({ place, onHome, onStudio, settingsDot, onSettings }: Place
         </div>
         <span className="flex-1" />
         <div className="pb-3">
-          <Key label="设置" icon={GearSix} active={world === 'settings'} onClick={onSettings}
+          <Key label="设置" icon={GearSix} onClick={onSettings}
                title={settingsDot ? '设置：有一项没过检查' : undefined} dot={settingsDot} />
         </div>
       </nav>
@@ -37,9 +37,9 @@ export function Rail({ place, onHome, onStudio, settingsDot, onSettings }: Place
   )
 }
 
-/** 一个键：圆角方块 + 底下两个字；开着的填实 */
+/** 一个键：圆角方块 + 底下两个字；开着的填实（设置弹窗，没有开着这一说） */
 function Key({ label, icon, active, onClick, title, dot = false }: {
-  label: string; icon: Icon; active: boolean; onClick: () => void; title?: string; dot?: boolean
+  label: string; icon: Icon; active?: boolean; onClick: () => void; title?: string; dot?: boolean
 }) {
   const Glyph = icon
   return (

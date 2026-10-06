@@ -89,14 +89,12 @@ PARTS = (("项目", ("projects",)), ("编辑台", ("studio",)),
 
 
 def storage_table(home: Path | None = None) -> dict[str, Any]:
-    """存放：平台的家在哪、每块占多大、可写吗、还剩多少、清除认不认它（有没有标记）。`home` 是服务
-    起时定的家；终端里就是 `paths.home()`。"""
+    """存放：平台的家在哪、可写吗、还剩多少、清除认不认它（有没有标记）。`home` 是服务起时定的家；
+    终端里就是 `paths.home()`。每块多大不在这里（`storage_sizes`）。"""
     home = paths.home() if home is None else Path(home)
     usage = shutil.disk_usage(home)
     projects = home / "projects"
     return {"home": str(home), "resettable": (home / paths.MARKER_NAME).is_file(),
-            "parts": [{"label": label, "bytes": sum(_size(home / n) for n in names)}
-                      for label, names in PARTS],
             # 在仓库里跑还是装的包在跑、出厂件从哪读、页面有没有构建（外层 #138）
             "mode": "source" if paths.from_source() else "package",
             "shipped": str(paths.shipped_home()),
@@ -105,6 +103,15 @@ def storage_table(home: Path | None = None) -> dict[str, Any]:
             "projects": sum(1 for _ in projects.glob("*/project.md")) if projects.is_dir() else 0,
             "workspaces": sum(1 for _ in projects.glob("*/workspaces/*/requirement.md"))
             if projects.is_dir() else 0}
+
+
+def storage_sizes(home: Path | None = None) -> list[dict[str, Any]]:
+    """家里每块占多大。要走遍整棵树（开发用的家 3.5 GB、7 万个文件走一遍 1 秒多），所以不进
+    `snapshot`——不然每打开一次设置、每改一项都要等它；页面在「存放」那页打开时单独取
+    （外层 #268）。"""
+    home = paths.home() if home is None else Path(home)
+    return [{"label": label, "bytes": sum(_size(home / n) for n in names)}
+            for label, names in PARTS]
 
 
 def _size(path: Path) -> int:

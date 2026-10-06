@@ -385,6 +385,13 @@ def test_settings_endpoints_snapshot_check_and_computes(served, tmp_path):
     assert codex["models"][0]["id"] == "a"  # 清单跟着服务接的那家适配器（剧本）走
     assert [c["name"] for c in snap["computes"]] == ["local"]
     assert snap["storage"]["home"] == str(tmp_path) and snap["storage"]["writable"] is True
+    # 家里每块多大要走遍整棵树，不在这一份里，存放页打开时单独取（外层 #268）
+    assert "parts" not in snap["storage"]
+    (tmp_path / "projects" / "sizes.bin").write_bytes(b"x" * 1000)
+    status, _, body = call(base, "/settings/storage")
+    assert status == 200
+    parts = {p["label"]: p["bytes"] for p in json.loads(body)["parts"]}
+    assert parts["项目"] >= 1000 and list(parts)[-1] == "设置与 key"
     assert json.loads(call(base, "/health")[2])["checks_ok"] is True
 
     status, _, body = call(base, "/settings/check", {"what": "agents"})

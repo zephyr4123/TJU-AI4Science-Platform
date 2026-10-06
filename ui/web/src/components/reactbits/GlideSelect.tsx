@@ -3,6 +3,7 @@
 // 改装：颜色走 tokens 不收色值，图标换 Phosphor，片上可以带一个前缀字（「模型」「思考」，菜单行里不带），
 // 选项必给（没有「One Two Three」的样板），关键帧 gs-swap 挪进 index.css。减少动效时不缩放、不滑，只淡入淡出。
 // 菜单挂在 body 上、按片的位置定住（原版长在片里，输入框的玻璃壳 overflow-hidden 会把六行的菜单切掉一半）；滚动、改窗口就收起。
+// 在设置窗里也用：模态窗把 body 设成 pointer-events: none，菜单自己写回 auto（窗那边把点菜单当成窗里的点，`settings/Settings.tsx`）。
 import { CaretDown, Check } from '@phosphor-icons/react'
 import {
   type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode,
@@ -297,7 +298,7 @@ export default function GlideSelect({
       {phase !== 'closed' && createPortal(
         <div
           ref={menuRef}
-          className="fixed z-50 scale-95 rounded-xl border border-border/60 bg-popover p-1 text-popover-foreground opacity-0 shadow-lg [width:var(--gs-menu-w)] [transform-origin:var(--gs-origin)] [transition:opacity_var(--gs-pop)_cubic-bezier(0.23,1,0.32,1),transform_var(--gs-pop)_cubic-bezier(0.23,1,0.32,1)] data-[state=open]:scale-100 data-[state=open]:opacity-100 data-[state=closed]:pointer-events-none data-[state=closed]:[transition-duration:var(--gs-pop-out)] motion-reduce:[transform:none]! motion-reduce:[transition:opacity_var(--gs-pop)_ease]"
+          className="pointer-events-auto fixed z-50 scale-95 rounded-xl border border-border/60 bg-popover p-1 text-popover-foreground opacity-0 shadow-lg [width:var(--gs-menu-w)] [transform-origin:var(--gs-origin)] [transition:opacity_var(--gs-pop)_cubic-bezier(0.23,1,0.32,1),transform_var(--gs-pop)_cubic-bezier(0.23,1,0.32,1)] data-[state=open]:scale-100 data-[state=open]:opacity-100 data-[state=closed]:pointer-events-none data-[state=closed]:[transition-duration:var(--gs-pop-out)] motion-reduce:[transform:none]! motion-reduce:[transition:opacity_var(--gs-pop)_ease]"
           style={{
             '--gs-row': `${S.row}px`,
             '--gs-font': `${S.font}px`,

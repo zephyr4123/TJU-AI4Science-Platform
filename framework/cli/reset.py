@@ -27,9 +27,8 @@ def cmd_reset(args: argparse.Namespace) -> int:
     except reset.ResetRefused as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
-    storage = settings.storage_table(home)
     print(f"要删除平台的家 {home}：")
-    for part in storage["parts"]:
+    for part in settings.storage_sizes(home):
         print(f"  {part['label']}\t{part['bytes'] / 1e6:.1f} MB")
     answer = input(f"删了找不回来。确认请输入「{CONFIRM_WORD}」：").strip()
     if answer != CONFIRM_WORD:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from backends import BackendNotFound
 from framework import agents, computes
@@ -45,7 +46,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         storage = report["storage"]
         print(f"平台的家\t{storage['home']}\t{'可写' if storage['writable'] else '不可写'}"
               f"\t剩 {storage['free_gb']} GB\t{storage['workspaces']} 个工作区")
-        for part in storage["parts"]:
+        for part in settings.storage_sizes(Path(storage["home"])):
             print(f"  {part['label']}\t{part['bytes'] / 1e6:.1f} MB")
         mode = "仓库" if storage["mode"] == "source" else "装的包"
         built = "已构建" if storage["ui_built"] else "没构建，serve 只开接口"

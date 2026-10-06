@@ -6,6 +6,9 @@ import { money } from '@/lib/format'
 
 export type Tone = 'ok' | 'bad' | 'neutral'
 
+// 词表里一层叫「助理」、另一层叫「执行层」（主人 2026-09-22：「对话用」是谓宾）：键、名、一句说明
+export const ROLES = [['chat', '助理', '对话里回话的那家'], ['executor', '执行层', '写代码、跑实验的那家']] as const
+
 /** 板上一处状态：`word` 是那个词（就绪 / 未登录 / 连接失败 / 未检查），`facts` 是跟在后面的几项短事实
  *  （版本、几秒、多少钱、GPU），`hint` 是没过时机器给的那一句（下一步怎么办），单独一行、小字 */
 export interface Status { word: string; tone: Tone; facts: string[]; hint?: string }

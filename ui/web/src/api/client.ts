@@ -6,7 +6,7 @@
 
 import type {
   AttentionItem, Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, Job, OutputDetail, ProjectDetail,
-  ProjectSummary, Removed, RequirementDetail, SettingsDoc, SkillDoc, SkillEntry, Spending, StageInfo, Template, Workflow,
+  ProjectSummary, Removed, RequirementDetail, SettingsDoc, SkillDoc, SkillEntry, Spending, StageInfo, StoragePart, Template, Workflow,
   WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
 } from './types'
 
@@ -65,6 +65,7 @@ export const api = {
   backends: () => request<Backend[]>('/backends'),
   /** 设置那块板（P-25）：读一整份、改用哪家与缺省、真探并记回、接一台机器、删一台 */
   settings: () => request<SettingsDoc>('/settings'),
+  storageSizes: () => request<{ parts: StoragePart[] }>('/settings/storage'),
   updateAgents: (body: {
     chat?: string; executor?: string
     agents?: Record<string, { provider?: string; base_url?: string; models?: string[]; model?: string; effort?: string }>

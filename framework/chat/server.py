@@ -16,7 +16,9 @@
     新对话用的值（照设置）、
                                             哪家是「对话用」的缺省
     GET  /settings                          设置那一整份：底座（两层各用哪家、每家清单与缺省、
-    上次检查）、算力、存放
+    上次检查）、算力、存放、key 末四位；读盘不探，几十毫秒
+    GET  /settings/storage                  {"parts": [{label, bytes}]} 家里每块多大（走遍整棵树，
+                                            一秒上下，所以单独一个端点，外层 #268）
     POST /settings/agents                   {"chat"?, "executor"?, "agents"?: {name: {model?,
     effort?}}} → 新的一整份
     POST /settings/check                    {"what"?: all|agents|computes|storage, "name"?} →
@@ -253,6 +255,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(rows)
         if parts == ["settings"]:
             return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+        if parts == ["settings", "storage"]:
+            return self._json({"parts": settings.storage_sizes(self.server.home)})
         if parts == ["stages"]:
             return self._json(self.server.stage_table())
         if parts == ["cap"]:
