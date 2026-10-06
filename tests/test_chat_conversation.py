@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 import pytest
 
@@ -114,6 +115,19 @@ def test_two_turns_resume_by_session_id_and_land_on_disk(tmp_path):
     transcript = (conv.dir / "transcript.md").read_text(encoding="utf-8")
     assert "## 第 1 轮" in transcript and "**agent**：有三个任务包" in transcript
     assert not (conv.dir / "inflight.json").exists()
+
+
+def test_cost_stays_unknown_when_no_turn_reports_dollars(tmp_path):
+    """报不出美元的后端（Codex 用订阅登录）：一轮都没报过，对话的花费是「未知」（None），不是 $0.00
+    ——以前记成 0.0，对话清单里一排 $0.00（外层 #256）。报过一轮之后才开始累加。"""
+    conv, chat = start(tmp_path, reply("好", cost=math.nan), reply("嗯", cost=math.nan),
+                       reply("行"))
+    drain(conv, chat, "一")
+    drain(conv, chat, "二")
+    assert conv.cost_usd is None
+    assert json.loads((conv.dir / "meta.json").read_text(encoding="utf-8"))["cost_usd"] is None
+    drain(conv, chat, "三")
+    assert conv.cost_usd == pytest.approx(0.01)
 
 
 def test_failed_turn_is_recorded_and_session_kept(tmp_path):
