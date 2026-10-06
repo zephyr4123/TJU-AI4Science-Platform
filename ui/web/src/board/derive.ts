@@ -50,7 +50,7 @@ export function stopState(item: StopItem, flow: FlowProgress): 'signed' | 'pendi
   return item.index === (flow.step ?? -1) + 1 && flow.waiting === 'sign' ? 'pending' : 'todo'
 }
 
-/** 流程外的产出：没被任何一条流程的哪一项收下的都算——没记流程的，记了流程却没记第几步的也在这，一次都不漏；
+/** 单独运行的产出：没被任何一条流程的哪一项收下的都算——没记流程的，记了流程却没记第几步的也在这，一次都不漏；
  *  按阶段的顺序、再按第几次排 */
 export function looseOutputs(stages: StageBoard[], flows: FlowProgress[]): OutputBrief[] {
   const placed = new Set(flows.flatMap((f) => (f.items ?? []).flatMap((item) => item.outputs.map((o) => o.id))))

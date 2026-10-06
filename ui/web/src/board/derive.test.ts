@@ -87,7 +87,7 @@ describe('产出叫什么', () => {
   })
 })
 
-describe('流程外的产出', () => {
+describe('单独运行的产出', () => {
   it('没被任何一条流程收下的都在这里：没记流程的、记了流程却没记第几步的；按阶段、再按第几次排', () => {
     const stages = [
       { name: '文献', slug: 'literature', outputs: [brief('literature/1', { flow: 'f', step: 0 }), brief('literature/2', { flow: 'f' }),

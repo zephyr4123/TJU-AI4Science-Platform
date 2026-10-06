@@ -2,8 +2,8 @@
 // 面里不再套框——流程是一条竖线，阶段与断点是线上的节点（走过 / 当前 / 没到），产出挂在阶段下面一行一条，名说全：
 // 第几次、产出名、生成者、读取了哪次产出、时间、状态。阶段名旁一行小字是这一格计划的步骤与挂的 skill（计划），
 // 下面的行才是实际跑出来的（实际），两样不混。一个阶段的产出多了只露最近两次，待确认与运行中的总露着。
-// 题头右边一句话说在等谁；不在任何流程里的产出（包括记了流程却没记第几步的）都在最底下「流程外的产出」，一次都不漏。
-import { ArrowRight, CaretDown, CaretUp, CheckCircle, Signature, Trash, WarningCircle } from '@phosphor-icons/react'
+// 题头右边一句话说在等谁；不在任何流程里的产出（包括记了流程却没记第几步的）都在最底下「单独运行」，一次都不漏。
+import { ArrowRight, CaretDown, CaretUp, CheckCircle, Info, Signature, Trash, WarningCircle } from '@phosphor-icons/react'
 import { createElement, type ReactNode, useState } from 'react'
 
 import type { WorkspaceClient } from '@/api/client'
@@ -279,15 +279,17 @@ function StopNode({ item, flow, last }: { item: Extract<FlowProgressItem, { kind
   )
 }
 
-/** 流程外的产出：次一级的面（只有玻璃），按阶段分组，组头是阶段图标 + 「X阶段」，行与流程里的一样 */
+/** 单独运行（主人 2026-10-06：「流程外的产出」看不懂）：没按流程、单独调用步骤跑出来的产出，标题悬停一句说清；
+ *  次一级的面（只有玻璃），按阶段分组，组头是阶段图标 + 「X阶段」，行与流程里的一样 */
 function Loose({ outputs, pending, names, onOpen }: {
   outputs: OutputBrief[]; pending: Set<string>; names: Names; onOpen: (oid: string) => void
 }) {
   const groups = [...new Set(outputs.map((o) => o.stage))].map((slug) => ({ slug, outputs: outputs.filter((o) => o.stage === slug) }))
   return (
-    <section aria-label="流程外的产出">
-      <h2 className="flex items-baseline gap-2 px-1">
-        <span className="font-serif text-[1.0625rem] font-semibold">流程外的产出</span>
+    <section aria-label="单独运行">
+      <h2 className="flex w-fit cursor-help items-baseline gap-2 px-1" title="没按流程、单独调用步骤跑出来的产出">
+        <span className="font-serif text-[1.0625rem] font-semibold">单独运行</span>
+        <Info className="size-3.5 self-center text-muted-foreground" aria-hidden />
         <span className="text-[0.8125rem] text-muted-foreground tabular">{outputs.length}</span>
       </h2>
       <Aurora quiet className="mt-3">
