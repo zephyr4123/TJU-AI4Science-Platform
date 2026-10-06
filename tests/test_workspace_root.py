@@ -1,4 +1,4 @@
-"""工作区（纲领 P-15、P-19）：起、找、列；id 规矩；需求就是标记；数据根与库目录的读取点
+"""工作区（纲领 P-15、P-19）：起、找、列；id 规矩；需求就是标记；家与库目录的读取点
 只在 paths.py。"""
 
 from __future__ import annotations
@@ -81,7 +81,8 @@ def test_paths_read_each_env_once_and_refuse_non_directories(tmp_path, monkeypat
     with pytest.raises(AssertionError, match=paths.HOME_ENV):
         paths.home()
     monkeypatch.delenv(paths.HOME_ENV)
-    assert paths.home() == paths.REPO_ROOT
+    monkeypatch.setattr(paths, "DEFAULT_HOME", tmp_path / ".ai4sci")
+    assert paths.home() == tmp_path / ".ai4sci"  # 不设就是 ~/.ai4sci（外层 #263），不是仓库
     assert paths.workflows_root() == paths.REPO_ROOT / "workflows"
     assert paths.domains_root() == paths.REPO_ROOT / "domains"
     assert paths.templates_root() == paths.REPO_ROOT / "templates"

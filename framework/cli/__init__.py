@@ -33,6 +33,7 @@ from framework.cli import (
     output,
     project,
     requirement,
+    reset,
     serve,
     show,
     sign,
@@ -63,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     workspace.add_parser(groups)
     chat.add_parser(groups)
     serve.add_parser(groups)
+    reset.add_parser(groups)
     return parser
 
 

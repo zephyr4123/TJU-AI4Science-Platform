@@ -17,9 +17,9 @@ import logging
 import os
 import sys
 
-from backends import BackendNotFound, get_backend
+from backends import BackendNotFound
 from compute import ComputeNotFound
-from framework import computes, paths
+from framework import agents, computes, paths
 from framework.contracts.capability import Ports
 from framework.contracts.workflow_library import Library
 from framework.workspace import jobs, project, root
@@ -33,7 +33,7 @@ WS_HELP = "哪个工作区（项目里的名字，ai4sci show project 列出）�
 
 
 def library() -> Library:
-    """流程库：出厂的（只读）+ 人在编辑台存的（数据根 studio/workflows/），纲领 P-15 / P-16。
+    """流程库：出厂的（只读）+ 人在编辑台存的（平台的家里的 studio/workflows/），纲领 P-15 / P-16。
     show / flow / serve 读库都从这里拿，两层不会漏一层。"""
     return Library(paths.workflows_root(), paths.user_workflows_root())
 
@@ -95,7 +95,7 @@ def resolve_ports(backend: str | None, compute: str | None) -> Ports | int:
     """按名字取端口，None 表示这个能力不要它。算力名字查按人的清单（P-23），空串是清单里的缺省；
     名字对不上退 2，绝不静默回退到默认后端（纲领 §5）。"""
     try:
-        ports = Ports(runner=None if backend is None else get_backend(backend))
+        ports = Ports(runner=None if backend is None else agents.runner(backend))
         if compute is not None:
             registry = computes.load()
             name = compute or registry.default

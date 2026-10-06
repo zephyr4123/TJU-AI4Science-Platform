@@ -1,9 +1,13 @@
 // 设置那块板上的纯函数（外层 #134）：一家底座 / 一台算力上次检查的状态——一个词、几项事实、一种色调，
 // 不是一句话（主人 2026-09-22：能用词就用词，短句也少）；贴进来的 ssh 一行怎么拆、机器名怎么起。
 // 都不碰 DOM，vitest 直接测。
-import type { AgentCheck, CheckItem, ComputeCheck } from '@/api/types'
+import type { AgentCheck, AgentEntry, CheckItem, ComputeCheck, ProviderRow } from '@/api/types'
+import { money } from '@/lib/format'
 
 export type Tone = 'ok' | 'bad' | 'neutral'
+
+// 词表里一层叫「助理」、另一层叫「执行层」（主人 2026-09-22：「对话用」是谓宾）：键、名、一句说明
+export const ROLES = [['chat', '助理', '对话里回话的那家'], ['executor', '执行层', '写代码、跑实验的那家']] as const
 
 /** 板上一处状态：`word` 是那个词（就绪 / 未登录 / 连接失败 / 未检查），`facts` 是跟在后面的几项短事实
  *  （版本、几秒、多少钱、GPU），`hint` 是没过时机器给的那一句（下一步怎么办），单独一行、小字 */
@@ -25,7 +29,7 @@ export function agentStatus(check: AgentCheck | null): Status {
   }
   const facts: string[] = []
   if (check.spoke_s != null) facts.push(`${check.spoke_s.toFixed(1)} s`)
-  if (check.cost_usd != null) facts.push(`$${check.cost_usd.toFixed(2)}`)
+  if (check.cost_usd != null) facts.push(money(check.cost_usd))
   return { word: '就绪', tone: 'ok', facts }
 }
 
@@ -90,4 +94,17 @@ export function suggestComputeName(ssh: string): string {
   const host = ssh.split('@')[1]?.split(':')[0] ?? ''
   const word = host.split('.')[0].toLowerCase().replace(/[^a-z0-9-]/g, '')
   return word || 'box'
+}
+
+/** 供应商的小签（外层 #266）：接口不能联网写「不能联网」（照官方文档，主人 2026-10-06：只提醒不拦），
+ *  没实测写「未实测」；自定义两样都不知道，不写 */
+export function providerTag(p: ProviderRow): string | undefined {
+  const tags = [p.web_search === false && '不能联网', !p.tested && p.id !== 'custom' && '未实测'].filter(Boolean)
+  return tags.length ? tags.join(' · ') : undefined
+}
+
+/** 分工那一行的提醒：这一层用的那家此刻接的供应商不能联网（纲领 P-14 要两层都能联网） */
+export function noWebNote(entry: AgentEntry): string | undefined {
+  const p = entry.providers.find((row) => row.id === entry.provider)
+  return p?.web_search === false ? `${entry.title} 用 ${p.title} 时不能联网` : undefined
 }

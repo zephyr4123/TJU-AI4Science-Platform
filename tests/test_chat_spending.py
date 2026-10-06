@@ -146,7 +146,7 @@ def test_summary_buckets_by_day_project_model_and_counts_unknown_cost(home: Path
     assert [(p["id"], p["title"]) for p in got["by_project"]] == [
         ("gua", "复现 GUA"), (None, "编辑台"), ("pinn", "复现 PINN")]
     models = {(m["backend_title"], m["model_title"]): m for m in got["by_model"]}
-    assert models[("Claude Code", "Opus 5")]["cost_usd"] == pytest.approx(0.75)
+    assert models[("Claude Code", "Claude Opus 5")]["cost_usd"] == pytest.approx(0.75)
     assert models[("Claude Code", "Opus")]["unknown"] == 1, \
         "超时那轮没有 init，哪一版不知道：记对话 meta 里的别名"
     assert models[("Codex", "GPT-5.6 Terra")]["cost_usd"] == pytest.approx(_EXPERIMENT)
@@ -164,7 +164,7 @@ def test_summary_lists_sessions_newest_first_and_the_price_table(home: Path):
     assert chat["at"] == "2026-10-05T13:00:00+00:00", "一段会话最后一次调用的时刻"
     run = sessions[3]
     assert (run["kind"], run["title"], run["workspace"], run["workspace_title"],
-            run["model_title"]) == ("run", "文献检索", "w", "第一张表", "Opus 5")
+            run["model_title"]) == ("run", "文献检索", "w", "第一张表", "Claude Opus 5")
     assert sessions[1]["project"] is None and sessions[1]["project_title"] == "编辑台"
     sol = next(p for p in got["pricing"] if p["model"] == "gpt-6.1-sol")
     assert (sol["backend_title"], sol["model_title"], sol["input"], sol["cached"],

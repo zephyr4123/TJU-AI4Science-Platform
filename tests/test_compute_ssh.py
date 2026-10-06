@@ -17,17 +17,16 @@ import pytest
 
 from compute import ComputeNotFound, available_computes, get_compute
 from compute.ssh import JOB_DIRNAME, SshCompute
-from framework import computes
+from framework import computes, paths
 from framework.cli import main
 
 LIVE = os.environ.get("AI4SCI_LIVE_SSH", "")
 
 
 @pytest.fixture
-def registry_file(tmp_path, monkeypatch):
-    file = tmp_path / "computes.yaml"
-    monkeypatch.setenv(computes.PATH_ENV, str(file))
-    return file
+def registry_file():
+    """清单在平台的家里（conftest 把家指到了 tmp）。"""
+    return paths.computes_file()
 
 
 def _ssh() -> SshCompute:
@@ -185,8 +184,8 @@ live = pytest.mark.skipif(not LIVE, reason="AI4SCI_LIVE_SSH=<清单里的名字>
 
 @pytest.fixture
 def real_registry(monkeypatch):
-    """连真机器的测试要读真清单（conftest 把它隔离掉了）。"""
-    monkeypatch.delenv(computes.PATH_ENV, raising=False)
+    """连真机器的测试要读真清单：平台真的家（conftest 把它隔离掉了）。"""
+    monkeypatch.delenv(paths.HOME_ENV, raising=False)
 
 
 @live

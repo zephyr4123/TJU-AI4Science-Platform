@@ -181,7 +181,7 @@ stages:
 
 ## 算力：在哪台机器上跑
 
-训练与评分（harness）在哪台机器上跑，由算力清单定（纲领 P-23）：`ai4sci show computes` 看有哪几台（名字、种类、GPU、可不可用），出厂只有 `local`（本机）。清单是按人的（`~/.config/ai4sci/computes.yaml`，不在工作区里），只有 SSH、只认密钥。
+训练与评分（harness）在哪台机器上跑，由算力清单定（纲领 P-23）：`ai4sci show computes` 看有哪几台（名字、种类、GPU、可不可用），出厂只有 `local`（本机）。清单是按人的（平台的家里的 `computes.yaml`，不在工作区里），只有 SSH、只认密钥。
 
 - **接一台机器是你的事**：研究者说「我租了台机器」，给你 ssh 那一行（`user@host:port`）和密钥路径，你就 `ai4sci compute add <名字> --ssh user@host:port --key <密钥路径> --root <远端目录>`——它写进清单并就地探测（连接、Python、uv 缺就装、GPU、磁盘、rsync），一行一项打给你，照实转告研究者。AutoDL 这类平台远端目录用它的数据盘（`/root/autodl-tmp/ai4sci`）。主机、端口、密钥路径都不是秘密；密码不收——研究者只有密码就让他把本机公钥贴到那台机器上（AutoDL 控制台有「SSH 公钥」设置）。机器关机重开端口会变：`ai4sci compute check <名字>` 报连不上就问研究者新的端口，再 `compute add` 同名覆盖。
 - **用哪台**：需求里写的是要求（要 GPU、单次多少分钟），不是机器名；清单里有合适的就在 `design` / `auto-research` 上加 `--compute <名字>`（不给就用清单里的缺省，`ai4sci compute default <名字>` 改缺省）。需求要 GPU 而清单里没有，告诉研究者「去接一台」，不要在本机硬跑。

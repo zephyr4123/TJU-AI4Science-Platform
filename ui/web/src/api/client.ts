@@ -6,7 +6,7 @@
 
 import type {
   AttentionItem, Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, Job, OutputDetail, ProjectDetail,
-  ProjectSummary, Removed, RequirementDetail, SettingsDoc, SkillDoc, SkillEntry, Spending, StageInfo, Template, Workflow,
+  ProjectSummary, Removed, RequirementDetail, SettingsDoc, SkillDoc, SkillEntry, Spending, StageInfo, StoragePart, Template, Workflow,
   WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
 } from './types'
 
@@ -65,7 +65,11 @@ export const api = {
   backends: () => request<Backend[]>('/backends'),
   /** 设置那块板（P-25）：读一整份、改用哪家与缺省、真探并记回、接一台机器、删一台 */
   settings: () => request<SettingsDoc>('/settings'),
-  updateAgents: (body: { chat?: string; executor?: string; agents?: Record<string, { model?: string; effort?: string }> }) =>
+  storageSizes: () => request<{ parts: StoragePart[] }>('/settings/storage'),
+  updateAgents: (body: {
+    chat?: string; executor?: string
+    agents?: Record<string, { provider?: string; base_url?: string; models?: string[]; model?: string; effort?: string }>
+  }) =>
     request<SettingsDoc>('/settings/agents', post(body)),
   runCheck: (what: 'all' | 'agents' | 'computes' | 'storage', name?: string) =>
     request<CheckReport>('/settings/check', post(name ? { what, name } : { what })),
@@ -73,6 +77,12 @@ export const api = {
     request<SettingsDoc>('/settings/computes', post(body)),
   removeCompute: (name: string) =>
     request<SettingsDoc>(`/settings/computes/${encodeURIComponent(name)}/remove`, post({})),
+  /** 存一把 key（家里的 keys.yaml，外层 #265）；回来的整份里只有末四位 */
+  putKey: (name: string, value: string) => request<SettingsDoc>('/settings/keys', post({ name, value })),
+  removeKey: (name: string) =>
+    request<SettingsDoc>(`/settings/keys/${encodeURIComponent(name)}/remove`, post({})),
+  /** 清除平台的家：登出两家、清空（外层 #263）；要带「清除」两个字 */
+  resetHome: () => request<SettingsDoc & { done: string[] }>('/settings/reset', post({ confirm: '清除' })),
   stages: () => request<StageInfo[]>('/stages'),
   templates: () => request<Template[]>('/templates'),
   capabilities: () => request<Capability[]>('/cap'),

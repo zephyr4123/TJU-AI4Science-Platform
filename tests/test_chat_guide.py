@@ -53,7 +53,7 @@ def test_missing_or_empty_guide_is_an_error(tmp_path):
 
 def test_the_two_scopes_write_to_disjoint_places(tmp_path, monkeypatch):
     """分权靠白名单：研究助理只写自己的项目（全部工作区），流程助理只写人存的那层库
-    （数据根 studio/workflows/，外层 #149）；出厂的库谁都不写。两组可写目录没有交集。"""
+    （平台的家里的 studio/workflows/，外层 #149）；出厂的库谁都不写。两组可写目录没有交集。"""
     ws = spaces.make_workspace(tmp_path, "w1")
     project = project_mod.of(ws)
     shipped = tmp_path / "lib" / "workflows"

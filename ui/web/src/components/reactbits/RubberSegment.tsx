@@ -118,9 +118,8 @@ export default function RubberSegment({
   const edgeR = useMotionValue(0);
   const innerW = useMotionValue(0);
   const thumbRadius = Math.max(0, radius - inset);
-  const clipPath = useTransform(
-    () => `inset(0 ${Math.max(0, innerW.get() - edgeR.get())}px 0 ${Math.max(0, edgeL.get())}px round ${thumbRadius}px)`
-  );
+  const clipOf = () => `inset(0 ${Math.max(0, innerW.get() - edgeR.get())}px 0 ${Math.max(0, edgeL.get())}px round ${thumbRadius}px)`;
+  const clipPath = useTransform(clipOf);
 
   const t = (seconds: number) => seconds / speed;
 
@@ -146,6 +145,9 @@ export default function RubberSegment({
     });
     innerW.set(rect.width - inset * 2);
     jumpTo(committed.current);
+    // 外层 #268 实测：设置窗弹出时跟着挂上的这一份，量完 clipPath 一直停在 inset(0)（整条都是选中），等下一次重绘才对——
+    // useTransform 的订阅没接住这几个值的变化（motion 12.43，原因没追到底）。当场写一次，不等它
+    clipPath.set(clipOf());
   };
 
   const listKey = list.map(item => item.value).join('|');

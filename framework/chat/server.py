@@ -16,13 +16,20 @@
     新对话用的值（照设置）、
                                             哪家是「对话用」的缺省
     GET  /settings                          设置那一整份：底座（两层各用哪家、每家清单与缺省、
-    上次检查）、算力、存放
+    上次检查）、算力、存放、key 末四位；读盘不探，几十毫秒
+    GET  /settings/storage                  {"parts": [{label, bytes}]} 家里每块多大（走遍整棵树，
+                                            一秒上下，所以单独一个端点，外层 #268）
     POST /settings/agents                   {"chat"?, "executor"?, "agents"?: {name: {model?,
     effort?}}} → 新的一整份
     POST /settings/check                    {"what"?: all|agents|computes|storage, "name"?} →
     真探并记回，带 ok / failed
     POST /settings/computes                 {"name", "ssh", "key", "root"?} 接一台机器（探测后记回）
     POST /settings/computes/<name>/remove   删一台
+    POST /settings/keys                     {"name", "value"} 存一把 key（家里的 keys.yaml，
+                                            外层 #265）；回来的整份里 key 只有末四位
+    POST /settings/keys/<name>/remove       删一把
+    POST /settings/reset                    {"confirm": "清除"} 清除平台的家（登出两家、清空），
+                                            有作业在跑或不是平台建的家 409（外层 #263）
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
     GET  /cap                               能力描述符清单：每个带 stage、五栏与 used_by
     GET  /skills                            能力库里 tag 为 skill 的：名字、一行、出处、脚本名、
@@ -101,11 +108,19 @@ from backends import (
     ChatEvent,
     Tuning,
     available_backends,
-    get_chat,
-    probe,
 )
-from framework import agents, computes, paths
-from framework.chat import boards, conversation, guide, notify, removal, scope, settings, spending
+from framework import agents, computes, keys, paths
+from framework.chat import (
+    boards,
+    conversation,
+    guide,
+    notify,
+    removal,
+    reset,
+    scope,
+    settings,
+    spending,
+)
 from framework.contracts import output, requirement, stages, workflow_library, workflows
 from framework.contracts.capability import Capability
 from framework.workspace import jobs, outputs, project, root
@@ -117,6 +132,8 @@ MAX_BODY = 1 << 20
 # 不要署名），记登录名，与 CLI 的 `--by` 缺省一样
 SIGNER = getpass.getuser()
 # 这些是接口；其余 GET 路径都当页面的静态文件。加端点要在这里登记，不然会被当成页面路由。
+# 清除平台的家要页面带上这两个字（按住确认之外再一道，误调接口删不了）
+CONFIRM_RESET = "清除"
 API_ROOTS = ("health", "backends", "settings", "stages", "cap", "skills", "workflows", "templates",
              "projects", "studio", "attention", "usage")
 
@@ -141,9 +158,10 @@ class ChatServer(ThreadingHTTPServer):
                  check_workflow: Callable[[dict[str, Any]], dict[str, Any]],
                  save_workflow: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  descriptors: Callable[[], dict[str, Capability]] = dict,
-                 chat_factory: Callable[[str], Chat] = get_chat,
+                 chat_factory: Callable[..., Chat] = agents.chat,
                  add_compute: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-                 probe_agent: Callable[[str], AgentProbe] = probe,
+                 probe_agent: Callable[[str], AgentProbe] = agents.probe,
+                 logout_agent: reset.Logout = agents.logout_command,
                  system_prompts: dict[str, str] | None = None,
                  ui_dir: Path | None = None) -> None:
         super().__init__(address, Handler)
@@ -164,6 +182,8 @@ class ChatServer(ThreadingHTTPServer):
         # 设置那块板要的清单与自检都跟着接的是哪家适配器走（测试里是剧本，不跑真 CLI）
         self.knobs_of = lambda name: chat_factory(name).knobs()
         self.probe_agent = probe_agent
+        # 清除前登出两家：测试里换成不碰 CLI 的
+        self.logout_agent = logout_agent
         # 接一台机器：cli 注入（要就地探测，与 `ai4sci compute add` 同一段代码）；
         # None 是这个服务不开这功能
         self.add_compute = add_compute or _no_add_compute
@@ -235,6 +255,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(rows)
         if parts == ["settings"]:
             return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+        if parts == ["settings", "storage"]:
+            return self._json({"parts": settings.storage_sizes(self.server.home)})
         if parts == ["stages"]:
             return self._json(self.server.stage_table())
         if parts == ["cap"]:
@@ -402,14 +424,17 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             try:
                 knobs = self.server.knobs_of
-                backend = agents.role_backend("chat", knobs)
+                registry = agents.load(knobs)
+                backend = registry.chat
                 chat = self.server.chat_factory(backend)  # 名字不对现在就报，别等发消息
-                # 新对话从按人的设置抄具体值（P-25）；剧本后端不在设置里就用起点
-                tuning = (agents.tuning_for(backend, knobs) if backend in available_backends()
+                # 新对话从按人的设置抄具体值与供应商（P-25、外层 #266）；剧本后端不在设置里就用起点
+                tuning = (registry.get(backend).tuning if backend in available_backends()
                           else chat.knobs().fill(None))
+                provider = registry.get(backend).provider
             except (BackendNotFound, agents.AgentsInvalid) as exc:
                 return self._error(HTTPStatus.BAD_REQUEST, str(exc))
-            conv = conversation.new_conversation(where.chats, backend, where.cwd, tuning=tuning)
+            conv = conversation.new_conversation(where.chats, backend, where.cwd, tuning=tuning,
+                                                 provider=provider)
             return self._json(conv.to_dict(), HTTPStatus.CREATED)
         if len(rest) == 3 and rest[0] == "chats" and rest[2] == "messages":
             conv = self._conversation(where, rest[1])
@@ -421,8 +446,9 @@ class Handler(BaseHTTPRequestHandler):
             if self._tuned_in_body(body):
                 return None
             try:
-                chat = self.server.chat_factory(conv.backend)
-            except BackendNotFound as exc:
+                # 续这段对话按它开时的供应商接，改设置不影响它（P-25、外层 #266）
+                chat = self.server.chat_factory(conv.backend, provider=conv.provider)
+            except (BackendNotFound, ValueError) as exc:
                 return self._error(HTTPStatus.BAD_REQUEST, str(exc))
             return self._stream(where, conv, chat, text, conv.tuning)
         if ws is None:
@@ -540,7 +566,7 @@ class Handler(BaseHTTPRequestHandler):
             self._sse(event)
 
     def _post_settings(self, rest: list[str], body: dict[str, Any]) -> None:
-        """设置那块板的四个动作，都落到 chat/settings 与两份清单的读写点。"""
+        """设置那块板的动作，都落到 chat/settings、清单与 key 的读写点、清除。"""
         try:
             if rest == ["agents"]:
                 return self._json(settings.update_agents(body, self.server.knobs_of,
@@ -559,6 +585,23 @@ class Handler(BaseHTTPRequestHandler):
             if len(rest) == 3 and rest[0] == "computes" and rest[2] == "remove":
                 computes.remove(rest[1])
                 return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+            if rest == ["keys"]:
+                name, value = body.get("name"), body.get("value")
+                if not isinstance(name, str) or not isinstance(value, str):
+                    return self._error(HTTPStatus.BAD_REQUEST, "要带 name 与 value（字符串）")
+                keys.put(name, value)
+                return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+            if len(rest) == 3 and rest[0] == "keys" and rest[2] == "remove":
+                keys.remove(rest[1])
+                return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+            if rest == ["reset"]:
+                if body.get("confirm") != CONFIRM_RESET:
+                    return self._error(HTTPStatus.BAD_REQUEST, f"要带 confirm: {CONFIRM_RESET}")
+                done = reset.reset(self.server.home, self.server.logout_agent)
+                return self._json({"done": done,
+                                   **settings.snapshot(self.server.knobs_of, self.server.home)})
+        except reset.ResetRefused as exc:
+            return self._error(HTTPStatus.CONFLICT, str(exc))
         except ValueError as exc:
             # 名字不对（BackendNotFound / ComputeNotFound）、清单不合形状、值不在清单上：都是配置值
             # 非法

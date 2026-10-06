@@ -31,6 +31,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from compute import Compute, Outcome
+from framework import paths
+from framework.skills.run import UV_CACHE_ENV
 
 LOGGER = logging.getLogger("ai4sci.env")
 
@@ -198,7 +200,8 @@ def build_venv_on(compute: Compute, task_dir: str, venv_dir: str) -> str:
     if spec.requirements:
         _run_on(compute, task_dir, [*uv, "pip", "sync", "--quiet", "--python", python, lock],
                 what=f"uv pip sync {lock}", timeout_s=env_build_timeout_s())
-        check = compute.run(task_dir, [*uv, "pip", "check", "--python", python], {}, 300)
+        check = compute.run(task_dir, [*uv, "pip", "check", "--python", python],
+                            _cache_env(compute), 300)
         if not check.ok:
             detail = (check.stdout + check.stderr).strip()[-_STDERR_TAIL:]
             raise EnvBuildError(
@@ -257,9 +260,14 @@ def _local_mirror(compute: Compute, remote_dir: str) -> Path:
     return local_dir_for(remote_dir)
 
 
+def _cache_env(compute: Compute) -> dict[str, str]:
+    """本机建环境时 uv 的缓存指到平台的家（外层 #263）；远端机器用它自己的缓存。"""
+    return {UV_CACHE_ENV: str(paths.uv_cache_dir())} if compute.kind == "local" else {}
+
+
 def _run_on(compute: Compute, cwd: str, cmd: list[str], *, what: str,
             timeout_s: float) -> Outcome:
-    outcome = compute.run(cwd, cmd, {}, timeout_s)
+    outcome = compute.run(cwd, cmd, _cache_env(compute), timeout_s)
     if not outcome.ok:
         raise EnvBuildError(
             f"{what} 失败（退出码 {outcome.exit_code}）：{outcome.stderr.strip()[-_STDERR_TAIL:]}"

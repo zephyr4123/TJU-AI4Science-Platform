@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
-import { agentStatus, computeStatus, parseSsh, shortVersion, suggestComputeName, tildify } from './status'
+import type { AgentEntry, ProviderRow } from '@/api/types'
+
+import { agentStatus, computeStatus, noWebNote, parseSsh, providerTag, shortVersion, suggestComputeName, tildify } from './status'
 
 describe('设置：一个词的状态', () => {
   it('底座：没检查过、四句都过、有一句没过', () => {
     expect(agentStatus(null)).toEqual({ word: '未检查', tone: 'neutral', facts: [] })
     expect(agentStatus({ ok: true, items: [{ name: '装了没', ok: true, note: '/x' }], spoke_s: 0.62, cost_usd: 0.05, at: 't' }))
       .toEqual({ word: '就绪', tone: 'ok', facts: ['0.6 s', '$0.05'] })
-    // 订阅账号没有美元：不写
+    // 没算出美元：不写；DeepSeek 一句 pong 不到一分：写「<$0.01」，不写成像没花钱的 $0.00（外层 #266）
     expect(agentStatus({ ok: true, items: [], spoke_s: 11.2, cost_usd: null, at: 't' }).facts).toEqual(['11.2 s'])
+    expect(agentStatus({ ok: true, items: [], spoke_s: 3.2, cost_usd: 0.0027, at: 't' }).facts).toEqual(['3.2 s', '<$0.01'])
     expect(agentStatus({ ok: false, items: [{ name: '装了没', ok: true, note: '/x' },
                                            { name: '登录', ok: false, note: '没登录：在终端跑 codex login' }], at: 't' }))
       .toEqual({ word: '未登录', tone: 'bad', facts: [], hint: '没登录：在终端跑 codex login' })
@@ -28,7 +31,7 @@ describe('设置：一个词的状态', () => {
     expect(tildify('/Users/me/coding/x')).toBe('~/coding/x')
     expect(tildify('/home/me')).toBe('~')
     expect(tildify('/opt/data')).toBe('/opt/data')
-    expect(tildify('/Users/me2/.config/ai4sci')).toBe('~/.config/ai4sci')
+    expect(tildify('/Users/me2/.ai4sci')).toBe('~/.ai4sci')
   })
   it('版本串只留版本号', () => {
     expect(shortVersion('2.1.278 (Claude Code)')).toBe('2.1.278')
@@ -56,5 +59,21 @@ describe('设置：贴进来的 ssh 一行', () => {
     expect(suggestComputeName('root@gpu.lab.example.edu:29115')).toBe('gpu')
     expect(suggestComputeName('u@GPU_Box.local:22')).toBe('gpubox')
     expect(suggestComputeName('nonsense')).toBe('box')
+  })
+})
+
+describe('设置：供应商的小签与分工的提醒（外层 #266）', () => {
+  const row = (id: string, more: Partial<ProviderRow> = {}): ProviderRow =>
+    ({ id, title: id === 'deepseek' ? 'DeepSeek' : id, key: null, base_url: '', tested: 't', web_search: true, ...more })
+  it('不能联网、未实测才写；自定义不知道，不写', () => {
+    expect(providerTag(row('official'))).toBeUndefined()
+    expect(providerTag(row('deepseek', { web_search: false }))).toBe('不能联网')
+    expect(providerTag(row('kimi', { web_search: false, tested: '' }))).toBe('不能联网 · 未实测')
+    expect(providerTag(row('custom', { web_search: null, tested: '' }))).toBeUndefined()
+  })
+  it('这一层用的那家接的供应商不能联网才提醒', () => {
+    const entry = { title: 'Codex', provider: 'deepseek', providers: [row('official'), row('deepseek', { web_search: false })] } as AgentEntry
+    expect(noWebNote(entry)).toBe('Codex 用 DeepSeek 时不能联网')
+    expect(noWebNote({ ...entry, provider: 'official' })).toBeUndefined()
   })
 })

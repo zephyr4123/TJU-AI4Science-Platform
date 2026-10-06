@@ -2,8 +2,8 @@
 
 cli 层里唯一常驻的命令：它不是"跑一个能力"，是给页面一个门。能力清单、流程库、拼流程检查与描述符表
 从 `capabilities.discover` 与 `contracts.workflows` 拿，以函数传给 server
-（chat 层不认识 capabilities）。数据根是 `AI4SCI_HOME`（缺省仓根）：工作区、编辑台的对话与人存的流程
-都在它下面；流程库 = 出厂的 + 人存的（`_common.library`），页面存流程只写后者。
+（chat 层不认识 capabilities）。平台的家是 `AI4SCI_HOME`（缺省 `~/.ai4sci`）：项目、编辑台的对话与
+人存的流程都在它下面；流程库 = 出厂的 + 人存的（`_common.library`），页面存流程只写后者。
 
 页面是 `ui/web` 构建出来的静态文件（`ui/README.md`）：缺省端 `ui/web/dist`，没构建就只开接口。
 TUI 不走这里——它是终端进程，直接当这些接口的客户端。

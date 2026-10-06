@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import getpass
 import json
+import os
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -11,7 +13,7 @@ import urllib.request
 import pytest
 
 from backends import AgentProbe, BackendNotFound, available_backends
-from framework import paths
+from framework import agents, keys, paths
 from framework.capabilities import stage_table
 from framework.chat.server import ChatServer
 from framework.cli import serve as serve_cli
@@ -56,10 +58,13 @@ def ui_dir(tmp_path):
 def served(tmp_path):
     chat = ScriptedChat([reply("你好"), with_tool("三个", "Bash", {"command": "ls"}, "a\nb")])
 
-    def factory(name: str):
+    chat.providers_asked = []  # 每次起适配器按的哪个供应商（老对话照它开时记的，外层 #266）
+
+    def factory(name: str, provider: str | None = None):
         # 顶着真适配器的名字（P-25 按人的设置按名字查每家的清单），两家都是同一份剧本
         if name not in available_backends():
             raise BackendNotFound(f"未知的 agent 后端 {name!r}")
+        chat.providers_asked.append(provider)
         return chat
 
     def save_workflow(doc: dict) -> dict:
@@ -87,7 +92,8 @@ def served(tmp_path):
                         workflows=lambda: WORKFLOWS, check_workflow=check_workflow,
                         save_workflow=save_workflow, descriptors=descriptors,
                         stage_table=stage_table, chat_factory=factory, probe_agent=probe_agent,
-                        add_compute=add_compute, system_prompts=PROMPTS, ui_dir=ui_dir(tmp_path))
+                        add_compute=add_compute, system_prompts=PROMPTS, ui_dir=ui_dir(tmp_path),
+                        logout_agent=lambda name: ([sys.executable, "-c", ""], dict(os.environ)))
     server.added = added
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -276,7 +282,7 @@ def test_chat_lifecycle_in_both_scopes(served, tmp_path, prefix):
     assert events[-1]["cost_usd"] == pytest.approx(0.01) and events[-1]["session_id"]
     call_ = chat.calls[-1]
     if prefix == "/studio":
-        # 流程助理站在服务的数据根的 studio/ 里，只写人存的那层库；出厂的只读（外层 #149）
+        # 流程助理站在服务的平台的家里的 studio/ 里，只写人存的那层库；出厂的只读（外层 #149）
         assert call_["system_prompt"] == "流程助理指南"
         assert call_["cwd"] == tmp_path / "studio"
         assert call_["allowed_paths"] == [tmp_path / "studio" / "workflows"]
@@ -378,7 +384,17 @@ def test_settings_endpoints_snapshot_check_and_computes(served, tmp_path):
     assert codex["title"] == "Codex" and codex["last_check"] is None
     assert codex["models"][0]["id"] == "a"  # 清单跟着服务接的那家适配器（剧本）走
     assert [c["name"] for c in snap["computes"]] == ["local"]
+    # 每个供应商能不能联网照官方文档登记，页面标「不能联网」只提醒不拦；自定义不知道（外层 #266）
+    rows = {p["id"]: p["web_search"] for p in codex["providers"]}
+    assert rows["official"] is True and rows["deepseek"] is False and rows["custom"] is None
     assert snap["storage"]["home"] == str(tmp_path) and snap["storage"]["writable"] is True
+    # 家里每块多大要走遍整棵树，不在这一份里，存放页打开时单独取（外层 #268）
+    assert "parts" not in snap["storage"]
+    (tmp_path / "projects" / "sizes.bin").write_bytes(b"x" * 1000)
+    status, _, body = call(base, "/settings/storage")
+    assert status == 200
+    parts = {p["label"]: p["bytes"] for p in json.loads(body)["parts"]}
+    assert parts["项目"] >= 1000 and list(parts)[-1] == "设置与 key"
     assert json.loads(call(base, "/health")[2])["checks_ok"] is True
 
     status, _, body = call(base, "/settings/check", {"what": "agents"})
@@ -664,7 +680,7 @@ def test_remove_endpoints_cascade_and_refuse(served, tmp_path):
     assert call(base, "/projects/p/workspaces/w1/outputs/experiment/1/remove", {})[0] == 200
     assert call(base, "/projects/p/workspaces/w1/flows/research/remove", {})[0] == 200
     assert not d2.exists() and not (ws.flows / "research.yaml").exists()
-    # 库里的流程：出厂的 403，没有的 404；人存的在服务的数据根 studio/workflows/ 下，删得掉
+    # 库里的流程：出厂的 403，没有的 404；人存的在服务的平台的家里的 studio/workflows/ 下，删得掉
     status, _, body = call(base, "/workflows/research/remove", {})
     assert status == 403 and "出厂" in json.loads(body)["error"]
     assert call(base, "/workflows/nope/remove", {})[0] == 404
@@ -746,3 +762,47 @@ def test_dev_proxy_lists_every_api_root():
     listed = re.search(r"const API_PREFIXES = \[([^\]]*)\]", config)
     assert listed, "vite.config.ts 里找不到 API_PREFIXES"
     assert re.findall(r"'/([a-z]+)'", listed.group(1)) == list(API_ROOTS)
+
+
+def test_reset_needs_the_word_and_a_home_the_platform_made(served, tmp_path):
+    """外层 #263：设置页「清除全部数据」——要带「清除」两个字；不是平台建的家（没有标记）409，
+    清完留一个只有标记的空家。"""
+    base, _ = served
+    assert call(base, "/settings/reset", {})[0] == 400
+    status, _, body = call(base, "/settings/reset", {"confirm": "清除"})
+    assert status == 409 and "标记" in json.loads(body)["error"]
+    paths.mark(tmp_path)
+    (tmp_path / "keys.yaml").write_text("deepseek: sk-test\n", encoding="utf-8")
+    status, _, body = call(base, "/settings/reset", {"confirm": "清除"})
+    assert status == 200 and json.loads(body)["done"][-1].startswith("已清空")
+    assert [p.name for p in tmp_path.iterdir()] == [paths.MARKER_NAME]
+
+
+def test_keys_are_saved_in_the_home_and_only_the_last_four_come_back(served):
+    """外层 #265：设置页粘贴的 key 存进家里的 keys.yaml；回来的整份里只有末四位，
+    整把 key 不出服务。"""
+    base, _ = served
+    status, _, body = call(base, "/settings/keys",
+                           {"name": "deepseek", "value": "sk-abcdef0123456789"})
+    assert status == 200 and json.loads(body)["keys"] == {"deepseek": "…6789"}
+    assert "sk-abcdef" not in body and "sk-abcdef" not in call(base, "/settings")[2]
+    assert keys.get("deepseek") == "sk-abcdef0123456789"
+    assert call(base, "/settings/keys", {"name": "Deep Seek", "value": "x"})[0] == 400
+    assert call(base, "/settings/keys", {"name": "deepseek"})[0] == 400
+    status, _, body = call(base, "/settings/keys/deepseek/remove", {})
+    assert status == 200 and json.loads(body)["keys"] == {} and keys.get("deepseek") is None
+
+
+def test_a_chat_keeps_the_provider_it_was_opened_with(served):
+    """外层 #266 / P-25：开对话把供应商与模型一起抄进 meta，续这段对话照它接——改了设置只影响
+    之后开的。"""
+    base, chat = served
+    agents.path().write_text(
+        "agents:\n  claude_code: {provider: deepseek, model: a, effort: low}\n", encoding="utf-8")
+    status, _, body = call(base, "/projects/p/chats", {})
+    assert status == 201 and json.loads(body)["provider"] == "deepseek"
+    chat_id = json.loads(body)["chat_id"]
+    agents.path().write_text("agents:\n  claude_code: {provider: official, model: a}\n",
+                             encoding="utf-8")
+    call(base, f"/projects/p/chats/{chat_id}/messages", {"text": "你好"})
+    assert chat.providers_asked[-1] == "deepseek"

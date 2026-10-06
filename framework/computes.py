@@ -1,7 +1,8 @@
-"""按人的算力清单：`~/.config/ai4sci/computes.yaml` 的唯一读写点（纲领 P-23 算力归人）。
+"""按人的算力清单：平台的家里 `computes.yaml` 的唯一读写点（纲领 P-23 算力归人；位置由
+`paths.computes_file()` 给，外层 #263）。
 
-一份文件列出「我有哪几台机器」，永远不进 git、不进工作区、不进数据根——同一台服务器不同的人、
-同一个人不同的服务器都有，只能按人隔离。`AI4SCI_COMPUTES` 可指向别处（测试、多套配置）。
+一份文件列出「我有哪几台机器」，永远不进 git、不进工作区——同一台服务器不同的人、
+同一个人不同的服务器都有，只能按人隔离。
 出厂自带 `local`（本机），删不掉、也不用写进文件。
 
 一条记录只有 kind 与连接参数：`ssh` 是 host / port / user / key（密钥**路径**）/ root（远端根），
@@ -14,7 +15,6 @@ agent 面前只有名字：`ai4sci show computes` 给名字与状态，`--comput
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,9 +23,8 @@ from typing import Any
 import yaml
 
 from compute import Compute, ComputeNotFound, Probe, get_compute
+from framework import paths
 
-PATH_ENV = "AI4SCI_COMPUTES"
-DEFAULT_PATH = Path.home() / ".config" / "ai4sci" / "computes.yaml"
 LOCAL = "local"
 KINDS = ("local", "ssh")
 # 每种算力允许的连接参数；这里没有的键一律拒（password 这类进不来）
@@ -77,8 +76,7 @@ class Registry:
 
 
 def path() -> Path:
-    raw = os.environ.get(PATH_ENV)
-    return Path(raw).expanduser() if raw else DEFAULT_PATH
+    return paths.computes_file()
 
 
 def load() -> Registry:

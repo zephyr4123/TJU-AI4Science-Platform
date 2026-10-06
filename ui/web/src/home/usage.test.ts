@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import type { SpendCell } from '@/api/types'
 
-import { buckets, hitRate, money, perMillion, sorted, tokens, valueOf } from './usage'
+import { money } from '@/lib/format'
+
+import { buckets, hitRate, perMillion, sorted, tokens, valueOf } from './usage'
 
 const cell = (over: Partial<SpendCell> = {}): SpendCell => ({ cost_usd: null, unknown: 0, tokens: 0, input_tokens: 0, cached_tokens: 0, count: 0, ...over })
 const days = (n: number, end = '2026-10-06') => Array.from({ length: n }, (_, i) => {
