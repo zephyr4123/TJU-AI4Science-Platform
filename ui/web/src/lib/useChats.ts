@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react'
 
 import { api, type Scope, scopeKey } from '@/api/client'
-import type { ChatMeta, Tuning } from '@/api/types'
+import type { ChatMeta } from '@/api/types'
 
 import { useResource } from './useResource'
 
@@ -21,11 +21,11 @@ export function useChats(scope: Scope) {
   const chatId = picked ?? latest
   const current = chats.data?.find((c) => c.chat_id === chatId) ?? null
 
-  // 开一段；`tuning` 与 `backend` 是门里选好的模型、思考深度与哪家，没选的服务从按人的设置抄（P-25）。开好就是当前这段
-  const newChat = useCallback(async (tuning?: Tuning, backend?: string | null): Promise<ChatMeta> => {
+  // 开一段：哪家、模型、思考深度服务从按人的设置抄（P-25，外层 #257）。开好就是当前这段
+  const newChat = useCallback(async (): Promise<ChatMeta> => {
     setCreating(true)
     try {
-      const meta = await api.newChat(scope, tuning, backend ?? undefined)
+      const meta = await api.newChat(scope)
       await chats.reload()
       setPicked(meta.chat_id)
       return meta

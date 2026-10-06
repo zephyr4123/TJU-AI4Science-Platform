@@ -6,7 +6,7 @@
 
 import type {
   AttentionItem, Backend, Capability, ChatDoc, ChatMeta, CheckReport, DirListing, FileContent, Job, OutputDetail, ProjectDetail,
-  ProjectSummary, Removed, RequirementDetail, SettingsDoc, SkillDoc, SkillEntry, Spending, StageInfo, Template, Tuning, Workflow,
+  ProjectSummary, Removed, RequirementDetail, SettingsDoc, SkillDoc, SkillEntry, Spending, StageInfo, Template, Workflow,
   WorkflowCheck, WorkflowDraft, WorkspaceDetail, WorkspaceSummary,
 } from './types'
 
@@ -99,8 +99,8 @@ export const api = {
   chat: (scope: Scope, chatId: string) =>
     request<ChatDoc>(`${scopePath(scope)}/chats/${encodeURIComponent(chatId)}`),
   /** 开一段：哪家、模型、深度都可以不给——服务从按人的设置抄（P-25） */
-  newChat: (scope: Scope, tuning?: Tuning, backend?: string) =>
-    request<ChatMeta>(`${scopePath(scope)}/chats`, post({ ...(tuning ?? {}), ...(backend ? { backend } : {}) })),
+  /** 开一段：哪家、模型、思考深度照设置（P-25，外层 #257：只在设置里改） */
+  newChat: (scope: Scope) => request<ChatMeta>(`${scopePath(scope)}/chats`, post({})),
   /** 删一段对话（主人 2026-09-22：人产生的都能删；正在一轮里的服务拒 409） */
   removeChat: (scope: Scope, chatId: string) =>
     request<Removed>(`${scopePath(scope)}/chats/${encodeURIComponent(chatId)}/remove`, post({})),

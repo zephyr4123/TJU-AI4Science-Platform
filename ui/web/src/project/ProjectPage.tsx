@@ -56,10 +56,9 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
   const current = shown ? c.chats.data?.find((x) => x.chat_id === shown) ?? null : null
   const conv = useConversation({
     scope: inProject(project.id), chatId: shown, current, backends,
-    create: async (tuning, backend) => { const meta = await c.newChat(tuning, backend); setShown(meta.chat_id); return meta },
+    create: async () => { const meta = await c.newChat(); setShown(meta.chat_id); return meta },
     onTurnDone: c.turnDone,
   })
-  const t = conv.tuning
   const [creating, setCreating] = useState(false)
 
   const drawer = (
@@ -74,8 +73,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
   const composer = (className?: string) => (
     <motion.div layoutId={`composer-${project.id}`} layout={still ? false : 'position'} className={cn('w-full max-w-[44rem]', className)}>
       <Composer busy={conv.busy} placeholder={talking ? 'Enter 发送，Shift + Enter 换行' : '要做什么？'}
-                thinking={t.thinking} knobs={t.knobs} tuning={t.tuning} onTune={t.onTune} className="px-0 pt-0 pb-0" above={running}
-                who={shown || !backends ? undefined : { options: backends, value: t.backendName ?? '', onChange: t.choose }}
+                thinking={conv.thinking} className="px-0 pt-0 pb-0" above={running}
                 onSend={(text) => { setTalking(true); void conv.send(text) }} />
     </motion.div>
   )
@@ -97,7 +95,7 @@ export function ProjectPage({ project, chats: c, backends, healthy, onOpenWorksp
           <>
             <motion.div initial={still ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
                         className="relative flex min-h-0 flex-1 flex-col">
-              <Transcript doc={conv.doc} turns={conv.turns} thinking={t.thinking} welcome={WELCOME.research} error={conv.error} />
+              <Transcript doc={conv.doc} turns={conv.turns} thinking={conv.thinking} welcome={WELCOME.research} error={conv.error} />
             </motion.div>
             <div className="relative z-10 px-6 pt-3 pb-6">{composer('mx-auto')}</div>
           </>

@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 
 import type { Scope } from '@/api/client'
 import { ASSETS } from '@/assets'
-import type { Backend, ChatMeta, Tuning } from '@/api/types'
+import type { Backend, ChatMeta } from '@/api/types'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
 import { usd } from '@/lib/format'
@@ -21,7 +21,7 @@ interface Props {
   chatId: string | null
   current: ChatMeta | null
   /** 还没有对话时开一段（带上门里选的哪家、模型与思考深度） */
-  create: (tuning: Tuning, backend: string | null) => Promise<ChatMeta>
+  create: () => Promise<ChatMeta>
   /** 每家 agent 的旋钮清单与新对话用的值；这段对话用哪家的就摆哪家的，还没开对话时摆门里选的那家 */
   backends: Backend[] | null
   /** 一轮结束：助理可能运行了命令、改了需求或 run，看板要重读 */
@@ -37,7 +37,6 @@ interface Props {
 
 export function ChatView({ scope, chatId, current, create, backends, onTurnDone, drawer, onClose, welcome, running }: Props) {
   const conv = useConversation({ scope, chatId, current, backends, create, onTurnDone })
-  const t = conv.tuning
   const inChat = chatId !== null || conv.turns.length > 0
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
@@ -56,7 +55,7 @@ export function ChatView({ scope, chatId, current, create, backends, onTurnDone,
         )}
       </header>
       {inChat
-        ? <Transcript doc={conv.doc} turns={conv.turns} thinking={t.thinking} welcome={welcome} error={conv.error} />
+        ? <Transcript doc={conv.doc} turns={conv.turns} thinking={conv.thinking} welcome={welcome} error={conv.error} />
         : (
           <div className="relative min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto flex h-full min-h-[24rem] max-w-[36rem] flex-col justify-center px-6 pb-10">
@@ -64,8 +63,7 @@ export function ChatView({ scope, chatId, current, create, backends, onTurnDone,
             </div>
           </div>
         )}
-      <Composer busy={conv.busy} thinking={t.thinking} knobs={t.knobs} tuning={t.tuning} onTune={t.onTune} above={running}
-                who={chatId || !backends ? undefined : { options: backends, value: t.backendName ?? '', onChange: t.choose }}
+      <Composer busy={conv.busy} thinking={conv.thinking} above={running}
                 onSend={(text) => void conv.send(text)} />
     </div>
   )
