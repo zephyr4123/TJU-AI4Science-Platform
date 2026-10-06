@@ -13,7 +13,7 @@ import urllib.request
 import pytest
 
 from backends import AgentProbe, BackendNotFound, available_backends
-from framework import paths
+from framework import keys, paths
 from framework.capabilities import stage_table
 from framework.chat.server import ChatServer
 from framework.cli import serve as serve_cli
@@ -763,3 +763,18 @@ def test_reset_needs_the_word_and_a_home_the_platform_made(served, tmp_path):
     status, _, body = call(base, "/settings/reset", {"confirm": "清除"})
     assert status == 200 and json.loads(body)["done"][-1].startswith("已清空")
     assert [p.name for p in tmp_path.iterdir()] == [paths.MARKER_NAME]
+
+
+def test_keys_are_saved_in_the_home_and_only_the_last_four_come_back(served):
+    """外层 #265：设置页粘贴的 key 存进家里的 keys.yaml；回来的整份里只有末四位，
+    整把 key 不出服务。"""
+    base, _ = served
+    status, _, body = call(base, "/settings/keys",
+                           {"name": "deepseek", "value": "sk-abcdef0123456789"})
+    assert status == 200 and json.loads(body)["keys"] == {"deepseek": "…6789"}
+    assert "sk-abcdef" not in body and "sk-abcdef" not in call(base, "/settings")[2]
+    assert keys.get("deepseek") == "sk-abcdef0123456789"
+    assert call(base, "/settings/keys", {"name": "Deep Seek", "value": "x"})[0] == 400
+    assert call(base, "/settings/keys", {"name": "deepseek"})[0] == 400
+    status, _, body = call(base, "/settings/keys/deepseek/remove", {})
+    assert status == 200 and json.loads(body)["keys"] == {} and keys.get("deepseek") is None

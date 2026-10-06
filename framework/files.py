@@ -26,12 +26,13 @@ from typing import Any
 _APPEND = threading.Lock()
 
 
-def write_atomic(path: Path, text: str) -> None:
+def write_atomic(path: Path, text: str, mode: int | None = None) -> None:
     """把 text 原子地写成 path。临时文件以点开头、`.tmp` 结尾：按扩展名扫目录的（`*.json`）
-    不会扫到它。"""
+    不会扫到它。`mode` 给了就用它（key 文件 0600，外层 #263），不给照原文件。"""
     path = Path(path)
     # mkstemp 建的是 0600；换过去之前照原文件的权限（新文件按常见的 0644），不让写一次就改了权限
-    mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
+    if mode is None:
+        mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:

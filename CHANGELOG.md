@@ -11,6 +11,7 @@
 ### 变更
 
 - 平台的一切私有东西收进**平台的家** `~/.ai4sci`（`AI4SCI_HOME` 可改）：设置、项目、两家 CLI 的会话记录与平台自己的登录、依赖缓存；不再写 `~/.claude` `~/.codex` `~/.config/ai4sci`；`ai4sci reset` 与设置页一键清除；源码模式不再以仓库为家，样例项目删除。旧数据跑外层 `scripts/oneoff/migrate-to-home-263.py`（外层 #264）
+- key 不再走环境变量：存在平台的家里的 `keys.yaml`（只有本人能读，读写点 `framework/keys.py`），设置页填、页面只见末四位；OpenAlex 的 key 也从这里读，shell 里的 `OPENALEX_API_KEY` 不再认（外层 #265）
 
 ### 修复
 

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from backends import AgentProbe, available_backends
-from framework import agents, computes, paths
+from framework import agents, computes, keys, paths
 from framework.agents import KnobsOf
 from framework.chat.conversation import Conversation
 
@@ -119,9 +119,9 @@ def _writable(directory: Path) -> bool:
 
 
 def snapshot(knobs: KnobsOf = agents.knobs_of, home: Path | None = None) -> dict[str, Any]:
-    """页面「设置」那一整份，读盘不探。"""
+    """页面「设置」那一整份，读盘不探。key 只给末四位（外层 #265）。"""
     return {"agents": agents_table(knobs), "computes": computes_table(),
-            "storage": storage_table(home)}
+            "storage": storage_table(home), "keys": keys.masked()}
 
 
 def problems(snap: dict[str, Any] | None = None, knobs: KnobsOf = agents.knobs_of,

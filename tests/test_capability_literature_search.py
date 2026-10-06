@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from framework import keys
 from framework.capabilities import literature_search
 from framework.capabilities.literature_search import (
     fulltext,
@@ -479,13 +480,15 @@ def test_batches_split_at_a_hundred():
 
 
 def test_key_goes_in_the_header_never_the_url(monkeypatch):
-    """P-27：不要 key 也能用，有 key 用得更多。key 只从环境变量读，放请求头：URL 要进日志。"""
+    """P-27：不要 key 也能用，有 key 用得更多。key 在平台的家里（外层 #265），放请求头：URL 要进
+    日志。shell 里设的同名变量不认。"""
     fake = FakeWeb()
-    monkeypatch.setenv(openalex.KEY_ENV, "sekrit")
+    keys.put(openalex.KEY_NAME, "sekrit")
     openalex.OpenAlex(web.Web(get=fake), key=openalex.api_key()).by_keys(["W1"])
     assert fake.headers == {"Authorization": "Bearer sekrit"}
     assert "sekrit" not in fake.urls[0]
-    monkeypatch.setenv(openalex.KEY_ENV, " ")
+    keys.remove(openalex.KEY_NAME)
+    monkeypatch.setenv("OPENALEX_API_KEY", "from-shell")
     openalex.OpenAlex(web.Web(get=fake), key=openalex.api_key()).by_keys(["W1"])
     assert fake.headers == {}
 

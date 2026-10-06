@@ -308,6 +308,8 @@ export interface SettingsDoc {
   computes: ComputeRow[]
   /** 平台的家（外层 #263）：在哪、每块多大、清除认不认它（平台建的家才有标记） */
   storage: { home: string; resettable: boolean; parts: { label: string; bytes: number }[]; writable: boolean; free_gb: number; projects: number; workspaces: number }
+  /** 家里存了哪几把 key：名字 → 末四位（外层 #265）；整把 key 从不到页面 */
+  keys: Record<string, string>
 }
 
 /** `POST /settings/check` 回来的：整份 + 过没过 + 没过的项 */

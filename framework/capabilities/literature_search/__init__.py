@@ -37,7 +37,7 @@ DESCRIPTOR = Capability(
     ),
     does_not=(
         "不写综述、不核对引用、不判断论文的结论对不对。四家学术接口都不要 key 也能跑，"
-        "元数据与引用关系统一取 OpenAlex（设了 OPENALEX_API_KEY 额度大十倍）；"
+        "元数据与引用关系统一取 OpenAlex（设置里填了它的 key 额度大十倍）；"
         "中文库（知网、万方）与付费全文拿不到，"
         "没拿到原文的列在 sources.md 里请研究者自己下。"
         "执行层只许写 seeds.md 与每一跳的结论文件，写了别的判失败。"

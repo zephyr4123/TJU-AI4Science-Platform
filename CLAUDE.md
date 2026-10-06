@@ -72,7 +72,7 @@
 1. **框架零模型调用**：`framework/` 下 grep 不到 anthropic / openai / claude_sdk（纲领 P-1）。模型只在 `backends/` 适配器起的子进程里。
 2. **不吞异常**：ruff 的 BLE 规则开着，裸 `except` 与不 raise 的 `except Exception` 过不了 lint（P-7）。
 3. **依赖方向单向**：`framework/` 内 `cli → capabilities → chat → experiment → executor → workspace → skills → contracts`，`backends/` `compute/` 是端口、不许 import framework，能力子包互不 import（`tests/test_layering.py`）。
-4. **密钥与敏感配置只进环境变量**，绝不进代码、不进 argv；ssh 只认密钥，清单里没有 password 字段（`framework/computes.py` 断言）。
+4. **密钥只在平台的家里的 `keys.yaml`**（只有本人能读，读写点只在 `framework/keys.py`，外层 #265），绝不进代码、不进 argv、不进 git、不进日志；平台不读用户 shell 里的 key，交给子进程时只给要用的那一个；页面只见末四位；ssh 只认密钥，清单里没有 password 字段（`framework/computes.py` 断言；`tests/test_keys.py`）。
 5. **环境隔离**：平台一律 `.venv`、uv 管一切（`make venv` = `uv sync --locked`，改依赖 `make lock`）；课题的依赖不进平台 venv，每次实验按 `materials/env/` 自建 venv，harness 只经 `$AI4SCI_PYTHON` 起解释器；skill 脚本 PEP 723 自带依赖；页面依赖只进 `ui/web/node_modules`。
 6. **每个改动写 `CHANGELOG.md` 的 Unreleased**；发版只走 `make release VERSION=x.y.z`，不手工打 tag（`make changelog`）。
 7. **`make check` 是提交前门禁，与 CI 完全相同**：changelog → ruff → skills（三处库校验、零 key、收录台账对账、平台自带的预热）→ pytest → `ui-check`（素材不进仓 + tsc + oxlint + vitest + 构建）。门禁命令别接 `| tail`，管道会吞退出码。
@@ -87,7 +87,7 @@
 13. **造流程与用流程分权**（P-16）：项目里的研究助理只用流程（`flow take` 取实例、改参数、照着走），编辑台的流程助理只写平台的家里的 `studio/workflows/`（出厂的 `workflows/` 谁都不写）；分权靠 `chat/scope.py` 的可写目录与按域分前缀的端点，不靠指南里的「请不要」。
 14. **框架只管文件夹怎么摆，不管里面装什么**（P-19 / P-20）：框架认的文件只有 `requirement.md` / `requirement.lock` / `meta.yaml` / `signed.json` / 流程文件 / 描述符；族内约定（`scoring.yaml` 这类）放族包 `framework/experiment/`，不进 `contracts/`。需求确认是唯一内置的门，断点几个、放哪由拼流程的人定。能力是纯函数：`--from` 点名输入，没有「缺省读最新」。阶段主文件按阶段定名（`capabilities.MAIN_FILES`），不按能力定。
 15. **能力按项目装载**（P-26）：项目里研究助理与执行层只装平台自带的 skill 加本项目流程实例上挂的，读取点只有 `framework/workspace/loadout.py`；装载之外的 `skill show / run`、`cap` 拒（`tests/test_workspace_loadout.py`）。
-16. **不要 key 也能用，有 key 用得更多**（P-27）：可选的 key 只许做量上的加法（现在只有 `OPENALEX_API_KEY`），只走环境变量、一个读取点；三处库里不许出现要第三方凭据的用法，门禁查用法不查字眼（`framework/skills/library.py` 的 `KEY_*`，`make skills`）；收录社区 skill 不为过门禁改上游字眼，许可证只收 MIT / Apache-2.0 / BSD / ISC，台账 `skills-curated/provenance.yaml` 对账。
+16. **不要 key 也能用，有 key 用得更多**（P-27）：可选的 key 只许做量上的加法（现在只有 OpenAlex 的），存在平台的家里、设置页填、一个读取点；三处库里不许出现要第三方凭据的用法，门禁查用法不查字眼（`framework/skills/library.py` 的 `KEY_*`，`make skills`）；收录社区 skill 不为过门禁改上游字眼，许可证只收 MIT / Apache-2.0 / BSD / ISC，台账 `skills-curated/provenance.yaml` 对账。
 
 ## 6. 版本与发布
 

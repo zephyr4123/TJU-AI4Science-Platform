@@ -23,6 +23,9 @@
     真探并记回，带 ok / failed
     POST /settings/computes                 {"name", "ssh", "key", "root"?} 接一台机器（探测后记回）
     POST /settings/computes/<name>/remove   删一台
+    POST /settings/keys                     {"name", "value"} 存一把 key（家里的 keys.yaml，
+                                            外层 #265）；回来的整份里 key 只有末四位
+    POST /settings/keys/<name>/remove       删一把
     POST /settings/reset                    {"confirm": "清除"} 清除平台的家（登出两家、清空），
                                             有作业在跑或不是平台建的家 409（外层 #263）
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
@@ -104,7 +107,7 @@ from backends import (
     Tuning,
     available_backends,
 )
-from framework import agents, computes, paths
+from framework import agents, computes, keys, paths
 from framework.chat import (
     boards,
     conversation,
@@ -555,7 +558,7 @@ class Handler(BaseHTTPRequestHandler):
             self._sse(event)
 
     def _post_settings(self, rest: list[str], body: dict[str, Any]) -> None:
-        """设置那块板的五个动作，都落到 chat/settings、两份清单的读写点与清除。"""
+        """设置那块板的动作，都落到 chat/settings、清单与 key 的读写点、清除。"""
         try:
             if rest == ["agents"]:
                 return self._json(settings.update_agents(body, self.server.knobs_of,
@@ -573,6 +576,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(self.server.add_compute(body), HTTPStatus.CREATED)
             if len(rest) == 3 and rest[0] == "computes" and rest[2] == "remove":
                 computes.remove(rest[1])
+                return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+            if rest == ["keys"]:
+                name, value = body.get("name"), body.get("value")
+                if not isinstance(name, str) or not isinstance(value, str):
+                    return self._error(HTTPStatus.BAD_REQUEST, "要带 name 与 value（字符串）")
+                keys.put(name, value)
+                return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+            if len(rest) == 3 and rest[0] == "keys" and rest[2] == "remove":
+                keys.remove(rest[1])
                 return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
             if rest == ["reset"]:
                 if body.get("confirm") != CONFIRM_RESET:

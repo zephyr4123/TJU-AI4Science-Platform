@@ -73,6 +73,10 @@ export const api = {
     request<SettingsDoc>('/settings/computes', post(body)),
   removeCompute: (name: string) =>
     request<SettingsDoc>(`/settings/computes/${encodeURIComponent(name)}/remove`, post({})),
+  /** 存一把 key（家里的 keys.yaml，外层 #265）；回来的整份里只有末四位 */
+  putKey: (name: string, value: string) => request<SettingsDoc>('/settings/keys', post({ name, value })),
+  removeKey: (name: string) =>
+    request<SettingsDoc>(`/settings/keys/${encodeURIComponent(name)}/remove`, post({})),
   /** 清除平台的家：登出两家、清空（外层 #263）；要带「清除」两个字 */
   resetHome: () => request<SettingsDoc & { done: string[] }>('/settings/reset', post({ confirm: '清除' })),
   stages: () => request<StageInfo[]>('/stages'),
