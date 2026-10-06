@@ -6,12 +6,12 @@
 // 搜中的字标出来。一个项目都没有：一句「还没有项目」加一枚「新建项目」。
 import { MagnifyingGlass, Plus, X } from '@phosphor-icons/react'
 import { useReducedMotion } from 'motion/react'
-import { type MouseEvent, type ReactNode, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import type { ProjectSummary } from '@/api/types'
 import { ASSETS } from '@/assets'
+import { Aurora, follow, Spot } from '@/components/Aurora'
 import { Dot, ErrorNote, Skeleton } from '@/components/bits'
-import { GLASS } from '@/components/glass'
 import SpecularButton from '@/components/reactbits/SpecularButton'
 import { Scene } from '@/components/Scene'
 import { Button } from '@/components/ui/button'
@@ -77,24 +77,6 @@ export function Home({ projects, onOpen, onNew, onRemove, menu }: {
   )
 }
 
-/** 清单那块玻璃：底下垫两团极光（靛在左上、青在右下），边上一圈从靛渐到青的细线；全是静态的，不起动画 */
-function Aurora({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={cn('relative isolate overflow-hidden rounded-[22px] shadow-[inset_0_1px_0_0_var(--glass-shine),0_1px_2px_rgb(0_0_0/0.04),0_18px_48px_-24px_rgb(0_0_0/0.22)]', GLASS, className)}>
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10"
-           style={{ background: 'radial-gradient(65% 95% at 0% 0%, color-mix(in oklab, var(--aurora-1) 26%, transparent), transparent 70%), '
-                              + 'radial-gradient(60% 90% at 100% 100%, color-mix(in oklab, var(--aurora-2) 24%, transparent), transparent 70%)' }} />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-[22px] p-px"
-           style={{
-             background: 'linear-gradient(135deg, color-mix(in oklab, var(--aurora-1) 85%, transparent), transparent 42%, transparent 58%, color-mix(in oklab, var(--aurora-2) 80%, transparent))',
-             WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)', WebkitMaskComposite: 'xor',
-             mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)', maskComposite: 'exclude',
-           }} />
-      {children}
-    </div>
-  )
-}
-
 /** 搜索框：输入即筛；有字时右端一枚清空，Esc 也清 */
 function Search({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
   return (
@@ -111,13 +93,6 @@ function Search({ value, onChange, className }: { value: string; onChange: (v: s
   )
 }
 
-/** 鼠标在行里的位置写进 CSS 变量，那团光跟着走；只在鼠标动时写，不起帧循环 */
-function follow(e: MouseEvent<HTMLElement>) {
-  const r = e.currentTarget.getBoundingClientRect()
-  e.currentTarget.style.setProperty('--spot-x', `${e.clientX - r.left}px`)
-  e.currentTarget.style.setProperty('--spot-y', `${e.clientY - r.top}px`)
-}
-
 /** 一行：宋体名字（最多两行）与目标一句、右边三列事实；鼠标进来事实往左让出「…」的位置。窄屏事实挪到目标底下一行 */
 function ProjectRow({ project, words, onOpen }: { project: ProjectSummary; words: string[]; onOpen: () => void }) {
   const running = project.running > 0 && (
@@ -126,9 +101,7 @@ function ProjectRow({ project, words, onOpen }: { project: ProjectSummary; words
   return (
     <button type="button" onClick={onOpen} onMouseMove={follow} onFocus={() => prefetchProject(project.id)}
             className="relative isolate flex min-h-[4.75rem] w-full items-center gap-6 py-4 pr-14 pl-6 text-left outline-none sm:[@media(hover:hover)]:pr-6 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset">
-      <span aria-hidden="true"
-            className="pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-200 ease-out group-hover/row:opacity-100 group-focus-within/row:opacity-100"
-            style={{ background: 'radial-gradient(26rem circle at var(--spot-x, 50%) var(--spot-y, 50%), color-mix(in oklab, var(--primary) 9%, transparent), transparent 72%)' }} />
+      <Spot group="row" />
       <span className="min-w-0 flex-1">
         <span className="line-clamp-2 font-serif text-[1.125rem] leading-[1.35] font-semibold text-balance"><Marked text={project.title} words={words} /></span>
         {project.goal && <span className="t-label mt-1 block truncate"><Marked text={project.goal} words={words} /></span>}
