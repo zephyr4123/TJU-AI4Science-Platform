@@ -84,7 +84,7 @@ export function OutputBody({ workspace, doc, catalog, oid, pending, onChanged, o
           {flowTitle && (
             <Row label="所属流程">{flowTitle}{o.step !== null && <Faint> · 第 {o.step + 1} 步</Faint>}</Row>
           )}
-          {o.requirement !== null && <Row label="依据需求">v{o.requirement}</Row>}
+          {o.requirement !== null && <Row label="依据需求">第 {o.requirement} 版</Row>}
           <Row label="读取的产出">
             {o.from.length === 0 ? <Faint>无</Faint> : (
               <ul className="flex flex-wrap gap-1.5">
