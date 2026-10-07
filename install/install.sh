@@ -51,11 +51,16 @@ fetch() {
   [ "${got}" = "${want}" ] || die "$3" "$1 的 sha256 对不上，没装"
 }
 
-# uv 的环境：Python、平台本体、缓存都在家里，下载走国内源
+# uv 的环境：Python、平台本体、缓存都在家里，下载走国内源；装 Python 不往 ~/.local/bin 放入口
 uv_home() {
   env UV_PYTHON_INSTALL_DIR="${TOOLS}/python" UV_PYTHON_INSTALL_MIRROR="${PYTHON_DOWNLOADS}" \
-    UV_DEFAULT_INDEX="${PYPI_INDEX}" UV_CACHE_DIR="${HOME_DIR}/cache/uv" \
+    UV_PYTHON_INSTALL_BIN=0 UV_DEFAULT_INDEX="${PYPI_INDEX}" UV_CACHE_DIR="${HOME_DIR}/cache/uv" \
     UV_TOOL_DIR="${TOOLS}/ai4sci" UV_TOOL_BIN_DIR="${BIN}" "${UV}" "$@"
+}
+
+# 找以前装在 uv 缺省位置的那份：工具目录用缺省的，缓存仍在家里
+uv_default() {
+  env UV_CACHE_DIR="${HOME_DIR}/cache/uv" "${UV}" "$@"
 }
 
 printf 'AAAI4S 安装（全程国内源）\n'
@@ -94,8 +99,8 @@ else
 fi
 
 # 3. 平台：已是这一版就跳过；以前用 uv 装在缺省位置的先卸掉，不然终端里有两份 ai4sci（外层 #274）
-if "${UV}" tool list 2>/dev/null | grep -q '^ai4sci '; then
-  "${UV}" tool uninstall ai4sci >>"${LOG}" 2>&1 || die "ai4sci" "卸不掉以前的那份，详情在 ${LOG}"
+if uv_default tool list 2>/dev/null | grep -q '^ai4sci '; then
+  uv_default tool uninstall ai4sci >>"${LOG}" 2>&1 || die "ai4sci" "卸不掉以前的那份，详情在 ${LOG}"
   say "✓" "ai4sci" "卸掉了以前 uv 装在缺省位置的那份，换成家里这份"
 fi
 hash -r 2>/dev/null || true

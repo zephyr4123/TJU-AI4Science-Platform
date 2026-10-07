@@ -152,6 +152,19 @@ def test_install_sets_up_the_home_then_hands_over_and_a_rerun_skips(tmp_path):
     assert "ai4sci        1.0.1，安装完成" in newer  # 重跑就是升级
 
 
+@pytest.mark.skipif((os.uname().sysname, os.uname().machine) not in TRIPLES,
+                    reason="install.sh 只管 Mac 与 Linux")
+def test_a_fresh_install_writes_nothing_outside_the_home_but_the_path_line(tmp_path):
+    """装出来的都在 `~/.ai4sci`，外面只有 shell 配置里那一行（主人 2026-10-07 手验时多出过
+    `~/.cache/uv` 与 `~/.local/bin/python3.12`）。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    home.mkdir()
+    _uv_release(dist, "0.0.0-test")
+    _wheel(dist, "1.0.0")
+    _run(_script(tmp_path, "1.0.0"), home, dist)
+    assert sorted(p.name for p in home.iterdir()) == [".ai4sci", ".zshrc"]
+
+
 def test_a_tampered_download_stops_the_install(tmp_path):
     home, dist = tmp_path / "home", tmp_path / "dist"
     home.mkdir()
