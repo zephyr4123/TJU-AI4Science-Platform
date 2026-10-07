@@ -11,6 +11,7 @@ import base64
 import hashlib
 import json
 import os
+import sys
 import tarfile
 from pathlib import Path
 
@@ -112,8 +113,8 @@ def test_find_falls_back_to_the_one_on_path_and_judges_its_version(tmp_path, mon
     old = fake_cli(bin_dir / "claude", "print('2.0.0 (Claude Code)')\n")
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin")
     found = toolchain.find("claude_code")
-    assert found == toolchain.Found(exe=old, version="2.0.0 (Claude Code)", ok=False,
-                                    private=False)
+    assert os.path.normcase(found.exe) == os.path.normcase(old)  # Windows 上 which 给的是 .EXE
+    assert (found.version, found.ok, found.private) == ("2.0.0 (Claude Code)", False, False)
     fake_cli(bin_dir / "claude", "print('2.1.300 (Claude Code)')\n")
     assert toolchain.find("claude_code").ok
     monkeypatch.setenv("PATH", "/nonexistent")
@@ -130,6 +131,45 @@ def test_an_npm_shell_shim_on_windows_is_not_good_enough(tmp_path, monkeypatch):
     monkeypatch.setattr(toolchain.shutil, "which", lambda command: str(shim))
     assert toolchain.find("claude_code") == toolchain.Found(exe=str(shim), version="", ok=False,
                                                             private=False)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Git for Windows 只在 Windows 上装")
+def test_git_for_windows_lands_in_the_home_and_the_platform_finds_it(tmp_path, monkeypatch):
+    """Windows 上没 Git：从 npmmirror 取便携版，对 GitHub 发布页的 sha256，自解压进家里，平台起来时
+    放进本进程 PATH（外层 #210）。这里的「便携版」是一个照 7-Zip 自解压的参数造目录的假程序。"""
+    sfx = Path(fake_cli(tmp_path / "src" / "PortableGit", (
+        "import sys, pathlib\n"
+        "out = pathlib.Path(next(a[2:] for a in sys.argv[1:] if a.startswith('-o')))\n"
+        "(out / 'cmd').mkdir(parents=True)\n"
+        "(out / 'cmd' / 'git.exe').write_text('git')\n"
+        "(out / 'bin').mkdir()\n"
+        "(out / 'bin' / 'bash.exe').write_text('bash')\n")))
+    mirror = tmp_path / "mirror" / toolchain.GIT_TAG
+    mirror.mkdir(parents=True)
+    (mirror / sfx.name).write_bytes(sfx.read_bytes())
+    # 假程序的转发壳找旁边同名的 .py：下到家里叫 `.git.<pid>.exe`，脚本先按这个名字放好
+    paths.tools_dir().mkdir(parents=True)
+    script = sfx.with_suffix(".py").read_bytes()
+    (paths.tools_dir() / f".git.{os.getpid()}.py").write_bytes(script)
+    digest = hashlib.sha256(sfx.read_bytes()).hexdigest()
+    monkeypatch.setattr(mirrors, "GIT_FOR_WINDOWS", (tmp_path / "mirror").as_uri())
+    monkeypatch.setattr(toolchain, "GIT_ARCHIVES", {toolchain.platform_key(): (sfx.name, digest)})
+    assert toolchain.private_git() is None
+    cmd = toolchain.install_git()
+    assert cmd == paths.tools_dir() / "git" / "cmd" and toolchain.private_git() == cmd
+    monkeypatch.setenv("PATH", "")
+    toolchain.use_private_git()
+    assert os.environ["PATH"].split(os.pathsep)[0] == str(cmd)
+    monkeypatch.setattr(toolchain, "GIT_ARCHIVES", {toolchain.platform_key(): (sfx.name, "0" * 64)})
+    with pytest.raises(toolchain.ToolchainError, match="sha256 对不上"):
+        toolchain.install_git()
+    assert toolchain.private_git() == cmd  # 下坏了原来那份不动
+
+
+def test_git_for_windows_is_only_for_windows(monkeypatch):
+    monkeypatch.setattr(toolchain, "platform_key", lambda: "darwin-arm64")
+    with pytest.raises(toolchain.ToolchainError, match="没有现成的 Git for Windows"):
+        toolchain.install_git()
 
 
 def test_an_unreadable_receipt_counts_as_not_installed():

@@ -24,7 +24,7 @@ import os
 import sys
 from importlib import metadata
 
-from framework import paths
+from framework import paths, toolchain
 from framework.cli import (
     agent,
     cap,
@@ -85,6 +85,7 @@ def _version() -> str:
 
 def main(argv: list[str] | None = None) -> int:
     _utf8()
+    toolchain.use_private_git()  # Windows 上家里装的 Git（外层 #210）
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
     args.argv = argv  # 原样的命令行：`cap ... --detach` 要把同一条命令起成作业

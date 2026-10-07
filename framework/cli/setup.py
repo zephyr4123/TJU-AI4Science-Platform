@@ -6,8 +6,9 @@ DeepSeek 的 key、当场问一句试通 → 起服务、开浏览器。主人 2
 不让人去页面上点。每一项先查，所以重跑无害，也是修复与升级 CLI 的命令；`make up`、以后的 Windows
 安装、桌面包第一次打开都接这一份。
 
-按系统分的只有 git 怎么补（`git_ready`）：Mac 弹苹果的安装框，Linux 让人用包管理器装，Windows 这一轮
-明确说还没做（外层 #210）。只给人：助理的会话里拒（要填 key、要下几百 MB）。
+按系统分的只有 git 怎么补（`git_ready`）：Mac 弹苹果的安装框，Linux 让人用包管理器装，Windows 从
+npmmirror 装 Git for Windows 的便携版进平台的家（外层 #210）。只给人：助理的会话里拒（要填 key、要下
+几百 MB）。
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import threading
 import time
 import webbrowser
 
+import procs
 from backends import (
     INSTALLED_ITEM,
     TITLES,
@@ -56,18 +58,30 @@ def ask_secret(prompt: str) -> str:
 
 
 def git_ready() -> tuple[bool, str]:
-    """跑实验要 git（`framework/experiment/gitwork.py`）；它是系统组件，装不进平台的家。"""
+    """跑实验要 git（`framework/experiment/gitwork.py`），Windows 上 Claude Code 的 Bash 工具与
+    harness 的脚本还要它带的 bash。Mac、Linux 上是系统组件；Windows 上没有就装进平台的家
+    （`toolchain`）。"""
     found = shutil.which("git")
     if sys.platform == "darwin":
         tools = subprocess.run(["xcode-select", "-p"], capture_output=True, check=False)
         if tools.returncode == 0 or (found and found != MAC_GIT_STUB):
-            return True, "已装"
+            return True, "已装，跳过"
         subprocess.run(["xcode-select", "--install"], capture_output=True, check=False)
         return False, "系统弹出了苹果的安装框，点「安装」，装完再跑一次 ai4sci setup"
-    if found:
-        return True, "已装"
     if sys.platform == "win32":
-        return False, "Windows 上还没做（外层 #210）：先装 Git for Windows"
+        try:
+            procs.bash()  # 有 git 还得带 bash（MinGit 不带）
+            return True, "已装，跳过"
+        except FileNotFoundError:
+            pass
+        try:
+            toolchain.install_git(progress=_progress("git"))
+        except toolchain.ToolchainError as exc:
+            return False, str(exc)
+        toolchain.use_private_git()
+        return True, f"Git for Windows {toolchain.GIT_TAG.lstrip('v')}，下载完成"
+    if found:
+        return True, "已装，跳过"
     return False, "没装：用系统的包管理器装 git"
 
 
@@ -76,7 +90,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     if refused is not None:
         return refused
     git_ok, note = git_ready()
-    _line(git_ok, "git", f"{note}，跳过" if git_ok else note)
+    _line(git_ok, "git", note)
     clis_ok = all([_cli(name) for name in available_backends()])
     model_ok = _model()
     done = git_ok and clis_ok and model_ok

@@ -179,17 +179,34 @@ def tree_alive(pgid: int) -> bool:
 
 
 def git_bash() -> str:
-    """Git for Windows 的 bash：git.exe 在 `<Git>/cmd/`（装的版本放进 PATH 的那个）、`<Git>/bin/`
-    或 `<Git>/mingw64/bin/`，bash 在 `<Git>/bin/bash.exe`；MinGit 不带 bash。"""
-    git = shutil.which("git")
-    if git is None:
-        raise FileNotFoundError("没有 Git for Windows：终端里跑 ai4sci setup 装上")
-    for root in Path(git).resolve().parents[:3]:
+    """Git for Windows 的 bash：先从 PATH 上的 git 推（git.exe 在 `<Git>/cmd/`、`<Git>/bin/` 或
+    `<Git>/mingw64/bin/`，bash 在 `<Git>/bin/bash.exe`），PATH 上没有再看安装器登记的位置
+    （注册表 `SOFTWARE\\GitForWindows` 的 InstallPath，本机级与本人级）。MinGit 不带 bash。"""
+    roots: list[Path] = []
+    if (git := shutil.which("git")) is not None:
+        roots += Path(git).resolve().parents[:3]
+    roots += _registered_git()
+    for root in roots:
         candidate = root / "bin" / "bash.exe"
         if candidate.is_file():
             return str(candidate)
-    raise FileNotFoundError(f"{git} 这份 git 没带 bash（MinGit？）：装完整的 Git for Windows，"
-                            "或终端里跑 ai4sci setup")
+    if git is not None:
+        raise FileNotFoundError(f"{git} 这份 git 没带 bash（MinGit？）：装完整的 Git for Windows，"
+                                "或终端里跑 ai4sci setup")
+    raise FileNotFoundError("没有 Git for Windows：终端里跑 ai4sci setup 装上")
+
+
+def _registered_git() -> list[Path]:
+    import winreg
+
+    found: list[Path] = []
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            with winreg.OpenKey(hive, r"SOFTWARE\GitForWindows") as key:
+                found.append(Path(winreg.QueryValueEx(key, "InstallPath")[0]))
+        except OSError:
+            continue  # 这一级没登记
+    return found
 
 
 def pid_alive(pid: int) -> bool:

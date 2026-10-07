@@ -45,7 +45,7 @@ def machine(monkeypatch):
         state["asked"] += 1
         return state["typed"].pop(0) if state["typed"] else ""
 
-    monkeypatch.setattr(setup_cli, "git_ready", lambda: (state["git"], "已装" if state["git"]
+    monkeypatch.setattr(setup_cli, "git_ready", lambda: (state["git"], "已装，跳过" if state["git"]
                                                          else "没装：用系统的包管理器装 git"))
     monkeypatch.setattr(toolchain, "find", find)
     monkeypatch.setattr(toolchain, "install", install)

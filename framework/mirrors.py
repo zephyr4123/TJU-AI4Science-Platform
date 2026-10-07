@@ -17,6 +17,8 @@ NPM_REGISTRY = "https://registry.npmmirror.com"
 PYPI_INDEX = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 PYTHON_DOWNLOADS = "https://registry.npmmirror.com/-/binary/python-build-standalone"
 HF_ENDPOINT = "https://hf-mirror.com"
+# Windows 上没装 Git 时 `ai4sci setup` 从这里取 Git for Windows 的便携版（外层 #210）
+GIT_FOR_WINDOWS = "https://registry.npmmirror.com/-/binary/git-for-windows"
 # 官方 PyPI 的两个地址：uv 照锁文件装依赖时用锁文件里写的地址、不看上面的镜像设置，锁文件里出现
 # 它们，装的时候就出了国（skill 门禁查，`framework/skills/library.py`）
 PYPI_OFFICIAL = ("https://pypi.org/simple", "https://files.pythonhosted.org/")
