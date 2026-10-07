@@ -31,12 +31,14 @@ pub async fn ask<R: Runtime>(app: &AppHandle<R>, text: &str, yes: &str, no: &str
     rx.await.unwrap_or(false)
 }
 
-/// 系统对话框说一句
+/// 系统对话框说一句（键写「好」：缺省的 OK 在 Mac 上是英文）
 pub async fn tell<R: Runtime>(app: &AppHandle<R>, text: &str) {
     let (tx, rx) = oneshot::channel();
-    dialog(app, text).show(move |_| {
-        let _ = tx.send(());
-    });
+    dialog(app, text)
+        .buttons(MessageDialogButtons::OkCustom("好".to_string()))
+        .show(move |_| {
+            let _ = tx.send(());
+        });
     let _ = rx.await;
 }
 

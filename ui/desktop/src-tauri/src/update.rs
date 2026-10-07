@@ -102,7 +102,7 @@ pub async fn offer<R: Runtime>(app: &AppHandle<R>) {
         Ok(bytes) => bytes,
         Err(error) => {
             log::warn!("update.download_failed error={error}");
-            quit::tell(app, "新版没下载完，下次打开再更新").await;
+            quit::tell(app, download_failed(&error)).await;
             return;
         }
     };
@@ -117,5 +117,43 @@ pub async fn offer<R: Runtime>(app: &AppHandle<R>) {
         quit::tell(app, "新版没装上，下次打开再更新").await;
         // serve 已经停了：从头起一遍
         crate::startup::kick(app);
+    }
+}
+
+/// 新版的包与签名对不上（改过一个字节、换过一把 key、签的不是这一版）：下次打开还是同一个包，不说「下次再更新」
+const SIGNATURE_MISMATCH: &str = "新版的包与签名对不上，没有装，先照旧用这一版";
+
+/// 下载失败时对人说的那句
+fn download_failed(error: &tauri_plugin_updater::Error) -> &'static str {
+    use tauri_plugin_updater::Error;
+    match error {
+        Error::Minisign(_)
+        | Error::SignatureUtf8(_)
+        | Error::SignedVersionMismatch { .. }
+        | Error::MissingSignedVersion => SIGNATURE_MISMATCH,
+        _ => "新版没下载完，下次打开再更新",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tauri_plugin_updater::Error;
+
+    #[test]
+    fn a_package_that_does_not_match_its_signature_is_not_called_unfinished() {
+        // 端到端：包改了一个字节、换了一把 key，以前都说「没下载完，下次打开再更新」——下次还是同一个坏包
+        let signed = [
+            Error::MissingSignedVersion,
+            Error::SignedVersionMismatch {
+                signed: "9.0.1".into(),
+                announced: "9.0.2".into(),
+            },
+        ];
+        for error in &signed {
+            assert_eq!(download_failed(error), SIGNATURE_MISMATCH, "{error}");
+        }
+        let cut = Error::Network("connection reset".into());
+        assert_eq!(download_failed(&cut), "新版没下载完，下次打开再更新");
     }
 }
