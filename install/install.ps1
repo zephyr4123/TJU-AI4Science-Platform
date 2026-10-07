@@ -194,7 +194,9 @@ try {
   # 这个窗口里也马上能用
   if (($env:Path -split ';') -notcontains $BIN) { $env:Path = "$BIN;$env:Path" }
 
-  # 5. 剩下的交给平台自己
+  # 5. 剩下的交给平台自己。装到这里已经成了，setup 成没成它自己说；它起的服务往 stderr 写日志，
+  #    stderr 被并进来的宿主（ISE、`| Tee-Object`）里 5.1 在 Stop 下会把第一行日志当异常、掐断服务
+  $ErrorActionPreference = 'Continue'
   & (Join-Path $BIN 'ai4sci.exe') setup
 } catch {
   if ("$_" -ne $STOP) { Say '✗' 'ai4sci' "$_" }

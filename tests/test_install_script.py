@@ -97,7 +97,8 @@ def _wheel(dist: Path, version: str) -> None:
                            "        on_path = os.path.normcase(found) == os.path.normcase(\n"
                            "            os.path.splitext(sys.argv[0])[0])\n"
                            "        said = ' on-path' if on_path else ''\n"
-                           "        print('ran ' + ' '.join(sys.argv[1:]) + said)\n"),
+                           "        print('ran ' + ' '.join(sys.argv[1:]) + said)\n"
+                           "        print('a log line', file=sys.stderr)\n"),  # 服务的日志走 stderr
         f"{info}/METADATA": f"Metadata-Version: 2.1\nName: ai4sci\nVersion: {version}\n",
         f"{info}/WHEEL": "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\n"
                          "Tag: py3-none-any\n",
@@ -240,7 +241,8 @@ def _uv_release_windows(dist: Path, version: str) -> None:
 
 def _run_ps1(tmp_path: Path, version: str, home: Path, dist: Path) -> str:
     """照 `irm | iex` 的样子跑：脚本读成字符串交给 iex，执行策略 Restricted（研究者的电脑缺省
-    就是）；用户的 Path 在注册表里，跑完原样还回去。"""
+    就是）；用户的 Path 在注册表里，跑完原样还回去。stderr 并进来（`2>&1`）：ISE、存日志的
+    `| Tee-Object` 都这样，5.1 在这种宿主里把原生程序写 stderr 当错误，最严的情形一起测。"""
     import winreg
 
     script = tmp_path / f"install-{version}.ps1"
@@ -259,7 +261,8 @@ def _run_ps1(tmp_path: Path, version: str, home: Path, dist: Path) -> str:
         try:
             done = subprocess.run(
                 ["powershell", "-NoProfile", "-ExecutionPolicy", "Restricted", "-Command",
-                 f"Get-Content -Raw -Encoding UTF8 '{script}' | Invoke-Expression"],
+                 f"& {{ Get-Content -Raw -Encoding UTF8 '{script}' | Invoke-Expression }} 2>&1 "
+                 "| ForEach-Object { \"$_\" }"],
                 env=env, capture_output=True, stdin=subprocess.DEVNULL, timeout=600,
                 check=False)
             path_now = winreg.QueryValueEx(key, "Path")[0]
