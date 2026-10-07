@@ -283,6 +283,19 @@ def test_missing_skill_md_is_rejected_and_a_long_body_only_noted(tmp_path):
     assert any("规范建议" in n for n in skill.notes)
 
 
+def test_lockfiles_point_at_the_domestic_mirror(tmp_path):
+    """外层 #277：uv 照锁文件装依赖时用锁文件里写的地址、不看镜像设置，锁文件要对着国内源锁。"""
+    skill = write_skill(tmp_path, "abroad", scripts={"go.py": HELLO_PY})
+    lock = library.lock_path(skill / "scripts" / "go.py")
+    lock.write_text(lock.read_text(encoding="utf-8") + (
+        '\n[[package]]\nname = "x"\nversion = "1.0"\n'
+        'source = { registry = "https://pypi.org/simple" }\n'
+        'wheels = [{ url = "https://files.pythonhosted.org/packages/a/b/x.whl" }]\n'),
+        encoding="utf-8")
+    with pytest.raises(library.SkillInvalid, match="对着官方 PyPI 锁的"):
+        library.load_skill(skill)
+
+
 def test_scripts_need_a_pep723_header_and_a_lockfile(tmp_path):
     no_header = write_skill(tmp_path, "nohdr", scripts={"go.py": "print(1)\n"}, lock=False)
     with pytest.raises(library.SkillInvalid, match="PEP 723"):

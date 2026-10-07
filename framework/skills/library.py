@@ -25,12 +25,14 @@ from pathlib import Path
 
 import yaml
 
-from framework import paths
+from framework import mirrors, paths
 from framework.skills.shelves import SHELVES, TAGS, place
 
 SKILL_FILE = "SKILL.md"
 SCRIPTS_DIRNAME = "scripts"
 LOCK_SUFFIX = ".lock"
+# 出锁的命令：对着国内源锁（外层 #277，uv 照锁文件里的地址下载、不看镜像设置）
+LOCK_COMMAND = f"UV_DEFAULT_INDEX={mirrors.PYPI_INDEX} uv lock --script"
 RESIDENT = "平台"  # 平台自带的那处库在清单里的名字；收录的叫「收录」；领域库用领域包的目录名
 CURATED = "收录"
 CURATED_EXTRAS = ("licenses",)  # 收录库根上除了各架，还有上游许可证原文的目录（台账在根上，是文件）
@@ -351,15 +353,19 @@ def _frontmatter_notes(front: dict) -> list[str]:
 
 
 def script_problems(script: Path) -> list[str]:
-    """一个脚本的两条门禁：头部有 PEP 723 块、旁边有 `uv lock --script` 出的锁文件。"""
+    """一个脚本的门禁：头部有 PEP 723 块、旁边有 `uv lock --script` 出的锁文件、锁文件对着国内源锁
+    （外层 #277）。"""
     problems: list[str] = []
     head = script.read_text(encoding="utf-8")
     if PEP723_OPEN not in head or PEP723_CLOSE not in head.split(PEP723_OPEN, 1)[-1]:
         problems.append(f"{script.name} 头部没有 PEP 723 块（# /// script … # ///）："
                         "用 uv add --script 写依赖")
-    if not lock_path(script).is_file():
-        problems.append(f"{script.name} 旁边没有锁文件 {lock_path(script).name}："
-                        f"uv lock --script {script.name}")
+    lock = lock_path(script)
+    if not lock.is_file():
+        problems.append(f"{script.name} 旁边没有锁文件 {lock.name}：{LOCK_COMMAND} {script.name}")
+    elif any(url in lock.read_text(encoding="utf-8") for url in mirrors.PYPI_OFFICIAL):
+        problems.append(f"{lock.name} 是对着官方 PyPI 锁的，装的时候不走国内源：删掉它再 "
+                        f"{LOCK_COMMAND} {script.name}")
     return problems
 
 
