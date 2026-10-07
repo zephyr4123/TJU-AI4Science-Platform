@@ -29,7 +29,7 @@ from typing import Any
 import procs
 from compute import ComputeError
 from framework import computes
-from framework.files import write_atomic
+from framework.files import read_text, write_atomic
 from framework.workspace import outputs
 from framework.workspace.root import Workspace
 
@@ -187,14 +187,14 @@ def load(jobs_dir: Path, job_id: str) -> Job:
     path = _path(jobs_dir, job_id)
     if not path.is_file():
         raise JobNotFound(f"没有这个作业：{job_id}（期望 {path}）")
-    return Job(**json.loads(path.read_text(encoding="utf-8")))
+    return Job(**json.loads(read_text(path)))
 
 
 def list_jobs(jobs_dir: Path) -> list[Job]:
     root = Path(jobs_dir)
     if not root.is_dir():
         return []
-    return [Job(**json.loads(p.read_text(encoding="utf-8"))) for p in sorted(root.glob("*.json"))]
+    return [Job(**json.loads(read_text(p))) for p in sorted(root.glob("*.json"))]
 
 
 def jobs_for(jobs_dir: Path, output: str) -> list[Job]:

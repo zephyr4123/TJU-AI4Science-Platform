@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import Any
 
 from framework.experiment import layout
-from framework.files import write_atomic
+from framework.files import read_text, write_atomic
 
 
 def read_checkpoint(run_dir: Path) -> dict[str, Any]:
-    return json.loads(layout.checkpoint(run_dir).read_text(encoding="utf-8"))
+    return json.loads(read_text(layout.checkpoint(run_dir)))
 
 
 def write_checkpoint(run_dir: Path, data: dict[str, Any]) -> None:

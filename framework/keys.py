@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import stat
 from pathlib import Path
@@ -39,11 +40,12 @@ def load() -> dict[str, str]:
     file = path()
     if not file.is_file():
         return {}
-    if stat.S_IMODE(file.stat().st_mode) & 0o077:
+    # Windows 上权限位只有只读一位，「只有本人能读」是写的时候设的 ACL（`files.write_atomic`）
+    if os.name != "nt" and stat.S_IMODE(file.stat().st_mode) & 0o077:
         file.chmod(MODE)
         LOGGER.warning("keys_file_tightened path=%s", file)
     try:
-        raw = yaml.safe_load(file.read_text(encoding="utf-8")) or {}
+        raw = yaml.safe_load(files.read_text(file)) or {}
     except yaml.YAMLError as exc:
         raise KeysInvalid(f"{file}: 不是合法 YAML：{exc}") from exc
     if not isinstance(raw, dict):

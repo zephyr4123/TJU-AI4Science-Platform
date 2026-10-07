@@ -37,6 +37,13 @@ def _const(node: ast.AST | None) -> object:
     return node.value if isinstance(node, ast.Constant) else None
 
 
+def _is_ours(func: ast.AST) -> bool:
+    """`read_text(p)` / `files.read_text(p)`：平台自己的读法（framework/files.py）。"""
+    if isinstance(func, ast.Name):
+        return True
+    return isinstance(func, ast.Attribute) and getattr(func.value, "id", "") == "files"
+
+
 def missing_subprocess_encoding(root: Path) -> list[str]:
     """文本模式（`text=True` / `universal_newlines=True`）却没写 `encoding` 的子进程调用。"""
     problems: list[str] = []
@@ -58,6 +65,8 @@ def missing_file_encoding(root: Path) -> list[str]:
         if "encoding" in kwargs:
             continue
         if name in TEXT_FILE_CALLS:
+            if _is_ours(node.func):  # `framework.files.read_text`：固定按 UTF-8 读
+                continue
             problems.append(where)
         elif name == "open":
             func = node.func
@@ -102,6 +111,8 @@ def test_checker_catches_text_files_without_encoding(tmp_path):
                       "open(p, 'rb')\n"
                       "p.open('wb')\n"
                       "tarfile.open(p, 'w:gz')\n"
+                      "read_text(p)\n"
+                      "files.read_text(p)\n"
                       "os.open(p, os.O_RDONLY)\n")
     assert missing_file_encoding(root) == ["framework/bad.py:2", "framework/bad.py:3",
                                            "framework/bad.py:4"]

@@ -23,7 +23,7 @@ from framework.capabilities.literature_read.sources import Entry, Read
 from framework.contracts import requirement
 from framework.contracts.capability import CapabilityFailed, Inputs
 from framework.executor import prompting, session
-from framework.files import append_event, write_atomic
+from framework.files import append_event, read_text, write_atomic
 from framework.workspace import loadout
 
 LOGGER = logging.getLogger("ai4sci.literature")
@@ -53,7 +53,7 @@ def read_all(output_dir: Path, inputs: Inputs, runner: Runner, *, max_papers: in
     listing = upstream / SOURCES_NAME
     if not listing.is_file():
         raise CapabilityFailed(f"文献精读要上游文献产出的 {SOURCES_NAME}，{upstream_id} 里没有")
-    entries = sources_mod.parse(listing.read_text(encoding="utf-8"), upstream)
+    entries = sources_mod.parse(read_text(listing), upstream)
     with_text = [e for e in entries if e.fulltext]
     if not with_text:
         raise CapabilityFailed(

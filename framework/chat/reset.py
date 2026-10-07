@@ -21,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from backends import available_backends
-from framework import agents, paths
+from framework import agents, files, paths
 from framework.workspace import jobs, project
 
 LOGGER = logging.getLogger("ai4sci.reset")
@@ -82,7 +82,7 @@ def reset(home: Path, logout: Logout = agents.logout_command) -> list[str]:
         if child.name in KEPT:
             continue
         if child.is_dir() and not child.is_symlink():
-            shutil.rmtree(child)
+            files.remove_tree(child)
         else:
             child.unlink()
     done.append(f"已清空 {home}")
