@@ -11,16 +11,20 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
-export function GlassDialog({ open, onOpenChange, children, showCloseButton = true, className }: {
+export function GlassDialog({ open, onOpenChange, children, showCloseButton = true, className, describedBy, onOpenAutoFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode
   /** 右上角那枚关闭；窗里自己有关的键时不要 */
   showCloseButton?: boolean
   /** 换宽度之类，压过缺省的 */
   className?: string
+  /** 窗里那句说明的 id：弹出来时读屏跟着标题念它 */
+  describedBy?: string
+  /** 弹出来时焦点去哪（缺省进第一个能聚焦的）；自己弹出来的窗不该抢走人正在打字的焦点 */
+  onOpenAutoFocus?: (event: Event) => void
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showCloseButton={false} aria-describedby={undefined}
+      <DialogContent showCloseButton={false} aria-describedby={describedBy} onOpenAutoFocus={onOpenAutoFocus}
                      className={cn('flex max-h-[calc(100dvh-3rem)] w-[min(46rem,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden rounded-[28px] p-0 duration-200 sm:max-w-none',
                                    GLASS, 'shadow-[inset_0_1px_0_0_var(--glass-shine),0_1px_2px_rgb(0_0_0/0.06),0_28px_72px_-18px_rgb(0_0_0/0.38)]', className)}>
         {showCloseButton && (

@@ -1,5 +1,6 @@
 // 设置 → 常规（外层 #268）：「分工」两行橡皮滑块选助理、执行层各用哪家（改了只对之后开的对话生效，P-25），
-// 助理那家缺 key、说不了话时那一行底下一句红字写原因（外层 #282：余额不足、连不上不弹窗，只在这里说）；
+// 助理那家缺 key、说不了话时那一行底下一句红字写原因（外层 #282：余额不足、连不上不弹窗，只在这里说；缺 key 的旁边一个
+// 「填 key」，跳过了那扇窗的人从这里回去）；
 // 「自检」一行检查全部；「外观」一行选深浅色（记在本机，`lib/theme.ts`）。
 import { Desktop, Moon, Sun } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
@@ -31,7 +32,8 @@ export function General({ doc, ctx }: { doc: SettingsDoc; ctx: Ctx }) {
         {ROLES.map(([role, label, note]) => (
           <Row key={role} label={label}
                note={<>{note}<RoleWarning entry={table.entries.find((e) => e.name === table[role])}
-                                          problem={role === 'chat' ? assistantNote(doc.assistant) : undefined} /></>}>
+                                          problem={role === 'chat' ? assistantNote(doc.assistant) : undefined}
+                                          onAsk={role === 'chat' && doc.assistant.state === 'needs_key' ? ctx.askKey : undefined} /></>}>
             <RubberSegment aria-label={`${label}用哪家`} items={items} value={table[role]} size="md" radius={14} equalSlots={false}
                            disabled={ctx.busy !== null}
                            onChange={(name) => { if (name !== table[role]) void ctx.act(role, () => api.updateAgents({ [role]: name })) }} />
@@ -55,12 +57,17 @@ export function General({ doc, ctx }: { doc: SettingsDoc; ctx: Ctx }) {
 }
 
 /** 这一层用的那家接的供应商不能联网：琥珀色一行，只提醒不拦（外层 #266）；助理此刻说不了话：红字一行写原因（外层 #282） */
-function RoleWarning({ entry, problem }: { entry?: AgentEntry; problem?: string }) {
+function RoleWarning({ entry, problem, onAsk }: { entry?: AgentEntry; problem?: string; onAsk?: () => void }) {
   const warning = entry && noWebNote(entry)
   return (
     <>
       {warning && <span className="mt-0.5 block text-wait">{warning}</span>}
-      {problem && <span className="mt-0.5 block text-bad">{problem}</span>}
+      {problem && (
+        <span className="mt-0.5 block text-bad">
+          {problem}
+          {onAsk && <button type="button" onClick={onAsk} className="ml-2 cursor-pointer text-primary underline-offset-3 hover:underline">填 key</button>}
+        </span>
+      )}
     </>
   )
 }

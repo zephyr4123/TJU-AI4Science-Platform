@@ -24,7 +24,7 @@ import { General } from './General'
 import { KeyPrompt } from './KeyPrompt'
 import type { Ctx } from './kit'
 import { Literature } from './Literature'
-import { agentPassed, ROLES } from './status'
+import { ROLES } from './status'
 import { Storage } from './Storage'
 
 /** 宽到放得下左栏 + 一页：两栏；再窄就先清单后一页 */
@@ -92,10 +92,19 @@ export function Settings({ open, onOpenChange, onChanged }: {
     }
   }, [onChanged])
   const chip = (key: string): CallChipStatus => (busy === key ? 'running' : results[key] ?? 'idle')
-  const ctx: Ctx = { busy, chip, act }
-  // 「助理还不能说话」那扇窗：没检查过时后台探一次助理那家（走同一条 act，那家的「检查」片跟着动）；试通回来的整份换上
-  const probe = useCallback((agent: string) => { void act(`check:${agent}`, () => api.runCheck('agents', agent), agentPassed(agent)) }, [act])
-  const quickstarted = useCallback((next: SettingsDoc) => { setDoc(next); onChanged() }, [onChanged])
+  // 「助理还不能说话」那扇窗：没检查过时后台探一次助理那家。不走 act：不锁设置里的键、不记进「检查」片（人没按它）；
+  // 探着的时候那扇窗先不弹。试通回来的整份换上，检查片都回到没按过（通了还挂着上次的红）
+  const [probing, setProbing] = useState(false)
+  const probe = useCallback((agent: string) => {
+    setProbing(true)
+    api.runCheck('agents', agent).then((next) => { setDoc(next); onChanged() })
+      .catch((exc: unknown) => setError(exc instanceof Error ? exc.message : String(exc)))
+      .finally(() => setProbing(false))
+  }, [onChanged])
+  const quickstarted = useCallback((next: SettingsDoc) => { setDoc(next); setResults({}); onChanged() }, [onChanged])
+  const [asked, setAsked] = useState(0)
+  const askKey = useCallback(() => { onOpenChange(false); setAsked((n) => n + 1) }, [onOpenChange])
+  const ctx: Ctx = { busy, chip, act, askKey }
 
   const all = groups(doc)
   const current = all.flatMap((g) => g.items).find((item) => item.id === page)
@@ -150,7 +159,7 @@ export function Settings({ open, onOpenChange, onChanged }: {
           </DialogPrimitive.Content>
         </DialogPortal>
       </Dialog>
-      <KeyPrompt assistant={doc?.assistant ?? null} paused={open || busy !== null} probe={probe} onDoc={quickstarted} />
+      <KeyPrompt assistant={doc?.assistant ?? null} paused={open || busy !== null || probing} probe={probe} onDoc={quickstarted} asked={asked} />
     </>
   )
 }

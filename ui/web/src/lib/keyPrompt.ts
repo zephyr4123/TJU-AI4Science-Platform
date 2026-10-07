@@ -1,6 +1,7 @@
 // 「助理还不能说话」那扇窗什么时候弹（外层 #282）：只看 `/settings` 的 `assistant`，助理那家此刻的状态。
 // 只有缺 key 才弹（填 DeepSeek 的 key）；说不了话（余额不足、连不上）不弹，原因写在设置里——不能把它们当成缺 key；
-// 没检查过时页面后台探一次。「跳过」记在本机，记的是跳过时那次自检的时间：下一次自检结果出来才再弹。
+// 没检查过时页面后台探一次。「跳过」记在本机，记的是跳过时那次自检的时间：下一次自检结果出来才再弹；点窗外、按 Esc
+// 只关这一次页面加载（去申请 key 回来点一下窗外，不该从此不弹）。
 // 判据是纯函数，vitest 直接测；读写本机的两个小函数不测。
 import type { AssistantStatus } from '@/api/types'
 
@@ -12,10 +13,10 @@ export function skipMark(assistant: AssistantStatus): string {
 }
 
 /** 这一刻该做什么：`ask` 弹窗；`probe` 后台探一次（一次页面加载只探一次，探没探过由调用方记）；`none` 什么都不做。
- *  `skipped` 是本机记的跳过，没记是 null；设置还没取到是 null */
-export function keyPromptStep(assistant: AssistantStatus | null, skipped: string | null, probed: boolean): KeyPromptStep {
+ *  `closed` 是关掉过的那几次的记号：本机记的跳过、这次页面加载里点窗外关的，没有是 null；设置还没取到是 null */
+export function keyPromptStep(assistant: AssistantStatus | null, closed: readonly (string | null)[], probed: boolean): KeyPromptStep {
   if (!assistant) return 'none'
-  if (assistant.state === 'needs_key') return skipped === skipMark(assistant) ? 'none' : 'ask'
+  if (assistant.state === 'needs_key') return closed.includes(skipMark(assistant)) ? 'none' : 'ask'
   if (assistant.state === 'unchecked') return probed ? 'none' : 'probe'
   return 'none'
 }
@@ -36,5 +37,14 @@ export function rememberSkip(mark: string): void {
     localStorage.setItem(KEY, mark)
   } catch {
     // 记不住（隐私窗口、禁了存储）：这一次照样关窗，下次打开页面再弹
+  }
+}
+
+/** 人在设置里点了「填 key」：跳过不作数了 */
+export function forgetSkip(): void {
+  try {
+    localStorage.removeItem(KEY)
+  } catch {
+    // 删不掉也不要紧：这一次照样弹
   }
 }
