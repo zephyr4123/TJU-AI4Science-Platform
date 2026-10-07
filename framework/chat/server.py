@@ -6,6 +6,9 @@
 点名的能力）由调用方以函数传入——这一层不认识 capabilities，依赖方向不能反过来。
 页面是这些端点的客户端，换一种 UI 也是同一套（`ui/README.md`）。
 
+每个请求先过一道门（`refusal`，外层 #283）：Host 只认本机、带 Origin 就得与 Host 同源、POST 只收
+JSON；所有响应都不许被别的页面嵌进 iframe，`/raw` 端出的文件另关进沙箱。
+
 端点按域分前缀（纲领 P-16）：项目 `/projects/<p>/…` 是研究助理的域（一个项目一位助理，外层 #136），
 `/studio/…` 是流程助理的域，对话五个端点在两个前缀下共用一套实现；项目里的对话物理上到不了库。
 工作区在项目之下：`/projects/<p>/workspaces/<id>/…`。
@@ -92,7 +95,8 @@ import getpass
 import json
 import logging
 import mimetypes
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -136,6 +140,43 @@ SIGNER = getpass.getuser()
 CONFIRM_RESET = "清除"
 API_ROOTS = ("health", "backends", "settings", "stages", "cap", "skills", "workflows", "templates",
              "projects", "studio", "attention", "usage")
+# 请求的门（外层 #283）：任何网页都能对本机服务发不预检的 POST（存 key、清空家、让助理动手），DNS
+# rebinding 之后还能同源读走对话与文件。Host 的主机名只认这两个，端口不限（Vite 开发代理、SSH 隧道都
+# 换了端口）；人显式让服务听在别的地址上，再加那一个（`ChatServer.hosts`）
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost")
+_HOST_RE = re.compile(r"(?P<name>[a-z0-9.-]+|\[[0-9a-f:.]+\])(?::\d{1,5})?")
+# 所有响应都不许被别的页面嵌进 iframe（诱导点击）；`/raw` 原样端出 agent 写的 HTML / SVG，再关进
+# 沙箱：以页面的来源跑起来，它就能调页面的接口
+FRAME_POLICY = "frame-ancestors 'none'"
+RAW_POLICY = f"sandbox; {FRAME_POLICY}"
+
+
+def refusal(method: str, headers: Mapping[str, str],
+            hosts: frozenset[str]) -> tuple[HTTPStatus, str] | None:
+    """这个请求该不该拒：拒就回状态码与一句话，收是 None。
+
+    Host 要认得出、主机名在 `hosts` 里（不带 Host 的也拒：浏览器总会带）；带 Origin 就得等于
+    `http://` + 这次的 Host——相对请求本身同源，Vite 代理与 SSH 隧道照样过，`Origin: null`（沙箱里的
+    iframe、本地文件打开的页面）一律拒；POST 不论有没有 body 都得是 `application/json`：表单与
+    text/plain 的 fetch 不用预检，跨站发得出来，JSON 的发不出来。"""
+    host = (headers.get("Host") or "").strip().lower()
+    named = _HOST_RE.fullmatch(host)
+    if named is None or named["name"].strip("[]") not in hosts:
+        return HTTPStatus.FORBIDDEN, "只收发给本机的请求（Host 要是 127.0.0.1 或 localhost）"
+    origin = headers.get("Origin")
+    if origin is not None:
+        origin = origin.strip().lower()
+        if origin == "null":
+            return HTTPStatus.FORBIDDEN, "来源不明的请求不收（Origin: null）"
+        if origin != f"http://{host}":
+            return HTTPStatus.FORBIDDEN, "别的网页发来的请求不收（Origin 与 Host 不同源）"
+    if method == "POST":
+        ctype = (headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            return (HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "POST 只收 JSON：带上 Content-Type: application/json"
+                    "（curl 加 -H 'Content-Type: application/json'）")
+    return None
 
 
 def _no_add_compute(body: dict[str, Any]) -> dict[str, Any]:
@@ -165,6 +206,8 @@ class ChatServer(ThreadingHTTPServer):
                  system_prompts: dict[str, str] | None = None,
                  ui_dir: Path | None = None) -> None:
         super().__init__(address, Handler)
+        # 请求的 Host 认哪些主机名（`refusal`）：本机两个，加上服务听的那个地址（人显式给了别的）
+        self.hosts = frozenset({*LOOPBACK_HOSTS, str(address[0]).lower()})
         self.home = Path(home).resolve()
         self.catalog = catalog
         self.skills = skills
@@ -212,12 +255,33 @@ class ChatServer(ThreadingHTTPServer):
 
 class Handler(BaseHTTPRequestHandler):
     server: ChatServer
+    # 这个响应的 Content-Security-Policy；`/raw` 换成带沙箱的。HTTP/1.0：一个连接一个请求、一个实例
+    csp = FRAME_POLICY
 
     def log_message(self, fmt: str, *args: Any) -> None:  # noqa: D401 - 走 logging，不打 stderr
         LOGGER.info("http %s", fmt % args)
 
+    def end_headers(self) -> None:
+        """每个响应（连 501、被拒的）都不许被嵌进 iframe（外层 #283）。"""
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", self.csp)
+        super().end_headers()
+
+    def _refused(self) -> bool:
+        """过门（`refusal`）：拒了就回那句话、记一行，返回 True。"""
+        found = refusal(self.command, self.headers, self.server.hosts)
+        if found is None:
+            return False
+        LOGGER.warning("http_refused method=%s path=%s host=%r origin=%r type=%r", self.command,
+                       self.path, self.headers.get("Host"), self.headers.get("Origin"),
+                       self.headers.get("Content-Type"))
+        self._error(*found)
+        return True
+
     # ── GET ──────────────────────────────────────────────────────────────
     def do_GET(self) -> None:
+        if self._refused():
+            return
         # 盘上的东西不合约（坏的 yaml、坏的报告、少了快照）是 422 一句话，不是掉线：连接一断
         # 页面只看得到「Failed to fetch」，什么都说不清（实测：flows/ 里一个只有一行的文件）
         try:
@@ -329,10 +393,13 @@ class Handler(BaseHTTPRequestHandler):
             data, ctype = boards.raw_file(ws, rel)
         except FileNotFoundError as exc:
             return self._error(HTTPStatus.NOT_FOUND, str(exc))
+        # 工作区里的文件是 agent 写的：不许浏览器按内容猜类型，HTML / SVG 关进沙箱跑（外层 #283）
+        self.csp = RAW_POLICY
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Content-Disposition", f'inline; filename="{Path(rel).name}"')
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(data)
 
@@ -357,6 +424,8 @@ class Handler(BaseHTTPRequestHandler):
     # ── POST ─────────────────────────────────────────────────────────────
     def do_POST(self) -> None:
         self.streaming = False  # 头已经发出去（SSE）之后再出错，只能断流，不能再回一个 JSON
+        if self._refused():
+            return
         try:
             self._post()
         except ValueError as exc:
