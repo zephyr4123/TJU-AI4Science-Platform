@@ -137,6 +137,7 @@ def test_an_npm_shell_shim_on_windows_is_not_good_enough(tmp_path, monkeypatch):
 def test_git_for_windows_lands_in_the_home_and_the_platform_finds_it(tmp_path, monkeypatch):
     """Windows 上没 Git：从 npmmirror 取便携版，对 GitHub 发布页的 sha256，自解压进家里，平台起来时
     放进本进程 PATH（外层 #210）。这里的「便携版」是一个照 7-Zip 自解压的参数造目录的假程序。"""
+    (tmp_path / "src").mkdir()
     sfx = Path(fake_cli(tmp_path / "src" / "PortableGit", (
         "import sys, pathlib\n"
         "out = pathlib.Path(next(a[2:] for a in sys.argv[1:] if a.startswith('-o')))\n"
