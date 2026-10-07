@@ -1,7 +1,13 @@
 # 出厂流程之一：文献调研。一格里先检索、再精读，产出到精读的 sources.md 为止（外层 #239）。
-# 研究助理照笔记在对话里回答研究者；不排写作阶段——写作还没有步骤，综述之后单独设计。
 name: literature-survey
 title: 文献调研
 summary: 按需求查论文、下载原文，再逐篇精读，每篇一份带原句的笔记。
+guide: |-
+  什么时候选它：研究者问「这方面的研究都在做什么」，要按需求查论文、读原文。产出到精读的 `sources.md` 为止：不另开写作产出、不写综述文件，综述之后单独设计。
+
+  怎么走（一格里两步）：
+  1. 检索：`ai4sci cap literature-search --ws <名字> --detach`。
+  2. 精读：`ai4sci cap literature-read --from literature/<检索那次> --ws <名字> --detach`。
+  3. 回答研究者：照精读的笔记在对话里答。先看精读那次 `sources.md` 的一句话目录，再挑笔记细读；说法带上笔记里的原句、指到那篇笔记；不要只看检索清单的题目与摘要就下结论。`sources.md` 文末列着没读成的与没有原文的：和需求最相关的几篇点名告诉研究者；研究者手上有原文的，请他放进 `materials/`。
 stages:
   - 文献: [literature-search, literature-read]

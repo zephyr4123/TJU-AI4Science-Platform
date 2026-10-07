@@ -129,6 +129,12 @@ describe('流程的血缘（P-15）', () => {
     expect(toDraft(fromWorkflow(own))).toMatchObject({ name: 'research-2', from: { name: 'research', hash: 'abcdef123456' } })
     expect(toDraft(fromWorkflow(flow('scratch'))).from).toBeUndefined()
   })
+  it('流程的说明（guide，外层 #287）跟着载入、派生、存回去，画布不编辑它也不丢；没写的不带', () => {
+    const guide = '什么时候选它：改进一个方法。\n\n断点要核什么：评分脚本。'
+    expect(toDraft(fromWorkflow(flow('research', { guide }))).guide).toBe(guide)
+    expect(toDraft(deriveFrom(flow('research', { guide, shipped: true }))).guide).toBe(guide)
+    expect('guide' in toDraft(fromWorkflow(flow('scratch')))).toBe(false)
+  })
   it('库按家族排：派生的跟在家族的头后面、序号按数字排，父流程不在了的放最后、不缩进', () => {
     const rows = [
       flow('research', { shipped: true }), flow('reproduce', { shipped: true }),

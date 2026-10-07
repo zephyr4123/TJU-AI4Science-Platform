@@ -1,11 +1,19 @@
-# 出厂流程之一（另有 reproduce 论文复现、literature-survey 文献调研）：从设计到验证，七个阶段走四个。
-# 需求确认在流程之前（唯一内置的门）。
-# 阶段之间没有显式的输入输出接口，进下一个阶段时助理自己看盘上有什么；
-# 「断点」是前一个阶段的产出要人签了下游才能读；几个、放哪由流程定，一个不放就是端到端。
-# 一个阶段不点名能力就是这个阶段用什么由助理看着办；点名可以带参数（名字是 ai4sci show caps 里那个能力的参数）。
+# 出厂流程之一：从设计到验证，七个阶段走四个（外层 #287 起，给研究助理的说明在 guide 里）。
 name: research
 title: 从设计到验证
 summary: 评分脚本与基线，人核对；AutoResearch、分析初稿、数字核对，人验收。
+guide: |-
+  什么时候选它：研究者要改进一个方法，结果能用一个指标自动打分、比基线好多少才算数。要拿论文自己的代码原样跑一遍、核对论文的数，选论文复现那条；只是查文献、读文献，选文献调研那条。
+
+  需求：通用模板或学科模板都行；「怎么算好」那一格要写出指标、方向、比基线好多少才算。
+
+  怎么走：
+  1. 设计：`ai4sci cap design --ws <名字> --detach`，写评分脚本、跑基线（前提与各种结局：`ai4sci show cap design`）。
+  2. 断点「评分指标核对」：人不读代码，你来对。把 `design/<n>/harness/evaluate.py` 和需求里「怎么算好」逐条对：算的指标、拿什么数据重算、拒收什么、退出码；把 `scoring.yaml` 里的指标、方向、预算、统计门、尽头念给人听。一致就说一致，连同基线、σ、门、离尽头几个门一起念；有出入就说清哪条，带意见 `--continue design/<n> --feedback`。人签了 `design/<n>` 才往下。
+  3. 实验：`ai4sci cap auto-research --from design/<n> --ws <名字> --detach`。流程里写的轮数是起点，研究者要多跑就改实例里的 `max_iters`。
+  4. 分析：`ai4sci cap analysis --from experiment/<n> --ws <名字> --detach`（几次实验就几个 `--from`）。
+  5. 验证：`ai4sci cap verify --from analysis/<k> --from experiment/<n> --ws <名字>`。
+  6. 断点「验收」：核对通过之后，把分析的结论与核对结果念给研究者，他在页面上签 `verification/<k>`。
 stages:
   - 设计
   - 断点: 评分指标核对

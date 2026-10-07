@@ -10,6 +10,7 @@
 
 ### 新增
 
+- 流程文件加选填的 `guide:`：给研究助理的说明（什么时候选它、配哪份需求模板、断点要核什么、怎么走），不算结构、不进 hash；出厂三条都写了，编辑台存流程原样带回（外层 #287）
 - 桌面 App（`ui/desktop/`，Tauri）：Mac 通用包与 Windows 安装包，第一次打开装好平台、在页面里问 key；后端随 wheel 升级，外壳走自带的更新器；源码跑 `make desktop`（外层 #282）
 - 页面「助理还不能说话」：助理那家缺 key 时弹窗粘 DeepSeek 的 key、当场试通；切回窗口时重读设置，在终端或别的页面里填好 key 窗自己关；`/settings` 加 `assistant`，新端点 `POST /settings/quickstart`（外层 #282）
 - `ai4sci setup --no-input`：不问、不探模型、不开浏览器，不接终端时打下载进度；`ai4sci serve --until-stdin-closes`；`/health` 加 `turns`（外层 #282 #285）
