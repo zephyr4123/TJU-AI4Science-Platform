@@ -38,7 +38,7 @@ import time
 import tomllib
 import urllib.request
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -55,8 +55,13 @@ UV_ARCHIVES = ("aarch64-apple-darwin.tar.gz", "x86_64-apple-darwin.tar.gz",
                "x86_64-pc-windows-msvc.zip", "aarch64-pc-windows-msvc.zip")
 IMMUTABLE = "public, max-age=31536000, immutable"
 LATEST = "public, max-age=300"
-TYPES = {".whl": "application/zip", ".gz": "application/gzip", ".zip": "application/zip"}
+# Content-Type 照对象键的后缀；没列的（.sh .ps1 .sha256 .sig）是文本。浏览器照它决定显示还是存下来
+TYPES = {".whl": "application/zip", ".gz": "application/gzip", ".zip": "application/zip",
+         ".dmg": "application/x-apple-diskimage",
+         ".exe": "application/vnd.microsoft.portable-executable", ".json": "application/json"}
 TEXT = "text/plain; charset=utf-8"
+# 每个对象传的时候记下 sha256：重跑时判断桶里那份是不是同一份（外层 #282）
+META_SHA256 = "x-cos-meta-sha256"
 # 美国的 runner 往上海的桶分片上传，偶尔有分片重试到 SDK 的上限仍失败（1.8.0，外层 #281）；SDK 说
 # 「please upload_file again」：再调一次从断点续传
 UPLOAD_TRIES = 4
@@ -89,10 +94,11 @@ def render(script: str, version: str, uv: str) -> str:
 
 
 class Item(NamedTuple):
-    """传一个对象：对象键、本地文件、Cache-Control。"""
+    """传一个对象：对象键、本地文件、Cache-Control；attachment 让浏览器存成文件（固定下载地址）。"""
     key: str
     path: Path
     cache: str
+    attachment: bool = False
 
 
 def official(version: str) -> bool:
@@ -172,30 +178,56 @@ def client_from_env():
 
 
 def upload(items: list[Item], client, *, retryable: tuple[type[BaseException], ...]) -> None:
-    """一个个传。带版本号的（不可变）桶里已经有、大小一样就跳过：重跑流水线只补没传成的；最新那两份
-    每次都传。传失败照 SDK 的说法再调（从断点续传），试够了照样抛。"""
-    for key, path, cache in items:
-        if cache == IMMUTABLE and _already_there(client, key, path):
-            print(f"skip {CDN}/{key}（桶里已有，大小一样）")
+    """一个个传。不可变的（带版本号的）先看桶里那份：同一份（sha256）跳过，重跑流水线只补没传成的；
+    同名不同内容让作业失败、不覆盖：边缘节点照一年的缓存发旧字节，包与签名就对不上了（spec §7）。
+    最新的那几份每次都传。传失败照 SDK 的说法再调（从断点续传），试够了照样抛。"""
+    for item in items:
+        digest = sha256(item.path)
+        if item.cache == IMMUTABLE and _already_there(client, item.key, digest):
+            print(f"skip {CDN}/{item.key}（桶里已有同一份）")
             continue
+        headers = {"CacheControl": item.cache, "Metadata": {META_SHA256: digest},
+                   "ContentType": TYPES.get(PurePosixPath(item.key).suffix, TEXT)}
+        if item.attachment:
+            headers["ContentDisposition"] = "attachment"
         for attempt in range(1, UPLOAD_TRIES + 1):
             try:
-                client.upload_file(Bucket=BUCKET, Key=key, LocalFilePath=str(path),
-                                   ACL="public-read", CacheControl=cache,
-                                   ContentType=TYPES.get(path.suffix, TEXT))
+                client.upload_file(Bucket=BUCKET, Key=item.key, LocalFilePath=str(item.path),
+                                   ACL="public-read", **headers)
                 break
             except retryable as exc:
                 if attempt == UPLOAD_TRIES:
                     raise
-                print(f"retry {attempt}/{UPLOAD_TRIES - 1} {key}：{exc}", file=sys.stderr)
+                print(f"retry {attempt}/{UPLOAD_TRIES - 1} {item.key}：{exc}", file=sys.stderr)
                 time.sleep(UPLOAD_WAIT_S * attempt)
-        print(f"ok {CDN}/{key}")
+        print(f"ok {CDN}/{item.key}")
 
 
-def _already_there(client, key: str, path: Path) -> bool:
+def _already_there(client, key: str, digest: str) -> bool:
     if not client.object_exists(Bucket=BUCKET, Key=key):
         return False
-    return int(client.head_object(Bucket=BUCKET, Key=key)["Content-Length"]) == path.stat().st_size
+    theirs = _bucket_sha256(client, key)
+    if theirs != digest:
+        die(f"{key} 桶里已有一份内容不同的（sha256 {theirs[:12]}…，这次 {digest[:12]}…）："
+            "带版本号的不覆盖")
+    return True
+
+
+def _bucket_sha256(client, key: str) -> str:
+    """桶里那份的 sha256：传的时候记在元数据里。1.9.0 以前传的没有：旁边有 .sha256 就读它（uv 的包
+    几十 MB，不从上海取回美国的 runner），再没有就取回来算。"""
+    head = client.head_object(Bucket=BUCKET, Key=key)
+    head = {name.lower(): value for name, value in head.items()}
+    if META_SHA256 in head:
+        return head[META_SHA256]
+    side = key + ".sha256"
+    if client.object_exists(Bucket=BUCKET, Key=side):
+        return _read(client, side).decode("utf-8").split()[0]
+    return hashlib.sha256(_read(client, key)).hexdigest()
+
+
+def _read(client, key: str) -> bytes:
+    return client.get_object(Bucket=BUCKET, Key=key)["Body"].get_raw_stream().read()
 
 
 def purge(urls: list[str]) -> None:
@@ -215,12 +247,12 @@ def cmd_wheel(args: argparse.Namespace) -> int:
         items = plan(args.tag.removeprefix("v"), args.prefix.rstrip("/"), Path(tmp),
                      sign=None if args.dry_run else tauri_sign)
         if args.dry_run:
-            for key, path, cache in items:
-                print(f"{CDN}/{key}\t{path.stat().st_size}\t{cache}")
+            for item in items:
+                print(f"{CDN}/{item.key}\t{item.path.stat().st_size}\t{item.cache}")
             return 0
         client, retryable = client_from_env()
         upload(items, client, retryable=retryable)
-    latest = [f"{CDN}/{key}" for key, _, cache in items if cache == LATEST]
+    latest = [f"{CDN}/{item.key}" for item in items if item.cache == LATEST]
     if latest:
         purge(latest)
     return 0
