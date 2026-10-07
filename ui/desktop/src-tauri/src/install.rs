@@ -1,10 +1,10 @@
 //! 平台装了哪一版、装与升级、setup（spec §3「装与升级」「setup」、§4 第 5–6 步）。
 //!
 //! 装与升级跑的是带版本号的 `<DIST>/<版本>/install.sh`（Windows `install.ps1`，版本是 PEP 440 写法），先按
-//! 签名清单核 sha256，
-//! 环境带 `AI4SCI_NO_SETUP=1`（setup 由外壳另起）与 `AI4SCI_WHEEL_SHA256`（脚本拿它核 wheel），包里 uv
-//! 所在的目录排在 PATH 最前（不再从 CDN 下一份 uv）。Windows 上存成带 UTF-8 BOM 的文件再用 5.1 的
-//! PowerShell `-File` 起：不带 BOM 时 5.1 按 GBK 读源码，中文 Windows 上第一次安装就失败。
+//! 签名清单核 sha256，环境带 `AI4SCI_NO_SETUP=1`（setup 由外壳另起）与 `AI4SCI_WHEEL_SHA256`（脚本拿它
+//! 核 wheel），包里 uv 所在的目录排在 PATH 最前（够新就不再从 CDN 下一份 uv）。Windows 上用 5.1 的
+//! PowerShell 把脚本按 UTF-8 读成字符串交给脚本块跑（`contract::PS1_COMMAND`），不走 `-File`：组策略的
+//! 执行策略压得过命令行的 `-ExecutionPolicy`。
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -15,8 +15,8 @@ use sha2::{Digest, Sha256};
 use url::Url;
 
 use crate::contract::{
-    EXIT_BUSY, INSTALL_PS1, INSTALL_SH, NO_SETUP_ENV, SETUP_ARGS, VERSION_ARGS, VERSION_PREFIX,
-    WHEEL_SHA256_ENV,
+    EXIT_BUSY, INSTALL_PS1, INSTALL_SCRIPT_ENV, INSTALL_SH, NO_SETUP_ENV, PS1_COMMAND, SETUP_ARGS,
+    VERSION_ARGS, VERSION_PREFIX, WHEEL_SHA256_ENV,
 };
 use crate::env::Overlay;
 use crate::manifest::Manifest;
@@ -26,6 +26,9 @@ use crate::version::Version;
 
 const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 const SCRIPT_TIMEOUT: Duration = Duration::from_secs(60);
+/// 安装脚本、setup 这么久一行都不说就当卡住了（连接还在、数据不来）：收掉，启动页给「重试」。两边下载
+/// 时都按时报进度，正常的慢不会这么久不出声
+pub const SILENT_LIMIT: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Installed {
@@ -69,39 +72,22 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// 落盘的脚本：Windows 上加 UTF-8 BOM（已经有就不加）
-pub fn script_bytes(downloaded: &[u8]) -> Vec<u8> {
-    const BOM: &[u8] = b"\xEF\xBB\xBF";
-    if cfg!(windows) && !downloaded.starts_with(BOM) {
-        [BOM, downloaded].concat()
-    } else {
-        downloaded.to_vec()
-    }
-}
-
-/// 怎么起这份脚本
-pub fn script_command(script: &Path) -> (PathBuf, Vec<OsString>) {
+/// 怎么起这份脚本：程序、参数、额外的环境变量
+pub fn script_command(script: &Path) -> (PathBuf, Vec<OsString>, Vec<(String, OsString)>) {
     if cfg!(windows) {
         let root = std::env::var_os("SystemRoot").unwrap_or_else(|| OsString::from(r"C:\Windows"));
         let ps = PathBuf::from(root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
-        let args = [
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-        ]
-        .map(OsString::from);
-        (
-            ps,
-            args.into_iter()
-                .chain([script.as_os_str().to_os_string()])
-                .collect(),
-        )
+        let args = ["-NoProfile", "-NonInteractive", "-Command", PS1_COMMAND].map(OsString::from);
+        let env = vec![(
+            INSTALL_SCRIPT_ENV.to_string(),
+            script.as_os_str().to_os_string(),
+        )];
+        (ps, args.to_vec(), env)
     } else {
         (
             PathBuf::from("/bin/sh"),
             vec![script.as_os_str().to_os_string()],
+            Vec::new(),
         )
     }
 }
@@ -149,29 +135,34 @@ pub async fn platform(
     };
     let ext = if cfg!(windows) { "ps1" } else { "sh" };
     let script = cwd.join(format!("install-{}.{ext}", target.version));
-    if let Err(error) = std::fs::write(&script, script_bytes(&bytes)) {
+    if let Err(error) = std::fs::write(&script, &bytes) {
         return Installed::Failed(format!("安装脚本写不下：{} {error}", script.display()));
     }
-    let (program, args) = script_command(&script);
-    let extra = vec![
+    let (program, args, mut extra) = script_command(&script);
+    extra.extend([
         (NO_SETUP_ENV.to_string(), OsString::from("1")),
         (
             WHEEL_SHA256_ENV.to_string(),
             OsString::from(&target.wheel_sha256),
         ),
-    ];
+    ]);
     let overlay = match sidecar {
         Some(dir) => overlay.with_front(dir),
         None => overlay.clone(),
     };
+    // 为什么没装好：最后一行 ✗ 的说明；一行 ✗ 都没有（脚本没跑起来）用 stderr 的最后一行
     let last_failure = Arc::new(Mutex::new(None::<String>));
-    let seen = last_failure.clone();
+    let last_error = Arc::new(Mutex::new(None::<String>));
+    let (seen, said) = (last_failure.clone(), last_error.clone());
     let sink: Sink = Arc::new(move |kind, stream, line| {
         if let Some(row) = progress::parse(line)
             && row.mark == "✗"
         {
             *seen.lock().unwrap_or_else(|p| p.into_inner()) =
                 Some(format!("{} {}", row.label, row.note));
+        } else if stream == Stream::Err && !line.trim().is_empty() {
+            *said.lock().unwrap_or_else(|p| p.into_inner()) =
+                Some(line.trim().chars().take(200).collect());
         }
         sink(kind, stream, line);
     });
@@ -185,10 +176,16 @@ pub async fn platform(
         cwd: cwd.to_path_buf(),
     };
     let exit = match sup.spawn(launch, sink) {
-        Ok(child) => child.finish().await,
+        Ok(child) => child.finish_unless_silent(SILENT_LIMIT).await,
         Err(error) => return Installed::Failed(format!("安装脚本起不来：{error}")),
     };
     let _ = std::fs::remove_file(&script);
+    let Some(exit) = exit else {
+        return Installed::Failed(format!(
+            "{} 分钟没有动静，可能是网络卡住了",
+            SILENT_LIMIT.as_secs() / 60
+        ));
+    };
     log::info!(
         "install.exit version={} code={:?}",
         target.version,
@@ -202,11 +199,21 @@ pub async fn platform(
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
                 .take();
-            Installed::Failed(why.unwrap_or_else(|| match code {
-                Some(code) => format!("安装脚本退出码 {code}"),
-                None => "安装脚本被停了".to_string(),
-            }))
+            let said = last_error.lock().unwrap_or_else(|p| p.into_inner()).take();
+            Installed::Failed(why.unwrap_or_else(|| failure_without_mark(code, said)))
         }
+    }
+}
+
+/// 脚本没留下 ✗ 那一行时的说法：退出码，再带上它往 stderr 说的最后一句
+pub fn failure_without_mark(code: Option<i32>, said: Option<String>) -> String {
+    let base = match code {
+        Some(code) => format!("安装脚本退出码 {code}"),
+        None => "安装脚本被停了".to_string(),
+    };
+    match said {
+        Some(said) => format!("{base}：{said}"),
+        None => base,
     }
 }
 
@@ -279,7 +286,10 @@ pub async fn setup(
         cwd: cwd.to_path_buf(),
     };
     match sup.spawn(launch, sink) {
-        Ok(child) => child.finish().await.code == Some(0),
+        Ok(child) => match child.finish_unless_silent(SILENT_LIMIT).await {
+            Some(exit) => exit.code == Some(0),
+            None => false,
+        },
         Err(_) => false,
     }
 }
@@ -289,33 +299,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn windows_gets_the_script_with_a_bom_and_through_powershell_5() {
-        let body = "# 安装\n".as_bytes();
-        let written = script_bytes(body);
-        let (program, args) = script_command(Path::new("install-1.9.0.ps1"));
+    fn windows_runs_the_script_as_a_string_through_powershell_5() {
+        let (program, args, env) = script_command(Path::new("install-1.9.0.ps1"));
+        let args: Vec<_> = args
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         if cfg!(windows) {
-            assert!(written.starts_with(b"\xEF\xBB\xBF"));
-            assert_eq!(script_bytes(&written), written, "已有 BOM 不再加");
             assert!(program.ends_with(r"System32\WindowsPowerShell\v1.0\powershell.exe"));
-            let args: Vec<_> = args
-                .iter()
-                .map(|a| a.to_string_lossy().into_owned())
-                .collect();
             assert_eq!(
                 args,
-                [
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    "install-1.9.0.ps1"
-                ]
+                ["-NoProfile", "-NonInteractive", "-Command", PS1_COMMAND]
+            );
+            assert_eq!(
+                env,
+                [(
+                    INSTALL_SCRIPT_ENV.to_string(),
+                    OsString::from("install-1.9.0.ps1")
+                )]
             );
         } else {
-            assert_eq!(written, body);
             assert_eq!(program, PathBuf::from("/bin/sh"));
+            assert_eq!(args, ["install-1.9.0.ps1"]);
+            assert!(env.is_empty());
         }
+    }
+
+    #[test]
+    fn a_script_that_never_got_going_says_why_from_its_stderr() {
+        assert_eq!(failure_without_mark(Some(1), None), "安装脚本退出码 1");
+        assert_eq!(
+            failure_without_mark(Some(1), Some("无法加载文件".into())),
+            "安装脚本退出码 1：无法加载文件"
+        );
+        assert_eq!(failure_without_mark(None, None), "安装脚本被停了");
     }
 
     #[test]

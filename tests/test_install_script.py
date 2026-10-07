@@ -7,7 +7,8 @@ wheel 是手搓的、`ai4sci` 只会报版本与回显参数），`HOME` 指到 
 
 桌面 App 起的那一种（外层 #282，`docs/specs/desktop.md` §3「装与升级」）：`AI4SCI_NO_SETUP=1` 不交给
 setup、`AI4SCI_WHEEL_SHA256` 照签名清单核 wheel、平台还开着退 75、升级先暂存再离线换、太老的 uv
-不用；Windows 上照外壳的样子用 `-File` 跑带 BOM 的一份、无窗口起，输出是 UTF-8。
+不用；Windows 上照外壳的样子（读成字符串交给脚本块，`contract.rs` 的 `PS1_COMMAND`）无窗口起，
+输出是 UTF-8。
 """
 
 from __future__ import annotations
@@ -386,12 +387,11 @@ def _uv_release_windows(dist: Path, version: str) -> None:
     _sha(target)
 
 
-def _ps1_script(tmp_path: Path, version: str, uv: str = "0.0.0-test", bom: bool = False) -> Path:
-    """代入版本的一份；`bom`：桌面 App 存成带 UTF-8 BOM 的文件再 `-File` 起（外层 #282）。"""
+def _ps1_script(tmp_path: Path, version: str, uv: str = "0.0.0-test") -> Path:
+    """代入版本的一份，不带 BOM（桌面 App 下载来就这样存）。"""
     script = tmp_path / f"install-{version}.ps1"
     text = PS1.read_text(encoding="utf-8").replace("__VERSION__", version)
-    script.write_text(("\ufeff" if bom else "") + text.replace("__UV_VERSION__", uv),
-                      encoding="utf-8")
+    script.write_text(text.replace("__UV_VERSION__", uv), encoding="utf-8")
     return script
 
 
@@ -438,16 +438,20 @@ def _run_ps1(tmp_path: Path, version: str, home: Path, dist: Path) -> str:
 
 def _run_ps1_as_desktop(script: Path, home: Path, dist: Path, extra_path: str = "",
                         **extra: str) -> subprocess.CompletedProcess:
-    """照桌面 App 起的样子（外层 #282，desktop.md §3）：带 BOM 的一份、5.1 的完整路径、`-File`、
-    无窗口（CREATE_NO_WINDOW）、标准输入接管道（接 NUL 时 isatty 是真）、`AI4SCI_NO_SETUP=1`。
-    stdout 按 UTF-8 严格解：解不开就是又按 GBK 出了。"""
+    """照桌面 App 起的样子（外层 #282，desktop.md §3）：5.1 的完整路径、`-Command` 加 contract.rs
+    里那一句（按 UTF-8 读成字符串交给脚本块）、无窗口（CREATE_NO_WINDOW）、标准输入接管道（接 NUL
+    时 isatty 是真）、`AI4SCI_NO_SETUP=1`。stdout 按 UTF-8 严格解：解不开就是又按 GBK 出了。"""
+    from tests.test_desktop_contract import _contract
+
+    contract = _contract()
     powershell = (Path(os.environ["SystemRoot"]) / "System32" / "WindowsPowerShell" / "v1.0"
                   / "powershell.exe")
-    env = _ps1_env(home, dist, extra_path, AI4SCI_NO_SETUP="1", **extra)
+    env = _ps1_env(home, dist, extra_path, AI4SCI_NO_SETUP="1",
+                   **{str(contract["INSTALL_SCRIPT_ENV"]): str(script)}, **extra)
     done, _ = _keeping_user_path(lambda: subprocess.run(
-        [str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
-         str(script)], env=env, capture_output=True, input=b"", timeout=600, check=False,
-        creationflags=subprocess.CREATE_NO_WINDOW))
+        [str(powershell), "-NoProfile", "-NonInteractive", "-Command",
+         str(contract["PS1_COMMAND"])], env=env, capture_output=True, input=b"", timeout=600,
+        check=False, creationflags=subprocess.CREATE_NO_WINDOW))
     return subprocess.CompletedProcess(done.args, done.returncode, done.stdout.decode("utf-8"),
                                        done.stderr.decode("utf-8", "replace"))
 
@@ -531,10 +535,10 @@ def _version_of(home: Path) -> str:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")
 def test_install_ps1_runs_the_way_the_desktop_app_starts_it(tmp_path):
-    """桌面 App 起它（外层 #282）：无 BOM 时 5.1 按 GBK 读源码，整段读坏；无窗口起的 Write-Host 按
-    GBK 出、✓ 成了 ?；失败也退 0，外壳分不出装好没有。带 BOM 的一份 + -File + 无窗口：输出是 UTF-8，
-    退出码作数——0 装好、75 平台还开着、1 失败；wheel 照签名清单的 sha256 核；升级中途断了原来那份
-    照样能用。"""
+    """桌面 App 起它（外层 #282）：`-File` 起不带 BOM 的一份时 5.1 按 GBK 读源码、整段读坏，组策略设了
+    AllSigned 的机器上干脆起不来；无窗口起的 Write-Host 按 GBK 出、✓ 成了 ?；失败也退 0，外壳分不出
+    装好没有。按 UTF-8 读成字符串交给脚本块 + 无窗口：输出是 UTF-8，退出码作数——0 装好、75 平台还开着、
+    1 失败；wheel 照签名清单的 sha256 核；升级中途断了原来那份照样能用。"""
     home, dist = tmp_path / "home", tmp_path / "dist"
     _uv_release_windows(dist, "0.0.0-test")
     for version in ("1.0.0", "1.0.1"):
@@ -542,14 +546,14 @@ def test_install_ps1_runs_the_way_the_desktop_app_starts_it(tmp_path):
     side = dist / "1.0.0" / "ai4sci-1.0.0-py3-none-any.whl.sha256"
     signed = side.read_text(encoding="utf-8").split()[0]
     side.write_text(f"{'0' * 64}  ai4sci-1.0.0-py3-none-any.whl\n", encoding="utf-8")
-    first = _ps1_script(tmp_path, "1.0.0", bom=True)
+    first = _ps1_script(tmp_path, "1.0.0")
     done = _run_ps1_as_desktop(first, home, dist, AI4SCI_WHEEL_SHA256=signed)
     assert done.returncode == 0, done.stdout + done.stderr
     assert not done.stdout.startswith("\ufeff") and "?" not in done.stdout
     assert "  ✓ ai4sci        1.0.0，安装完成" in done.stdout and "ran setup" not in done.stdout
     assert _version_of(home) == "ai4sci 1.0.0"
 
-    newer = _ps1_script(tmp_path, "1.0.1", bom=True)
+    newer = _ps1_script(tmp_path, "1.0.1")
     done = _run_ps1_as_desktop(newer, home, dist, AI4SCI_WHEEL_SHA256=signed)
     assert done.returncode == 1 and "sha256 对不上，没装" in done.stdout
 
@@ -592,6 +596,6 @@ def test_install_ps1_does_not_use_a_uv_older_than_the_pinned_one(tmp_path):
     stale.mkdir()
     old_uv = 'import sys\nprint("uv 0.0.1") if sys.argv[1:] == ["--version"] else sys.exit(9)\n'
     fake_cli(stale / "uv", old_uv)
-    script = _ps1_script(tmp_path, "1.0.0", uv="0.0.2-test", bom=True)
+    script = _ps1_script(tmp_path, "1.0.0", uv="0.0.2-test")
     done = _run_ps1_as_desktop(script, home, dist, str(stale))
     assert done.returncode == 0 and "uv            0.0.2-test，下载完成" in done.stdout

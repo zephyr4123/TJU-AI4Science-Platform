@@ -263,6 +263,30 @@ async fn a_serve_that_is_killed_is_noticed() {
     assert_eq!(exit.code, None, "被收拾的没有退出码");
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_child_that_goes_silent_is_taken_down() {
+    let sup = Supervisor::default();
+    let mut launch = launch_version();
+    launch.kind = Kind::Install;
+    launch.args = vec!["sleep".into()];
+    let child = sup.spawn(launch, Lines::default().sink()).unwrap();
+    let started = Instant::now();
+    let exit = tokio::time::timeout(
+        Duration::from_secs(10),
+        child.finish_unless_silent(Duration::from_millis(500)),
+    )
+    .await
+    .expect("不说话的子进程要被收掉");
+    assert_eq!(exit, None, "收掉的不算退出");
+    assert!(started.elapsed() >= Duration::from_millis(500));
+
+    let child = sup
+        .spawn(launch_version(), Lines::default().sink())
+        .unwrap();
+    let exit = child.finish_unless_silent(Duration::from_secs(10)).await;
+    assert_eq!(exit.map(|e| e.code), Some(Some(0)), "说完就退的照常");
+}
+
 fn launch_version() -> aaai4s::supervise::Launch {
     aaai4s::supervise::Launch {
         kind: Kind::Version,

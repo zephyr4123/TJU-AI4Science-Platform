@@ -13,11 +13,11 @@
 # `irm | iex` 是在人自己的会话里跑的：整段包在一个脚本块里（变量、$ErrorActionPreference 不漏到他的
 # 会话），出错只说一句、不 exit（exit 会关掉他的窗口）；不靠执行策略（iex 跑的是字符串，不是 .ps1）。
 #
-# 桌面 App 也跑这一份（外层 #282，docs/specs/desktop.md §3「装与升级」，只加不改）：外壳把它存成带
-# UTF-8 BOM 的文件（无 BOM 时 5.1 按 GBK 读源码，整段读坏），用 powershell.exe -NoProfile
-# -NonInteractive -ExecutionPolicy Bypass -File 无窗口起。AI4SCI_NO_SETUP=1 时第一句把输出设成 UTF-8
-# （无窗口起的 Write-Host 按 GBK 出，✓ 成了 ?）、装好平台就退、不交给 setup，退出码作数：0 装好，
-# 75 平台还开着、什么都没动，其余是失败。AI4SCI_WHEEL_SHA256 是签名清单里 wheel 的 sha256，给了就照它
+# 桌面 App 也跑这一份（外层 #282，docs/specs/desktop.md §3「装与升级」，只加不改）：外壳用 5.1 的
+# powershell.exe -NoProfile -NonInteractive -Command 把它按 UTF-8 读成字符串交给脚本块、无窗口起
+# （与 iex 一样不受执行策略管；-File 在组策略设了 AllSigned 的机器上起不来）。AI4SCI_NO_SETUP=1 时
+# 第一句把输出设成 UTF-8（无窗口起的 Write-Host 按 GBK 出，✓ 成了 ?）、装好平台就退、不交给
+# setup，退出码作数：0 装好，75 平台还开着、什么都没动，其余是失败。AI4SCI_WHEEL_SHA256 是签名清单里 wheel 的 sha256，给了就照它
 # 核、不信 CDN 上的 .sha256。升级先装进暂存目录（下载都在这一步），成了再离线换进去：中途断了，原来
 # 那份照样能用。
 

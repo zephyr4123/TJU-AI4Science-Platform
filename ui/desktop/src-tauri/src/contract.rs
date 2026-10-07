@@ -35,6 +35,11 @@ pub const NO_SETUP_ENV: &str = "AI4SCI_NO_SETUP";
 pub const WHEEL_SHA256_ENV: &str = "AI4SCI_WHEEL_SHA256";
 /// 平台还开着（网页版服务或后台实验在用家里的平台），脚本什么都没动
 pub const EXIT_BUSY: i32 = 75;
+/// Windows 上起 install.ps1：`powershell.exe -NoProfile -NonInteractive -Command <这一句>`，脚本的路径在
+/// `AI4SCI_INSTALL_SCRIPT` 里。读成字符串交给脚本块，与 `irm | iex` 一样不受执行策略管（组策略设了
+/// AllSigned 的机器上 `-File` 起不来）；按 UTF-8 读，不靠 BOM；脚本自己 exit，没 exit 就是没装好
+pub const INSTALL_SCRIPT_ENV: &str = "AI4SCI_INSTALL_SCRIPT";
+pub const PS1_COMMAND: &str = "& ([ScriptBlock]::Create([IO.File]::ReadAllText($env:AI4SCI_INSTALL_SCRIPT, [Text.Encoding]::UTF8))); exit 1";
 
 // ── 版本 ──
 /// 外壳能驱动的最低平台：`--until-stdin-closes`、`--no-input`、`AI4SCI_NO_SETUP` 都是 1.9.0 才有
@@ -113,6 +118,11 @@ mod tests {
                 "--until-stdin-closes"
             ]
         );
+    }
+
+    #[test]
+    fn the_powershell_command_reads_the_script_from_its_own_variable() {
+        assert!(PS1_COMMAND.contains(&format!("$env:{INSTALL_SCRIPT_ENV}")));
     }
 
     #[test]

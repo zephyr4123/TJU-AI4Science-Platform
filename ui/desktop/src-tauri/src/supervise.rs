@@ -18,7 +18,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
@@ -108,10 +108,11 @@ pub struct Handle {
     sup: Supervisor,
 }
 
-/// 刚起来的子进程：多带着读它输出的两个任务
+/// 刚起来的子进程：多带着读它输出的两个任务、它上一次说话的时刻
 pub struct Child {
     pub handle: Handle,
     readers: Vec<JoinHandle<()>>,
+    heard: Arc<Mutex<Instant>>,
 }
 
 impl Supervisor {
@@ -157,12 +158,19 @@ impl Supervisor {
         })?;
         let pid = child.id();
         let stdin = child.stdin().take().filter(|_| kind == Kind::Serve);
+        let heard = Arc::new(Mutex::new(Instant::now()));
         let mut readers = Vec::new();
         if let Some(out) = child.stdout().take() {
-            readers.push(read_lines(out, kind, Stream::Out, sink.clone()));
+            readers.push(read_lines(
+                out,
+                kind,
+                Stream::Out,
+                sink.clone(),
+                heard.clone(),
+            ));
         }
         if let Some(err) = child.stderr().take() {
-            readers.push(read_lines(err, kind, Stream::Err, sink));
+            readers.push(read_lines(err, kind, Stream::Err, sink, heard.clone()));
         }
         let (kill_tx, kill_rx) = oneshot::channel();
         let (exit_tx, exit_rx) = watch::channel(None);
@@ -201,6 +209,7 @@ impl Supervisor {
                 sup: self.clone(),
             },
             readers,
+            heard,
         })
     }
 
@@ -324,6 +333,34 @@ impl Child {
         self.handle.kill();
     }
 
+    /// 同 `finish`，但它连着 `limit` 一行都不说就当卡住了（连接还在、数据不来）：收拾整棵树，返回 None
+    pub async fn finish_unless_silent(self, limit: Duration) -> Option<Exit> {
+        loop {
+            let quiet = self
+                .heard
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .elapsed();
+            if quiet >= limit {
+                log::warn!(
+                    "child.silent kind={} pid={:?} secs={}",
+                    self.handle.kind.name(),
+                    self.handle.pid,
+                    quiet.as_secs()
+                );
+                self.kill();
+                self.finish().await;
+                return None;
+            }
+            if tokio::time::timeout(limit - quiet, self.wait())
+                .await
+                .is_ok()
+            {
+                return Some(self.finish().await);
+            }
+        }
+    }
+
     /// 等它退出，再给读输出的任务一点时间读完最后几行（留在管道里的孙进程不拖住这里）
     pub async fn finish(mut self) -> Exit {
         let exit = self.handle.wait().await;
@@ -345,6 +382,7 @@ fn read_lines<R: AsyncRead + Unpin + Send + 'static>(
     kind: Kind,
     which: Stream,
     sink: Sink,
+    heard: Arc<Mutex<Instant>>,
 ) -> JoinHandle<()> {
     let target = format!("{}{}", crate::logfile::CHILD_TARGET, kind.name());
     tokio::spawn(async move {
@@ -357,6 +395,7 @@ fn read_lines<R: AsyncRead + Unpin + Send + 'static>(
                 Ok(_) => {
                     let text = String::from_utf8_lossy(&bytes);
                     let line = text.trim_end_matches(['\n', '\r']);
+                    *heard.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
                     log::info!(target: &target, "{line}");
                     sink(kind, which, line);
                 }
@@ -380,6 +419,7 @@ async fn own(
 ) {
     let pid = child.id();
     let mut asked = false;
+    let mut killed = false;
     // 只等根进程，不用包装的 wait()：Windows 上它要等 Job 里的一切都退，serve 崩了留下的轮次会把这里拖住
     let mut tick = tokio::time::interval(POLL);
     let status = loop {
@@ -393,6 +433,7 @@ async fn own(
                 asked = true;
                 if asked_to_kill.is_ok() {
                     log::info!("child.kill_tree kind={} pid={pid:?}", kind.name());
+                    killed = true;
                     kill_tree(child.as_mut(), pid).await;
                 }
             }
@@ -402,7 +443,9 @@ async fn own(
     #[cfg(unix)]
     let _ = child.start_kill();
     drop(child);
+    // 收拾掉的不报码：Windows 上 TerminateJobObject 会给根进程一个 1，看着像它自己失败了
     let code = match &status {
+        Ok(_) if killed => None,
         Ok(status) => status.code(),
         Err(error) => {
             log::warn!("child.wait_failed kind={} error={error}", kind.name());
