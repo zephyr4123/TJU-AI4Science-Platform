@@ -97,6 +97,7 @@ import json
 import logging
 import mimetypes
 import re
+import sys
 import threading
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
@@ -191,6 +192,10 @@ class ChatServer(ThreadingHTTPServer):
     """把运行参数挂在 server 上，handler 从 `self.server` 拿；不用全局变量。"""
 
     daemon_threads = True
+    # Windows 上 SO_REUSEADDR 是「别人占着也照样绑」：第二个服务悄悄绑上同一个端口、抢走一半请求，
+    # 不设它端口被占就是 WSAEADDRINUSE。也不设 SO_EXCLUSIVEADDRUSE：它让自己关掉以后留下的 TIME_WAIT
+    # 挡住马上重开同一个端口（外层 #282 审查）。POSIX 上照旧设：那边它只管 TIME_WAIT
+    allow_reuse_address = sys.platform != "win32"
 
     def __init__(self, address: tuple[str, int], *, home: Path,
                  catalog: Callable[[], list[dict[str, Any]]],

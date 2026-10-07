@@ -1,7 +1,8 @@
 """`ai4sci serve` 的起与停（外层 #285）：真起一个服务进程，对话用的 CLI 是装在家里的假 CLI。
 
 退出（标准输入关了、Ctrl-C、SIGTERM）要先停掉在跑的那几轮、连它们另起一组的孙子，后台作业不碰；
-上一个服务崩了留下的轮次，下一个服务起来时收掉。
+上一个服务崩了留下的轮次，下一个服务起来时收掉；端口用不了一句话退 3（外壳拿它换端口），刚关掉的
+端口马上能再用（沿用端口，页面的主题等存在 localStorage，按端口分）。
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -199,3 +201,50 @@ def test_a_serve_that_died_has_its_turns_reaped_by_the_next_one(tmp_path):
     finally:
         serve.kill()
         procs.kill_tree(grandchild, grandchild)
+
+
+def test_a_port_in_use_is_one_line_and_exit_3(tmp_path):
+    """端口被占：一句话、退出码 3，外壳拿它换一个空闲端口（外层 #282 §3）。Windows 上不许复用地址：
+    不然第二个服务悄悄绑上同一个端口、抢走一半请求。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    taken = socket.socket()
+    taken.bind(("127.0.0.1", 0))
+    taken.listen()
+    try:
+        port = taken.getsockname()[1]
+        done = subprocess.run([sys.executable, "-m", "framework.cli", "serve", "--port", str(port)],
+                              cwd=REPO_ROOT, capture_output=True, text=True, encoding="utf-8",
+                              timeout=60, stdin=subprocess.DEVNULL,
+                              env={**os.environ, paths.HOME_ENV: str(home),
+                                   "PYTHONPATH": str(REPO_ROOT)})
+    finally:
+        taken.close()
+    assert done.returncode == 3, done.stderr
+    said = [line for line in done.stderr.splitlines() if str(port) in line]
+    assert len(said) == 1 and "用不了" in said[0] and "Traceback" not in done.stderr
+    assert done.stdout == ""
+
+
+def test_the_port_is_free_again_right_after_serve_closes(tmp_path):
+    """退出后马上重开要拿回同一个端口（主题等存在页面的 localStorage，按端口分）：服务自己关掉的
+    连接在它的端口上留下一串 TIME_WAIT，不能因此绑不上。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    first = _serve(home, "--until-stdin-closes")
+    try:
+        base = _base(first)
+        for _ in range(5):
+            assert _call(base, "/health")["ok"]
+        first.stdin.close()
+        assert first.wait(timeout=15) == 0
+    finally:
+        first.kill()
+    again = _serve(home, "--until-stdin-closes", port=base.rsplit(":", 1)[1])
+    try:
+        assert _base(again) == base
+        assert _call(base, "/health")["ok"]
+        again.stdin.close()
+        assert again.wait(timeout=15) == 0
+    finally:
+        again.kill()
