@@ -135,9 +135,9 @@ try {
     # 3. 平台：已是这一版就跳过；以前用 uv 装在缺省位置的先卸掉，不然终端里有两份 ai4sci（外层 #274）
     $ErrorActionPreference = 'Continue'
     $saved = $env:UV_CACHE_DIR; $env:UV_CACHE_DIR = $UV_DEFAULT.UV_CACHE_DIR
-    try { $tools = & $UV tool list 2>$null } finally { $env:UV_CACHE_DIR = $saved }
+    try { $listed = & $UV tool list 2>$null } finally { $env:UV_CACHE_DIR = $saved }
     $ErrorActionPreference = 'Stop'
-    if ($tools | Where-Object { $_ -match '^ai4sci ' }) {
+    if ($listed | Where-Object { $_ -match '^ai4sci ' }) {
       if ((Invoke-Logged $UV @('tool', 'uninstall', 'ai4sci') $UV_DEFAULT) -ne 0) {
         Stop-Install 'ai4sci' "卸不掉以前的那份，详情在 $LOG"
       }
@@ -152,6 +152,14 @@ try {
     if ($have -eq "ai4sci $VERSION") {
       Say '✓' 'ai4sci' "$VERSION，已装，跳过"
     } else {
+      # 在跑的程序换不掉：服务或作业开着时，uv 删到 Scripts\ 才被拒，删掉的已经回不来
+      $tool = Join-Path $TOOLS 'ai4sci'
+      $busy = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.Path -and ($_.Path -eq $exe -or $_.Path.StartsWith("$tool\", [StringComparison]::OrdinalIgnoreCase))
+      })
+      if ($busy) {
+        Stop-Install 'ai4sci' "平台还开着（$($busy.Count) 个进程在用它）：关掉服务的窗口，作业在跑就等它跑完或在页面上停掉"
+      }
       $wheel = "ai4sci-$VERSION-py3-none-any.whl"
       Fetch "$DIST/$VERSION/$wheel" (Join-Path $work $wheel) 'ai4sci'
       $argv = @('tool', 'install', '--force', '--python', $PYTHON_WANTED, (Join-Path $work $wheel))

@@ -66,6 +66,21 @@ def test_the_script_and_the_platform_agree_on_mirrors_and_places():
         assert f"{name} = '{value}'" in ps1, name
 
 
+def _case_clashes(text: str) -> list[list[str]]:
+    """PowerShell 的变量名不分大小写：写法不同的两个名字是同一个变量。"""
+    names: dict[str, set[str]] = {}
+    for name in re.findall(r"\$([A-Za-z_]\w*)", text):
+        names.setdefault(name.lower(), set()).add(name)
+    return sorted(sorted(spelled) for spelled in names.values() if len(spelled) > 1)
+
+
+def test_install_ps1_has_no_two_variables_that_are_one():
+    """`$tools = uv tool list` 曾悄悄盖掉 `$TOOLS`（家里的 tools 目录），后面一用就是空
+    （外层 #210）。"""
+    assert _case_clashes(PS1.read_text(encoding="utf-8")) == []
+    assert _case_clashes("$TOOLS = 'a'\n$tools = uv tool list\n$BIN\n") == [["TOOLS", "tools"]]
+
+
 def _sha(path: Path) -> None:
     path.with_name(path.name + ".sha256").write_text(
         f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n", encoding="utf-8")
@@ -288,3 +303,27 @@ def test_install_ps1_stops_on_a_tampered_download_without_closing_the_window(tmp
     out = _run_ps1(tmp_path, "1.0.0", home, dist)
     assert "sha256 对不上，没装" in out and "没装完" in out
     assert not (home / paths.BIN_DIRNAME / "ai4sci.exe").exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")
+def test_install_ps1_refuses_to_upgrade_while_the_platform_runs(tmp_path):
+    """Windows 上在跑的程序换不掉：服务开着时重跑，uv 先删了 site-packages 才在 Scripts\\ 上
+    拒绝访问，留下一份谁都起不来的安装（外层 #210 真机撞上的）。动文件之前先查、停下说清楚。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    _uv_release_windows(dist, "0.0.0-test")
+    for version in ("1.0.0", "1.0.1"):
+        _wheel(dist, version)
+    _run_ps1(tmp_path, "1.0.0", home, dist)
+    venv_python = next((home / paths.TOOLS_DIRNAME).rglob("Scripts/python.exe"))
+    running = subprocess.Popen([venv_python, "-c", "import time; time.sleep(120)"])
+    try:
+        out = _run_ps1(tmp_path, "1.0.1", home, dist)
+    finally:
+        running.kill()
+        running.wait()
+    assert "平台还开着" in out and "没装完" in out
+    exe = home / paths.BIN_DIRNAME / "ai4sci.exe"
+    still = subprocess.run([exe, "--version"], capture_output=True, text=True, encoding="utf-8",
+                           check=False)
+    assert still.stdout.strip() == "ai4sci 1.0.0"  # 旧的那份原样能用
+    assert "ai4sci        1.0.1，安装完成" in _run_ps1(tmp_path, "1.0.1", home, dist)
