@@ -89,11 +89,19 @@ uv_ok() {
 }
 
 # 平台还开着：命令行里带着家里这份平台的进程（网页版服务、后台作业、助理的会话），不算自己。在跑的
-# 程序底下换代码，它们会读到半新半旧的文件
+# 程序底下换代码，它们会读到半新半旧的文件。Mac 上平台若跑在 Homebrew 这类 framework 构建的 Python
+# 上，它一启动就把自己 re-exec 成 Python.app 里那个路径，命令行里看不到家；它的环境里留着
+# __PYVENV_LAUNCHER__=<家里的 python>，所以 Mac 上连环境一起看（-E）。ps 的输出先落到文件再数：
+# 管道里 awk 自己的环境带着这两个路径，会被数进去
 busy() {
-  ps -A -o pid= -o args= 2>/dev/null | SELF=$$ A="${TOOLS}/ai4sci/" B="${BIN}/ai4sci" awk '
+  if [ "$(uname -s)" = Darwin ]; then
+    ps -A -E -o pid= -o args= > "${work}/ps" 2>/dev/null || true
+  else
+    ps -A -o pid= -o args= > "${work}/ps" 2>/dev/null || true
+  fi
+  SELF=$$ A="${TOOLS}/ai4sci/" B="${BIN}/ai4sci" awk '
     $1 != ENVIRON["SELF"] && (index($0, ENVIRON["A"]) || index($0, ENVIRON["B"])) { n++ }
-    END { print n + 0 }'
+    END { print n + 0 }' "${work}/ps"
 }
 
 # 找以前装在 uv 缺省位置的那份：工具目录用缺省的，缓存仍在家里
