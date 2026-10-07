@@ -83,12 +83,17 @@ def private_cli(name: str) -> Path | None:
 
 
 def find(name: str) -> Found | None:
-    """现在能用的是哪一份：家里的优先，没有再看 PATH；都没有是 None。"""
+    """现在能用的是哪一份：家里的优先，没有再看 PATH；都没有是 None。
+
+    Windows 上 PATH 里 npm 装的是 `claude.cmd` 这类壳（外层 #210）：起它要过 cmd.exe，参数里的引号、
+    换行会被改写，平台只起原生的 exe，所以认作不够用、`ai4sci setup` 装一份进家里。"""
     spec = backends.install_of(name)
     candidates = [(private_cli(name), True)]
     if (hit := shutil.which(spec.command)) is not None:
         candidates.append((Path(hit), False))
     for exe, private in candidates:
+        if exe is not None and sys.platform == "win32" and exe.suffix.lower() != ".exe":
+            return Found(exe=str(exe), version="", ok=False, private=private)
         if exe is not None:
             raw = _version(exe)
             parsed = spec.parse_version(raw)

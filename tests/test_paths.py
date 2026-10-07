@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from framework import paths
+from tests.fixtures.fake_cli import fake_cli
 
 
 def test_source_mode_reads_shipped_from_the_repo_but_lives_in_the_home(monkeypatch, tmp_path):
@@ -93,10 +94,7 @@ def test_only_a_home_the_platform_made_carries_the_marker(monkeypatch, tmp_path:
 
 def _script(folder: Path) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
-    exe = folder / "ai4sci"
-    exe.write_text("#!/bin/sh\n", encoding="utf-8")
-    exe.chmod(0o755)
-    return exe
+    return Path(fake_cli(folder / "ai4sci", ""))
 
 
 def test_cli_names_this_install_not_whatever_ai4sci_is_first_on_path(monkeypatch, tmp_path: Path):
