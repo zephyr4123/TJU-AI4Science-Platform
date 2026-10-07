@@ -124,7 +124,7 @@ fn download<R: Runtime>(
     }
 }
 
-fn main_window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
+pub fn main_window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
     app.get_webview_window(MAIN)
 }
 

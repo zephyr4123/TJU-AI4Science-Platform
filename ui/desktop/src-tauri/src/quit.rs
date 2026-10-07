@@ -10,18 +10,17 @@
 use std::sync::atomic::Ordering;
 
 use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_dialog::{DialogExt, MessageDialogBuilder, MessageDialogButtons};
 use tokio::sync::oneshot;
 
 use crate::serve;
 use crate::shell::{GRACE, Shell};
+use crate::window;
 
 /// 系统对话框问一句：点了 `yes` 是 true
 pub async fn ask<R: Runtime>(app: &AppHandle<R>, text: &str, yes: &str, no: &str) -> bool {
     let (tx, rx) = oneshot::channel();
-    app.dialog()
-        .message(text)
-        .title("AAAI4S")
+    dialog(app, text)
         .buttons(MessageDialogButtons::OkCancelCustom(
             yes.to_string(),
             no.to_string(),
@@ -35,10 +34,22 @@ pub async fn ask<R: Runtime>(app: &AppHandle<R>, text: &str, yes: &str, no: &str
 /// 系统对话框说一句
 pub async fn tell<R: Runtime>(app: &AppHandle<R>, text: &str) {
     let (tx, rx) = oneshot::channel();
-    app.dialog().message(text).title("AAAI4S").show(move |_| {
+    dialog(app, text).show(move |_| {
         let _ = tx.send(());
     });
     let _ = rx.await;
+}
+
+/// 对话框挂在主窗口上（Mac 是窗口上的 sheet，Windows 是它的模态框），窗口关着、最小化着先叫回来：问的
+/// 总是窗口里的事。不挂的话 Mac 上由系统的 UserNotificationCenter 另起一个浮在所有程序之上的提示，
+/// 跟窗口脱节、App 自己的窗口列表里也没有它（端到端撞到的）
+fn dialog<R: Runtime>(app: &AppHandle<R>, text: &str) -> MessageDialogBuilder<R> {
+    let builder = app.dialog().message(text).title("AAAI4S");
+    window::bring_back(app);
+    match window::main_window(app) {
+        Some(main) => builder.parent(&main),
+        None => builder,
+    }
 }
 
 /// 可以打断吗：没有在跑的轮次，或人点了「仍然退出」
