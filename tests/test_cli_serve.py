@@ -183,7 +183,7 @@ def test_a_serve_that_died_has_its_turns_reaped_by_the_next_one(tmp_path):
                      "time.sleep(0.3)\n"
                      "os._exit(0)\n", encoding="utf-8")
     crashed = subprocess.run([sys.executable, str(dying)], cwd=REPO_ROOT, capture_output=True,
-                             text=True, timeout=60,
+                             text=True, encoding="utf-8", errors="replace", timeout=60,
                              env={**os.environ, "PYTHONPATH": str(REPO_ROOT)})
     assert crashed.returncode == 0, crashed.stderr
     grandchild = int(marker.read_text(encoding="utf-8"))
