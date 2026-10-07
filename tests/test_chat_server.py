@@ -809,3 +809,40 @@ def test_a_chat_keeps_the_provider_it_was_opened_with(served):
                              encoding="utf-8")
     call(base, f"/projects/p/chats/{chat_id}/messages", {"text": "你好"})
     assert chat.providers_asked[-1] == "deepseek"
+
+
+def test_quickstart_takes_one_key_for_both_and_says_whether_the_assistant_talks(tmp_path, caplog):
+    """页面的「填 DeepSeek 的 key」（外层 #282）：与终端里 setup 问 key 同一段
+    （`agents.quickstart`），回新的一整份设置，助理状态说通没通；空的 422；整把 key 不出服务、不进
+    日志。真适配器的清单（DeepSeek 的模型），自检注入、不跑 CLI。"""
+    rejected = "退出码 1：API Error: 401 Authentication Fails"
+    said = {"claude_code": AgentProbe(items=[("说话", False, rejected)])}
+    server = ChatServer(("127.0.0.1", 0), home=tmp_path, catalog=lambda: CATALOG,
+                        workflows=lambda: WORKFLOWS, check_workflow=check_workflow,
+                        probe_agent=lambda name: said[name], system_prompts=PROMPTS)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    caplog.set_level("INFO")
+    try:
+        status, _, body = call(base, "/settings/quickstart", {"key": "  "})
+        assert status == 422 and "key 是空的" in json.loads(body)["error"]
+        assert call(base, "/settings/quickstart", {"key": 3})[0] == 400
+        assert keys.get("deepseek") is None and not agents.path().exists()  # 拒了就什么都没改
+
+        status, _, body = call(base, "/settings/quickstart", {"key": "sk-wrong-0001"})
+        assert status == 200
+        snap = json.loads(body)
+        assert snap["keys"] == {"deepseek": "…0001"} and "sk-wrong" not in body
+        assert {e["name"]: e["provider"] for e in snap["agents"]["entries"]} == {
+            "claude_code": "deepseek", "codex": "deepseek"}
+        assert snap["assistant"]["state"] == "needs_key"
+
+        said["claude_code"] = AgentProbe(items=[("说话", True, "pong")], spoke_s=1.0)
+        status, _, body = call(base, "/settings/quickstart", {"key": "sk-right-0002"})
+        assert status == 200 and json.loads(body)["assistant"]["state"] == "ready"
+        assert keys.get("deepseek") == "sk-right-0002"
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert "sk-wrong" not in caplog.text and "sk-right" not in caplog.text
+    assert "quickstart" in caplog.text

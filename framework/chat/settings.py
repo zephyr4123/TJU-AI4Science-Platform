@@ -239,6 +239,16 @@ def check(what: str = "all", name: str | None = None, *, knobs: KnobsOf = agents
     return {**snap, "ok": not failed, "failed": failed}
 
 
+def quickstart(key: str, knobs: KnobsOf = agents.knobs_of, probe_agent: ProbeAgent = agents.probe,
+               home: Path | None = None) -> dict[str, Any]:
+    """页面弹窗「填 DeepSeek 的 key」：与终端里 setup 问 key 同一段（`agents.quickstart`：存 key、
+    两家都切到 DeepSeek、问助理那家一句），回新的一整份，`assistant` 说通没通。key 是空的
+    KeysInvalid（调用方回 422）。日志只记过没过，不记 key。"""
+    for name, got in agents.quickstart(key, probe_agent=probe_agent, knobs=knobs).items():
+        LOGGER.info("quickstart_check name=%s ok=%s", name, got.ok)
+    return snapshot(knobs, home)
+
+
 def update_agents(body: dict[str, Any], knobs: KnobsOf = agents.knobs_of,
                   home: Path | None = None) -> dict[str, Any]:
     """页面改「对话用 / 执行用」与每家的供应商与缺省：
