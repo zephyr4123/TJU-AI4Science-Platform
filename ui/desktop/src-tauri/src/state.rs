@@ -18,7 +18,7 @@ pub struct Remembered {
     /// 上次用的端口：页面的主题等存在 localStorage，按来源（含端口）分（spec §4 第 7 步）
     #[serde(default)]
     pub port: Option<u16>,
-    /// 跑通过 setup 的那一版平台（§4 第 6 步）：换了版本才再跑
+    /// 跑通过 setup 的那一版平台与那个家（§4 第 6 步）：换了版本、换了家、这次刚装过才再跑
     #[serde(default)]
     pub setup_ok: Option<String>,
     /// 上次从登录 shell 取到的 PATH（§3）：这次 3 秒内没取到就用它
@@ -27,6 +27,9 @@ pub struct Remembered {
     /// 上次查新版本的时刻（Unix 秒）：Mac 上收起后点 Dock 回来，隔了一天才再查（§4 第 10 步）
     #[serde(default)]
     pub checked_at: Option<u64>,
+    /// 见过的最新清单的版本与发布地址（`<版本> <DIST>`）：比它旧的「最新」当作没取到
+    #[serde(default)]
+    pub newest_manifest: Option<String>,
 }
 
 pub struct Store {

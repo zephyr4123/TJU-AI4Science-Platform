@@ -16,7 +16,7 @@ use crate::contract::MIN_PLATFORM;
 use crate::env::Overlay;
 use crate::install::{self, Installed, Target};
 use crate::manifest::{self, Manifest};
-use crate::places;
+use crate::places::{self, Cli};
 use crate::serve::{self, ServeError};
 use crate::shell::{Shell, own_version};
 use crate::splash::Problem;
@@ -126,8 +126,16 @@ fn blocked() -> Option<Problem> {
 
 async fn fetch_manifest(shell: &Shell, pubkey: &str) -> Option<Manifest> {
     let dist = shell.dist.as_ref().ok()?;
-    match manifest::fetch(&shell.internet, dist, pubkey).await {
+    let seen = seen_manifest(shell.store.load().newest_manifest.as_deref(), dist);
+    let fetched = manifest::fetch(&shell.internet, dist, pubkey)
+        .await
+        .and_then(|m| manifest::latest_ok(&m, seen.as_ref()).map(|()| m));
+    match fetched {
         Ok(manifest) => {
+            if seen.as_ref() < Some(&manifest.version) {
+                let mark = format!("{} {dist}", manifest.version);
+                shell.store.update(|r| r.newest_manifest = Some(mark));
+            }
             log::info!(
                 "manifest.ok version={} min_desktop={}",
                 manifest.version,
@@ -140,6 +148,14 @@ async fn fetch_manifest(shell: &Shell, pubkey: &str) -> Option<Manifest> {
             None
         }
     }
+}
+
+/// 这个发布地址上见过的最新清单的版本（换了 `AI4SCI_DIST` 不算）
+pub fn seen_manifest(recorded: Option<&str>, dist: &Url) -> Option<Version> {
+    let (version, at) = recorded?.split_once(' ')?;
+    (at == dist.as_str())
+        .then(|| Version::parse(version).ok())
+        .flatten()
 }
 
 /// 更新器那把公钥：清单与外壳更新同一把，只在 tauri.conf.json 一处
@@ -193,7 +209,9 @@ async fn sequence<R: Runtime>(app: &AppHandle<R>, shell: &Shell) -> Result<(), P
     shell.splash.status("查新版本");
     let pubkey = updater_pubkey(app);
     let (manifest, rest) = tokio::join!(fetch_manifest(shell, &pubkey), base_path(shell));
-    shell.store.update(|r| r.checked_at = Some(now_secs()));
+    if manifest.is_some() {
+        shell.store.update(|r| r.checked_at = Some(now_secs())); // 没取到不算查过
+    }
     let me = own_version(app);
     let mut latest = manifest.as_ref();
     let too_old = shell_too_old(me.as_ref(), latest);
@@ -206,21 +224,16 @@ async fn sequence<R: Runtime>(app: &AppHandle<R>, shell: &Shell) -> Result<(), P
         latest = None;
     }
     let cli = shell.cli.clone();
-    let front: Vec<PathBuf> = cli
-        .path
-        .parent()
-        .map(|d| vec![d.to_path_buf()])
-        .unwrap_or_default();
-    let overlay = Overlay::new(&front, rest, std::env::var_os("LANG").is_some());
+    let (for_install, overlay) = overlays(&cli, rest, std::env::var_os("LANG").is_some());
     if !cli.from_source {
-        let installed =
-            prepare_platform(app, shell, &overlay, latest, me.as_ref(), too_old).await?;
-        // 6. 这一版平台还没跑通过 setup 就跑一次；没跑通照样往下走，下次打开再跑
-        let wanted = installed.to_string();
-        if shell.store.load().setup_ok.as_deref() != Some(wanted.as_str()) {
-            shell.splash.status("准备 git 与两家 CLI");
+        let (installed, fresh) =
+            prepare_platform(app, shell, &for_install, latest, me.as_ref(), too_old).await?;
+        // 6. 这个家、这一版平台还没跑通过 setup，或者这次刚装过，就跑一次；没跑通照样往下走，下次再跑
+        let mark = setup_mark(&installed, &shell.home);
+        if needs_setup(shell.store.load().setup_ok.as_deref(), &mark, fresh) {
+            shell.splash.status("准备 Git、Claude Code 与 Codex");
             if install::setup(&shell.sup, &cli.path, &overlay, &shell.tmp, to_splash(app)).await {
-                shell.store.update(|r| r.setup_ok = Some(wanted));
+                shell.store.update(|r| r.setup_ok = Some(mark));
             } else {
                 log::warn!("setup.incomplete version={installed}");
             }
@@ -238,7 +251,31 @@ async fn sequence<R: Runtime>(app: &AppHandle<R>, shell: &Shell) -> Result<(), P
     Ok(())
 }
 
-/// 第 5 步：装着的能跑就用，不能跑就装，有新版就升；返回这次用的平台版本
+/// 装平台那一次与其余（setup、serve、`--version`）的环境。装平台那次 PATH 里不放 `ai4sci` 所在的
+/// 目录：install.sh 看 PATH 里已经有家里的 bin 就不往 shell 配置里写那一行，终端里就找不到 `ai4sci`
+pub fn overlays(cli: &Cli, rest: Option<OsString>, has_lang: bool) -> (Overlay, Overlay) {
+    let front: Vec<PathBuf> = cli
+        .path
+        .parent()
+        .map(|d| vec![d.to_path_buf()])
+        .unwrap_or_default();
+    (
+        Overlay::new(&[], rest.clone(), has_lang),
+        Overlay::new(&front, rest, has_lang),
+    )
+}
+
+/// 跑通过 setup 记的是「哪一版、哪个家」：换了家（`AI4SCI_HOME`）也要再跑
+pub fn setup_mark(version: &Version, home: &std::path::Path) -> String {
+    format!("{version} {}", home.display())
+}
+
+/// 这次刚装过平台就一律再跑：删掉家重装同一版，记下的还是那一版，可家里的 CLI 与 Git 已经没了
+pub fn needs_setup(recorded: Option<&str>, mark: &str, fresh: bool) -> bool {
+    fresh || recorded != Some(mark)
+}
+
+/// 第 5 步：装着的能跑就用，不能跑就装，有新版就升；返回这次用的平台版本、这次装过没有
 async fn prepare_platform<R: Runtime>(
     app: &AppHandle<R>,
     shell: &Shell,
@@ -246,14 +283,14 @@ async fn prepare_platform<R: Runtime>(
     latest: Option<&Manifest>,
     me: Option<&Version>,
     too_old: bool,
-) -> Result<Version, Problem> {
+) -> Result<(Version, bool), Problem> {
     let floor = Version::parse(MIN_PLATFORM).expect("MIN_PLATFORM 是合法的版本");
     let installed =
         install::installed_version(&shell.sup, &shell.cli.path, overlay, &shell.tmp).await;
     let decided = plan(installed.as_ref(), latest.map(|m| &m.version), me, &floor);
     log::info!("platform.plan installed={installed:?} plan={decided:?}");
     let (version, required) = match decided {
-        Plan::Ready => return remember(shell, installed),
+        Plan::Ready => return kept(shell, installed),
         Plan::NoTarget if too_old => {
             return Err(Problem::retry(
                 "桌面 App 要先更新到新版，更新没装上：连上网再点重试",
@@ -265,7 +302,7 @@ async fn prepare_platform<R: Runtime>(
     let dist = match &shell.dist {
         Ok(dist) => dist,
         Err(reason) if required => return Err(Problem::retry(reason.clone())),
-        Err(_) => return remember(shell, installed),
+        Err(_) => return kept(shell, installed),
     };
     // 只跑签过的脚本：最新的那份就是这一版就用它，否则（预发布的外壳装自己那一版）取这一版自己那份
     let target = match latest {
@@ -281,7 +318,7 @@ async fn prepare_platform<R: Runtime>(
             }
             Err(reason) => {
                 log::warn!("platform.upgrade_skipped reason={reason}");
-                return remember(shell, installed);
+                return kept(shell, installed);
             }
         },
     };
@@ -304,20 +341,26 @@ async fn prepare_platform<R: Runtime>(
         (Installed::Done, _) => {
             let now =
                 install::installed_version(&shell.sup, &shell.cli.path, overlay, &shell.tmp).await;
-            match now.filter(|v| v.meets(&floor)) {
+            let usable = match now.filter(|v| v.meets(&floor)) {
                 Some(now) => remember(shell, Some(now)),
                 None if required => Err(Problem::retry("装完还是跑不起来：点重试，或打开日志看看")),
                 None => remember(shell, installed),
-            }
+            };
+            usable.map(|version| (version, true))
         }
         (Installed::Busy, true) => Err(Problem::retry(BUSY)),
         (Installed::Failed(why), true) => Err(Problem::retry(format!("平台没装上：{why}"))),
         // 可选的升级没成：这次照用旧版
         (outcome, false) => {
             log::warn!("platform.upgrade_skipped outcome={outcome:?}");
-            remember(shell, installed)
+            kept(shell, installed)
         }
     }
+}
+
+/// 这次没装：照用装着的
+fn kept(shell: &Shell, installed: Option<Version>) -> Result<(Version, bool), Problem> {
+    remember(shell, installed).map(|version| (version, false))
 }
 
 fn remember(shell: &Shell, installed: Option<Version>) -> Result<Version, Problem> {
@@ -404,8 +447,11 @@ pub async fn recheck<R: Runtime>(app: &AppHandle<R>) {
     if serve::turns(&shell.loopback, &url).await != Some(0) {
         return; // 有在跑的轮次，或问不到：这次不动
     }
-    let manifest = fetch_manifest(&shell, &updater_pubkey(app)).await;
+    let Some(manifest) = fetch_manifest(&shell, &updater_pubkey(app)).await else {
+        return; // 没取到不算查过，下次点回来再查
+    };
     shell.store.update(|r| r.checked_at = Some(now_secs()));
+    let manifest = Some(manifest);
     let installed = shell
         .installed
         .lock()
@@ -424,6 +470,10 @@ pub async fn recheck<R: Runtime>(app: &AppHandle<R>) {
             Plan::Install { .. }
         );
     if !newer && !shell_too_old(me.as_ref(), manifest.as_ref()) {
+        return;
+    }
+    // 取清单的这几秒里可能又开了一轮：停 serve 前再问一次
+    if serve::turns(&shell.loopback, &url).await != Some(0) {
         return;
     }
     log::info!("recheck.restart");
@@ -523,6 +573,55 @@ mod tests {
             "占位版本的外壳从不更新自己"
         );
         assert!(!shell_too_old(Some(&v("1.9.0")), None));
+    }
+
+    #[test]
+    fn setup_runs_again_for_a_new_home_and_after_any_install() {
+        let mark = setup_mark(&v("1.9.0"), std::path::Path::new("/h/.ai4sci"));
+        assert!(needs_setup(None, &mark, false), "没跑通过");
+        assert!(
+            !needs_setup(Some(&mark), &mark, false),
+            "这个家这一版跑通过"
+        );
+        assert!(
+            needs_setup(Some(&mark), &mark, true),
+            "删掉家重装同一版：记下的一样，可 CLI 已经没了"
+        );
+        let other = setup_mark(&v("1.9.0"), std::path::Path::new("/elsewhere"));
+        assert!(needs_setup(Some(&mark), &other, false), "换了家");
+        assert!(
+            needs_setup(Some("1.9.0"), &mark, false),
+            "旧格式（只有版本）当没跑过"
+        );
+    }
+
+    #[test]
+    fn installing_the_platform_does_not_see_the_cli_on_path() {
+        let cli = Cli {
+            path: PathBuf::from("/h/.ai4sci/bin/ai4sci"),
+            from_source: false,
+        };
+        let path_of = |o: &Overlay| {
+            let (_, path) = o.set.iter().find(|(k, _)| k == "PATH").unwrap();
+            std::env::split_paths(path).collect::<Vec<_>>()
+        };
+        let (install, rest) = overlays(&cli, Some(OsString::from("/usr/bin")), true);
+        assert_eq!(path_of(&install), vec![PathBuf::from("/usr/bin")]);
+        assert_eq!(
+            path_of(&rest),
+            vec![PathBuf::from("/h/.ai4sci/bin"), PathBuf::from("/usr/bin")]
+        );
+    }
+
+    #[test]
+    fn the_newest_manifest_seen_is_kept_per_dist() {
+        let dist = Url::parse("https://cdn.example/dist/").unwrap();
+        let other = Url::parse("file:///tmp/dist/").unwrap();
+        let mark = format!("1.9.2 {dist}");
+        assert_eq!(seen_manifest(Some(&mark), &dist), Some(v("1.9.2")));
+        assert_eq!(seen_manifest(Some(&mark), &other), None);
+        assert_eq!(seen_manifest(None, &dist), None);
+        assert_eq!(seen_manifest(Some("garbage"), &dist), None);
     }
 
     #[test]

@@ -90,6 +90,25 @@ pub async fn fetch(client: &reqwest::Client, dist: &Url, pubkey: &str) -> Result
     fetch_at(client, dist, pubkey).await
 }
 
+/// 取到的「最新」能不能信：签名只说明是我们签的，不说明是最新的。每一版（rc 也算）都有一份签过的
+/// `<版本>/platform.json`，能写桶的人把它或旧正式版的拷成最新的，验签照样过：最新的不会是预发布，
+/// 也不会比这个外壳见过的旧
+pub fn latest_ok(manifest: &Manifest, seen: Option<&Version>) -> Result<(), String> {
+    if manifest.version.is_prerelease() {
+        return Err(format!(
+            "最新的 {MANIFEST_NAME} 写的是预发布 {}",
+            manifest.version
+        ));
+    }
+    match seen {
+        Some(seen) if &manifest.version < seen => Err(format!(
+            "最新的 {MANIFEST_NAME} 写的是 {}，比见过的 {seen} 旧",
+            manifest.version
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// 某一版自己那份（预发布的外壳装它自己那一版时用）；清单里写的版本必须就是这一版
 pub async fn fetch_version(
     client: &reqwest::Client,
@@ -162,6 +181,29 @@ mod tests {
         );
         assert!(verify(BODY.as_bytes(), SIG, RELEASE_KEY).is_err());
         assert!(verify(BODY.as_bytes(), "not base64!", KEY).is_err());
+    }
+
+    #[test]
+    fn a_replayed_manifest_is_not_taken_as_the_latest() {
+        let manifest = |raw: &str| Manifest {
+            version: Version::parse(raw).unwrap(),
+            min_desktop: Version::parse("1.9.0").unwrap(),
+            install_sh: String::new(),
+            install_ps1: String::new(),
+            wheel: String::new(),
+        };
+        let seen = Version::parse("1.9.2").unwrap();
+        assert!(latest_ok(&manifest("1.9.2"), Some(&seen)).is_ok());
+        assert!(latest_ok(&manifest("1.10.0"), Some(&seen)).is_ok());
+        assert!(latest_ok(&manifest("1.9.0"), None).is_ok());
+        assert!(
+            latest_ok(&manifest("1.9.1"), Some(&seen)).is_err(),
+            "放回的旧正式版"
+        );
+        assert!(
+            latest_ok(&manifest("1.10.0rc1"), None).is_err(),
+            "拷过来的 rc"
+        );
     }
 
     #[test]

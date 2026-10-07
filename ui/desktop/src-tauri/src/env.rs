@@ -1,8 +1,9 @@
 //! 外壳给子进程的环境（spec §3）：在继承的环境上叠加，从不清空（Windows 要 `SystemRoot`、`ComSpec`）。
 //!
 //! PATH 最前是外壳实际起的那个 `ai4sci` 所在目录（装好的是家里的 `bin/`，源码桌面是仓里 `.venv` 的
-//! bin），装平台时 uv 的 sidecar 目录再排到它前面；后面接 Mac 上用户登录 shell 的 PATH（从访达、Dock
-//! 起的 App 只有系统缺省那几个目录）。外壳不记录传给子进程的环境。
+//! bin）；装平台那一次换成 uv 的 sidecar 目录，不放 `ai4sci` 的（见 `startup::overlays`）。后面接 Mac
+//! 上用户登录 shell 的 PATH（从访达、Dock 起的 App 只有系统缺省那几个目录）。外壳不记录传给子进程的
+//! 环境。
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};

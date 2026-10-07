@@ -43,6 +43,8 @@ async fn install<R: Runtime>(
     if let Err(error) = update.install(bytes) {
         shell.sup.reopen();
         shell.quitting.store(false, Ordering::SeqCst);
+        // Windows 上 on_before_exit 已经把窗口藏了，安装器却没起来（被杀毒软件拦下这类）：窗口拿回来
+        crate::window::bring_back(app);
         return Err(error.to_string());
     }
     app.request_restart();
@@ -80,7 +82,8 @@ pub async fn install_now<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     install(app, update, bytes).await
 }
 
-/// serve 起来以后：有新版就问「现在更新？」；点了先过退出前那一问，再下载、装、重启
+/// serve 起来以后：有新版就问「现在更新？」；点了就下载，装之前再过退出前那一问（下载的这几分钟里可能
+/// 又开了一轮），点了「等它回完」就等这一轮回完再装
 pub async fn offer<R: Runtime>(app: &AppHandle<R>) {
     let update = match check(app).await {
         Ok(Some(update)) => update,
@@ -92,8 +95,7 @@ pub async fn offer<R: Runtime>(app: &AppHandle<R>) {
     };
     log::info!("update.available version={}", update.version);
     let text = format!("桌面 App 有新版本 {}：现在更新？", update.version);
-    if !quit::ask(app, &text, "现在更新", "以后再说").await || !quit::may_interrupt(app).await
-    {
+    if !quit::ask(app, &text, "现在更新", "以后再说").await {
         return;
     }
     let bytes = match update.download(|_, _| {}, || {}).await {
@@ -104,6 +106,9 @@ pub async fn offer<R: Runtime>(app: &AppHandle<R>) {
             return;
         }
     };
+    while !quit::may_interrupt(app).await {
+        quit::until_idle(app).await;
+    }
     let shell = app.state::<Shell>();
     shell.splash.begin("正在更新桌面 App");
     crate::window::show_splash(app);

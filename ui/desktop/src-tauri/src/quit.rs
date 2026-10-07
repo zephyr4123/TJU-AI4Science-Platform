@@ -62,6 +62,21 @@ pub async fn may_interrupt<R: Runtime>(app: &AppHandle<R>) -> bool {
     }
 }
 
+/// 等到没有在跑的轮次（或 serve 不在了、问不到）
+pub async fn until_idle<R: Runtime>(app: &AppHandle<R>) {
+    const EVERY: std::time::Duration = std::time::Duration::from_secs(3);
+    loop {
+        let shell = app.state::<Shell>();
+        let Some((url, _)) = shell.serve() else {
+            return;
+        };
+        match serve::turns(&shell.loopback, &url).await {
+            Some(turns) if turns > 0 => tokio::time::sleep(EVERY).await,
+            _ => return,
+        }
+    }
+}
+
 /// 人要退出（菜单、Cmd+Q、Windows 关窗口）：问过了再退
 pub fn request<R: Runtime>(app: &AppHandle<R>) {
     let shell = app.state::<Shell>();
