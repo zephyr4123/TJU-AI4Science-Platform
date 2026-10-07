@@ -17,16 +17,18 @@ from __future__ import annotations
 import importlib
 import json
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 __all__ = ["RunResult", "Runner", "ChatEvent", "Choice", "Tuning", "Knobs", "Chat", "AgentProbe",
-           "Usage", "Price", "Provider", "Link", "OFFICIAL", "CUSTOM", "KeyMissing",
-           "BackendNotFound", "get_backend", "get_chat", "probe", "login_command", "logout_command",
-           "read_usage", "price", "prices", "providers", "provider_of", "available_backends"]
+           "Usage", "Price", "Provider", "Link", "Dist", "Install", "OFFICIAL", "CUSTOM",
+           "INSTALLED_ITEM", "VERSION_ITEM", "LOGIN_ITEM",
+           "KeyMissing", "BackendNotFound", "get_backend", "get_chat", "probe", "login_command",
+           "logout_command", "install_of", "read_usage", "price", "prices", "providers",
+           "provider_of", "available_backends"]
 
 
 @dataclass
@@ -90,7 +92,10 @@ class Price:
 # 供应商里两个特殊的名字：官方登录（订阅，不要 key）与自定义（人填地址与模型名）
 OFFICIAL = "official"
 CUSTOM = "custom"
-LOGIN_ITEM = "登录"  # 自检里登录那一项的名字（`AgentProbe`）
+# 自检里的几项（`AgentProbe`）：框架按名字给没过的那项补上怎么办（`framework/agents.py`）
+INSTALLED_ITEM = "装了没"
+VERSION_ITEM = "版本"
+LOGIN_ITEM = "登录"
 CATALOG_DIR = Path(__file__).parent / "catalog"
 
 
@@ -137,7 +142,8 @@ class Link:
     `~/.claude` `~/.codex`——平台的家由框架管（`framework/paths.py`），清除时整个删。
     `provider` 是用谁的模型（这家 `PROVIDERS` 里的名字，或 `custom`），`key` 是框架从平台的家里
     读出来的那把（官方登录是 None）；自定义的还带地址与模型名。适配器只把 key 交给它起的那一个
-    子进程，不读用户 shell 里的。
+    子进程，不读用户 shell 里的。`cli` 是起哪一份程序：平台的家里装的那份的全路径（外层 #277），
+    None 是用 PATH 上的（`Install.command`）。
     """
 
     home: Path
@@ -145,6 +151,36 @@ class Link:
     key: str | None = None
     base_url: str = ""
     models: tuple[str, ...] = ()
+    cli: str | None = None
+
+
+@dataclass(frozen=True)
+class Dist:
+    """一家 CLI 的原生程序在 npm 上的哪个包里（外层 #277）：取元数据与 tgz 的包名、那个包里的
+    版本号、tgz 里要留下的目录（npm 的 tgz 都以 `package/` 开头）、程序相对那个目录的位置。"""
+
+    package: str
+    version: str
+    root: str
+    entry: str
+
+
+@dataclass(frozen=True)
+class Install:
+    """怎么认、怎么装这家 CLI（外层 #277 onboarding）。
+
+    `command` 是 PATH 上的名字；`min_version` 以下平台不用（`probe` 的「版本」那一项也照它）；
+    `npm` 是主包，最新版本号从它取；`dist(平台, 版本)` 说原生程序在哪个包里，平台是 npm 的写法
+    （`darwin-arm64`、`win32-x64`；Windows 的槽位就在这一段，#210）。两家的原生程序都按平台单独
+    发包，npmmirror 上与 npmjs 同版本、不要 Node（2026-10-07 实测）。适配器只说事实，下载、校验、
+    解包到平台的家里是框架的事（`framework/toolchain.py`）。
+    """
+
+    command: str
+    min_version: tuple[int, ...]
+    npm: str
+    parse_version: Callable[[str], tuple[int, ...] | None]
+    dist: Callable[[str, str], Dist]
 
 
 class KeyMissing(ValueError):
@@ -338,9 +374,9 @@ class Chat(Protocol):
 
 @dataclass
 class AgentProbe:
-    """自检一家 CLI 的结果（纲领 P-25 四句人话）：一项一行（名字、过没过、一句话给人看）。登录那一项
-    叫 `LOGIN_ITEM`：官方登录没登上只报事实，人该敲哪条命令由框架补（它知道服务是哪一份安装，
-    外层 #274）。
+    """自检一家 CLI 的结果（纲领 P-25 四句人话）：一项一行（名字、过没过、一句话给人看）。没装、版本
+    不够、官方登录没登上（`INSTALLED_ITEM` `VERSION_ITEM` `LOGIN_ITEM`）只报事实，人该敲哪条命令由
+    框架补（它知道服务是哪一份安装，外层 #274 / #277）。
 
     不过也不抛：`ai4sci agent check` 要把整张报告打给人看，不过关只报告不拒绝保留（同算力）。
     `version` 是 `--version` 读到的原文；`spoke_s` 是说一句话花的秒数（没说成是 NaN）；
@@ -428,6 +464,14 @@ def login_command(name: str, link: Link) -> tuple[list[str], dict[str, str]]:
 def logout_command(name: str, link: Link) -> tuple[list[str], dict[str, str]]:
     """登出平台家里这家的官方账号：清除家之前跑，钥匙串里不留平台那条。"""
     return _module(name, "agent ").logout_command(link)
+
+
+def install_of(name: str) -> Install:
+    """怎么认、怎么装这家 CLI（外层 #277）：模块级 `INSTALL`。"""
+    module = _module(name, "agent ")
+    found = getattr(module, "INSTALL", None)
+    assert isinstance(found, Install), f"后端 {name!r} 没有 INSTALL：平台不知道怎么认、怎么装它"
+    return found
 
 
 def read_usage(events: list[dict]) -> tuple[str, Usage] | None:

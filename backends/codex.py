@@ -87,11 +87,15 @@ from pathlib import Path
 from backends import (
     CATALOG_DIR,
     CUSTOM,
+    INSTALLED_ITEM,
     LOGIN_ITEM,
     OFFICIAL,
+    VERSION_ITEM,
     AgentProbe,
     ChatEvent,
     Choice,
+    Dist,
+    Install,
     KeyMissing,
     Knobs,
     Link,
@@ -108,8 +112,8 @@ __all__ = ["CodexRunner", "CodexChat", "MODELS", "EFFORTS", "PROVIDERS", "PRICED
            "provider", "connect_config",
            "codex_home", "write_rules", "build_env", "config_args", "skill_off_paths", "toml_str",
            "tool_guide", "chat_tool_guide", "parse_events", "Translator", "final_report", "usage",
-           "probe", "parse_version", "make_runner", "make_chat", "login_command",
-           "logout_command"]
+           "probe", "parse_version", "npm_dist", "INSTALL", "make_runner", "make_chat",
+           "login_command", "logout_command"]
 
 NAME = "codex"
 HOME_ENV = "CODEX_HOME"
@@ -217,6 +221,27 @@ def parse_version(text: str) -> tuple[int, ...] | None:
     if len(parts) < 3 or not all(p.isdigit() for p in parts[:3]):
         return None
     return tuple(int(p) for p in parts[:3])
+
+
+# npm 的平台名 → Codex 程序包里 vendor/ 下的目录名（照 0.160.1 的 bin/codex.js；Linux 只发 musl 版）
+TRIPLES = {"darwin-arm64": "aarch64-apple-darwin", "darwin-x64": "x86_64-apple-darwin",
+           "linux-x64": "x86_64-unknown-linux-musl", "linux-arm64": "aarch64-unknown-linux-musl",
+           "win32-x64": "x86_64-pc-windows-msvc", "win32-arm64": "aarch64-pc-windows-msvc"}
+
+
+def npm_dist(platform: str, version: str) -> Dist:
+    """原生程序在主包的平台版本里（`@openai/codex@<版本>-<平台>`）。`vendor/<三元组>/` 整个留下：
+    除了 `bin/codex` 还有它找的 `codex-path/rg` 与 `codex-resources/`，按 `codex-package.json` 的
+    布局、相对程序自己的位置找（0.160.1 实测）。"""
+    if platform not in TRIPLES:
+        raise ValueError(f"Codex 没有 {platform} 的程序包；有：{', '.join(TRIPLES)}")
+    exe = "codex.exe" if platform.startswith("win32") else "codex"
+    return Dist(package=INSTALL.npm, version=f"{version}-{platform}",
+                root=f"package/vendor/{TRIPLES[platform]}", entry=f"bin/{exe}")
+
+
+INSTALL = Install(command="codex", min_version=MIN_VERSION, npm="@openai/codex",
+                  parse_version=parse_version, dist=npm_dist)
 
 
 def toml_str(text: str) -> str:
@@ -423,9 +448,9 @@ def _write_stdin(proc: subprocess.Popen, text: str) -> None:
 class CodexRunner:
     name = NAME
 
-    def __init__(self, link: Link, cli: str = "codex") -> None:
+    def __init__(self, link: Link) -> None:
         self.link = link
-        self.cli = cli
+        self.cli = link.cli or INSTALL.command
 
     @staticmethod
     def tool_guide(bash_rules: tuple[str, ...]) -> str:
@@ -589,9 +614,9 @@ class CodexChat:
     name = NAME
     cost_reporting = "turn"
 
-    def __init__(self, link: Link, cli: str = "codex") -> None:
+    def __init__(self, link: Link) -> None:
         self.link = link
-        self.cli = cli
+        self.cli = link.cli or INSTALL.command
 
     def knobs(self) -> Knobs:
         """有哪些模型、哪几档思考深度、起点：跟着供应商走（外层 #266）。"""
@@ -688,31 +713,32 @@ class CodexChat:
                             duration_s=time.monotonic() - started, raw={"stderr_tail": tail})
 
 
-def probe(link: Link, cli: str = "codex", speak_timeout_s: float = 120.0) -> AgentProbe:
+def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
     """四句人话（纲领 P-25）：装了没、版本够不够、登录了没、能不能说话。
 
     登录看 `codex login status` 的退出码（0 / 1，文字在 stderr），在平台的 CODEX_HOME 下跑——问的是
     平台自己的登录，不是用户本机的；说话真跑一句 pong，走与真会话同一组隔离参数。
     """
     result = AgentProbe()
+    cli = link.cli or INSTALL.command
     exe = shutil.which(cli)
     if exe is None:
-        result.items.append(("装了没", False, f"找不到 `{cli}`：装 Codex CLI 后再检查"))
+        result.items.append((INSTALLED_ITEM, False, f"找不到 `{cli}`"))
         return result
     result.installed = True
-    result.items.append(("装了没", True, exe))
+    result.items.append((INSTALLED_ITEM, True, exe))
     version = subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=30)
     raw = (version.stdout or version.stderr).strip()
     result.version = raw
     parsed = parse_version(raw)
     want = ".".join(map(str, MIN_VERSION))
     if version.returncode != 0 or parsed is None:
-        result.items.append(("版本", False, f"`{cli} --version` 认不出：{raw or '无输出'}"))
+        result.items.append((VERSION_ITEM, False, f"`{cli} --version` 认不出：{raw or '无输出'}"))
         return result
     if parsed < MIN_VERSION:
-        result.items.append(("版本", False, f"{raw}，要 ≥ {want}（这版实测过的 flag）"))
+        result.items.append((VERSION_ITEM, False, f"{raw}，要 ≥ {want}（这版实测过的 flag）"))
         return result
-    result.items.append(("版本", True, raw))
+    result.items.append((VERSION_ITEM, True, raw))
     home = codex_home(link, "chat")
     picked = provider(link)
     if picked.key is None:  # 官方登录：问平台私有目录里的登录，不是用户本机的
@@ -761,15 +787,15 @@ def probe(link: Link, cli: str = "codex", speak_timeout_s: float = 120.0) -> Age
     return result
 
 
-def login_command(link: Link, cli: str = "codex") -> tuple[list[str], dict[str, str]]:
+def login_command(link: Link) -> tuple[list[str], dict[str, str]]:
     """在平台的 CODEX_HOME 里登录 ChatGPT：CLI 自己开浏览器授权，`auth.json` 落在那里
     （外层 #263）。"""
-    return [cli, "login"], build_env(600.0, codex_home(link, "chat"), link)
+    return [link.cli or INSTALL.command, "login"], build_env(600.0, codex_home(link, "chat"), link)
 
 
-def logout_command(link: Link, cli: str = "codex") -> tuple[list[str], dict[str, str]]:
+def logout_command(link: Link) -> tuple[list[str], dict[str, str]]:
     """登出平台 CODEX_HOME 里的登录（删 `auth.json`）。"""
-    return [cli, "logout"], build_env(60.0, codex_home(link, "chat"), link)
+    return [link.cli or INSTALL.command, "logout"], build_env(60.0, codex_home(link, "chat"), link)
 
 
 def make_runner(link: Link) -> CodexRunner:

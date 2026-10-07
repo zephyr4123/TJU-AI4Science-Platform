@@ -12,6 +12,7 @@ import math
 import os
 import stat
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -347,9 +348,9 @@ def test_runner_run_reports_changed_files_report_and_nan_cost(link: Link, home: 
     cli = _fake_codex(tmp_path / "bin")
     cwd = tmp_path / "pack"
     (cwd / "out").mkdir(parents=True)
-    result = cx.CodexRunner(link, cli=str(cli)).run("写点东西", cwd, 30, [cwd / "out"],
-                                                    ("ai4sci skill",),
-                                                    tuning=Tuning(model="gpt-6-luna"))
+    result = cx.CodexRunner(replace(link, cli=str(cli))).run("写点东西", cwd, 30, [cwd / "out"],
+                                                           ("ai4sci skill",),
+                                                           tuning=Tuning(model="gpt-6-luna"))
     assert result.exit_code == 0 and not result.timed_out
     assert result.changed_files == ["out/hello.txt"]  # 框架自己的快照 diff，不信 CLI 自报
     assert result.report == "pong" and math.isnan(result.cost_usd) and result.duration_s > 0
@@ -365,7 +366,7 @@ def test_runner_run_reports_changed_files_report_and_nan_cost(link: Link, home: 
 
 def test_probe_walks_the_four_questions(link: Link, home: Path, tmp_path):
     cli = _fake_codex(tmp_path / "bin")
-    result = cx.probe(link, cli=str(cli))
+    result = cx.probe(replace(link, cli=str(cli)))
     assert isinstance(result, AgentProbe) and result.ok and result.installed and result.logged_in
     assert result.version == "codex-cli 0.160.0" and result.spoke_s > 0
     # 报不出美元：照价目折算（外层 #266；订阅也按 API 公开价算，不是实扣）
@@ -377,25 +378,26 @@ def test_probe_walks_the_four_questions(link: Link, home: Path, tmp_path):
     assert doc["items"][3]["name"] == "说话"
 
     stale = _fake_codex(tmp_path / "old", version="codex-cli 0.147.0")
-    result = cx.probe(link, cli=str(stale))
+    result = cx.probe(replace(link, cli=str(stale)))
     assert not result.ok and [ok for _, ok, _ in result.items] == [True, False]
     assert "要 ≥ 0.160.0" in result.items[1][2]
 
     logged_out = _fake_codex(tmp_path / "out", logged_in=False)
-    result = cx.probe(link, cli=str(logged_out))
+    result = cx.probe(replace(link, cli=str(logged_out)))
     assert not result.ok and not result.logged_in
     # 只报事实；人该敲哪一份 ai4sci 由框架补（外层 #274）
     assert result.items[2][2].endswith("平台里还没登录") and "ai4sci" not in result.items[2][2]
 
-    missing = cx.probe(link, cli=str(tmp_path / "nope" / "codex"))
-    assert not missing.installed and not missing.ok and "装 Codex CLI" in missing.items[0][2]
+    missing = cx.probe(replace(link, cli=str(tmp_path / "nope" / "codex")))
+    # 只报事实；装上它的命令由框架补（外层 #277）
+    assert not missing.installed and not missing.ok and "找不到" in missing.items[0][2]
 
 
 def test_probe_is_reachable_through_the_port(link: Link, home: Path, monkeypatch, tmp_path):
     """`backends.probe("codex")` 调的是模块级 `probe()`：形状对不上要在端口那层炸。"""
     cli = _fake_codex(tmp_path / "bin")
     real = cx.probe
-    monkeypatch.setattr(cx, "probe", lambda lk: real(lk, cli=str(cli)))
+    monkeypatch.setattr(cx, "probe", lambda lk: real(replace(lk, cli=str(cli))))
     assert probe_backend("codex", link).ok
     monkeypatch.setattr(cx, "probe", lambda lk: "nope")
     with pytest.raises(AssertionError, match="没有返回 AgentProbe"):
@@ -529,7 +531,7 @@ def test_web_search_is_registered_per_provider_from_the_official_docs():
 
 
 def test_codex_with_a_missing_key_says_so_instead_of_starting(link, tmp_path):
-    events = list(cx.CodexChat(Link(home=link.home, provider="kimi"), cli="/nonexistent")
+    events = list(cx.CodexChat(Link(home=link.home, provider="kimi", cli="/nonexistent"))
                   .turn("hi", tmp_path, 5, session_id=None, system_prompt="", allowed_paths=[],
                         bash_rules=()))
     assert [e.kind for e in events] == ["error"] and "Kimi 的 key 还没填" in events[0].text

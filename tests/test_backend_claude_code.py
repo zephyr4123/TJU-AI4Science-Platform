@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -343,7 +344,7 @@ def test_run_drains_stderr_instead_of_deadlocking(tmp_path: Path):
     fake.chmod(0o755)
     cwd = tmp_path / "work"
     cwd.mkdir()
-    runner = ClaudeCodeRunner(LINK, cli=str(fake))
+    runner = ClaudeCodeRunner(replace(LINK, cli=str(fake)))
     result = runner.run("noop", cwd=cwd, timeout_s=10.0, allowed_paths=[cwd])
     assert result.timed_out is False
     assert result.cost_usd == 0.01
@@ -702,7 +703,7 @@ def test_a_missing_key_says_where_to_fill_it_instead_of_starting_the_cli():
 
     with pytest.raises(KeyMissing, match="DeepSeek 的 key 还没填"):
         key_args(Link(home=HOME, provider="deepseek"))
-    events = list(ClaudeCodeChat(Link(home=HOME, provider="deepseek"), cli="/nonexistent")
+    events = list(ClaudeCodeChat(Link(home=HOME, provider="deepseek", cli="/nonexistent"))
                   .turn("hi", Path("/tmp"), 5, session_id=None, system_prompt="",
                         allowed_paths=[], bash_rules=()))
     assert [e.kind for e in events] == ["error"] and "设置" in events[0].text
@@ -780,11 +781,11 @@ def test_third_party_turn_cost_is_left_for_the_price_table(tmp_path):
     fake = tmp_path / "claude"
     fake.write_text("#!/bin/sh\necho '" + json.dumps(_RESULT) + "'\n", encoding="utf-8")
     fake.chmod(0o755)
-    third = ClaudeCodeChat(Link(home=tmp_path, provider="deepseek", key="sk"), cli=str(fake))
+    third = ClaudeCodeChat(Link(home=tmp_path, provider="deepseek", key="sk", cli=str(fake)))
     done = [e for e in third.turn("hi", tmp_path, 10, session_id=None, system_prompt="",
                                   allowed_paths=[], bash_rules=()) if e.kind == "done"]
     assert len(done) == 1 and math.isnan(done[0].cost_usd)
-    own = ClaudeCodeChat(Link(home=tmp_path), cli=str(fake))
+    own = ClaudeCodeChat(Link(home=tmp_path, cli=str(fake)))
     done = [e for e in own.turn("hi", tmp_path, 10, session_id=None, system_prompt="",
                                 allowed_paths=[], bash_rules=()) if e.kind == "done"]
     assert done[0].cost_usd == pytest.approx(1.2065)

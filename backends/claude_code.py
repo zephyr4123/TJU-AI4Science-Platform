@@ -37,11 +37,15 @@ from pathlib import Path
 
 from backends import (
     CUSTOM,
+    INSTALLED_ITEM,
     LOGIN_ITEM,
     OFFICIAL,
+    VERSION_ITEM,
     AgentProbe,
     ChatEvent,
     Choice,
+    Dist,
+    Install,
     KeyMissing,
     Knobs,
     Link,
@@ -57,7 +61,8 @@ from backends._snapshot import diff, snapshot
 __all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "MODELS", "EFFORTS", "THIRD_EFFORTS", "PROVIDERS",
            "PRICED", "LONG_CONTEXT", "provider", "connect_env", "model_arg",
            "WEB_TOOLS", "usage", "build_env", "bash_rule", "tool_guide", "parse_events",
-           "final_metrics", "final_report", "kill_tree", "probe", "parse_version", "make_runner",
+           "final_metrics", "final_report", "kill_tree", "probe", "parse_version", "npm_dist",
+           "INSTALL", "make_runner",
            "make_chat", "login_command", "logout_command", "session_dirname"]
 
 NAME = "claude_code"
@@ -262,6 +267,7 @@ def build_env(timeout_s: float, link: Link, chat_id: str | None = None) -> dict[
     全部后台机制，并把 Bash 超时抬到与本轮超时一样长——唯一会杀它的只有我们自己的定时器。
     `chat_id` 只有协调层有：agent 调用的命令从环境里知道自己属于哪段对话，`--detach` 的作业记下它，
     跑完叫醒（外层 #63）；不给就不留上一段的。
+    关自动更新（外层 #277）：它会去国外的存储桶取新版本，国内取不到；版本由 `ai4sci setup` 管。
     关自动记忆（外层 #222）：`--setting-sources ""` 挡得住 CLAUDE.md，挡不住 CLI 的自动记忆——会话
     所在仓库若被这个人用 Claude Code 开过，他的记忆索引
     （`~/.claude/projects/<仓库>/memory/MEMORY.md`）连同记忆的用法说明整段进了平台的会话：
@@ -275,7 +281,7 @@ def build_env(timeout_s: float, link: Link, chat_id: str | None = None) -> dict[
     env = {**inherited, **connect_env(link), "PATH": path, CONFIG_DIR_ENV: str(link.home),
            "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
            "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis,
-           "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
+           "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "DISABLE_AUTOUPDATER": "1"}
     env.pop(CHAT_ID_ENV, None)
     if chat_id:
         env[CHAT_ID_ENV] = chat_id
@@ -291,9 +297,9 @@ def _abs_glob(path: Path) -> str:
 class ClaudeCodeRunner:
     name = NAME
 
-    def __init__(self, link: Link, cli: str = "claude") -> None:
+    def __init__(self, link: Link) -> None:
         self.link = link
-        self.cli = cli
+        self.cli = link.cli or INSTALL.command
 
     @staticmethod
     def tool_guide(bash_rules: tuple[str, ...]) -> str:
@@ -472,9 +478,9 @@ class ClaudeCodeChat:
     name = NAME
     cost_reporting = "session"
 
-    def __init__(self, link: Link, cli: str = "claude") -> None:
+    def __init__(self, link: Link) -> None:
         self.link = link
-        self.cli = cli
+        self.cli = link.cli or INSTALL.command
 
     def knobs(self) -> Knobs:
         """有哪些模型、哪几档思考深度，以及起点（按人的设置里没填这家时用；P-25）：跟着供应商走。"""
@@ -662,7 +668,24 @@ def parse_version(text: str) -> tuple[int, ...] | None:
     return tuple(int(p) for p in parts[:3])
 
 
-def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> AgentProbe:
+# 有原生程序包的平台（npm 的写法；照 2.1.292 主包 install.cjs 的表，Linux 取 glibc 那一版）
+PLATFORMS = ("darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64", "win32-x64", "win32-arm64")
+
+
+def npm_dist(platform: str, version: str) -> Dist:
+    """原生程序每个平台单独一个包（`@anthropic-ai/claude-code-<平台>`），版本号与主包同步，包里就一个
+    程序（2.1.292 实测：主包的 postinstall 只是把它从这个包里拷出来，不出网）。"""
+    if platform not in PLATFORMS:
+        raise ValueError(f"Claude Code 没有 {platform} 的程序包；有：{', '.join(PLATFORMS)}")
+    exe = "claude.exe" if platform.startswith("win32") else "claude"
+    return Dist(package=f"{INSTALL.npm}-{platform}", version=version, root="package", entry=exe)
+
+
+INSTALL = Install(command="claude", min_version=MIN_VERSION, npm="@anthropic-ai/claude-code",
+                  parse_version=parse_version, dist=npm_dist)
+
+
+def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
     """四句人话（纲领 P-25）：装了没、版本够不够、登录了没、能不能说话。
 
     登录看 `claude auth status`（实测 2.1.278 打一份 JSON，`loggedIn` 布尔）；说话是真跑一句 pong，
@@ -670,24 +693,25 @@ def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> Ag
     没有版本，没登录说不了话），但每一步都留一行给人看。
     """
     result = AgentProbe()
+    cli = link.cli or INSTALL.command
     exe = shutil.which(cli)
     if exe is None:
-        result.items.append(("装了没", False, f"找不到 `{cli}`：装 Claude Code 后再检查"))
+        result.items.append((INSTALLED_ITEM, False, f"找不到 `{cli}`"))
         return result
     result.installed = True
-    result.items.append(("装了没", True, exe))
+    result.items.append((INSTALLED_ITEM, True, exe))
     version = subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=30)
     raw = (version.stdout or version.stderr).strip()
     result.version = raw
     parsed = parse_version(raw)
     want = ".".join(map(str, MIN_VERSION))
     if version.returncode != 0 or parsed is None:
-        result.items.append(("版本", False, f"`{cli} --version` 认不出：{raw or '无输出'}"))
+        result.items.append((VERSION_ITEM, False, f"`{cli} --version` 认不出：{raw or '无输出'}"))
         return result
     if parsed < MIN_VERSION:
-        result.items.append(("版本", False, f"{raw}，要 ≥ {want}（`--effort` 与隔离参数）"))
+        result.items.append((VERSION_ITEM, False, f"{raw}，要 ≥ {want}（`--effort` 与隔离参数）"))
         return result
-    result.items.append(("版本", True, raw))
+    result.items.append((VERSION_ITEM, True, raw))
     picked = provider(link)
     if picked.key is None:  # 官方订阅：问平台私有目录里的登录，不是用户本机的
         status = subprocess.run([cli, "auth", "status"], capture_output=True, text=True,
@@ -745,14 +769,14 @@ def session_dirname(cwd: Path) -> str:
     return re.sub(r"[^A-Za-z0-9]", "-", str(cwd.resolve()))
 
 
-def login_command(link: Link, cli: str = "claude") -> tuple[list[str], dict[str, str]]:
+def login_command(link: Link) -> tuple[list[str], dict[str, str]]:
     """在平台的配置目录里登录 Claude 订阅：CLI 自己开浏览器授权（外层 #263）。"""
-    return [cli, "auth", "login", "--claudeai"], build_env(600.0, link)
+    return [link.cli or INSTALL.command, "auth", "login", "--claudeai"], build_env(600.0, link)
 
 
-def logout_command(link: Link, cli: str = "claude") -> tuple[list[str], dict[str, str]]:
+def logout_command(link: Link) -> tuple[list[str], dict[str, str]]:
     """登出平台配置目录里的登录：凭据在系统钥匙串里、按配置目录分开，清除家之前要先登出。"""
-    return [cli, "auth", "logout"], build_env(60.0, link)
+    return [link.cli or INSTALL.command, "auth", "logout"], build_env(60.0, link)
 
 
 def make_runner(link: Link) -> ClaudeCodeRunner:
