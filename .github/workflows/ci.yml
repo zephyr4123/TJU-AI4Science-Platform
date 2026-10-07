@@ -50,3 +50,44 @@ jobs:
         run: |
           uv sync --locked
           uv run pytest
+
+  # 桌面 App 的外壳（ui/desktop，外层 #282）：门禁就是本地的 make desktop-check（npm run check：准备
+  # 图标与 sidecar、fmt、clippy、cargo test 含真起仓里 .venv 的 ai4sci serve）。Mac 与 Windows 两边都跑：
+  # 进程树怎么收拾按系统分，一边的 clippy 看不到另一边。不用 paths 过滤：被过滤掉的必过检查会一直停在
+  # Pending，PR 合不进去
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      UV_DEFAULT_INDEX: https://pypi.org/simple
+      UV_PYTHON_INSTALL_MIRROR: https://github.com/astral-sh/python-build-standalone/releases/download
+    steps:
+      - run: git config --global core.autocrlf false   # 与 windows 作业一样按仓里的 LF 检出
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      # 外壳的集成测试用仓里 .venv 的 ai4sci；准备构建输入时把 .venv 里的 uv 拷成 sidecar
+      - run: uv sync --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ui/desktop/src-tauri -> target
+      - run: npm ci --no-audit --no-fund
+        working-directory: ui/desktop
+      - name: 外壳的门禁（与本地 make desktop-check 相同）
+        run: npm run check
+        working-directory: ui/desktop
