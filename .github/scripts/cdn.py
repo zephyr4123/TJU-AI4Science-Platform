@@ -3,36 +3,66 @@
 # dependencies = [
 #     "cos-python-sdk-v5==1.9.44",
 #     "tencentcloud-sdk-python-cdn==3.1.169",
+#     "cryptography==50.0.2",
 # ]
 # ///
-"""cdn.py X.Y.Z —— 把一行命令要取的东西传到腾讯云 CDN（外层 #277）。
+"""cdn.py wheel|desktop vX.Y.Z —— 把一行命令与桌面 App 要取的东西传到腾讯云 CDN（外层 #277 #282）。
 
 一行命令（`install/install.sh`）全程国内源：平台的 wheel、安装脚本、uv 的发布包都从我们自己的 CDN 取
 （Claude Code 闭源不转发，平台装它时从 npmmirror 取）。发版流水线在 `make package` 之后跑这一步：
 
     ai4science/dist/<版本>/ai4sci-<版本>-py3-none-any.whl(.sha256)   不可变，长缓存
-    ai4science/dist/<版本>/install.sh                                  钉版本装
+    ai4science/dist/<版本>/install.sh、install.ps1                     钉版本装（桌面 App 也用）
     ai4science/dist/uv/<uv 版本>/uv-<平台>.tar.gz|zip(.sha256)          uv 官方发布包的原样副本
     ai4science/dist/install.sh、install.ps1                            最新版；短缓存，传完刷 CDN
+    ai4science/dist/platform.json(.sig)                                最新版与安装件的 sha256
 
-预发布（-rc.N）只传带版本号的，不动最新那两份。uv 的版本照 uv.lock（平台依赖的那一版），从 GitHub
-取、对它自己的 .sha256。凭据从环境变量来（TENCENTCLOUD_SECRET_ID / _KEY，CI 里是 secrets，只能写
-这个前缀、能刷 CDN 的子账号）；`--prefix` 换前缀先在测试目录里真验一遍，`--dry-run` 只列不传。
+<版本> 是 wheel 文件名里的 PEP 440 写法：tag `v1.9.0-rc.1` 出的是 `1.9.0rc1`（spec §3）。预发布只传
+带版本号的，不动最新的那几份。uv 的版本照 uv.lock（平台依赖的那一版），从 GitHub 取、对它自己的
+.sha256。
+
+`desktop` 在桌面包构建完之后跑，传 tauri build 的产物（spec §7，<版本> 是 tag 的 SemVer 写法）：
+
+    ai4science/dist/desktop/<版本>/AAAI4S_<版本>_universal.dmg         给人下载
+    ai4science/dist/desktop/<版本>/AAAI4S.app.tar.gz(.sig)             Mac 外壳的更新
+    ai4science/dist/desktop/<版本>/AAAI4S_<版本>_x64-setup.exe(.sig)   给人下载，也是 Windows 的更新
+    ai4science/dist/desktop/AAAI4S.dmg、AAAI4S-setup.exe             固定的下载地址，正式版每次换
+    ai4science/dist/desktop/latest.json                              更新器读的清单，外壳改过才改写
+
+凭据从环境变量来（TENCENTCLOUD_SECRET_ID / _KEY，CI 里是 secrets，只能写这个前缀、能刷 CDN 的
+子账号）；签名的 key 也是（TAURI_SIGNING_PRIVATE_KEY / _PASSWORD）。`--prefix` 换前缀先在测试目录
+里真验一遍，`--dry-run` 只列不传、不签。
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
+import json
 import os
 import re
+import runpy
+import socket
+import ssl
+import subprocess
 import sys
 import tempfile
+import time
 import tomllib
+import urllib.error
+import urllib.parse
 import urllib.request
-from pathlib import Path
+from collections.abc import Callable
+from datetime import UTC, datetime
+from functools import partial
+from pathlib import Path, PurePosixPath
+from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parents[2]
+PACKAGES = ROOT / "dist"  # make package 出的包
+# 后端要求的最低外壳版本，写进 platform.json（外层 #282）；PEP 723 的环境里没装平台，照文件读
+MIN_DESKTOP = runpy.run_path(str(ROOT / "framework" / "desktop.py"))["MIN_DESKTOP"]
 BUCKET = os.environ.get("COS_BUCKET", "zephyr-media-1322280257")
 REGION = os.environ.get("COS_REGION", "ap-shanghai")
 CDN = os.environ.get("CDN_BASE", "https://media.zephyrxiang.com")
@@ -43,8 +73,37 @@ UV_ARCHIVES = ("aarch64-apple-darwin.tar.gz", "x86_64-apple-darwin.tar.gz",
                "x86_64-pc-windows-msvc.zip", "aarch64-pc-windows-msvc.zip")
 IMMUTABLE = "public, max-age=31536000, immutable"
 LATEST = "public, max-age=300"
-TYPES = {".whl": "application/zip", ".gz": "application/gzip", ".zip": "application/zip"}
+# Content-Type 照对象键的后缀；没列的（.sh .ps1 .sha256 .sig）是文本。浏览器照它决定显示还是存下来
+TYPES = {".whl": "application/zip", ".gz": "application/gzip", ".zip": "application/zip",
+         ".dmg": "application/x-apple-diskimage",
+         ".exe": "application/vnd.microsoft.portable-executable", ".json": "application/json"}
 TEXT = "text/plain; charset=utf-8"
+# 每个对象传的时候记下 sha256：重跑时判断桶里那份是不是同一份（外层 #282）
+META_SHA256 = "x-cos-meta-sha256"
+# 美国的 runner 往上海的桶分片上传，偶尔有分片重试到 SDK 的上限仍失败（1.8.0，外层 #281）；SDK 说
+# 「please upload_file again」：再调一次从断点续传
+UPLOAD_TRIES = 4
+UPLOAD_WAIT_S = 10
+# CDN 的证书剩不到这么多天就不发版：过期了一行命令的安装与外壳的更新都会断（spec §7）
+CERT_DAYS = 30
+
+# 桌面 App（外层 #282，spec §7）。外壳内置的更新器公钥在 tauri.conf.json（spec §3 冻结），
+# platform.json 与外壳的更新包都用这一对 key 签
+TAURI_CONF = ROOT / "ui" / "desktop" / "src-tauri" / "tauri.conf.json"
+# tauri build 的产物按结尾认（不管 productName 写成什么）→ desktop/<版本>/ 里的名字；{v} 是 SemVer
+SHELL_FILES = (("_{v}_universal.dmg", "AAAI4S_{v}_universal.dmg"),
+               (".app.tar.gz", "AAAI4S.app.tar.gz"),
+               (".app.tar.gz.sig", "AAAI4S.app.tar.gz.sig"),
+               ("_{v}_x64-setup.exe", "AAAI4S_{v}_x64-setup.exe"),
+               ("_{v}_x64-setup.exe.sig", "AAAI4S_{v}_x64-setup.exe.sig"))
+# 固定的下载地址 ← 哪个包
+FIXED = (("AAAI4S.dmg", "AAAI4S_{v}_universal.dmg"),
+         ("AAAI4S-setup.exe", "AAAI4S_{v}_x64-setup.exe"))
+# latest.json 的平台 → 哪个包：Mac 两个架构用同一个通用包
+UPDATER = {"darwin-aarch64": "AAAI4S.app.tar.gz", "darwin-x86_64": "AAAI4S.app.tar.gz",
+           "windows-x86_64": "AAAI4S_{v}_x64-setup.exe"}
+# 外壳改没改看这几处（ADR-0005）：图标从品牌标生成，算外壳；外壳的 README 不算。路径清单只在这里
+SHELL_PATHS = ("ui/desktop", "ui/web/public/favicon.svg", ":!ui/desktop/README.md")
 
 
 def die(msg: str) -> None:
@@ -72,45 +131,193 @@ def render(script: str, version: str, uv: str) -> str:
     return text.replace("__VERSION__", version).replace("__UV_VERSION__", uv)
 
 
-def plan(version: str, prefix: str, work: Path) -> list[tuple[str, Path, str]]:
-    """（对象键、本地文件、Cache-Control）一份清单；sha256 当场核对，不对就停。"""
-    items: list[tuple[str, Path, str]] = []
-    wheel = ROOT / "dist" / f"ai4sci-{version}-py3-none-any.whl"
-    if not wheel.is_file():
-        die(f"没有 {wheel}：先 make package VERSION={version}")
+class Item(NamedTuple):
+    """传一个对象：对象键、本地文件、Cache-Control；attachment 让浏览器存成文件（固定下载地址）。"""
+    key: str
+    path: Path
+    cache: str
+    attachment: bool = False
+
+
+def official(version: str) -> bool:
+    """正式版：只有 X.Y.Z（PEP 440 与 SemVer 的写法一样）；预发布不碰最新的那几份。"""
+    return re.fullmatch(r"\d+\.\d+\.\d+", version) is not None
+
+
+def built_wheel(tag: str) -> tuple[Path, str]:
+    """make package 出的 wheel 与它的版本。版本从文件名取：rc 的 tag 是 SemVer（1.9.0-rc.1），
+    setuptools-scm 把它规范成 PEP 440 的 1.9.0rc1，`ai4sci --version`、安装脚本、CDN 的目录都用这个
+    写法（spec §3）。package.sh 对不上 tag 只警告（快照带 .devN），这里不认。"""
+    wheels = sorted(PACKAGES.glob("ai4sci-*-py3-none-any.whl"))
+    if len(wheels) != 1:
+        die(f"{PACKAGES} 里应当正好一个 wheel，有 {len(wheels)} 个：先 make package VERSION={tag}")
+    version = wheels[0].name.split("-")[1]
+    if version != re.sub(r"-rc\.(\d+)$", r"rc\1", tag):
+        die(f"出的是 {wheels[0].name}，不是 {tag} 的包（HEAD 不在 v{tag} 这个 tag 上）")
+    return wheels[0], version
+
+
+def plan(tag: str, prefix: str, work: Path, *,
+         sign: Callable[[Path], Path] | None = None) -> list[Item]:
+    """一份清单，先不可变的、最后最新的那几份；sha256 当场核对，不对就停。正式版再写 platform.json：
+    外壳拿它判断有没有新版本、核安装脚本（spec §3），给了 sign 就签（--dry-run 不签）。"""
+    wheel, version = built_wheel(tag)
     side = wheel.with_name(wheel.name + ".sha256")
     if side.read_text(encoding="utf-8").split()[0] != sha256(wheel):
         die(f"{side.name} 与 wheel 对不上")
-    items += [(f"{prefix}/{version}/{wheel.name}", wheel, IMMUTABLE),
-              (f"{prefix}/{version}/{side.name}", side, IMMUTABLE)]
+    items = [Item(f"{prefix}/{version}/{wheel.name}", wheel, IMMUTABLE),
+             Item(f"{prefix}/{version}/{side.name}", side, IMMUTABLE)]
     uv = uv_version()
     for name in UV_ARCHIVES:
         archive = fetch(f"{UV_RELEASES}/{uv}/uv-{name}", work / f"uv-{name}")
         check = fetch(f"{UV_RELEASES}/{uv}/uv-{name}.sha256", work / f"uv-{name}.sha256")
         if check.read_text(encoding="utf-8").split()[0] != sha256(archive):
             die(f"uv-{name} 与 GitHub 上的 .sha256 对不上")
-        items += [(f"{prefix}/uv/{uv}/{archive.name}", archive, IMMUTABLE),
-                  (f"{prefix}/uv/{uv}/{check.name}", check, IMMUTABLE)]
-    pinned = work / "install.sh"
-    pinned.write_text(render("install.sh", version, uv), encoding="utf-8")
-    items.append((f"{prefix}/{version}/install.sh", pinned, IMMUTABLE))
-    if not re.search(r"-rc\.\d+$", version):  # 预发布不动最新那两份
-        items.append((f"{prefix}/install.sh", pinned, LATEST))
-        latest_ps1 = work / "install.ps1"
-        latest_ps1.write_text(render("install.ps1", version, uv), encoding="utf-8")
-        items.append((f"{prefix}/install.ps1", latest_ps1, LATEST))
+        items += [Item(f"{prefix}/uv/{uv}/{archive.name}", archive, IMMUTABLE),
+                  Item(f"{prefix}/uv/{uv}/{check.name}", check, IMMUTABLE)]
+    pinned = {}
+    for script in ("install.sh", "install.ps1"):
+        pinned[script] = work / script
+        pinned[script].write_text(render(script, version, uv), encoding="utf-8")
+        items.append(Item(f"{prefix}/{version}/{script}", pinned[script], IMMUTABLE))
+    if not official(version):
+        return items
+    items += [Item(f"{prefix}/{script}", path, LATEST) for script, path in pinned.items()]
+    manifest = work / "platform.json"
+    manifest.write_text(json.dumps({
+        "version": version, "min_desktop": MIN_DESKTOP,
+        "sha256": {"install.sh": sha256(pinned["install.sh"]),
+                   "install.ps1": sha256(pinned["install.ps1"]), "wheel": sha256(wheel)},
+    }, indent=2) + "\n", encoding="utf-8")
+    items.append(Item(f"{prefix}/platform.json", manifest, LATEST))
+    if sign:
+        items.append(Item(f"{prefix}/platform.json.sig", sign(manifest), LATEST))
     return items
 
 
-def upload(items: list[tuple[str, Path, str]]) -> None:
+def tauri_sign(path: Path, pubkey: str) -> Path:
+    """用更新器那把 key 签（外壳用内置的公钥验，spec §3）：ui/desktop 钉的 tauri CLI，key 与口令从
+    环境变量来，签名写在旁边的 <文件>.sig。签完当场用外壳的公钥验一遍：secrets 里的 key 配错了，
+    外壳会把 platform.json 当作取不到、再也不升级，没人看得见。"""
+    if not os.environ.get("TAURI_SIGNING_PRIVATE_KEY"):
+        die("缺 TAURI_SIGNING_PRIVATE_KEY（更新器的私钥，CI 里是 secrets）")
+    subprocess.run(["npx", "--no-install", "tauri", "signer", "sign", str(path)],
+                   cwd=ROOT / "ui" / "desktop", check=True)
+    sig = path.with_name(path.name + ".sig")
+    verify(path.read_bytes(), sig.read_text(encoding="utf-8"), pubkey)
+    return sig
+
+
+def updater_pubkey(given: str | None) -> str:
+    """外壳内置的更新器公钥：缺省读 tauri.conf.json；--pubkey 给了用它（拿测试的 key 先验一遍）。"""
+    if given:
+        return given
+    if not TAURI_CONF.is_file():
+        die(f"没有 {TAURI_CONF}：用 --pubkey 给更新器的公钥")
+    return json.loads(TAURI_CONF.read_text(encoding="utf-8"))["plugins"]["updater"]["pubkey"]
+
+
+def _b64(text: str) -> bytes:
+    """更新器的 base64 不认换行、空格这类多出来的字符，这里也不认。"""
+    return base64.b64decode(text, validate=True)
+
+
+def verify(data: bytes, signature: str, pubkey: str) -> str:
+    """照外壳的更新器验一份 tauri 的签名（minisign；签名与公钥都是 base64 包着的 minisign 文本，
+    更新器里是 minisign-verify）。验过返回签名里的 trusted comment（全局签名也盖着它），验不过
+    就停。"""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    try:
+        _, key_line = _b64(pubkey).decode("utf-8").splitlines()
+        _, sig_line, trusted_line, global_line = _b64(signature).decode("utf-8").splitlines()
+        key, sig, global_sig = _b64(key_line), _b64(sig_line), _b64(global_line)
+        public = Ed25519PublicKey.from_public_bytes(key[10:])
+    except ValueError as exc:  # base64 不对、行数不对、公钥长度不对：更新器同样不认
+        die(f"不是一份 tauri 的签名或公钥：{exc}")
+    if (not trusted_line.startswith("trusted comment: ") or key[:2] != b"Ed"
+            or sig[:2] not in (b"Ed", b"ED") or sig[2:10] != key[2:10]):
+        die("签名不是这把公钥签的（key id 对不上）或格式不对")
+    trusted = trusted_line.removeprefix("trusted comment: ")
+    # ED 签的是内容的 BLAKE2b-512（tauri 签的都是这种），Ed 是旧式、签内容本身
+    message = hashlib.blake2b(data).digest() if sig[:2] == b"ED" else data
+    try:
+        public.verify(sig[10:], message)
+        public.verify(global_sig, sig[10:] + trusted.encode("utf-8"))
+    except InvalidSignature:
+        die("签名验不过：内容被改过，或不是这把 key 签的")
+    return trusted
+
+
+def signed_version(trusted: str) -> str | None:
+    """trusted comment 里的版本：tauri 写成 Tab 分隔的 key:value（timestamp、file、version），
+    更新器开了 requireSignedVersion 就拿它对清单里的版本。"""
+    return next((field.removeprefix("version:") for field in trusted.split("\t")
+                 if field.startswith("version:")), None)
+
+
+def client_from_env():
+    """COS 的 client 与它会抛的、值得再试一次的错。凭据从环境变量来。"""
     from qcloud_cos import CosConfig, CosS3Client
+    from qcloud_cos.cos_exception import CosClientError, CosServiceError
 
     client = CosS3Client(CosConfig(Region=REGION, SecretId=os.environ["TENCENTCLOUD_SECRET_ID"],
                                    SecretKey=os.environ["TENCENTCLOUD_SECRET_KEY"]))
-    for key, path, cache in items:
-        client.upload_file(Bucket=BUCKET, Key=key, LocalFilePath=str(path), ACL="public-read",
-                           CacheControl=cache, ContentType=TYPES.get(path.suffix, TEXT))
-        print(f"ok {CDN}/{key}")
+    return client, (CosClientError, CosServiceError)
+
+
+def upload(items: list[Item], client, *, retryable: tuple[type[BaseException], ...]) -> None:
+    """一个个传。不可变的（带版本号的）先看桶里那份：同一份（sha256）跳过，重跑流水线只补没传成的；
+    同名不同内容让作业失败、不覆盖：边缘节点照一年的缓存发旧字节，包与签名就对不上了（spec §7）。
+    最新的那几份每次都传。传失败照 SDK 的说法再调（从断点续传），试够了照样抛。"""
+    for item in items:
+        digest = sha256(item.path)
+        if item.cache == IMMUTABLE and _already_there(client, item.key, digest):
+            print(f"skip {CDN}/{item.key}（桶里已有同一份）")
+            continue
+        headers = {"CacheControl": item.cache, "Metadata": {META_SHA256: digest},
+                   "ContentType": TYPES.get(PurePosixPath(item.key).suffix, TEXT)}
+        if item.attachment:
+            headers["ContentDisposition"] = "attachment"
+        for attempt in range(1, UPLOAD_TRIES + 1):
+            try:
+                client.upload_file(Bucket=BUCKET, Key=item.key, LocalFilePath=str(item.path),
+                                   ACL="public-read", **headers)
+                break
+            except retryable as exc:
+                if attempt == UPLOAD_TRIES:
+                    raise
+                print(f"retry {attempt}/{UPLOAD_TRIES - 1} {item.key}：{exc}", file=sys.stderr)
+                time.sleep(UPLOAD_WAIT_S * attempt)
+        print(f"ok {CDN}/{item.key}")
+
+
+def _already_there(client, key: str, digest: str) -> bool:
+    if not client.object_exists(Bucket=BUCKET, Key=key):
+        return False
+    theirs = _bucket_sha256(client, key)
+    if theirs != digest:
+        die(f"{key} 桶里已有一份内容不同的（sha256 {theirs[:12]}…，这次 {digest[:12]}…）："
+            "带版本号的不覆盖")
+    return True
+
+
+def _bucket_sha256(client, key: str) -> str:
+    """桶里那份的 sha256：传的时候记在元数据里。1.9.0 以前传的没有：旁边有 .sha256 就读它（uv 的包
+    几十 MB，不从上海取回美国的 runner），再没有就取回来算。"""
+    meta = client.head_object(Bucket=BUCKET, Key=key)
+    meta = {name.lower(): value for name, value in meta.items()}
+    if META_SHA256 in meta:
+        return meta[META_SHA256]
+    side = key + ".sha256"
+    if client.object_exists(Bucket=BUCKET, Key=side):
+        return _read(client, side).decode("utf-8").split()[0]
+    return hashlib.sha256(_read(client, key)).hexdigest()
+
+
+def _read(client, key: str) -> bytes:
+    return client.get_object(Bucket=BUCKET, Key=key)["Body"].get_raw_stream().read()
 
 
 def purge(urls: list[str]) -> None:
@@ -125,24 +332,232 @@ def purge(urls: list[str]) -> None:
     print(f"ok 刷新 {len(urls)} 个地址的缓存（任务 {task}）")
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="把一行命令要取的东西传到腾讯云 CDN（外层 #277）")
-    ap.add_argument("version", help="X.Y.Z 或 X.Y.Z-rc.N")
-    ap.add_argument("--prefix", default=PREFIX, help=f"对象键前缀，缺省 {PREFIX}；先验可换测试目录")
-    ap.add_argument("--dry-run", action="store_true", help="只列要传什么")
-    args = ap.parse_args()
-    version = args.version.removeprefix("v")
+def shell_files(artifacts: Path, v: str) -> dict[str, Path]:
+    """下载下来的构建产物 → {desktop/<版本>/ 里的名字: 本地文件}。每样正好一个，少了多了都停。"""
+    built = [path for path in artifacts.rglob("*") if path.is_file()]
+    found = {}
+    for ending, name in SHELL_FILES:
+        hits = [path for path in built if path.name.endswith(ending.format(v=v))]
+        if len(hits) != 1:
+            die(f"{artifacts} 里以 {ending.format(v=v)} 结尾的应当正好一个，有 {len(hits)} 个")
+        found[name.format(v=v)] = hits[0]
+    return found
+
+
+def latest_on_cdn(url: str) -> str | None:
+    """CDN 上当前 latest.json 的版本，外壳改没改以它为基准；404 才算还没发过外壳，别的错误让作业
+    失败（spec §7）。"""
+    try:
+        with urllib.request.urlopen(url, timeout=60) as resp:
+            return json.loads(resp.read())["version"]
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            raise
+        return None
+
+
+def shell_changed(base: str | None, tag: str, repo: Path = ROOT) -> tuple[bool, str]:
+    """要不要改写 latest.json、为什么：外壳从基准那一版到这个 tag 改过才往已装的人推（ADR-0005）。
+    基准是 CDN 上那一版、不是上一个 tag：某一版外壳改了但桌面构建失败，下一版与上一个 tag 比没改，
+    那次改动就永远推不出去。"""
+    if base is None:
+        return True, "CDN 上还没有 latest.json：第一次发外壳"
+    diff = subprocess.run(["git", "diff", "--quiet", f"v{base}", tag, "--", *SHELL_PATHS], cwd=repo)
+    if diff.returncode == 0:
+        return False, f"从 CDN 上的 v{base} 到 {tag} 外壳没改（{' '.join(SHELL_PATHS)}）"
+    if diff.returncode != 1:
+        die(f"git diff v{base} {tag} 失败（退出码 {diff.returncode}）：v{base} 这个 tag 在不在？")
+    return True, f"从 CDN 上的 v{base} 到 {tag} 外壳改过"
+
+
+def latest_json(v: str, notes: str, url: str, files: dict[str, Path], now: datetime) -> dict:
+    """更新器读的清单。url 是 desktop/<版本>/ 的地址；signature 是 .sig 的全文，不是路径。"""
+    platforms = {}
+    for platform, name in UPDATER.items():
+        package = name.format(v=v)
+        platforms[platform] = {"url": f"{url}/{package}",
+                               "signature": files[f"{package}.sig"].read_text(encoding="utf-8")}
+    return {"version": v, "notes": notes, "pub_date": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "platforms": platforms}
+
+
+def head(url: str) -> tuple[int, int]:
+    """CDN 上这个地址的状态码与长度（没有长度是 -1）。"""
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=60) as resp:
+            return resp.status, int(resp.headers.get("Content-Length", -1))
+    except urllib.error.HTTPError as exc:
+        return exc.code, -1
+
+
+def check_latest(manifest: dict, local: dict[str, Path], pubkey: str,
+                 head: Callable[[str], tuple[int, int]]) -> None:
+    """latest.json 传之前最后一道（spec §7）。更新器先整份校验再比版本，坏一条所有平台都更新失败：
+    键齐；每个地址 HEAD 是 200、长度等于要发的那份；签名用外壳内置的公钥验得过；签名里的版本等于
+    清单的版本（更新器开着 requireSignedVersion）。local：地址 → 与桶里一样的本地文件。"""
+    platforms = manifest.get("platforms", {})
+    missing = [key for key in ("version", "notes", "pub_date") if key not in manifest]
+    missing += [key for key in UPDATER if not {"url", "signature"} <= set(platforms.get(key, {}))]
+    if missing:
+        die(f"latest.json 缺 {'、'.join(missing)}")
+    for platform, entry in platforms.items():
+        path = local[entry["url"]]
+        status, length = head(entry["url"])
+        if status != 200 or length != path.stat().st_size:
+            die(f"{entry['url']}：HEAD {status}、长度 {length}，要发的那份 {path.stat().st_size}")
+        signed = signed_version(verify(path.read_bytes(), entry["signature"], pubkey))
+        if signed != manifest["version"]:
+            die(f"{platform} 的签名是给 {signed} 签的，latest.json 写的是 {manifest['version']}")
+
+
+def write_once(items: list[Item], client, *, retryable: tuple[type[BaseException], ...],
+               work: Path) -> dict[str, Path]:
+    """desktop/<版本>/ 只写一次（spec §7）：已经全在桶里就一个不传、用桶里那几份（重跑整条流水线
+    重新出的包与签名跟桶里的不一样，latest.json 要照桶里的生成；不一样的才取回来）；不全就照不可变
+    对象的规矩补（同一份跳过，同名不同内容失败）。返回 {名字: 与桶里一样的本地文件}。"""
+    named = {PurePosixPath(item.key).name: item for item in items}
+    if not all(client.object_exists(Bucket=BUCKET, Key=item.key) for item in items):
+        upload(items, client, retryable=retryable)
+        return {name: item.path for name, item in named.items()}
+    print(f"skip {CDN}/{PurePosixPath(items[0].key).parent}/（已在桶里，用桶里那份）")
+    same = {}
+    for name, item in named.items():
+        same[name] = item.path
+        if _bucket_sha256(client, item.key) != sha256(item.path):
+            same[name] = work / name
+            client.download_file(Bucket=BUCKET, Key=item.key, DestFilePath=str(same[name]))
+    return same
+
+
+def publish_desktop(v: str, prefix: str, files: dict[str, Path], client, *,
+                    retryable: tuple[type[BaseException], ...], work: Path, rewrite: bool,
+                    notes: str, pubkey: str, head: Callable[[str], tuple[int, int]] = head,
+                    now: datetime) -> list[str]:
+    """传桌面包，返回要刷缓存的地址。先 desktop/<版本>/，正式版再换固定的下载地址，外壳改过
+    （rewrite）最后传 latest.json（传前校验）：更新器读到新清单时包已经在了。预发布只传带版本号的。
+    """
+    base = f"{prefix}/desktop"
+    versioned = [Item(f"{base}/{v}/{name}", path, IMMUTABLE) for name, path in files.items()]
+    files = write_once(versioned, client, retryable=retryable, work=work)
+    if not official(v):
+        return []
+    fixed = [Item(f"{base}/{link}", files[name.format(v=v)], LATEST, attachment=True)
+             for link, name in FIXED]
+    upload(fixed, client, retryable=retryable)
+    purged = [f"{CDN}/{item.key}" for item in fixed]
+    if rewrite:
+        url = f"{CDN}/{base}/{v}"
+        manifest = latest_json(v, notes, url, files, now)
+        local = {f"{url}/{name}": path for name, path in files.items()}
+        check_latest(manifest, local, pubkey, head)
+        path = work / "latest.json"
+        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        upload([Item(f"{base}/latest.json", path, LATEST)], client, retryable=retryable)
+        purged.append(f"{CDN}/{base}/latest.json")
+    return purged
+
+
+def summary(line: str) -> None:
+    """判定写进作业摘要（GitHub 的 job summary）；本地跑只打出来。"""
+    print(line)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+            out.write(line + "\n")
+
+
+def changelog_notes(v: str) -> str:
+    """这一版的 Release Notes（与 GitHub Release 同一段），写进 latest.json。"""
+    return subprocess.run([str(ROOT / ".github" / "scripts" / "changelog.sh"), "notes", v],
+                          cwd=ROOT, stdout=subprocess.PIPE, encoding="utf-8",
+                          check=True).stdout.strip()
+
+
+def cert_not_after(host: str) -> str:
+    context = ssl.create_default_context()
+    with (socket.create_connection((host, 443), timeout=30) as sock,
+          context.wrap_socket(sock, server_hostname=host) as tls):
+        return tls.getpeercert()["notAfter"]
+
+
+def check_cert(not_after: str, now: datetime) -> None:
+    days = (ssl.cert_time_to_seconds(not_after) - now.timestamp()) / 86400
+    if days < CERT_DAYS:
+        die(f"{CDN} 的证书 {not_after} 到期，只剩 {days:.0f} 天（不到 {CERT_DAYS} 天）："
+            "先换证书再发版")
+    print(f"ok {CDN} 的证书 {not_after} 到期，还有 {days:.0f} 天")
+
+
+def cmd_cert(args: argparse.Namespace) -> int:
+    check_cert(cert_not_after(urllib.parse.urlsplit(CDN).hostname), datetime.now(UTC))
+    return 0
+
+
+def cmd_uv_version(args: argparse.Namespace) -> int:
+    print(uv_version())
+    return 0
+
+
+def cmd_wheel(args: argparse.Namespace) -> int:
+    sign = None if args.dry_run else partial(tauri_sign, pubkey=updater_pubkey(args.pubkey))
     with tempfile.TemporaryDirectory() as tmp:
-        items = plan(version, args.prefix.rstrip("/"), Path(tmp))
+        items = plan(args.tag.removeprefix("v"), args.prefix.rstrip("/"), Path(tmp), sign=sign)
         if args.dry_run:
-            for key, path, cache in items:
-                print(f"{CDN}/{key}\t{path.stat().st_size}\t{cache}")
+            for item in items:
+                print(f"{CDN}/{item.key}\t{item.path.stat().st_size}\t{item.cache}")
             return 0
-        upload(items)
-    latest = [f"{CDN}/{key}" for key, _, cache in items if cache == LATEST]
+        client, retryable = client_from_env()
+        upload(items, client, retryable=retryable)
+    latest = [f"{CDN}/{item.key}" for item in items if item.cache == LATEST]
     if latest:
         purge(latest)
     return 0
+
+
+def cmd_desktop(args: argparse.Namespace) -> int:
+    v, prefix = args.tag.removeprefix("v"), args.prefix.rstrip("/")
+    files = shell_files(Path(args.artifacts), v)
+    if official(v):
+        base = latest_on_cdn(f"{CDN}/{prefix}/desktop/latest.json")
+        rewrite, reason = shell_changed(base, f"v{v}")
+    else:
+        rewrite, reason = False, "预发布只传带版本号的，不碰 latest.json 与固定的下载地址"
+    summary(f"桌面 App {v}：{'改写' if rewrite else '不改写'} latest.json。{reason}")
+    if args.dry_run:
+        for name, path in files.items():
+            print(f"{CDN}/{prefix}/desktop/{v}/{name}\t{path.stat().st_size}\t{IMMUTABLE}")
+        return 0
+    notes = changelog_notes(v) if rewrite else ""
+    pubkey = updater_pubkey(args.pubkey) if rewrite else ""
+    client, retryable = client_from_env()
+    with tempfile.TemporaryDirectory() as tmp:
+        purged = publish_desktop(v, prefix, files, client, retryable=retryable, work=Path(tmp),
+                                 rewrite=rewrite, notes=notes, pubkey=pubkey, now=datetime.now(UTC))
+    if purged:
+        purge(purged)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="把一行命令与桌面 App 要取的东西传到腾讯云 CDN")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    wheel = sub.add_parser("wheel", help="平台的 wheel、安装脚本、uv 的发布包、platform.json")
+    wheel.add_argument("tag", help="vX.Y.Z 或 vX.Y.Z-rc.N")
+    wheel.add_argument("--prefix", default=PREFIX, help=f"对象键前缀，缺省 {PREFIX}")
+    wheel.add_argument("--pubkey", help="更新器的公钥，缺省读 ui/desktop 的 tauri.conf.json")
+    wheel.add_argument("--dry-run", action="store_true", help="只列要传什么，不签")
+    wheel.set_defaults(run=cmd_wheel)
+    desktop = sub.add_parser("desktop", help="桌面包：desktop/<版本>/、固定的下载地址、latest.json")
+    desktop.add_argument("tag", help="vX.Y.Z 或 vX.Y.Z-rc.N")
+    desktop.add_argument("--artifacts", required=True, help="tauri build 的产物所在的目录")
+    desktop.add_argument("--prefix", default=PREFIX, help=f"对象键前缀，缺省 {PREFIX}")
+    desktop.add_argument("--pubkey", help="更新器的公钥，缺省读 ui/desktop 的 tauri.conf.json")
+    desktop.add_argument("--dry-run", action="store_true", help="只列要传什么、外壳改没改")
+    desktop.set_defaults(run=cmd_desktop)
+    sub.add_parser("cert", help=f"CDN 的证书剩不到 {CERT_DAYS} 天就失败").set_defaults(run=cmd_cert)
+    sub.add_parser("uv-version", help="uv.lock 里 uv 的版本（桌面包的 sidecar 用）").set_defaults(
+        run=cmd_uv_version)
+    args = ap.parse_args(argv)
+    return args.run(args)
 
 
 if __name__ == "__main__":
