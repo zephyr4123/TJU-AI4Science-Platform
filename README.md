@@ -97,7 +97,15 @@ platform/
 
 两种人两条路。
 
-**只用**：粘一行，什么都不用先装，全程国内源。Mac / Linux 在终端里：
+**只用**：两种装法，共用同一份平台（都在 `~/.ai4sci`），什么都不用先装，全程国内源。
+
+**桌面 App**（外层 #282）：下载 [Mac 通用包](https://media.zephyrxiang.com/ai4science/dist/desktop/AAAI4S.dmg)（Apple 芯片与 Intel 都是它）或 [Windows 安装包](https://media.zephyrxiang.com/ai4science/dist/desktop/AAAI4S-setup.exe)（按用户装，不要管理员）。第一次打开它自己装好平台（约两分钟，进度画在窗口里），装好进页面；助理还不能说话就弹窗让你粘 DeepSeek 的 key、当场试通。以后每次打开一两秒进页面，平台有新版本先自动升级，App 自己有新版本会问一句。关窗口：Mac 上只是收起（点 Dock 图标回来，Cmd+Q 才退出），Windows 上就是退出；退出时后台实验照跑，跑完自己叫醒助理。
+
+- Mac 还没配苹果的签名：先把 AAAI4S 拖进「应用程序」再打开；第一次被拦就去「系统设置 → 隐私与安全性」点「仍要打开」（一小时内有效）、输入开机密码。
+- Windows 弹「Windows 已保护你的电脑」：点「更多信息 → 仍要运行」。
+- 卸载 App 不碰 `~/.ai4sci`（网页版也在用它）；要连平台一起删，照下面「卸载」。
+
+**一行命令**（网页版）：Mac / Linux 在终端里：
 
 ```bash
 curl -fsSL https://media.zephyrxiang.com/ai4science/dist/install.sh | sh
@@ -117,7 +125,7 @@ irm https://media.zephyrxiang.com/ai4science/dist/install.ps1 | iex
 
 **升级**：同一行命令再跑一遍：平台换成新版，CLI 低于平台要求的才换。以前用 `uv tool install` 装在缺省位置的，这一行会先把它卸掉、换成家里这份，终端里只剩一个 `ai4sci`（外层 #274）。改代码的拉代码再起（`git pull && make up`）。
 
-**卸载**：删掉 `~/.ai4sci`，再删 shell 配置里带 `# ai4sci` 的那一行（Windows：删 `%USERPROFILE%\.ai4sci`，再从「编辑账户的环境变量」的 Path 里删掉它的 `bin`）。
+**卸载**：桌面 App 拖进废纸篓（Windows 在「设置 → 应用」里卸载）；平台本身删掉 `~/.ai4sci`，再删 shell 配置里带 `# ai4sci` 的那一行（Windows：删 `%USERPROFILE%\.ai4sci`，再从「编辑账户的环境变量」的 Path 里删掉它的 `bin`）。
 
 **Windows 上要知道的**（外层 #210）：平台走原生 Windows，Claude Code 的命令由 Git Bash 跑（平台自己找、没有就装）；Windows 缺省一条路径最多 260 个字符，项目放得深、实验环境的包多时会撞上，`ai4sci setup` 查到没开长路径会给一行管理员命令。原生路线卡住时也可以在 WSL 里照 Linux 的那一行装。
 
@@ -128,11 +136,13 @@ uv run https://raw.githubusercontent.com/zephyr4123/TJU-AI4Science/main/scripts/
 uv run https://raw.githubusercontent.com/zephyr4123/TJU-AI4Science/main/scripts/oneoff/migrate-to-home-263.py ~/ai4sci --apply
 ```
 
-**改代码**：clone 仓库，前提是 uv + node 22 + git。
+**改代码**：clone 仓库，前提是 uv + node 22 + git；改桌面外壳再加 Rust（`rustup`，Windows 上还要 VS 的 C++ 生成工具），国内的镜像写在 `ui/desktop/README.md`。
 
 ```bash
 make up                                     # 一行起：.venv（uv.lock）→ 页面 → skill 门禁与预热 → ai4sci setup（git、两家 CLI、key，装过的跳过）→ 起服务
-make check                                  # 门禁：CHANGELOG + ruff + skills + pytest + 页面，与 CI 完全相同
+make check                                  # 门禁：CHANGELOG + ruff + skills + pytest + 页面，与 CI 的 check 完全相同
+make desktop                                # 源码跑桌面 App：后端用仓里 .venv 的 ai4sci（Windows：npm --prefix ui/desktop run dev）
+make desktop-check                          # 外壳的门禁：fmt、clippy、cargo test（含真起 serve 的那条），CI 在 Mac 与 Windows 上各跑一遍
 make lock                                   # 改了 pyproject 的依赖后重钉 uv.lock
 make clean                                  # 删仓里装出来的：.venv、node_modules、页面构建；不碰配置、登录、数据
 AI4SCI_LIVE=1 make test                     # 连真 CLI 的冒烟测试，会花钱，CI 不跑

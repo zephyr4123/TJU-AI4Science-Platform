@@ -6,6 +6,7 @@
 - [ ] `make check` 绿（changelog + ruff + skills + pytest + ui-check，与 CI 完全相同；别接 `| tail`）
 - [ ] 改了行为先有一条会失败的测试（`tests/README.md`）；改了检查器带反例
 - [ ] 改了页面看得见的东西过了浏览器（`ui/README.md` §5）
+- [ ] 改了桌面外壳（`ui/desktop/`）：`make desktop-check` 绿（CI 的 `desktop` 在 Mac 与 Windows 上都过），进程与窗口的行为在 Mac 本机与 Windows 真机上走过一遍（`ui/desktop/README.md`）；动了外壳与后端的约定只加不改（外层 CONTRIBUTING「版本与发布」）
 - [ ] 改了行为的地方文档同步改了：分层与约定在 `framework/README.md`，前端在 `ui/README.md`，手册在 `docs/`，产品说法回写外层纲领
 - [ ] 改了 `coordinator/*.md` 或能力的 `prompt.md` 知道那是线上 prompt，`test_chat_guide` 与对应能力的测试过了
 - [ ] 加了端点三处登记（`server.py` 清单与 `API_ROOTS`、`vite.config.ts`、`api/`）；加了子命令 `cli/__init__.py` 加一行
