@@ -1,8 +1,9 @@
 """桌面外壳与后端的约定（外层 #282，spec desktop.md §3）：外壳把它写死在
-`ui/desktop/src-tauri/src/contract.rs` 一个文件里，与 Python 常量、两份安装脚本、发版脚本是同一份事实。
+`ui/desktop/src-tauri/src/contract.rs` 一个文件里，与 Python 常量、两份安装脚本、发版脚本
+是同一份事实。
 
-改后端的 PR 跑的 `make check` 里没有 Rust，看不到外壳；这里用正则读 contract.rs 对账。这张表冻结、只加不改：
-已装的外壳跟不上 wheel，哪一处悄悄改了名字，装着的 App 就打不开平台。
+改后端的 PR 跑的 `make check` 里没有 Rust，看不到外壳；这里用正则读 contract.rs 对账。这张表
+冻结、只加不改：已装的外壳跟不上 wheel，哪一处悄悄改了名字，装着的 App 就打不开平台。
 """
 
 from __future__ import annotations
@@ -29,7 +30,8 @@ def _consts(text: str) -> dict[str, object]:
     found.update(re.findall(r'^pub const (\w+): &str = "([^"]*)";', text, re.M))
     found.update((name, int(value)) for name, value in
                  re.findall(r"^pub const (\w+): i32 = (\d+);", text, re.M))
-    for name, body in re.findall(r"^pub const (\w+): \[&str; \d+\] = \[(.*?)\];", text, re.M | re.S):
+    arrays = r"^pub const (\w+): \[&str; \d+\] = \[(.*?)\];"
+    for name, body in re.findall(arrays, text, re.M | re.S):
         found[name] = re.findall(r'"([^"]*)"', body)
     return found
 
@@ -58,8 +60,8 @@ def test_the_shell_and_the_platform_agree_on_the_home():
 
 
 def test_the_shell_strips_the_variables_that_would_misplace_a_child():
-    """漏进 serve：`AI4SCI_JOB_ID` 让所有 `--detach` 被拒，`AI4SCI_CHAT_ID` 让人的确认被当成助理在调，
-    `AI4SCI_PROJECT` 让助理落到错的项目上。"""
+    """漏进 serve：`AI4SCI_JOB_ID` 让所有 `--detach` 被拒，`AI4SCI_CHAT_ID` 让人的确认被当成
+    助理在调，`AI4SCI_PROJECT` 让助理落到错的项目上。"""
     stripped = _contract()["STRIPPED_ENV"]
     assert isinstance(stripped, list)
     for name in (jobs.JOB_ID_ENV, jobs.CHAT_ID_ENV, project.PROJECT_ENV):
@@ -74,7 +76,8 @@ def test_the_shell_and_the_release_agree_on_the_dist():
     found = re.search(r'^DIST="\$\{(\w+):-([^}]*)\}"$', sh, re.M)
     assert found and found.groups() == (c["DIST_ENV"], dist), "install.sh 的 DIST"
     ps1 = INSTALL_PS1.read_text(encoding="utf-8")
-    found = re.search(r"^\$DIST = if \(\$env:(\w+)\) \{ \$env:\w+ \} else \{ '([^']*)' \}$", ps1, re.M)
+    found = re.search(r"^\$DIST = if \(\$env:(\w+)\) \{ \$env:\w+ \} else \{ '([^']*)' \}$",
+                      ps1, re.M)
     assert found and found.groups() == (c["DIST_ENV"], dist), "install.ps1 的 DIST"
     cdn = CDN_PY.read_text(encoding="utf-8")
     base = re.search(r'^CDN = os\.environ\.get\("CDN_BASE", "([^"]+)"\)$', cdn, re.M)
@@ -104,4 +107,5 @@ def test_the_checker_reads_every_kind_and_catches_a_drift():
     assert drifted["HOME_ENV"] != paths.HOME_ENV
     script = ('if [ -n "${AI4SCI_NO_SETUP:-}" ]; then sha="$AI4SCI_WHEEL_SHA"; fi\n'
               "[Environment]::SetEnvironmentVariable('AI4SCI_INSTALLING', '1', 'User')\n")
-    assert _install_vars(script) - {"AI4SCI_NO_SETUP", "AI4SCI_WHEEL_SHA256"} == {"AI4SCI_WHEEL_SHA"}
+    known = {"AI4SCI_NO_SETUP", "AI4SCI_WHEEL_SHA256"}
+    assert _install_vars(script) - known == {"AI4SCI_WHEEL_SHA"}
