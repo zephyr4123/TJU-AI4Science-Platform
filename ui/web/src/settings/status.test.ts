@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import type { AgentEntry, ProviderRow } from '@/api/types'
+import type { AgentEntry, AssistantStatus, ProviderRow } from '@/api/types'
 
-import { agentStatus, computeStatus, noWebNote, parseSsh, providerTag, shortVersion, suggestComputeName, tildify } from './status'
+import { agentStatus, assistantNote, computeStatus, noWebNote, parseSsh, providerTag, shortVersion, suggestComputeName, tildify } from './status'
 
 describe('设置：一个词的状态', () => {
   it('底座：没检查过、四句都过、有一句没过', () => {
@@ -75,5 +75,20 @@ describe('设置：供应商的小签与分工的提醒（外层 #266）', () =>
     const entry = { title: 'Codex', provider: 'deepseek', providers: [row('official'), row('deepseek', { web_search: false })] } as AgentEntry
     expect(noWebNote(entry)).toBe('Codex 用 DeepSeek 时不能联网')
     expect(noWebNote({ ...entry, provider: 'official' })).toBeUndefined()
+  })
+})
+
+describe('设置：助理那一行底下的原因（外层 #282）', () => {
+  const of = (state: AssistantStatus['state'], reason: string | null): AssistantStatus =>
+    ({ agent: 'claude_code', provider: 'deepseek', state, reason, checked_at: 't' })
+  it('缺 key、说不了话时写服务给的原因', () => {
+    expect(assistantNote(of('cannot_talk', 'DeepSeek 余额不足：去充值'))).toBe('DeepSeek 余额不足：去充值')
+    expect(assistantNote(of('needs_key', 'DeepSeek 的 key 不对'))).toBe('DeepSeek 的 key 不对')
+  })
+  it('就绪、没检查过、没给原因、服务没给这一段：不写', () => {
+    expect(assistantNote(of('ready', '多余的一句'))).toBeUndefined()
+    expect(assistantNote(of('unchecked', null))).toBeUndefined()
+    expect(assistantNote(of('cannot_talk', null))).toBeUndefined()
+    expect(assistantNote(undefined)).toBeUndefined()
   })
 })

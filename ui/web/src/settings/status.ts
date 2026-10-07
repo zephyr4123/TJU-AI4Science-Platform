@@ -1,7 +1,7 @@
 // 设置那块板上的纯函数（外层 #134）：一家底座 / 一台算力上次检查的状态——一个词、几项事实、一种色调，
 // 不是一句话（主人 2026-09-22：能用词就用词，短句也少）；贴进来的 ssh 一行怎么拆、机器名怎么起。
 // 都不碰 DOM，vitest 直接测。
-import type { AgentCheck, AgentEntry, CheckItem, ComputeCheck, ProviderRow } from '@/api/types'
+import type { AgentCheck, AgentEntry, AssistantStatus, CheckItem, ComputeCheck, ProviderRow } from '@/api/types'
 import { money } from '@/lib/format'
 
 export type Tone = 'ok' | 'bad' | 'neutral'
@@ -31,6 +31,12 @@ export function agentStatus(check: AgentCheck | null): Status {
   if (check.spoke_s != null) facts.push(`${check.spoke_s.toFixed(1)} s`)
   if (check.cost_usd != null) facts.push(money(check.cost_usd))
   return { word: '就绪', tone: 'ok', facts }
+}
+
+/** 分工里助理那一行底下的一句（外层 #282）：缺 key、说不了话（余额不足、连不上）时是服务给的原因；就绪、没检查过不写 */
+export function assistantNote(assistant: AssistantStatus | undefined): string | undefined {
+  const stuck = assistant?.state === 'needs_key' || assistant?.state === 'cannot_talk'
+  return (stuck && assistant.reason) || undefined
 }
 
 /** 两种记法摆平：算力的 `[名字, 过没过, 一句话]` 与底座的对象 */
