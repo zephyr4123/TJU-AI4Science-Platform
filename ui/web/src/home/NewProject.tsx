@@ -13,6 +13,7 @@ import { ErrorNote } from '@/components/bits'
 import GlassSurface from '@/components/reactbits/GlassSurface'
 import ShinyText from '@/components/reactbits/ShinyText'
 import { Button } from '@/components/ui/button'
+import { composing } from '@/lib/browser'
 import { suggestId } from '@/lib/slug'
 import { useToken } from '@/lib/tokens'
 
@@ -47,7 +48,7 @@ export function NewProject({ existing, onCreated, onCancel, menu }: {
   }
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     // 中文输入法组词时的回车是选词，不是新建
-    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+    if (event.key === 'Enter' && !composing(event.nativeEvent)) {
       event.preventDefault()
       if (ready) void create()
     }

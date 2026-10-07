@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isWebKit } from './browser'
+import { composing, isWebKit } from './browser'
 
 describe('哪些是 WebKit（玻璃组件据此不走 SVG 折射，外层 #282）', () => {
   it('Safari 与桌面 App 的 WKWebView 都是：WKWebView 的 UA 没有 Safari 这个词（macOS 26.5.2 实测）', () => {
@@ -19,5 +19,19 @@ describe('哪些是 WebKit（玻璃组件据此不走 SVG 折射，外层 #282�
   it('Firefox 与认不出的不是', () => {
     expect(isWebKit('Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0')).toBe(false)
     expect(isWebKit('')).toBe(false)
+  })
+})
+
+describe('输入法组词时的按键（回车是选词，不是发送，外层 #282）', () => {
+  it('Chromium 与 Firefox：组词时 isComposing 是真', () => {
+    expect(composing({ isComposing: true, keyCode: 229 })).toBe(true)
+    expect(composing({ isComposing: true, keyCode: 13 })).toBe(true)
+  })
+  it('WebKit 用回车确认候选词的那次：isComposing 是假、keyCode 是 229（WebKit bug 165004）', () => {
+    expect(composing({ isComposing: false, keyCode: 229 })).toBe(true)
+  })
+  it('没在组词的回车与 Esc 不算', () => {
+    expect(composing({ isComposing: false, keyCode: 13 })).toBe(false)
+    expect(composing({ isComposing: false, keyCode: 27 })).toBe(false)
   })
 })
