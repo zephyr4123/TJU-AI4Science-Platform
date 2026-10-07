@@ -41,6 +41,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import procs
 from backends import OFFICIAL, Chat, ChatEvent, Tuning
 from framework.files import write_atomic
 
@@ -452,13 +453,7 @@ def _lock_holder_alive(inflight: Path) -> bool:
         return True
     if pid <= 0:
         return True
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+    return procs.pid_alive(pid)
 
 
 def _next_turn(directory: Path) -> int:

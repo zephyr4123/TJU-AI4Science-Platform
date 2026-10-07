@@ -113,6 +113,7 @@ class Compute(Protocol):
 
     kind: str
     uv: list[str]  # 在这台机器上起 uv 的 argv 前缀：本地是 `python -m uv`，远端是 `uv`
+    bash: list[str]  # 在这台机器上跑 shell 脚本的 argv 前缀：本机 Windows 是 Git Bash，别处 `bash`
     scratch: str  # 这台机器上跑探测类短命令的目录（`run` 会建），不属于任何产出
 
     def remote_dir_for(self, local_dir: Path) -> str: ...

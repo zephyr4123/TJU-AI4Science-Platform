@@ -11,7 +11,8 @@
   在这个目录里 `codex login`（`login_command`），`auth.json` 落在根上，执行层的 `auth.json` 软链到
   根上那份（一次登录两层用；token 刷新写穿软链）。不再软链用户的 `~/.codex/auth.json`——平台的
   登录归平台，清除家时一起走。协调层的会话 rollout 也落在私有 home 下，续接靠它。
-  `--ignore-user-config` 照带（自动化的官方开关）。
+  私有 home 的 `config.toml` 是平台写的空文件（每次起会话重写）：不用 `--ignore-user-config`，因为
+  它连 `-p` 的 profile 也一起不读（0.160 实测），而指南要靠 profile 送（见「指南」）。
 - **供应商**（外层 #266，0.160.0 实测）：官方登录在平台的 CODEX_HOME 里；OpenAI API 与第三方
   （DeepSeek、Kimi、自定义）走 `-c model_providers.ai4sci={base_url, wire_api="responses",
   env_key}` + `model_provider="ai4sci"`，第三方再给模型说明 `model_catalog_json`（cc-switch 的，见
@@ -51,9 +52,10 @@
 - **续接**：`codex exec resume <thread_id> -` 加同一组 `-c`；`--ephemeral` 的线程续不了（no rollout
   found），协调层不带它、执行层带。resume 时 `developer_instructions` 不再生效（线程开头那份留着），
   指南变了由框架把变了的几节塞进话里。
-- **指南**走 `-c developer_instructions="<TOML 字符串>"`：叠加在内置指令之外，不替换
-  （`model_instructions_file` 是整体替换，官方不建议）；换行与中文实测都行。AGENTS.md 一律不读：
-  `project_doc_max_bytes=0`。
+- **指南**走 `developer_instructions`：叠加在内置指令之外，不替换（`model_instructions_file` 是整体
+  替换，官方不建议）；换行与中文实测都行。写在私有 home 里按内容命名的 profile
+  （`<名字>.config.toml`，`-p <名字>` 叠上去）而不是 `-c`：Windows 一条命令行最多 32767 个字符，研究
+  助理的指南装 30 来个 skill 就超了（外层 #210）。AGENTS.md 一律不读：`project_doc_max_bytes=0`。
 - **联网搜索**：顶层 `web_search="live"`（`tools.web_search=true` 在 0.147 会被反序列化器丢掉），
   搜索在服务端，沙箱没网也通；事件是 `web_search` item。接 DeepSeek 写 `"disabled"`：它的 Responses
   API 忽略内置工具，实测模型说没有搜索工具（外层 #266）。
@@ -72,6 +74,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -105,8 +108,9 @@ from backends import (
     Usage,
     price,
 )
-from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
+from backends._stdin import feed
+from procs import kill_tree, spawn
 
 __all__ = ["CodexRunner", "CodexChat", "MODELS", "EFFORTS", "PROVIDERS", "PRICED", "LAYERS",
            "provider", "connect_config",
@@ -175,9 +179,13 @@ PROVIDER_NAME = "ai4sci"
 PROVIDER_KEY_ENV = "AI4SCI_PROVIDER_KEY"
 # 执行层留档的第一行：Codex 的事件里不写模型，适配器记下这次用的哪个（外层 #256：首页按模型数花费）
 MODEL_EVENT = "ai4sci.model"
-# 两层共用的 exec 参数：JSONL、不查 git 仓库（工作区不是仓库）、不读本机配置；execpolicy 规则要读
-# （私有 home 里只有我们写的那份）
-BASE_ARGS = ("--json", "--skip-git-repo-check", "--ignore-user-config")
+# 两层共用的 exec 参数：JSONL、不查 git 仓库（工作区不是仓库）；本机配置不进靠私有 home 的
+# config.toml 是平台写的空文件（`codex_home`），execpolicy 规则要读（私有 home 里只有我们写的那份）
+BASE_ARGS = ("--json", "--skip-git-repo-check")
+# 私有 home 的基础配置：平台写的、留空；协调层的指南写在旁边按内容命名的 profile 里
+# （`write_profile`）
+CONFIG_NAME = "config.toml"
+PROFILE_PREFIX = "ai4sci-"
 # 两层共用的配置覆盖（`-c key=value`，值按 TOML 解析）；可写根另算
 BASE_CONFIG = (
     'approval_policy="never"',         # exec 本就 never，写明
@@ -258,16 +266,52 @@ def codex_home(link: Link, layer: str) -> Path:
     root = link.home
     home = root if layer == "chat" else root / layer
     home.mkdir(parents=True, exist_ok=True)
+    (home / CONFIG_NAME).write_text("# ai4sci 写的：私有 home 的基础配置留空，设置由命令行与 "
+                                    "profile 给（外层 #210）\n", encoding="utf-8")
     if layer == "chat":
         return home
     real = root / AUTH_NAME
     auth = home / AUTH_NAME
+    if os.name == "nt":
+        _hardlink_login(real, auth)
+        return home
     if auth.is_symlink() and auth.readlink() != real:
         auth.unlink()  # 指错了（旧版本软链到用户的 ~/.codex）：重连
     if not auth.is_symlink():
         assert not auth.exists(), f"{auth} 是普通文件不是软链：执行层不该有自己的凭据"
         auth.symlink_to(real)
     return home
+
+
+def _hardlink_login(real: Path, auth: Path) -> None:
+    """Windows 上执行层的 `auth.json` 是根上那份的硬链接（外层 #210）：软链要管理员或开发者模式，
+    硬链接谁都能建；Codex 刷新 token 是原地截断重写（codex-rs `login/src/auth/storage.rs` 的
+    `FileAuthStorage::save`），两层看到的始终是同一份，凭据不复制。登出会删掉根上那份、再登录是
+    新文件，所以每次都对一遍是不是同一个文件；根上没有就让执行层也没有（Not logged in，自检原样
+    给人）。"""
+    if not real.is_file():
+        auth.unlink(missing_ok=True)
+        return
+    if auth.is_file() and os.path.samefile(auth, real):
+        return
+    staged = auth.with_name(f".{AUTH_NAME}.{os.getpid()}.tmp")
+    staged.unlink(missing_ok=True)
+    os.link(real, staged)
+    os.replace(staged, auth)
+
+
+def write_profile(home: Path, developer_instructions: str) -> str:
+    """协调层的指南写成私有 home 里的 profile，返回交给 `-p` 的名字：按内容命名，同一份只写一次，
+    几个会话同时写也不会读到半截（先写临时文件再换过去）。"""
+    digest = hashlib.sha256(developer_instructions.encode("utf-8")).hexdigest()[:16]
+    name = f"{PROFILE_PREFIX}{digest}"
+    path = home / f"{name}.config.toml"
+    if not path.is_file():
+        staged = path.with_name(f".{name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        staged.write_text(f"developer_instructions = {toml_str(developer_instructions)}\n",
+                          encoding="utf-8")
+        os.replace(staged, path)
+    return name
 
 
 def write_rules(home: Path, bash_rules: tuple[str, ...]) -> Path:
@@ -339,9 +383,8 @@ def connect_config(link: Link) -> list[str]:
 
 
 def config_args(link: Link, writable: list[Path], *, tuning: Tuning | None,
-                skills_off: list[Path], developer_instructions: str = "") -> list[str]:
-    """`-c` 那一串：基本项、接哪个供应商、可写根、要关的 skill、模型深度，协调层开新线程时再加
-    指南。"""
+                skills_off: list[Path]) -> list[str]:
+    """`-c` 那一串：基本项、接哪个供应商、可写根、要关的 skill、模型深度。"""
     picked = provider(link).knobs().fill(tuning)
     roots = ", ".join(toml_str(str(Path(p).resolve())) for p in writable)
     off = ", ".join("{path=" + toml_str(str(p)) + ", enabled=false}" for p in skills_off)
@@ -350,8 +393,6 @@ def config_args(link: Link, writable: list[Path], *, tuning: Tuning | None,
     items = [*BASE_CONFIG, f"web_search={toml_str(search)}", *connect_config(link),
              f"sandbox_workspace_write.writable_roots=[{roots}]", f"skills.config=[{off}]",
              f"model_reasoning_effort={toml_str(picked.effort)}"]
-    if developer_instructions:
-        items.append(f"developer_instructions={toml_str(developer_instructions)}")
     argv: list[str] = []
     for item in items:
         argv += ["-c", item]
@@ -433,18 +474,6 @@ def final_report(events: list[dict]) -> str:
     return ""
 
 
-def _write_stdin(proc: subprocess.Popen, text: str) -> None:
-    """prompt 走 stdin：另起线程写、写完关——大 prompt 撑满管道时不能卡住读 stdout 的主线程。"""
-    def _pump() -> None:
-        try:
-            proc.stdin.write(text)
-        except BrokenPipeError:
-            pass  # CLI 没读完就退了（参数错、没登录）：退出码与 stderr 会说明，这里不是失败点
-        finally:
-            proc.stdin.close()
-    threading.Thread(target=_pump, daemon=True).start()
-
-
 class CodexRunner:
     name = NAME
 
@@ -479,11 +508,10 @@ class CodexRunner:
         raw: list[str] = []
         err: list[str] = []
         started = time.monotonic()
-        proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                encoding="utf-8", errors="replace", start_new_session=True,
-                                env=build_env(timeout_s, home, self.link))
-        _write_stdin(proc, prompt)
+        proc = spawn(argv, cwd=str(cwd), stdin=subprocess.PIPE,
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                     encoding="utf-8", errors="replace", env=build_env(timeout_s, home, self.link))
+        feed(proc, prompt)
         readers = [threading.Thread(target=lambda: raw.extend(proc.stdout), daemon=True),
                    threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)]
         for reader in readers:
@@ -648,9 +676,10 @@ class CodexChat:
                     *config_args(self.link, list(allowed_paths), tuning=tuning,
                                  skills_off=skills_off),
                     session_id, "-"]
+        guide = ["-p", write_profile(home, system_prompt)] if system_prompt else []
         return [self.cli, "exec", *BASE_ARGS, "--color", "never", "-C", str(Path(cwd).resolve()),
-                *config_args(self.link, list(allowed_paths), tuning=tuning, skills_off=skills_off,
-                             developer_instructions=system_prompt), "-"]
+                *guide, *config_args(self.link, list(allowed_paths), tuning=tuning,
+                                     skills_off=skills_off), "-"]
 
     def turn(
         self, message: str, cwd: Path, timeout_s: float, *, session_id: str | None,
@@ -669,11 +698,11 @@ class CodexChat:
             return
         err: list[str] = []
         started = time.monotonic()
-        proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                encoding="utf-8", errors="replace", start_new_session=True,
-                                env=build_env(timeout_s, home, self.link, chat_id))
-        _write_stdin(proc, message)
+        proc = spawn(argv, cwd=str(cwd), stdin=subprocess.PIPE,
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                     encoding="utf-8", errors="replace",
+                     env=build_env(timeout_s, home, self.link, chat_id))
+        feed(proc, message)
         drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
         drain.start()
         timed_out = threading.Event()

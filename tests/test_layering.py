@@ -1,8 +1,9 @@
 """依赖方向的机器判据：能用一条命令查的规矩才是规矩。
 
 纲领 §5 给 framework/ 定了单向依赖 `cli → capabilities → chat → experiment → executor →
-workspace → skills → contracts`，外加两条：`backends/` 与 `compute/` 是端口，framework 可以用它们、
-它们不许反过来 import framework；能力之间互不 import。这些话写在文档里只是标语，靠人
+workspace → skills → contracts`，外加三条：`backends/` 与 `compute/` 是端口，framework 可以用它们、
+它们不许反过来 import framework；能力之间互不 import；`procs/`（进程树，外层 #210）在最底下，谁都
+可以用它，它不 import 仓里任何包。这些话写在文档里只是标语，靠人
 review 迟早会漏，所以这里用 ast 把每个模块的 import 摊开逐条判。
 
 判的是 import 语句本身而不是运行时依赖：静态、不用装环境、也不受 import 顺序影响。
@@ -22,6 +23,8 @@ LAYERS = ("contracts", "skills", "workspace", "executor", "experiment", "chat", 
           "cli")
 # 端口：framework 任何一层都可以 import 它们，它们不许 import framework。
 PORTS = ("backends", "compute")
+# 最底层：端口与 framework 都用它，它不 import 仓里任何包
+BASE = "procs"
 
 
 def _imported_modules(path: Path, root: Path) -> list[str]:
@@ -73,6 +76,7 @@ def violations(root: Path) -> list[str]:
         rel = path.relative_to(root)
         if rel.parts[:2] == ("framework", "shipped"):
             continue  # 打包暂存的出厂件（skill 脚本等），不是框架代码
+        where = rel.as_posix()  # 报的位置两边一样写（Windows 上 Path 印出来是反斜杠）
         own_layer = _layer_of(".".join(rel.with_suffix("").parts))
         own_capability = _capability_of(".".join(rel.with_suffix("").parts))
         for module in _imported_modules(path, root):
@@ -80,23 +84,28 @@ def violations(root: Path) -> list[str]:
             if layer is None:
                 continue
             if own_layer is None:
-                problems.append(f"{rel}: framework 顶层模块不该 import 分层包里的 {module}")
+                problems.append(f"{where}: framework 顶层模块不该 import 分层包里的 {module}")
                 continue
             if LAYERS.index(layer) > LAYERS.index(own_layer):
                 problems.append(
-                    f"{rel}: {own_layer} 层不许 import 更上层的 {module}"
+                    f"{where}: {own_layer} 层不许 import 更上层的 {module}"
                     f"（允许的方向是 {' → '.join(reversed(LAYERS))}）"
                 )
             capability = _capability_of(module)
             if (own_capability and capability and capability != own_capability):
-                problems.append(f"{rel}: 能力 {own_capability} 不许 import 另一个能力 {module}")
+                problems.append(f"{where}: 能力 {own_capability} 不许 import 另一个能力 {module}")
 
     for port in PORTS:
         for path in sorted((root / port).rglob("*.py")):
-            rel = path.relative_to(root)
+            rel = path.relative_to(root).as_posix()
             for module in _imported_modules(path, root):
                 if module == "framework" or module.startswith("framework."):
                     problems.append(f"{rel}: 端口 {port}/ 不许 import framework（{module}）")
+    for path in sorted((root / BASE).rglob("*.py")):
+        rel = path.relative_to(root).as_posix()
+        ours = {module.split(".")[0] for module in _imported_modules(path, root)}
+        for top in sorted(ours & {"framework", *PORTS}):
+            problems.append(f"{rel}: {BASE}/ 在最底下，不许 import {top}")
     return problems
 
 
@@ -134,6 +143,13 @@ def test_checker_catches_a_port_importing_framework(tmp_path):
     root = _fake_repo(tmp_path, {"backends/bad.py": "import framework.run.gitwork\n"})
     problems = violations(root)
     assert len(problems) == 1 and "端口" in problems[0]
+
+
+def test_checker_catches_the_base_importing_anything_of_ours(tmp_path):
+    root = _fake_repo(tmp_path, {"procs/bad.py": "from compute import Job\n",
+                                 "procs/fine.py": "from procs import _win\n"})
+    problems = violations(root)
+    assert len(problems) == 1 and "procs/bad.py" in problems[0]
 
 
 def test_checker_catches_one_capability_importing_another(tmp_path):

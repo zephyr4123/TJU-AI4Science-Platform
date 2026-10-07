@@ -74,6 +74,7 @@ platform/
 ├── framework/     Python 包 ai4sci：契约、工作区、能力、对话与页面后端、CLI；零模型调用（规矩见 framework/README.md）
 ├── backends/      agent 适配器：claude_code.py、codex.py（执行层 + 协调层 + 自检各一份）
 ├── compute/       算力适配器：local.py 本机、ssh.py 一台能 ssh 上去的 Linux（按平台的家里那份 computes.yaml 选）
+├── procs/         进程树：起、查、杀（POSIX 进程组、Windows Job Object），端口与框架共用
 ├── coordinator/   两位助理的指南（线上 prompt）：README.md 项目里的研究助理、studio.md 编辑台的流程助理
 ├── domains/       领域包：generic/ 兜底、petab/ 参数估计（docs/add-a-domain.md）
 ├── skills/        平台自带的 skill（常驻）：general/materials/ 下的 pdf 解析论文、download 拉材料（docs/add-a-skill.md）

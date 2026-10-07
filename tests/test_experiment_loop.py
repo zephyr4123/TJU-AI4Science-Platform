@@ -19,9 +19,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+import procs
 from compute import Job
 from compute.local import LocalCompute
-from compute.procs import group_alive
 from framework.capabilities.auto_research import (
     InflightPending,
     ResumeMismatch,
@@ -458,7 +458,7 @@ def test_keyboard_interrupt_cancels_the_in_flight_job(tmp_path):
     job = Job.from_json(
         (run_dir / "iters" / "iter_1" / "job.json").read_text(encoding="utf-8"))
     assert [j.pgid for j in compute.cancelled] == [job.pgid], "在飞的任务没被 cancel"
-    assert not group_alive(job.pgid), "被中断的那一轮还留着活着的进程组"
+    assert not procs.tree_alive(job.pgid), "被中断的那一轮还留着活着的进程组"
 
 
 # ── A-6 / A-7：假成功与动 harness ───────────────────────────────────────

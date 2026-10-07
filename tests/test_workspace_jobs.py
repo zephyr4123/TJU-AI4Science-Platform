@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+import procs
 from framework.workspace import jobs
 from framework.workspace import root as workspace
 from tests.fixtures import runs_factory as rf
@@ -96,16 +97,19 @@ def test_stop_kills_the_whole_tree_and_closes_the_output(tmp_path: Path):
     ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
     directory, _ = outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
                                        flow=None, step=None, requirement=1, chat_id=None)
-    # 顶上一个 python 自成会话，再起一个自成进程组的孙子（像执行层的 Bash、harness 的 launcher）
-    proc = subprocess.Popen(
+    # 顶上一个 python 像作业那样起，再起一个自成进程组的孙子（像执行层的 Bash、harness 的 launcher）
+    marker = tmp_path / "grandchild.pid"
+    proc = procs.spawn(
         [sys.executable, "-c",
-         "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; "
-         "time.sleep(300)'], start_new_session=True); time.sleep(300)"],
-        start_new_session=True)
-    time.sleep(1.0)
-    grandchild = subprocess.run(["pgrep", "-P", str(proc.pid)], capture_output=True, text=True,
-                                encoding="utf-8", errors="replace")
-    assert grandchild.stdout.split(), "夹具该有一个孙进程"
+         "import subprocess,sys,time; p = subprocess.Popen([sys.executable,'-c','import time; "
+         f"time.sleep(300)'], start_new_session=True); open({str(marker)!r}, 'w').write("
+         "str(p.pid)); time.sleep(300)"], detach=True, stdin=subprocess.DEVNULL)
+    deadline = time.monotonic() + 10
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert marker.exists(), "夹具该有一个孙进程"
+    time.sleep(0.3)
+    grandchild = int(marker.read_text(encoding="utf-8"))
     record = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=proc.pid,
                       started_at="t", output="design/1")
     ws.jobs.mkdir(parents=True)
@@ -115,9 +119,10 @@ def test_stop_kills_the_whole_tree_and_closes_the_output(tmp_path: Path):
     proc.wait(timeout=5)
     assert stopped.status == "stopped" and stopped.exit_code is None and "zephyr" in stopped.result
     assert jobs.effective_status(jobs.load(ws.jobs, "job-s")) == "stopped"
-    for pid in grandchild.stdout.split():  # 孙进程也死了，不留孤儿烧 CPU
-        assert subprocess.run(["ps", "-p", pid, "-o", "stat="], capture_output=True, text=True,
-                              encoding="utf-8", errors="replace").stdout.strip() in ("", "Z")
+    deadline = time.monotonic() + 10  # 孙进程也死了，不留孤儿烧 CPU
+    while procs.pid_alive(grandchild) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not procs.pid_alive(grandchild)
     meta = output.read_meta(directory)
     assert meta.status == "failed" and "人停的" in meta.error
     with pytest.raises(jobs.JobNotRunning, match="stopped"):
@@ -158,8 +163,8 @@ def test_stop_also_cancels_whatever_runs_under_the_output_on_its_compute(tmp_pat
     monkeypatch.setattr(computes, "instance", lambda name: Box() if name == "box" else None)
 
     def running_job(job_id: str) -> None:
-        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"],
-                                start_new_session=True)
+        proc = procs.spawn([sys.executable, "-c", "import time; time.sleep(300)"], detach=True,
+                           stdin=subprocess.DEVNULL)
         record = jobs.Job(job_id=job_id, cap="design", stage="design", argv=[], pid=proc.pid,
                           started_at="t", output="design/1")
         ws.jobs.mkdir(parents=True, exist_ok=True)

@@ -69,6 +69,10 @@ class SshCompute:
         return ["uv"]
 
     @property
+    def bash(self) -> list[str]:
+        return ["bash"]  # 远端是 Linux
+
+    @property
     def scratch(self) -> str:
         return f"{self.root}/.scratch"
 

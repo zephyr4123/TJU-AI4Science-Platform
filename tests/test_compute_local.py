@@ -13,15 +13,15 @@ from pathlib import Path
 
 import pytest
 
+import procs
 from compute import ComputeNotFound, ExitStatus, Job, available_computes, get_compute
 from compute.local import LocalCompute
-from compute.procs import group_alive
 
 
 def _wait_group_gone(pgid: int, limit_s: float = 5.0) -> bool:
     deadline = time.monotonic() + limit_s
     while time.monotonic() < deadline:
-        if not group_alive(pgid):
+        if not procs.tree_alive(pgid):
             return True
         time.sleep(0.02)
     return False

@@ -64,7 +64,7 @@ def run_baseline(pack: Path, compute: Compute, *, check_headroom: bool = True) -
         raise CapabilityFailed(str(exc)) from exc
     harness_env = env.harness_env(Path(python), float(budget["wall_clock_s"]), inner_k)
     timeout_s = float(budget["wall_clock_s"]) * (1 + int(repeat_k)) * BASELINE_TIMEOUT_RATIO
-    outcome = compute.run(remote, ["bash", "harness/make_run0.sh"], harness_env, timeout_s)
+    outcome = compute.run(remote, [*compute.bash, "harness/make_run0.sh"], harness_env, timeout_s)
     # harness 的两路输出都走 stderr（诊断）：stdout 只留给协调层读的那一行结论（P-14）
     for text in (outcome.stdout, outcome.stderr):
         if text.strip():

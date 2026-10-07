@@ -49,7 +49,9 @@ flowchart TB
 
 分层之外的顶层模块是**唯一读取点**：`paths.py`（仓根、出厂件、平台的家与家里每样东西的位置、五个 `*_ROOT` 环境变量）、`computes.py`（家里的 `computes.yaml`）、`agents.py`（家里的 `agents.yaml`，以及起适配器时交给它的 `Link`）、`keys.py`（家里的 `keys.yaml`）、`mirrors.py`（国内源的地址）、`toolchain.py`（两家 CLI 装在家里的 `tools/`：认、下载、校验、解包，外层 #277）。分层包可以 import 它们，它们不许 import 分层包。
 
-两个**端口**在包外：`backends/`（`Runner` 执行层一次会话、`Chat` 协调层多轮续接，两个 Protocol；适配器 `claude_code.py`、`codex.py` 各一个文件，`_procs.py` 杀进程树、`_snapshot.py` 前后快照 diff）与 `compute/`（`Compute` Protocol；`local.py`、`ssh.py`）。端口不 import framework，相互也不 import；按名字取适配器走显式字典 `_BACKENDS` / `_COMPUTES`，名字不对抛 `BackendNotFound` / `ComputeNotFound`，绝不回退。
+两个**端口**在包外：`backends/`（`Runner` 执行层一次会话、`Chat` 协调层多轮续接，两个 Protocol；适配器 `claude_code.py`、`codex.py` 各一个文件，`_snapshot.py` 前后快照 diff）与 `compute/`（`Compute` Protocol；`local.py`、`ssh.py`）。端口不 import framework，相互也不 import；按名字取适配器走显式字典 `_BACKENDS` / `_COMPUTES`，名字不对抛 `BackendNotFound` / `ComputeNotFound`，绝不回退。
+
+最底下是 `procs/`（进程树：起、查、杀，POSIX 用进程组、Windows 用 Job Object，外层 #210）：两个端口与框架（`--detach` 的作业、对话锁）都用它，它不 import 仓里任何包。
 
 下层要用上层的东西怎么办：**由上层注入函数或回调**，不反向 import。`chat/server.py` 不认识 `capabilities`，能力清单、流程检查、描述符表由 `cli/serve.py` 以函数传进 `ChatServer`；`workspace/removal.py` 通过回调接 `chat/removal.py`。
 
@@ -135,7 +137,7 @@ sequenceDiagram
 - **原子写与锁**：一边写一边有人读的状态文件（作业记录、对话 meta、产出 meta 与签字、需求的锁、流程文件、checkpoint）一律走 `framework/files.py::write_atomic`（同目录临时文件 + `os.replace`，外层 #204）；能力边跑边追加的进度（产出目录的 `progress.jsonl`，页面画进度面板用，外层 #242）走同一处的 `append_event`（整行一次写、进程内一把锁，每行带 `at`）；对话忙锁用 `O_EXCL` 并记 pid（`chat/conversation.py`）。
 - **执行层改了什么只信前后快照 diff**（`backends/_snapshot.py`），不采信 CLI 自报；越界在事后判。
 - **回调注入代替反向 import**（见 §1）。
-- **有第二个用例才抽象**：两个能力或两个端口要共用小工具时先各写一份（`kill_tree` 有两份）；共用的读写只在族包（`experiment/`）里。
+- **有第二个用例才抽象**：两个能力或两个端口要共用小工具时先各写一份；真有了第二、第三个用例再收成一处（杀进程树原先两份，Windows 上要 Job Object 时收成 `procs/`）；共用的读写只在族包（`experiment/`）里。
 - **一个概念一处读取点**：根目录只在 `paths.py`，按人的两份清单只在 `computes.py` / `agents.py`，每个环境变量只读一次、断言一次。
 
 命名与注释：

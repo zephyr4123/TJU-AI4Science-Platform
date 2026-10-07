@@ -19,6 +19,9 @@
 - 平台起 CLI 先用家里 `tools/` 装的那份，没有再找 PATH；平台起的 Claude Code 关自动更新；自检没装、版本不够时给出 `ai4sci setup`（外层 #277）
 - 平台起 uv 时 Python 装在家里、PyPI / Python / HuggingFace 走国内镜像（用户自己设了的不盖）；skill 的锁文件对着清华锁，门禁查（外层 #277）
 - `ai4sci reset` 与「清除全部数据」留下一行命令装的程序（`bin/` `tools/`），回到刚装好的样子；卸载是删整个家（外层 #277）
+- 起进程、查进程、杀进程树收成最底层的 `procs/`：POSIX 照旧用进程组，Windows 用 Job Object，两个端口与框架共用（外层 #210）
+- 协调层的指南不再放命令行：Claude Code 走 `--append-system-prompt-file`、Codex 走私有 home 里的 profile；正文走 stdin（Windows 一条命令行 32767 字，外层 #210）
+- 子进程与文本文件一律按 UTF-8 读写，平台起的 Python 设 UTF-8 模式，门禁扫漏写的 `encoding`（外层 #210）
 
 ## [1.7.2] - 2026-10-07
 

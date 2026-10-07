@@ -26,7 +26,7 @@ build-backend = "setuptools.build_meta"
 fallback_version = "0.0.0"
 
 [tool.setuptools.packages.find]
-include = ["framework*", "backends*", "compute*"]
+include = ["framework*", "backends*", "compute*", "procs*"]
 
 # 框架在运行时要读的文件都要随包带走，装出来的 ai4sci 才找得到（外层 #138）：
 #   experiment/pack.py::SCHEMA_DIR（scoring / results / report 三份 schema）

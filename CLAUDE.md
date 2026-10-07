@@ -71,7 +71,7 @@
 
 1. **框架零模型调用**：`framework/` 下 grep 不到 anthropic / openai / claude_sdk（纲领 P-1）。模型只在 `backends/` 适配器起的子进程里。
 2. **不吞异常**：ruff 的 BLE 规则开着，裸 `except` 与不 raise 的 `except Exception` 过不了 lint（P-7）。
-3. **依赖方向单向**：`framework/` 内 `cli → capabilities → chat → experiment → executor → workspace → skills → contracts`，`backends/` `compute/` 是端口、不许 import framework，能力子包互不 import（`tests/test_layering.py`）。
+3. **依赖方向单向**：`framework/` 内 `cli → capabilities → chat → experiment → executor → workspace → skills → contracts`，`backends/` `compute/` 是端口、不许 import framework，`procs/`（进程树）在最底下、不 import 仓里任何包，能力子包互不 import（`tests/test_layering.py`）。
 4. **密钥只在平台的家里的 `keys.yaml`**（只有本人能读，读写点只在 `framework/keys.py`，外层 #265），绝不进代码、不进 argv、不进 git、不进日志；平台不读用户 shell 里的 key，交给子进程时只给要用的那一个；页面只见末四位；ssh 只认密钥，清单里没有 password 字段（`framework/computes.py` 断言；`tests/test_keys.py`）。
 5. **环境隔离**：平台一律 `.venv`、uv 管一切（`make venv` = `uv sync --locked`，改依赖 `make lock`）；课题的依赖不进平台 venv，每次实验按 `materials/env/` 自建 venv，harness 只经 `$AI4SCI_PYTHON` 起解释器；skill 脚本 PEP 723 自带依赖；页面依赖只进 `ui/web/node_modules`。
 6. **每个改动写 `CHANGELOG.md` 的 Unreleased**；发版只走 `make release VERSION=x.y.z`，不手工打 tag（`make changelog`）。

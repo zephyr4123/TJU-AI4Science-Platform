@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import stat
 import tomllib
 from dataclasses import replace
 from pathlib import Path
@@ -29,6 +28,7 @@ from backends import (
 )
 from backends import codex as cx
 from backends import probe as probe_backend
+from tests.fixtures.fake_cli import fake_cli
 
 FIXTURE = Path(__file__).parent / "fixtures" / "codex_stream_sample.jsonl"
 
@@ -77,6 +77,7 @@ def test_codex_is_a_registered_backend_with_both_ports(tmp_path):
 # --- 私有 CODEX_HOME 与要关的 skill ------------------------------------------------
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows 上执行层是硬链接，下一条在两边都测")
 def test_codex_home_shares_the_platform_login_between_layers(link: Link, home: Path, tmp_path):
     """外层 #263：登录是平台自己的（根上的 auth.json），执行层软链到它——一次登录两层用；
     不再软链用户的 ~/.codex。"""
@@ -99,6 +100,27 @@ def test_codex_home_shares_the_platform_login_between_layers(link: Link, home: P
     auth.write_text("{}", encoding="utf-8")
     with pytest.raises(AssertionError, match="不该有自己的凭据"):
         cx.codex_home(link, "executor")
+
+
+def test_a_hardlinked_login_follows_the_root_through_logout_and_login(tmp_path):
+    """Windows 上执行层的 auth.json 是根上那份的硬链接（软链要管理员，外层 #210）：Codex 刷新 token
+    原地重写，两层同一份；登出删了根上那份、再登录是新文件，执行层要跟上，不能留着旧 token。"""
+    real, auth = tmp_path / "auth.json", tmp_path / "executor" / "auth.json"
+    auth.parent.mkdir()
+    cx._hardlink_login(real, auth)  # 根上还没登录：执行层也没有
+    assert not auth.exists()
+    real.write_text('{"token": 1}', encoding="utf-8")
+    cx._hardlink_login(real, auth)
+    assert os.path.samefile(auth, real)
+    with real.open("r+", encoding="utf-8") as f:  # 刷新 token：原地截断重写
+        f.truncate(0)
+        f.write('{"token": 2}')
+    assert auth.read_text(encoding="utf-8") == '{"token": 2}'
+    real.unlink()  # 登出再登录：根上换了一个新文件
+    real.write_text('{"token": 3}', encoding="utf-8")
+    cx._hardlink_login(real, auth)
+    assert os.path.samefile(auth, real) and auth.read_text(encoding="utf-8") == '{"token": 3}'
+    assert sorted(p.name for p in auth.parent.iterdir()) == ["auth.json"]
 
 
 def test_login_and_logout_run_in_the_platform_codex_home(link: Link):
@@ -157,7 +179,7 @@ def test_runner_argv_is_ephemeral_sandboxed_and_lists_writable_roots(link: Link,
     argv = cx.CodexRunner(link).build_argv(cwd, [cwd / "harness"], ("ai4sci skill",),
                                        Tuning(model="gpt-6-luna", effort="low"), home=home)
     assert argv[:2] == ["codex", "exec"] and argv[-1] == "-"  # prompt 走 stdin
-    for flag in ("--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config"):
+    for flag in ("--json", "--ephemeral", "--skip-git-repo-check"):
         assert flag in argv
     assert "--ignore-rules" not in argv  # 规则要读：ai4sci 在沙箱外跑靠它
     rules = (home / "rules" / cx.RULES_NAME).read_text(encoding="utf-8")
@@ -188,12 +210,15 @@ def test_chat_argv_opens_with_the_guide_and_resumes_by_thread_id(link: Link, hom
     second = chat.build_argv(tmp_path, session_id="01a0-thread", **common)
     assert "--ephemeral" not in first and "--ephemeral" not in second  # 续接要 rollout 落盘
     assert first[argv_index(first, "-C") + 1] == str(tmp_path.resolve())
-    guide = tomllib.loads(f"d = {_config(first)['developer_instructions']}")["d"]
-    assert guide == common["system_prompt"]
-    # resume 形态：没有 -C / --color / developer_instructions，线程 id 在 prompt 的 `-` 前面
+    # 指南在私有 home 里按内容命名的 profile 里，`-p` 叠上去；不放命令行（Windows 一条命令行
+    # 32767 个字符，外层 #210）
+    profile = home / f"{first[argv_index(first, '-p') + 1]}.config.toml"
+    guide = tomllib.loads(profile.read_text(encoding="utf-8"))["developer_instructions"]
+    assert guide == common["system_prompt"] and "developer_instructions" not in _config(first)
+    assert (home / cx.CONFIG_NAME).read_text(encoding="utf-8").startswith("#")  # 基础配置留空
+    # resume 形态：没有 -C / --color / 指南，线程 id 在 prompt 的 `-` 前面
     assert second[:3] == ["codex", "exec", "resume"] and second[-2:] == ["01a0-thread", "-"]
-    assert "-C" not in second and "--color" not in second
-    assert "developer_instructions" not in _config(second)
+    assert "-C" not in second and "--color" not in second and "-p" not in second
     rules = (home / "rules" / cx.RULES_NAME).read_text(encoding="utf-8")
     assert 'pattern=["ai4sci"]' in rules and 'pattern=[".venv/bin/ai4sci"]' in rules
     for argv in (first, second):
@@ -307,7 +332,7 @@ def test_parse_events_and_final_report():
 
 def _fake_codex(directory: Path, *, logged_in: bool = True,
                 version: str = "codex-cli 0.160.0") -> Path:
-    """一个装成 codex 的脚本：`--version`、`login status`、`exec`（读完 stdin、往 cwd 写一个文件、
+    """一个装成 codex 的程序：`--version`、`login status`、`exec`（读完 stdin、往 cwd 写一个文件、
     吐事件，JSON 一行一个）。"""
     directory.mkdir(parents=True, exist_ok=True)
     script = directory / "codex"
@@ -327,21 +352,23 @@ def _fake_codex(directory: Path, *, logged_in: bool = True,
                                              "reasoning_output_tokens": 0}},
     ]
     stream = "\n".join(json.dumps(e) for e in events)
-    script.write_text(f"""#!/bin/sh
-if [ "$1" = "--version" ]; then echo "{version}"; exit 0; fi
-if [ "$1" = "login" ]; then
-  if [ "{int(logged_in)}" = "1" ]; then echo "Logged in using ChatGPT" >&2; exit 0; fi
-  echo "Not logged in" >&2; exit 1
-fi
-cat > /dev/null
-mkdir -p out && printf hello > out/hello.txt
-cat <<'EOF'
-{stream}
-EOF
-echo "some warning" >&2
-""", encoding="utf-8")
-    script.chmod(script.stat().st_mode | stat.S_IXUSR)
-    return script
+    return Path(fake_cli(script, f"""import pathlib, sys
+args = sys.argv[1:]
+if args[:1] == ["--version"]:
+    print({version!r})
+    sys.exit(0)
+if args[:1] == ["login"]:
+    if {logged_in!r}:
+        print("Logged in using ChatGPT", file=sys.stderr)
+        sys.exit(0)
+    print("Not logged in", file=sys.stderr)
+    sys.exit(1)
+sys.stdin.read()
+pathlib.Path("out").mkdir(exist_ok=True)
+pathlib.Path("out", "hello.txt").write_text("hello", encoding="utf-8")
+print({stream!r})
+print("some warning", file=sys.stderr)
+"""))
 
 
 def test_runner_run_reports_changed_files_report_and_nan_cost(link: Link, home: Path, tmp_path):
