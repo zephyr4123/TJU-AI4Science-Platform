@@ -65,7 +65,8 @@ class Job:
     log: str = ""
     # 跑完叫醒那段对话的结果（chat 层写的一句话）；没有对话的作业是 None
     wake: str | None = None
-    # 照哪条流程跑的（--flow）；没照流程是 None。页面靠它把跑着的作业画到那条流程上
+    # 产出记在哪条流程下（开了产出与 output 一起回写；--flow 省了也一样）；没照流程是 None。
+    # 页面靠它把跑着的作业画到那条流程上
     flow: str | None = None
     # 这个作业产的那次产出（子进程开了目录再回写）；接着干的作业开工时就知道
     output: str | None = None
@@ -79,7 +80,7 @@ def _path(jobs_dir: Path, job_id: str) -> Path:
 
 
 def spawn(jobs_dir: Path, argv: list[str], *, cap: str, stage: str, chat_id: str | None,
-          flow: str | None = None, output: str | None = None) -> Job:
+          output: str | None = None) -> Job:
     """起 `ai4sci <argv>` 当作业：新会话、日志落盘、记录写 running，立刻返回。
 
     `argv` 是去掉了 `--detach` 的那条命令；子进程从 `AI4SCI_JOB_ID` 知道自己是作业。
@@ -99,17 +100,18 @@ def spawn(jobs_dir: Path, argv: list[str], *, cap: str, stage: str, chat_id: str
         )
     job = Job(job_id=job_id, cap=cap, stage=stage, argv=list(argv), pid=proc.pid,
               started_at=stamp.isoformat(timespec="seconds"), chat_id=chat_id, log=str(log_path),
-              flow=flow, output=output)
+              output=output)
     _save(jobs_dir, job)
-    LOGGER.info("job_spawn job_id=%s cap=%s pid=%d chat_id=%s flow=%s",
-                job_id, cap, proc.pid, chat_id or "-", flow or "-")
+    LOGGER.info("job_spawn job_id=%s cap=%s pid=%d chat_id=%s",
+                job_id, cap, proc.pid, chat_id or "-")
     return job
 
 
-def attach_output(jobs_dir: Path, job_id: str, output: str) -> Job:
-    """子进程开了产出目录就回写它的 id：看板从此能把这个作业画到那次产出上。"""
+def attach_output(jobs_dir: Path, job_id: str, output: str, flow: str | None) -> Job:
+    """子进程开了产出目录就回写它的 id 与它记在哪条流程下：看板从此能把这个作业画到那次产出、
+    那条流程上。流程只认产出这一处——`--flow` 省了时是框架替它定的，命令行上看不出来。"""
     job = load(jobs_dir, job_id)
-    job.output = output
+    job.output, job.flow = output, flow
     _save(jobs_dir, job)
     return job
 

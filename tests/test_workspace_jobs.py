@@ -44,8 +44,7 @@ def test_spawned_job_runs_the_capability_and_writes_back(tmp_path: Path, monkeyp
     ws = pack.workspace
     _env(monkeypatch, ws)
     argv = ["cap", "verify", "--from", "analysis/1", "--from", "experiment/1"]
-    job = jobs.spawn(ws.jobs, argv, cap="verify", stage="verification", chat_id="chat-x",
-                     flow=None)
+    job = jobs.spawn(ws.jobs, argv, cap="verify", stage="verification", chat_id="chat-x")
     assert job.status == "running" and job.job_id.startswith("job-") and job.chat_id == "chat-x"
     on_disk = json.loads((ws.jobs / f"{job.job_id}.json").read_text(encoding="utf-8"))
     assert on_disk["argv"] == argv and on_disk["pid"] == job.pid and on_disk["output"] is None
@@ -59,6 +58,22 @@ def test_spawned_job_runs_the_capability_and_writes_back(tmp_path: Path, monkeyp
     assert jobs.running_for(ws.jobs, "verification/1") is None
     assert jobs.running_jobs(ws.jobs) == []
 
+
+
+def test_a_job_belongs_to_the_flow_its_output_was_placed_in(tmp_path: Path, monkeypatch):
+    """工作区只有一条流程时 `--flow` 可省（指南这么教）：产出照样记在那条流程下，作业也得认它，
+    不然跑着的时候看板说「轮到助理」、没有停止（外层 #210 Windows 真机撞上的，Mac 一样）。"""
+    run_dir, pack = rf.make_run(tmp_path)
+    rf.write_analysis(pack, rf.good_analysis(run_dir))
+    ws = pack.workspace
+    spaces.open_flow(ws)
+    _env(monkeypatch, ws)
+    job = jobs.spawn(ws.jobs, ["cap", "verify", "--from", "analysis/1", "--from", "experiment/1"],
+                     cap="verify", stage="verification", chat_id=None)
+    assert job.flow is None  # 起的时候还不知道：开了产出才知道落在哪
+    done = _wait_done(ws.jobs, job.job_id)
+    assert done.status == "done", done
+    assert done.output == "verification/1" and done.flow == "open"
 
 def test_failed_job_writes_the_capabilitys_own_sentence(tmp_path: Path, monkeypatch):
     ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
