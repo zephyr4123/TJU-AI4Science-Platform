@@ -4,6 +4,10 @@
 again」）。这里用假 client 证明：失败了照 SDK 的说法再调、试够了照样抛；带版本号的（不可变）桶里已有
 同一份（sha256）就跳过，重跑只补没传成的，同名不同内容让作业失败；每种文件带对的 Content-Type。
 版本从 wheel 文件名取（rc 是 PEP 440 的写法），正式版写 platform.json。
+
+桌面包（spec §7）：签名照外壳的更新器验（用 tauri CLI 签的真签名），latest.json 传之前的校验各有
+反例；外壳改没改在一个带 tag 的临时 git 仓里判；CDN 证书的剩余天数注入日期判。桶、CDN 的 HEAD 都是
+替身，不连网。
 """
 
 from __future__ import annotations
