@@ -421,6 +421,29 @@ def test_probe_walks_the_four_questions(link: Link, home: Path, tmp_path):
     assert not missing.installed and not missing.ok and "找不到" in missing.items[0][2]
 
 
+def test_probe_runs_every_codex_command_in_the_platform_home(link: Link, tmp_path, monkeypatch):
+    """外层 #286：`codex --version` 也会在它的 home 里建 `tmp/`；自检第一句不带平台的 CODEX_HOME，
+    就建到了用户的 `~/.codex`。假 codex 每次被起都往 `$CODEX_HOME`（没设就 `~/.codex`）里落一个
+    文件。"""
+    person = tmp_path / "person"
+    monkeypatch.setenv("HOME", str(person))
+    monkeypatch.setenv("USERPROFILE", str(person))
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    (tmp_path / "bin").mkdir()
+    cli = Path(fake_cli(tmp_path / "bin" / "codex", """import os, pathlib, sys
+home = pathlib.Path(os.environ.get("CODEX_HOME") or pathlib.Path.home() / ".codex")
+(home / "tmp").mkdir(parents=True, exist_ok=True)
+(home / "tmp" / sys.argv[1]).write_text("x", encoding="utf-8")
+if sys.argv[1:2] == ["--version"]:
+    print("codex-cli 0.160.0")
+else:
+    sys.exit(1)
+"""))
+    cx.probe(replace(link, cli=str(cli)))
+    assert not (person / ".codex").exists(), "家外面多了 .codex"
+    assert (link.home / "tmp" / "--version").is_file()
+
+
 def test_probe_is_reachable_through_the_port(link: Link, home: Path, monkeypatch, tmp_path):
     """`backends.probe("codex")` 调的是模块级 `probe()`：形状对不上要在端口那层炸。"""
     cli = _fake_codex(tmp_path / "bin")

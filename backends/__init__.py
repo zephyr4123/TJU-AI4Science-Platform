@@ -174,6 +174,9 @@ class Install:
     （`darwin-arm64`、`win32-x64`；Windows 的槽位就在这一段，#210）。两家的原生程序都按平台单独
     发包，npmmirror 上与 npmjs 同版本、不要 Node（2026-10-07 实测）。适配器只说事实，下载、校验、
     解包到平台的家里是框架的事（`framework/toolchain.py`）。
+    `home_env` 是把这家指到私有目录（`Link.home`）的环境变量：平台起它的每一处都带上，连只问
+    `--version` 的也是——Codex 问一句版本就在它的 home 里建 `tmp/`，不带就建到了用户的
+    `~/.codex`（外层 #286）。
     """
 
     command: str
@@ -181,6 +184,7 @@ class Install:
     npm: str
     parse_version: Callable[[str], tuple[int, ...] | None]
     dist: Callable[[str, str], Dist]
+    home_env: str
 
 
 class KeyMissing(ValueError):

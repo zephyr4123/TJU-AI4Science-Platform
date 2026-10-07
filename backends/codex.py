@@ -249,7 +249,7 @@ def npm_dist(platform: str, version: str) -> Dist:
 
 
 INSTALL = Install(command="codex", min_version=MIN_VERSION, npm="@openai/codex",
-                  parse_version=parse_version, dist=npm_dist)
+                  parse_version=parse_version, dist=npm_dist, home_env=HOME_ENV)
 
 
 def toml_str(text: str) -> str:
@@ -745,8 +745,9 @@ class CodexChat:
 def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
     """四句人话（纲领 P-25）：装了没、版本够不够、登录了没、能不能说话。
 
-    登录看 `codex login status` 的退出码（0 / 1，文字在 stderr），在平台的 CODEX_HOME 下跑——问的是
-    平台自己的登录，不是用户本机的；说话真跑一句 pong，走与真会话同一组隔离参数。
+    每一句都在平台的 CODEX_HOME 下跑（外层 #286），连问版本也是。登录看 `codex login status` 的
+    退出码（0 / 1，文字在 stderr）——问的是平台自己的登录，不是用户本机的；说话真跑一句 pong，走与
+    真会话同一组隔离参数。
     """
     result = AgentProbe()
     cli = link.cli or INSTALL.command
@@ -756,8 +757,11 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
         return result
     result.installed = True
     result.items.append((INSTALLED_ITEM, True, exe))
+    home = codex_home(link, "chat")
+    # 问版本也在平台的 CODEX_HOME 下：Codex 一起来就在 home 里建 tmp/（外层 #286）
     version = subprocess.run([cli, "--version"], capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=30)
+                             encoding="utf-8", errors="replace", timeout=30,
+                             env={**os.environ, HOME_ENV: str(home)})
     raw = (version.stdout or version.stderr).strip()
     result.version = raw
     parsed = parse_version(raw)
@@ -769,7 +773,6 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
         result.items.append((VERSION_ITEM, False, f"{raw}，要 ≥ {want}（这版实测过的 flag）"))
         return result
     result.items.append((VERSION_ITEM, True, raw))
-    home = codex_home(link, "chat")
     picked = provider(link)
     if picked.key is None:  # 官方登录：问平台私有目录里的登录，不是用户本机的
         status = subprocess.run([cli, "login", "status"], capture_output=True, text=True,

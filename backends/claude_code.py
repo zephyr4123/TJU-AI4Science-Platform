@@ -730,7 +730,7 @@ def npm_dist(platform: str, version: str) -> Dist:
 
 
 INSTALL = Install(command="claude", min_version=MIN_VERSION, npm="@anthropic-ai/claude-code",
-                  parse_version=parse_version, dist=npm_dist)
+                  parse_version=parse_version, dist=npm_dist, home_env=CONFIG_DIR_ENV)
 
 
 def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
@@ -748,8 +748,10 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
         return result
     result.installed = True
     result.items.append((INSTALLED_ITEM, True, exe))
+    # 问版本也指到平台的配置目录：平台起 CLI 的每一处都不碰用户的 ~/.claude（外层 #286）
     version = subprocess.run([cli, "--version"], capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=30)
+                             encoding="utf-8", errors="replace", timeout=30,
+                             env={**os.environ, CONFIG_DIR_ENV: str(link.home)})
     raw = (version.stdout or version.stderr).strip()
     result.version = raw
     parsed = parse_version(raw)
