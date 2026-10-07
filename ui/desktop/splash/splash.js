@@ -74,17 +74,19 @@ function apply(event) {
   }
 }
 
+/** 调不通外壳（不该发生）：原话进控制台，屏上只说一句、停表 */
+function broken(error) {
+  console.error(error)
+  problem({ text: '桌面 App 出错了：退出再打开试试', retry: false })
+}
+
 function call(command) {
-  invoke(command).catch(error => {
-    $('status').textContent = `外壳没接上：${error}`
-  })
+  invoke(command).catch(broken)
 }
 
 const channel = new Channel()
 channel.onmessage = apply
-invoke('attach', { onEvent: channel }).catch(error => {
-  $('status').textContent = `外壳没接上：${error}`
-})
+invoke('attach', { onEvent: channel }).catch(broken)
 tick(true)
 
 $('retry').addEventListener('click', () => call('retry'))

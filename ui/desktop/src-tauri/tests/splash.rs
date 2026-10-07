@@ -84,3 +84,27 @@ fn the_splash_is_all_local() {
     let bad = r#"<script type="module">alert(1)</script><link href="https://fonts.example/x.css">"#;
     assert_eq!(leaves_home(bad), ["内联脚本", "外面的地址"], "反例");
 }
+
+/// 带这个 id 的那个开标签
+fn opening<'a>(html: &'a str, id: &str) -> &'a str {
+    let at = html.find(&format!("id=\"{id}\"")).expect("有这个 id");
+    let start = html[..at].rfind('<').unwrap();
+    let end = at + html[at..].find('>').unwrap();
+    &html[start..=end]
+}
+
+#[test]
+fn screen_readers_hear_the_steps_not_the_clock() {
+    let html = read("../splash/index.html");
+    assert!(opening(&html, "status").contains(r#"aria-live="polite""#));
+    assert!(
+        opening(&html, "elapsed").contains(r#"aria-hidden="true""#),
+        "每秒一跳的表不念"
+    );
+    assert!(
+        opening(&html, "rows").contains(r#"aria-live="polite""#),
+        "新的一步要念"
+    );
+    let js = read("../splash/splash.js");
+    assert!(!js.contains("${error}"), "外壳的原话不上屏");
+}

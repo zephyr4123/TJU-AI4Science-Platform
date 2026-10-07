@@ -75,9 +75,11 @@ impl Gate {
         if site.is_some() && inner.backend == site {
             return Verdict::Allow;
         }
-        if site.is_some() && self.splash == site && inner.splash_once {
-            inner.splash_once = false;
-            return Verdict::Allow;
+        if site.is_some() && self.splash == site {
+            // 外壳自己的来源不交给系统：Windows 上它是 http://tauri.localhost，在启动页按 F5、在页面上
+            // 后退回启动页，都会被当成外链开进浏览器
+            let once = std::mem::take(&mut inner.splash_once);
+            return if once { Verdict::Allow } else { Verdict::Deny };
         }
         if external(url) {
             Verdict::External
@@ -86,9 +88,9 @@ impl Gate {
         }
     }
 
-    /// 新窗口一律不开：能交给系统的交出去，其余拒
+    /// 新窗口一律不开：能交给系统的交出去（外壳自己的来源除外），其余拒
     pub fn new_window(&self, url: &Url) -> Verdict {
-        if external(url) {
+        if external(url) && Site::of(url) != self.splash {
             Verdict::External
         } else {
             Verdict::Deny
@@ -182,6 +184,19 @@ mod tests {
             gate.navigation(&u("tauri://localhost/index.html")),
             Verdict::Allow
         );
+    }
+
+    #[test]
+    fn the_windows_splash_origin_never_goes_to_the_browser() {
+        let splash = u("http://tauri.localhost/index.html");
+        let gate = Gate::new(&splash);
+        assert_eq!(gate.navigation(&splash), Verdict::Allow);
+        assert_eq!(gate.navigation(&splash), Verdict::Deny, "在启动页按 F5");
+        gate.open_backend(&u("http://127.0.0.1:51234/"));
+        assert_eq!(gate.navigation(&splash), Verdict::Deny, "从页面后退");
+        assert_eq!(gate.new_window(&splash), Verdict::Deny);
+        gate.back_to_splash();
+        assert_eq!(gate.navigation(&splash), Verdict::Allow, "外壳自己带回去");
     }
 
     #[test]
