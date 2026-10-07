@@ -102,6 +102,13 @@ $UV_HOME = @{
 $UV_DEFAULT = @{ UV_CACHE_DIR = (Join-Path $HOME_DIR 'cache\uv') }
 
 # 够版本的 uv：低于钉的版本（外壳带的那份会变老）当没有。X.Y.Z 逐段比，-test 这类尾巴不算
+# 删一个目录，里面的路径过了 260 个字符也删得掉：平台带的 skill 里有很深的文件，没开长路径时 Remove-Item
+# 删不掉（外层 #282 真机）。stderr 在 cmd 里扔掉，5.1 在 Stop 下会把原生程序写 stderr 当错误。删没删掉照实返回
+function Clear-Dir([string]$path) {
+  if (Test-Path -LiteralPath $path) { cmd.exe /d /c "rd /s /q `"\\?\$path`" 2>nul" | Out-Null }
+  -not (Test-Path -LiteralPath $path)
+}
+
 function Test-Uv([string]$path) {
   if (-not $path -or -not (Test-Path $path)) { return $false }
   $ErrorActionPreference = 'Continue'
@@ -206,11 +213,11 @@ try {
       if (Test-Path $tool) {
         # 升级：uv 先删掉旧环境再下依赖，中途断了原来那份就没了。先装进暂存目录，下载都在这一步、
         # 旧的不动；成了再从缓存离线换进去
-        Remove-Item -Recurse -Force $STAGING -ErrorAction SilentlyContinue
+        [void](Clear-Dir $STAGING)  # 上次没删干净的：uv 装的时候 --force 盖过去，下面再删
         $into = $UV_HOME.Clone()
         $into.UV_TOOL_DIR = Join-Path $STAGING 'tools'; $into.UV_TOOL_BIN_DIR = Join-Path $STAGING 'bin'
         $staged = Invoke-Logged $UV $argv $into
-        Remove-Item -Recurse -Force $STAGING -ErrorAction SilentlyContinue
+        if (-not (Clear-Dir $STAGING)) { Say '!' 'ai4sci' "升级用的暂存 $STAGING 删不干净，可以手动删掉" }
         if ($staged -ne 0) { Stop-Install 'ai4sci' "$VERSION 没装上，原来那份照样能用；详情在 $LOG" }
         $argv = @('tool', 'install', '--force', '--offline', '--python', $PYTHON_WANTED, (Join-Path $work $wheel))
       }

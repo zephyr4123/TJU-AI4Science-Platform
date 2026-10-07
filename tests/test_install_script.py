@@ -576,6 +576,27 @@ def test_install_ps1_sets_up_the_home_then_hands_over_and_a_rerun_skips(tmp_path
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")
+def test_install_ps1_clears_a_staging_area_deeper_than_260_characters(tmp_path):
+    """升级先装进 tools\\.ai4sci-staging；平台带的 skill 里有很深的文件，缺省的家下暂存里最深的那个
+    正好过了 260 个字符，没开长路径时 Remove-Item 删不掉，又被 SilentlyContinue 吞了，每次升级都留下
+    （外层 #282 端到端在真机上看到的）。这里预先埋一个超过 260 的，升级之后暂存应当没了。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    _uv_release_windows(dist, "0.0.0-test")
+    for version in ("1.0.0", "1.0.1"):
+        _wheel(dist, version)
+    _run_ps1(tmp_path, "1.0.0", home, dist)
+    staging = home / paths.TOOLS_DIRNAME / ".ai4sci-staging"
+    deep = staging / "tools" / ("d" * 120) / ("e" * 120) / "left-over.md"
+    assert len(str(deep)) > 260
+    os.makedirs("\\\\?\\" + str(deep.parent))
+    with open("\\\\?\\" + str(deep), "w", encoding="utf-8") as left:
+        left.write("x")
+    out = _run_ps1(tmp_path, "1.0.1", home, dist)
+    assert "ai4sci        1.0.1，安装完成" in out, out
+    assert not os.path.exists("\\\\?\\" + str(staging)), out
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")
 def test_install_ps1_stops_on_a_tampered_download_without_closing_the_window(tmp_path):
     """对不上 sha256 就停、不装半份；`irm | iex` 跑在人自己的会话里，停也不 exit（会关掉他的
     窗口）。"""
