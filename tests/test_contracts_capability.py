@@ -8,12 +8,19 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 
-from framework.capabilities import MAIN_FILES, check_capability_module, command_name, discover
+from framework.capabilities import (
+    MAIN_FILES,
+    assistant_guide,
+    check_capability_module,
+    command_name,
+    discover,
+)
 from framework.contracts.capability import (
     COLUMNS,
     Capability,
@@ -102,6 +109,42 @@ def test_main_file_of_the_stage_must_be_named_in_leaves():
         for main in MAIN_FILES[module.DESCRIPTOR.stage]:
             assert main in module.DESCRIPTOR.leaves
 
+
+
+def test_every_capability_carries_a_guide_for_the_assistant(tmp_path):
+    """外层 #287：能力怎么用、什么时候选、各种结局怎么接，写在能力目录的 assistant.md（给研究助理；
+    prompt.md 给执行层），`ai4sci show cap` 打出来，指南里不再写死。没有或空的当场报。"""
+    for module in discover().values():
+        assert assistant_guide(module).startswith("# ")
+    fake = _module("cap", C("cap"), lambda output_dir, inputs, ports: "")
+    fake.__file__ = str(tmp_path / "__init__.py")
+    with pytest.raises(AssertionError, match="assistant.md"):
+        assistant_guide(fake)
+    (tmp_path / "assistant.md").write_text("  \n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="assistant.md"):
+        assistant_guide(fake)
+    (tmp_path / "assistant.md").write_text("# 说明\n\n正文\n", encoding="utf-8")
+    assert assistant_guide(fake) == "# 说明\n\n正文"
+
+
+def names_in(text: str, names: list[str]) -> list[str]:
+    """文字里出现的名字：前后都不是字母、数字、下划线、连字符才算（auto-research 里的 research
+    不算）；后面跟 `/` 的是阶段目录（`design/1`）、跟 `.` 的是文件名（`analysis.md`），也不算。"""
+    return [n for n in names
+            if re.search(rf"(?<![A-Za-z0-9_\-]){re.escape(n)}(?![A-Za-z0-9_\-/.])", text)]
+
+
+def test_a_capabilitys_guide_names_no_other_capability():
+    """能力之间不互相调用（本包 docstring），说明里也不点名别的能力：流程里下一项是谁由驱动按流程
+    现算（`then=`），写死在说明里，换了流程就是错的。反例：点名了就抓得到。"""
+    found = discover()
+    for name, module in found.items():
+        others = [n for n in found if n != name]
+        assert names_in(assistant_guide(module), others) == [], name
+    assert names_in("然后 `ai4sci cap verify --from analysis/1`", ["verify"]) == ["verify"]
+    assert names_in("接着跑 auto-research 那一步", ["research"]) == []
+    assert names_in("`--from design/1` 写 `analysis.md`", ["design", "analysis"]) == []
+    assert names_in("`ai4sci cap design --ws a`", ["design"]) == ["design"]
 
 def test_check_accepts_a_matching_module_and_maps_hyphens():
     descriptor = C("cap", params=(Param("k", "int", 1, "h", "k"),))
