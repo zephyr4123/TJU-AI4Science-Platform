@@ -192,8 +192,9 @@ def test_a_dead_owners_trees_are_reaped_and_nothing_else(tmp_path):
 # ── 作业：不是起它的进程的后代（外层 #284）──────────────────────────────────
 def test_a_detached_job_is_nobodys_descendant(tmp_path):
     """起作业的那条 `ai4sci cap --detach` 还在等它开产出时，那一轮被杀（顺后代往下杀）也杀不到它：
-    作业经中间进程起（Windows 上以 explorer 为父进程起）。Windows 上没有 explorer（SSH 里跑的）就
-    照旧起、说清楚为什么。"""
+    作业经中间进程起（Windows 上以 explorer 为父进程起）。Windows 上没有 explorer（SSH、服务里跑的，
+    CI 就是）才照旧起、说清楚为什么；桌面会话里有 explorer 就必须借上——Windows 11 的 explorer 自己
+    就在一个许脱离的 Job 里（外层 #282 真机），不能当成用不了。"""
     marker = tmp_path / "job.json"
     launcher = ("import json, subprocess, sys, time\n"
                 "import procs\n"
@@ -208,7 +209,7 @@ def test_a_detached_job_is_nobodys_descendant(tmp_path):
         procs.kill_tree(root.pid, procs.group_of(root.pid))
         root.wait(timeout=10)
         if job["warning"]:
-            assert procs.WINDOWS and "explorer" in job["warning"]
+            assert procs.WINDOWS and "没有 explorer" in job["warning"], job["warning"]
         else:
             time.sleep(0.5)
             assert procs.pid_alive(job["pid"]), "作业跟着起它的那棵树一起死了"

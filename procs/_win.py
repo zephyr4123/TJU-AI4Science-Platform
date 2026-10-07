@@ -11,14 +11,16 @@ user32 的公开接口，外加 ntdll 的 `NtResumeProcess`（Popen 拿到线程
 Windows 的 bash 只要所在的 Job 许脱离，就给它起的每个子进程都带上脱离的标志，一轮里的命令、harness
 起的 python 都会跳出去成杀不掉的孤儿（外层 #284 审查）。
 
-作业（`spawn_detached`，外层 #284）要活过起它的那一轮、那个服务、外壳的 Job，又不能靠脱离：以当前
-会话的 explorer 为父进程起（`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`），Job 从指定的父进程继承，作业
-生来就不在任何 Job 里、也不是任何人的后代，再照常放进它自己那棵树的 Job。句柄同样从 explorer 继承，
-所以作业的三个标准流一个都不接，日志由作业自己按路径打开。身份（token）也从 explorer 继承：只有它与
-本进程是同一个用户、同一级权限时才借它——以管理员身份跑的服务借普通权限的 explorer，作业就降了权，
-写不进服务建的只给管理员的目录（2026-10-07 真机：Python 3.13 起 `mkdir(mode=0o700)` 建的目录就是
-这样）。会话里没有 explorer（SSH、服务里起的）或身份对不上，就照旧起、试着脱离，把为什么没能脱离
-说出来。
+作业（`spawn_detached`，外层 #284）要活过起它的那一轮、那个服务、外壳的 Job，又不能靠从这些 Job 里脱
+离：以当前会话的 explorer 为父进程起（`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`），Job 从指定的父进程继
+承、与起它的进程在哪个 Job 里无关；Windows 11 的 explorer 自己就在一个许脱离的 Job 里（它起应用都带
+脱离的标志），所以作业也带上，生来就不在任何 Job 里、也不是任何人的后代，再照常放进它自己那棵树的
+Job（外层 #282 真机：只看到「explorer 在 Job 里」就不借，作业落回外壳的 Job，App 一退就跟着没了）。
+句柄同样从 explorer 继承，所以作业的三个标准流一个都不接，日志由作业自己按路径打开。身份（token）也
+从 explorer 继承：只有它与本进程是同一个用户、同一级权限时才借它——以管理员身份跑的服务借普通权限的
+explorer，作业就降了权，写不进服务建的只给管理员的目录（2026-10-07 真机：Python 3.13 起
+`mkdir(mode=0o700)` 建的目录就是这样）。会话里没有 explorer（SSH、服务里起的）或身份对不上，就照旧
+起、试着脱离，把为什么没能脱离说出来。
 """
 
 from __future__ import annotations
@@ -138,6 +140,8 @@ _k32.IsProcessInJob.restype = wintypes.BOOL
 _k32.GetCurrentProcess.restype = wintypes.HANDLE
 _k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
 _k32.OpenProcess.restype = wintypes.HANDLE
+_k32.GetProcessId.argtypes = (wintypes.HANDLE,)
+_k32.GetProcessId.restype = wintypes.DWORD
 _k32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, wintypes.LPDWORD)
 _k32.GetExitCodeProcess.restype = wintypes.BOOL
 _k32.DuplicateHandle.argtypes = (wintypes.HANDLE, wintypes.HANDLE, wintypes.HANDLE,
@@ -172,13 +176,23 @@ def adopt(proc: subprocess.Popen) -> None:
 
 def spawn_detached(argv: list[str], *, env: dict[str, str] | None,
                    cwd: str | None) -> tuple[int, str]:
-    """起作业的根：以当前会话的 explorer 为父进程，再放进它自己那棵树的 Job。返回 pid 与要人知道的
-    一句（没有 explorer 时为什么照旧起；空是没事）。"""
+    """起作业的根：以当前会话的 explorer 为父进程、不在任何 Job 里，再放进它自己那棵树的 Job。
+    返回 pid 与要人知道的一句（借不上 explorer 时为什么照旧起；空是没事）。"""
     shell, why = _shell()
-    if not shell:  # 为什么交给调用方写进作业日志、记 WARNING；这里只留一行 info
-        LOGGER.info("spawn_detached_without_shell why=%s argv0=%s", why, argv[0])
-        return _spawn_in_place(argv, env=env, cwd=cwd), (
-            f"作业没能脱离起它的进程（{why}）：起它的那一轮或服务结束时，它可能被一起结束")
+    if shell:
+        pid, why = _spawn_under(shell, argv, env=env, cwd=cwd)
+        if pid:
+            return pid, ""
+    # 为什么交给调用方写进作业日志、记 WARNING；这里只留一行 info
+    LOGGER.info("spawn_detached_without_shell why=%s argv0=%s", why, argv[0])
+    return _spawn_in_place(argv, env=env, cwd=cwd), (
+        f"作业没能脱离起它的进程（{why}）：起它的那一轮或服务结束时，它可能被一起结束")
+
+
+def _spawn_under(shell: int, argv: list[str], *, env: dict[str, str] | None,
+                 cwd: str | None) -> tuple[int, str]:
+    """以 explorer 为父进程起，脱离它所在的 Job（不在 Job 里时这个标志不起作用）：pid 与空串；
+    它的 Job 不许脱离是 0 与为什么。用完关掉 explorer 的句柄。"""
     attributes = None
     try:
         size = ctypes.c_size_t()
@@ -200,9 +214,11 @@ def spawn_detached(argv: list[str], *, env: dict[str, str] | None,
             "".join(f"{k}={v}\0" for k, v in sorted(env.items(), key=lambda kv: kv[0].upper()))
             + "\0")
         if not _k32.CreateProcessW(None, line, None, None, False,
-                                   TREE_FLAGS | CREATE_UNICODE_ENVIRONMENT
-                                   | EXTENDED_STARTUPINFO_PRESENT,
+                                   TREE_FLAGS | CREATE_BREAKAWAY_FROM_JOB
+                                   | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
                                    block, cwd, ctypes.byref(info), ctypes.byref(started)):
+            if ctypes.get_last_error() == ERROR_ACCESS_DENIED:
+                return 0, f"explorer（进程 {_k32.GetProcessId(shell)}）所在的 Job 不许脱离"
             raise _fail(f"起 {argv[0]}")
     finally:
         if attributes is not None:
@@ -220,8 +236,7 @@ def spawn_detached(argv: list[str], *, env: dict[str, str] | None,
 
 
 def _shell() -> tuple[int, str]:
-    """当前会话的 explorer（桌面那个窗口的主人）：打开的句柄与空串；用不了就是 0 与为什么。它自己在
-    Job 里（少见的沙箱环境）也不用：作业会从它那儿继承那个 Job。"""
+    """当前会话的 explorer（桌面那个窗口的主人）：打开的句柄与空串；用不了就是 0 与为什么。"""
     window = _u32.GetShellWindow()
     if not window:
         return 0, "这个会话里没有 explorer：SSH、服务里起的"
@@ -232,10 +247,6 @@ def _shell() -> tuple[int, str]:
     if not shell:
         code = ctypes.get_last_error()
         return 0, f"打不开 explorer（进程 {pid.value}，WinError {code}）"
-    inside = wintypes.BOOL()
-    if not _k32.IsProcessInJob(shell, None, ctypes.byref(inside)) or inside.value:
-        _k32.CloseHandle(shell)
-        return 0, f"explorer（进程 {pid.value}）自己在 Job 里"
     ours = _identity(_k32.GetCurrentProcess())
     if ours is None or _identity(shell) != ours:
         _k32.CloseHandle(shell)
