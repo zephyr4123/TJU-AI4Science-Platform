@@ -4,9 +4,12 @@
 pub mod contract;
 pub mod env;
 pub mod http;
+pub mod install;
 pub mod logfile;
 pub mod manifest;
 pub mod places;
 pub mod progress;
+pub mod serve;
 pub mod state;
+pub mod supervise;
 pub mod version;
