@@ -6,7 +6,7 @@
 
 - 科研全自动化平台的生产代码，Python 包 `ai4sci`（入口 `framework.cli:main`），页面在 `ui/web/`。四层：协调层（人 + 助理）做科研判断，框架是零模型的诚实执行基底，执行层 coding agent 是唯一写代码的，skill 脚本是确定性工具。
 - 本仓是**内仓**：外层协作仓 [`tju-ai4science`](https://github.com/zephyr4123/TJU-AI4Science) 把它 clone 到 `platform/`，外层对它的 git 不知情。产品纲领（P-1 到 P-27）、流程细则、未决问题、案例卡都在外层 `docs/`；issue 也开在外层。只 clone 了本仓的人先去外层读 `docs/architecture/README.md`。
-- 两种跑法：源码（clone + `make up`）出厂件在仓根；包（`uv tool install` wheel）出厂件在 `framework/shipped/`。两种都住在**平台的家** `~/.ai4sci`（设置、key、项目、两家 CLI 的会话与登录、依赖缓存，外层 #263），平台不写用户的 `~/.claude` `~/.codex`。位置只在 `framework/paths.py` 一处给。
+- 两种跑法：源码（clone + `make up`）出厂件在仓根；包（一行命令 `install/install.sh` 装的 wheel）出厂件在 `framework/shipped/`。两种都住在**平台的家** `~/.ai4sci`（设置、key、项目、两家 CLI 的会话与登录、依赖缓存，外层 #263；一行命令装的程序在 `bin/` `tools/`，外层 #277），平台不写用户的 `~/.claude` `~/.codex`。位置只在 `framework/paths.py` 一处给。
 
 ## 1. 开工前先读哪份
 

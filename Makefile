@@ -11,9 +11,8 @@ PY   := $(VENV)/bin/python
 UV   := $(shell command -v uv 2>/dev/null || echo $(HOME)/.local/bin/uv)
 PORT ?= 8765
 
-up: venv ui-auto skills             ## 一行起服务：环境、页面、skill 门禁与预热、自检，然后 ai4sci serve
-	-$(PY) -m framework.cli check
-	$(PY) -m framework.cli serve --port $(PORT)
+up: venv ui-auto skills             ## 一行起服务：环境、页面、skill 门禁与预热，然后 ai4sci setup（git、两家 CLI、key，装过的跳过）起服务
+	$(PY) -m framework.cli setup --port $(PORT)
 
 check: changelog lint skills test ui-check ## 全部门禁（skill 预热与页面的门禁也在里面）
 

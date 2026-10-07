@@ -8,6 +8,18 @@
 
 ## [Unreleased]
 
+### 新增
+
+- 一行命令装好平台，全程国内源：`curl -fsSL https://media.zephyrxiang.com/ai4science/dist/install.sh | sh` 装 uv、Python、平台，交给 `ai4sci setup`；装过的跳过，重跑就是升级（外层 #277）
+- `ai4sci setup`：查 git、从 npmmirror 装 Claude Code 与 Codex 的原生程序进平台的家（sha512 校验）、在终端里问 DeepSeek 的 key 并当场试通、起服务开浏览器；`make up` 也走它（外层 #277）
+- 发版把 wheel、安装脚本、uv 的发布包传到腾讯云 CDN（`.github/scripts/cdn.py`，只写 `ai4science/dist/` 的子账号）；`ai4sci --version`；Windows 留 `install.ps1` 的槽（外层 #277 / #210）
+
+### 变更
+
+- 平台起 CLI 先用家里 `tools/` 装的那份，没有再找 PATH；平台起的 Claude Code 关自动更新；自检没装、版本不够时给出 `ai4sci setup`（外层 #277）
+- 平台起 uv 时 Python 装在家里、PyPI / Python / HuggingFace 走国内镜像（用户自己设了的不盖）；skill 的锁文件对着清华锁，门禁查（外层 #277）
+- `ai4sci reset` 与「清除全部数据」留下一行命令装的程序（`bin/` `tools/`），回到刚装好的样子；卸载是删整个家（外层 #277）
+
 ## [1.7.2] - 2026-10-07
 
 ### 修复

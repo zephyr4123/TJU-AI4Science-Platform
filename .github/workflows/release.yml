@@ -1,6 +1,6 @@
 name: release
 
-# 推送 vX.Y.Z 或 vX.Y.Z-rc.N tag 即发版：校验 tag 与 CHANGELOG 一致 → 取该版本条目做 Release Notes → make package 出包 → 建 GitHub Release 并附上包。
+# 推送 vX.Y.Z 或 vX.Y.Z-rc.N tag 即发版：校验 tag 与 CHANGELOG 一致 → 取该版本条目做 Release Notes → make package 出包 → 建 GitHub Release 并附上包 → 传到 CDN（一行命令从那取，外层 #277）。
 # 预发布（-rc.N）标 pre-release，Release Notes 取 Unreleased；正式版从 main 打（ADR-0004）。
 on:
   push:
@@ -52,3 +52,11 @@ jobs:
           pre=""
           case "$ver" in *-rc.*) pre="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file release-notes.md $pre
+
+      # 一行命令全程国内源：wheel、安装脚本、uv 的发布包传到自己的 CDN（外层 #277）。凭据是只能写
+      # ai4science/dist/、只能刷 media.zephyrxiang.com 缓存的子账号；预发布只传带版本号的
+      - name: 传到 CDN
+        env:
+          TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
+          TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
+        run: uv run .github/scripts/cdn.py "${GITHUB_REF_NAME#v}"
