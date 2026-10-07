@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-10-07
+
 ### 修复
 
 - 设置与自检给的登录命令照服务自己这份安装写：终端里的 `ai4sci` 不是起服务的那一份时写全路径，照抄不再报没有 login（外层 #274）
@@ -282,7 +284,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.2...HEAD
+[1.7.2]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.6.0...v1.6.1
