@@ -1,7 +1,7 @@
 //! 守进程的集成测试：用假的 `ai4sci`（`examples/fake_ai4sci.rs`，`cargo test` 会顺带编出来）真起进程。
 //! 退出 App 时不留孤儿是硬要求（spec §0 第 4 条）：这里断言整棵树——serve 与它起的「对话轮次」——都没了。
 //!
-//! 最后一条连真的后端（仓里 `.venv` 的 `ai4sci`），要 `AI4SCI_DESKTOP_IT=1`：serve 的新参数在别的分支上。
+//! 最后一条连真的后端（仓里 `.venv` 的 `ai4sci`，`make venv` 或 CI 的 `uv sync` 建的）。
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -274,14 +274,10 @@ fn launch_version() -> aaai4s::supervise::Launch {
     }
 }
 
-/// 真的后端：`AI4SCI_DESKTOP_IT=1` 时跑（要仓里 `.venv` 的 ai4sci 认 `--until-stdin-closes`）。
-/// 临时的家里真起 serve，读那一行、问 `/health`、关掉标准输入，5 秒内退干净。
+/// 真的后端（仓里 `.venv` 的 ai4sci，或 `AI4SCI_DESKTOP_CLI` 指的那个）：临时的家里真起 serve，读那一行、
+/// 问 `/health`、关掉标准输入，5 秒内退干净。约定在后端那边变了，这里先红。
 #[tokio::test(flavor = "multi_thread")]
 async fn the_real_backend_starts_and_stops_on_the_contract() {
-    if std::env::var_os("AI4SCI_DESKTOP_IT").is_none() {
-        eprintln!("跳过：设 AI4SCI_DESKTOP_IT=1 才连真的后端");
-        return;
-    }
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let cli = std::env::var_os("AI4SCI_DESKTOP_CLI")
         .map(PathBuf::from)

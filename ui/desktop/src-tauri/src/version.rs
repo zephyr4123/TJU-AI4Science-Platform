@@ -1,7 +1,7 @@
 //! 版本：外壳只有这一个解析函数（spec §3「版本写法」）。
 //!
-//! `ai4sci --version` 打的是 PEP 440（rc 写成 `1.9.0rc1`），tag、外壳与 CDN 上的目录用 SemVer
-//! （`1.9.0-rc.1`）；两种写法都认，比较时是同一个东西。下限（`MIN_PLATFORM`、`min_desktop`）按号比：
+//! `ai4sci --version` 与 CDN 上带版本号的目录用 PEP 440（rc 写成 `1.9.0rc1`，wheel 文件名就是这样），
+//! tag 与外壳用 SemVer（`1.9.0-rc.1`）；两种写法都认，比较时是同一个东西。下限（`MIN_PLATFORM`、`min_desktop`）按号比：
 //! 同号的 rc 算满足这个号的下限，rc 外壳才装得上自己那一版的平台。
 
 use std::cmp::Ordering;
@@ -67,6 +67,20 @@ impl Version {
         self.stage < Stage::Final
     }
 
+    /// PEP 440 写法：CDN 上带版本号的目录就是这样拼的（`<DIST>/1.9.0rc1/install.sh`，同 wheel 的文件名）
+    pub fn pep440(&self) -> String {
+        let [major, minor, patch] = self.release;
+        let n = self.number;
+        match self.stage {
+            Stage::Final => format!("{major}.{minor}.{patch}"),
+            Stage::Dev => format!("{major}.{minor}.{patch}.dev{n}"),
+            Stage::Alpha => format!("{major}.{minor}.{patch}a{n}"),
+            Stage::Beta => format!("{major}.{minor}.{patch}b{n}"),
+            Stage::Rc => format!("{major}.{minor}.{patch}rc{n}"),
+            Stage::Post => format!("{major}.{minor}.{patch}.post{n}"),
+        }
+    }
+
     /// 是否满足下限 `floor`：只比号，同号的预发布也算满足
     pub fn meets(&self, floor: &Version) -> bool {
         self.release >= floor.release
@@ -105,7 +119,7 @@ impl PartialOrd for Version {
 }
 
 impl fmt::Display for Version {
-    /// SemVer 写法：CDN 上带版本号的目录就是这样拼的（`<DIST>/1.9.0-rc.1/install.sh`）
+    /// SemVer 写法：给人看的（启动页、日志），与 tag 一致
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let [major, minor, patch] = self.release;
         write!(f, "{major}.{minor}.{patch}")?;
@@ -134,6 +148,14 @@ mod tests {
         assert_eq!(v("1.9.0b2"), v("1.9.0-beta.2"));
         assert_eq!(v("v1.9.0"), v("1.9.0"));
         assert_eq!(v("1.9.0rc1").to_string(), "1.9.0-rc.1");
+    }
+
+    #[test]
+    fn the_cdn_directory_is_spelled_like_the_wheel() {
+        assert_eq!(v("1.9.0-rc.1").pep440(), "1.9.0rc1");
+        assert_eq!(v("1.9.0").pep440(), "1.9.0");
+        assert_eq!(v("1.9.0-beta.2").pep440(), "1.9.0b2");
+        assert_eq!(v("1.9.1.dev3").pep440(), "1.9.1.dev3");
     }
 
     #[test]

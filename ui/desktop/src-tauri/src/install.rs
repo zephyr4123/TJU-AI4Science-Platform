@@ -1,6 +1,7 @@
 //! 平台装了哪一版、装与升级、setup（spec §3「装与升级」「setup」、§4 第 5–6 步）。
 //!
-//! 装与升级跑的是带版本号的 `<DIST>/<版本>/install.sh`（Windows `install.ps1`），先按签名清单核 sha256，
+//! 装与升级跑的是带版本号的 `<DIST>/<版本>/install.sh`（Windows `install.ps1`，版本是 PEP 440 写法），先按
+//! 签名清单核 sha256，
 //! 环境带 `AI4SCI_NO_SETUP=1`（setup 由外壳另起）与 `AI4SCI_WHEEL_SHA256`（脚本拿它核 wheel），包里 uv
 //! 所在的目录排在 PATH 最前（不再从 CDN 下一份 uv）。Windows 上存成带 UTF-8 BOM 的文件再用 5.1 的
 //! PowerShell `-File` 起：不带 BOM 时 5.1 按 GBK 读源码，中文 Windows 上第一次安装就失败。
@@ -35,29 +36,20 @@ pub enum Installed {
     Failed(String),
 }
 
-/// 装哪一版、对哪个 sha256
+/// 装哪一版、对哪个 sha256：都取自签过的清单（最新的那份，或这一版自己那份），不跑没核过的脚本
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
     pub version: Version,
-    /// 签名清单里的；外壳自己是预发布、装自己那一版时没有（清单只在正式版发布时改写）
-    pub script_sha256: Option<String>,
-    pub wheel_sha256: Option<String>,
+    pub script_sha256: String,
+    pub wheel_sha256: String,
 }
 
 impl Target {
     pub fn signed(manifest: &Manifest) -> Self {
         Self {
             version: manifest.version.clone(),
-            script_sha256: Some(manifest.script_sha256().to_string()),
-            wheel_sha256: Some(manifest.wheel.clone()),
-        }
-    }
-
-    pub fn unsigned(version: Version) -> Self {
-        Self {
-            version,
-            script_sha256: None,
-            wheel_sha256: None,
+            script_sha256: manifest.script_sha256().to_string(),
+            wheel_sha256: manifest.wheel.clone(),
         }
     }
 }
@@ -120,7 +112,7 @@ async fn fetch_script(
     target: &Target,
 ) -> Result<Vec<u8>, String> {
     let url = dist
-        .join(&format!("{}/{}", target.version, script_name()))
+        .join(&format!("{}/{}", target.version.pep440(), script_name()))
         .map_err(|error| error.to_string())?;
     let get = async {
         let resp = client.get(url.clone()).send().await?.error_for_status()?;
@@ -130,19 +122,10 @@ async fn fetch_script(
         .await
         .map_err(|_| format!("{} 秒内没取到 {url}", SCRIPT_TIMEOUT.as_secs()))?
         .map_err(|error| format!("取不到 {url}：{}", error.without_url()))?;
-    match &target.script_sha256 {
-        Some(want) if &sha256_hex(&bytes) != want => {
-            Err(format!("{url} 的 sha256 与签名清单对不上，没跑"))
-        }
-        Some(_) => Ok(bytes.to_vec()),
-        None => {
-            log::warn!(
-                "install.unsigned_script version={} url={url}",
-                target.version
-            );
-            Ok(bytes.to_vec())
-        }
+    if sha256_hex(&bytes) != target.script_sha256 {
+        return Err(format!("{url} 的 sha256 与签名清单对不上，没跑"));
     }
+    Ok(bytes.to_vec())
 }
 
 /// 装或升级到 `target`：取脚本、核对、照跑；退 0 装好、75 平台还开着，其余是没装好
@@ -170,10 +153,13 @@ pub async fn platform(
         return Installed::Failed(format!("安装脚本写不下：{} {error}", script.display()));
     }
     let (program, args) = script_command(&script);
-    let mut extra = vec![(NO_SETUP_ENV.to_string(), OsString::from("1"))];
-    if let Some(wheel) = &target.wheel_sha256 {
-        extra.push((WHEEL_SHA256_ENV.to_string(), OsString::from(wheel)));
-    }
+    let extra = vec![
+        (NO_SETUP_ENV.to_string(), OsString::from("1")),
+        (
+            WHEEL_SHA256_ENV.to_string(),
+            OsString::from(&target.wheel_sha256),
+        ),
+    ];
     let overlay = match sidecar {
         Some(dir) => overlay.with_front(dir),
         None => overlay.clone(),
@@ -189,11 +175,7 @@ pub async fn platform(
         }
         sink(kind, stream, line);
     });
-    log::info!(
-        "install.start version={} signed={}",
-        target.version,
-        target.script_sha256.is_some()
-    );
+    log::info!("install.start version={}", target.version);
     let launch = Launch {
         kind: Kind::Install,
         program,

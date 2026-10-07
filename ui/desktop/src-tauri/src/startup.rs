@@ -267,9 +267,23 @@ async fn prepare_platform<R: Runtime>(
         Err(reason) if required => return Err(Problem::retry(reason.clone())),
         Err(_) => return remember(shell, installed),
     };
+    // 只跑签过的脚本：最新的那份就是这一版就用它，否则（预发布的外壳装自己那一版）取这一版自己那份
     let target = match latest {
         Some(m) if m.version == version => Target::signed(m),
-        _ => Target::unsigned(version.clone()),
+        _ => match manifest::fetch_version(&shell.internet, dist, &version, &updater_pubkey(app))
+            .await
+        {
+            Ok(m) => Target::signed(&m),
+            Err(reason) if required => {
+                return Err(Problem::retry(format!(
+                    "取不到 {version} 的签名清单：{reason}"
+                )));
+            }
+            Err(reason) => {
+                log::warn!("platform.upgrade_skipped reason={reason}");
+                return remember(shell, installed);
+            }
+        },
     };
     shell.splash.status(&match &installed {
         None => "第一次打开：装平台".to_string(),

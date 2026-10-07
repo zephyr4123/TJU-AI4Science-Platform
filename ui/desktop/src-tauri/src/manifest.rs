@@ -1,4 +1,5 @@
-//! 最新是哪一版（spec §3）：`<DIST>/platform.json` 与 `platform.json.sig`。
+//! 最新是哪一版（spec §3）：`<DIST>/platform.json` 与 `platform.json.sig`；每一版（rc 也是）另有一份
+//! 带版本号的 `<DIST>/<版本>/platform.json(.sig)`，装那一版之前照它核脚本。
 //!
 //! 签名用更新器那把 key（`.sig` 与更新包的一样：minisign 签名全文的 base64），公钥就是 tauri.conf.json
 //! 里更新器那一把，外壳没有第二份。验不过当作取不到：外壳每次打开都可能无人值守地跑装平台的脚本，
@@ -84,8 +85,32 @@ pub fn verify(body: &[u8], signature: &str, pubkey: &str) -> Result<Manifest, St
     })
 }
 
-/// 取清单与签名、验过才算取到；连不上、超时、验不过都是 Err（启动页照常往下走）
+/// 最新的那份：取清单与签名、验过才算取到；连不上、超时、验不过都是 Err（启动页照常往下走）
 pub async fn fetch(client: &reqwest::Client, dist: &Url, pubkey: &str) -> Result<Manifest, String> {
+    fetch_at(client, dist, pubkey).await
+}
+
+/// 某一版自己那份（预发布的外壳装它自己那一版时用）；清单里写的版本必须就是这一版
+pub async fn fetch_version(
+    client: &reqwest::Client,
+    dist: &Url,
+    version: &Version,
+    pubkey: &str,
+) -> Result<Manifest, String> {
+    let base = dist
+        .join(&format!("{}/", version.pep440()))
+        .map_err(|error| error.to_string())?;
+    let manifest = fetch_at(client, &base, pubkey).await?;
+    if &manifest.version != version {
+        return Err(format!(
+            "{base}{MANIFEST_NAME} 写的是 {}，不是 {version}",
+            manifest.version
+        ));
+    }
+    Ok(manifest)
+}
+
+async fn fetch_at(client: &reqwest::Client, dist: &Url, pubkey: &str) -> Result<Manifest, String> {
     let get = |name: &'static str| async move {
         let url = dist.join(name).map_err(|error| error.to_string())?;
         let resp = client

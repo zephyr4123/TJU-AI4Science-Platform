@@ -12,7 +12,10 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 from framework import paths
+from framework.cli import _common, build_parser, setup
 from framework.workspace import jobs, project
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,6 +90,40 @@ def test_the_shell_and_the_release_agree_on_the_dist():
     assert conf["plugins"]["updater"]["endpoints"] == [f"{dist}/desktop/latest.json"]
 
 
+def _serve_args(text: str) -> list[str]:
+    """contract.rs 里 `serve_args` 拼的那串参数（端口那一格换成 0）。"""
+    body = re.search(r"pub fn serve_args\(port: u16\).*?\[(.*?)\]", text, re.S)
+    assert body, "contract.rs 里找不到 serve_args"
+    return [("0" if item.strip() == "&port" else
+             item.strip().strip('"') if item.strip().startswith('"') else
+             _consts(text)[item.strip()]) for item in body.group(1).split(",") if item.strip()]
+
+
+def test_the_shell_calls_setup_and_serve_with_flags_the_cli_knows():
+    """外壳起 setup、serve 的那几个参数，平台的 CLI 认：哪个改了名，装着的 App 就起不来服务。"""
+    text = CONTRACT.read_text(encoding="utf-8")
+    c = _contract()
+    parser = build_parser()
+    parser.parse_args(c["SETUP_ARGS"])
+    served = parser.parse_args(_serve_args(text))
+    assert served.until_stdin_closes and served.host == c["SERVE_HOST"]
+    assert c["EXIT_PORT"] == _common.EXIT_PORT
+    assert c["TURNS_FIELD"] in (ROOT / "framework" / "chat" / "server.py").read_text(
+        encoding="utf-8")
+    assert {setup.MARK_OK, setup.MARK_FAILED, setup.MARK_NOTICE} <= set(c["MARKS"])
+
+
+def test_both_install_scripts_honor_what_the_shell_gives_them():
+    """外壳给安装脚本的两个变量、它认的「平台还开着」退出码，两份脚本都得有。"""
+    c = _contract()
+    sh = INSTALL_SH.read_text(encoding="utf-8")
+    ps1 = INSTALL_PS1.read_text(encoding="utf-8")
+    for script, text in (("install.sh", sh), ("install.ps1", ps1)):
+        assert {c["NO_SETUP_ENV"], c["WHEEL_SHA256_ENV"]} <= _install_vars(text), script
+    assert re.search(rf"^EXIT_BUSY={c['EXIT_BUSY']}$", sh, re.M), "install.sh 的 EXIT_BUSY"
+    assert re.search(rf"^\$EXIT_BUSY = {c['EXIT_BUSY']}$", ps1, re.M), "install.ps1 的 EXIT_BUSY"
+
+
 def test_install_scripts_only_read_variables_the_shell_knows():
     """外壳起安装脚本时给的变量与脚本读的是同一组名字：脚本里拼错一个，外壳给的就落空。"""
     c = _contract()
@@ -109,3 +146,11 @@ def test_the_checker_reads_every_kind_and_catches_a_drift():
               "[Environment]::SetEnvironmentVariable('AI4SCI_INSTALLING', '1', 'User')\n")
     known = {"AI4SCI_NO_SETUP", "AI4SCI_WHEEL_SHA256"}
     assert _install_vars(script) - known == {"AI4SCI_WHEEL_SHA"}
+    serve = ('pub const SERVE_HOST: &str = "127.0.0.1";\n'
+             'pub fn serve_args(port: u16) -> Vec<String> {\n    let port = port.to_string();\n'
+             '    [\n        "serve",\n        "--host",\n        SERVE_HOST,\n        "--port",\n'
+             '        &port,\n        "--until-stdin-close",\n    ]\n')
+    argv = _serve_args(serve)
+    assert argv == ["serve", "--host", "127.0.0.1", "--port", "0", "--until-stdin-close"]
+    with pytest.raises(SystemExit):  # 拼错一个字母的参数，CLI 不认
+        build_parser().parse_args(argv[:-1] + ["--until-stdin-closez"])

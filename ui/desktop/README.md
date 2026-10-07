@@ -55,7 +55,7 @@
 ## 5. 怎么测
 
 - **`cargo test`**（`npm run check` 里）：纯逻辑的单测在各模块里；`tests/supervise.rs` 用假的 `ai4sci`（`src-tauri/examples/fake_ai4sci.rs`，`cargo test` 顺带编出来）真起进程：读版本、setup 的进度行、serve 的 `ok` 行与 `/health`、关掉标准输入后 serve 与它起的「对话轮次」都没了、不理标准输入的 serve 被整棵收拾、端口用不了退 3；`tests/splash.rs` 查启动页的标与 favicon 是同三条路径、只用 `textContent`、只用本地的东西。每个检查器带反例。
-- **连真后端**：`AI4SCI_DESKTOP_IT=1 cargo test --manifest-path ui/desktop/src-tauri/Cargo.toml --test supervise`：在临时的家里真起 `.venv` 的 `ai4sci serve`，读那一行、问 `/health`、关掉标准输入后 5 秒内退出、端口放出来。
+- **连真后端**：`npm run check` 里的 `tests/supervise.rs` 最后一条，在临时的家里真起仓里 `.venv` 的 `ai4sci serve`（先 `make venv`），读那一行、问 `/health`、关掉标准输入后 5 秒内退出、端口放出来；后端那边改了约定，这里先红。
 - **手动走一遍**：像用户一样起（Mac 用 `open`，不要从开发的终端直接跑二进制，不然继承了终端的 PATH）。不装平台、只看外壳的话，让它起假的 `ai4sci`：
 
   ```sh
