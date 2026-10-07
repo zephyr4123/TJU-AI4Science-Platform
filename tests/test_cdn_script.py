@@ -267,6 +267,29 @@ def test_an_official_release_writes_a_platform_json_with_what_the_shell_checks(
         ("ai4science/dist/platform.json.sig", cdn.LATEST)]
 
 
+def test_every_release_has_a_signed_manifest_of_its_own(cdn, packaged, tmp_path):
+    """预发布的外壳装它自己那一版：最新的 platform.json 不动（rc），它就照 `<ver>/platform.json` 核
+    安装脚本，所以 rc 也要有一份、签过、不可变；不写最新的那份。"""
+    packaged("1.9.0rc1")
+    work = tmp_path / "work"
+    work.mkdir()
+
+    def sign(path: Path) -> Path:
+        sig = path.with_name(path.name + ".sig")
+        sig.write_text("签名", encoding="utf-8")
+        return sig
+
+    by_key = {item.key: item for item in cdn.plan("1.9.0rc1", "ai4science/dist", work, sign=sign)}
+    for name in ("platform.json", "platform.json.sig"):
+        assert by_key[f"ai4science/dist/1.9.0rc1/{name}"].cache == cdn.IMMUTABLE
+        assert f"ai4science/dist/{name}" not in by_key
+    manifest = json.loads(by_key["ai4science/dist/1.9.0rc1/platform.json"].path.read_text(
+        encoding="utf-8"))
+    assert manifest["version"] == "1.9.0rc1"
+    assert manifest["sha256"]["install.sh"] == _sha(
+        by_key["ai4science/dist/1.9.0rc1/install.sh"].path)
+
+
 def test_a_signature_from_the_tauri_cli_verifies_like_the_updater_does(cdn):
     trusted = cdn.verify(SIGNED, SIGNATURE, TEST_PUBKEY)
     assert cdn.signed_version(trusted) == "1.9.0"

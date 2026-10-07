@@ -13,6 +13,7 @@
 
     ai4science/dist/<版本>/ai4sci-<版本>-py3-none-any.whl(.sha256)   不可变，长缓存
     ai4science/dist/<版本>/install.sh、install.ps1                     钉版本装（桌面 App 也用）
+    ai4science/dist/<版本>/platform.json(.sig)                         这一版安装件的 sha256（签名）
     ai4science/dist/uv/<uv 版本>/uv-<平台>.tar.gz|zip(.sha256)          uv 官方发布包的原样副本
     ai4science/dist/install.sh、install.ps1                            最新版；短缓存，传完刷 CDN
     ai4science/dist/platform.json(.sig)                                最新版与安装件的 sha256
@@ -159,8 +160,9 @@ def built_wheel(tag: str) -> tuple[Path, str]:
 
 def plan(tag: str, prefix: str, work: Path, *,
          sign: Callable[[Path], Path] | None = None) -> list[Item]:
-    """一份清单，先不可变的、最后最新的那几份；sha256 当场核对，不对就停。正式版再写 platform.json：
-    外壳拿它判断有没有新版本、核安装脚本（spec §3），给了 sign 就签（--dry-run 不签）。"""
+    """一份清单，先不可变的、最后最新的那几份；sha256 当场核对，不对就停。每一版都写一份带版本号的
+    `<ver>/platform.json`（外壳装那一版前照它核安装脚本），正式版再换最新的 `platform.json`（外壳拿它
+    判断有没有新版本，spec §3）；给了 sign 就签（--dry-run 不签）。"""
     wheel, version = built_wheel(tag)
     side = wheel.with_name(wheel.name + ".sha256")
     if side.read_text(encoding="utf-8").split()[0] != sha256(wheel):
@@ -180,18 +182,23 @@ def plan(tag: str, prefix: str, work: Path, *,
         pinned[script] = work / script
         pinned[script].write_text(render(script, version, uv), encoding="utf-8")
         items.append(Item(f"{prefix}/{version}/{script}", pinned[script], IMMUTABLE))
-    if not official(version):
-        return items
-    items += [Item(f"{prefix}/{script}", path, LATEST) for script, path in pinned.items()]
     manifest = work / "platform.json"
     manifest.write_text(json.dumps({
         "version": version, "min_desktop": MIN_DESKTOP,
         "sha256": {"install.sh": sha256(pinned["install.sh"]),
                    "install.ps1": sha256(pinned["install.ps1"]), "wheel": sha256(wheel)},
     }, indent=2) + "\n", encoding="utf-8")
+    signature = sign(manifest) if sign else None
+    # 每一版（rc 也是）都有一份带版本号的签名清单：预发布的外壳装它自己那一版时照它核脚本
+    items.append(Item(f"{prefix}/{version}/platform.json", manifest, IMMUTABLE))
+    if signature:
+        items.append(Item(f"{prefix}/{version}/platform.json.sig", signature, IMMUTABLE))
+    if not official(version):
+        return items
+    items += [Item(f"{prefix}/{script}", path, LATEST) for script, path in pinned.items()]
     items.append(Item(f"{prefix}/platform.json", manifest, LATEST))
-    if sign:
-        items.append(Item(f"{prefix}/platform.json.sig", sign(manifest), LATEST))
+    if signature:
+        items.append(Item(f"{prefix}/platform.json.sig", signature, LATEST))
     return items
 
 
