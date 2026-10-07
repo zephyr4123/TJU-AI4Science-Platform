@@ -327,3 +327,15 @@ def test_install_ps1_refuses_to_upgrade_while_the_platform_runs(tmp_path):
                            check=False)
     assert still.stdout.strip() == "ai4sci 1.0.0"  # 旧的那份原样能用
     assert "ai4sci        1.0.1，安装完成" in _run_ps1(tmp_path, "1.0.1", home, dist)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")
+def test_install_ps1_repairs_a_broken_install(tmp_path):
+    """装坏的那份 `--version` 往 stderr 写 traceback：PowerShell 5.1 在 Stop 下会当异常抛，重跑就修
+    不了（外层 #210 真机撞上的）。坏了就当没装，照装。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    _uv_release_windows(dist, "0.0.0-test")
+    _wheel(dist, "1.0.0")
+    _run_ps1(tmp_path, "1.0.0", home, dist)
+    next((home / paths.TOOLS_DIRNAME).rglob("ai4sci_fake.py")).unlink()
+    assert "ai4sci        1.0.0，安装完成" in _run_ps1(tmp_path, "1.0.0", home, dist)

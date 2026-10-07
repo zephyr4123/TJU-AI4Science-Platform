@@ -148,7 +148,10 @@ try {
     if ($old -and $old.Source -ne $exe) {
       Say '!' 'ai4sci' "$($old.Source) 不是 uv 装的，没动；终端里先找到的可能是它"
     }
+    # 装坏了的那份往 stderr 写 traceback，Stop 下 5.1 会当异常抛：坏了就当没装，照装
+    $ErrorActionPreference = 'Continue'
     $have = if (Test-Path $exe) { & $exe --version 2>$null } else { '' }
+    $ErrorActionPreference = 'Stop'
     if ($have -eq "ai4sci $VERSION") {
       Say '✓' 'ai4sci' "$VERSION，已装，跳过"
     } else {
