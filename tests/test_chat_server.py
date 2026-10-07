@@ -5,6 +5,8 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import socket
+import struct
 import sys
 import threading
 import urllib.error
@@ -976,3 +978,41 @@ def test_quickstart_takes_one_key_for_both_and_says_whether_the_assistant_talks(
         server.server_close()
     assert "sk-wrong" not in caplog.text and "sk-right" not in caplog.text
     assert "quickstart" in caplog.text
+
+
+def test_a_page_that_goes_away_mid_turn_neither_stops_the_turn_nor_its_count(served):
+    """页面重载、断网时对话流断了（外层 #282 审查）：这一轮照样读完、落盘，重开页面在历史里看得到；
+    跑着的时候 `/health` 的 turns 照样数它，外壳退出前那一问靠它。以前写失败就扔下生成器：turns
+    先归了 0，这一轮没记下，真 CLI 的输出没人读、管道写满就卡在那里。"""
+    base, chat = served
+    chat_id = json.loads(call(base, "/projects/p/chats", {})[2])["chat_id"]
+    gate = threading.Event()
+    script = chat.turn
+
+    def held(*args, **kwargs):
+        events = script(*args, **kwargs)
+        yield next(events)
+        gate.wait(10)
+        yield from events
+
+    chat.turn = held
+    host, port = base.removeprefix("http://").split(":")
+    body = json.dumps({"text": "你好"}).encode()
+    page = socket.create_connection((host, int(port)))
+    page.sendall(f"POST /projects/p/chats/{chat_id}/messages HTTP/1.1\r\nHost: {host}:{port}\r\n"
+                 f"Origin: http://{host}:{port}\r\nContent-Type: application/json\r\n"
+                 f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
+    seen = b""
+    while b"event: init" not in seen:
+        seen += page.recv(65536)
+    page.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))  # 断得干脆
+    page.close()
+    assert json.loads(call(base, "/health")[2])["turns"] == 1
+    gate.set()
+    for _ in range(100):
+        if json.loads(call(base, "/health")[2])["turns"] == 0:
+            break
+        threading.Event().wait(0.05)
+    doc = json.loads(call(base, f"/projects/p/chats/{chat_id}")[2])
+    assert doc["turns"] == 1, "这一轮读完、记下了"
+    assert call(base, f"/projects/p/chats/{chat_id}/messages", {"text": "再来"})[0] == 200

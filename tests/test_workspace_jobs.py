@@ -86,6 +86,7 @@ def test_a_job_opens_its_own_log_and_its_children_write_there_too(tmp_path: Path
     text = log.read_text(encoding="utf-8")
     assert "出 stdout" in text and "出 stderr" in text and "child None" in text
     assert done.returncode != 0 and "EOFError" in text
+    assert b"\r\r\n" not in log.read_bytes(), "Windows 上日志开成了文本模式：每行多一个回车"
 
 
 def test_a_job_belongs_to_the_flow_its_output_was_placed_in(tmp_path: Path, monkeypatch):

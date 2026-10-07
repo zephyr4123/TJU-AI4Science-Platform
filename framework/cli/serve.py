@@ -159,10 +159,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
     procs.keep_in(run / RUN_FILE.format(pid=os.getpid()))
     _stop_on_signal(server)
     if args.until_stdin_closes:
-        threading.Thread(target=_stop_when_stdin_closes, args=(server,), daemon=True,
-                         name="stdin-watch").start()
+        _watch_stdin(server)
     host, port = server.server_address[:2]
     print(f"ok http://{host}:{port}\thome={server.home}\tui={ui_dir or '-'}", flush=True)
+    if args.host in WILDCARD_HOSTS:
+        print(f"注意：只收发给本机的请求（打开 http://127.0.0.1:{port}）。别的机器要连，"
+              "--host 写这台的 IP，或者走 SSH 隧道", file=sys.stderr, flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -193,23 +195,72 @@ def _stop(server: ChatServer, reason: str) -> None:
     threading.Thread(target=server.shutdown, daemon=True, name="serve-stop").start()
 
 
+# 听所有地址的写法：门禁只认发给本机的请求（Host 是 127.0.0.1、localhost 或 --host 写的那个），
+# 它们不是任何一个 Host，从别的机器打开都是 403（外层 #283）
+WILDCARD_HOSTS = ("0.0.0.0", "::")
+# Windows 关掉控制台窗口、注销、关机（CTRL_CLOSE_EVENT / CTRL_LOGOFF_EVENT / CTRL_SHUTDOWN_EVENT）
+CONSOLE_CLOSING = (2, 5, 6)
+_console_handler = None  # 交给系统的回调要一直有人引用着，不然被回收了系统还会调它
+
+
 def _stop_on_signal(server: ChatServer) -> None:
-    """POSIX 上 SIGTERM（launchd、kill、外壳收拾时）与 Ctrl-C 走同一条退出；Windows 上发不进来。"""
-    if os.name != "nt":
-        signal.signal(signal.SIGTERM, lambda signum, frame: _stop(server, "SIGTERM"))
+    """SIGTERM（launchd、kill、外壳收拾时）、Ctrl-C 与关掉终端窗口（SIGHUP）走同一条退出（外层
+    #285）。nohup 起的忽略着 SIGHUP，照它的意思不接。Windows 上信号发不进来，关窗口、注销、关机是
+    控制台事件：系统给几秒、之后直接结束进程，finally 不跑，所以在处理函数里就把轮次收拾掉。"""
+    if os.name == "nt":
+        _on_console_close()
+        return
+    signal.signal(signal.SIGTERM, lambda signum, frame: _stop(server, "SIGTERM"))
+    if signal.getsignal(signal.SIGHUP) is not signal.SIG_IGN:
+        signal.signal(signal.SIGHUP, lambda signum, frame: _stop(server, "SIGHUP"))
 
 
-def _stop_when_stdin_closes(server: ChatServer) -> None:
-    """标准输入读到头就叫停：外壳退出时关掉它，外壳崩了内核替它关（外层 #285）。读到的内容不管。"""
-    stream = sys.stdin.buffer
-    while stream.read1(1 << 16):
-        pass
-    _stop(server, "stdin_closed")
+def _on_console_event(event: int) -> bool:
+    """控制台事件的处理：关窗口、注销、关机就收拾在跑的轮次，算处理过了；别的（Ctrl-C、Ctrl-Break）
+    交给 Python 自己的。"""
+    if event not in CONSOLE_CLOSING:
+        return False
+    LOGGER.info("serve_stopping reason=console_event_%d", event)
+    LOGGER.info("serve_stopped killed=%s", procs.kill_all())
+    return True
+
+
+def _on_console_close() -> None:
+    global _console_handler
+    import ctypes
+    from ctypes import wintypes
+
+    _console_handler = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)(_on_console_event)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    if not kernel32.SetConsoleCtrlHandler(_console_handler, True):
+        LOGGER.warning("console_handler_failed error=%d", ctypes.get_last_error())
+
+
+def _watch_stdin(server: ChatServer) -> None:
+    """--until-stdin-closes：标准输入读到头就叫停，外壳退出时关掉它，外壳崩了内核替它关（外层
+    #285）。读的是复制出来的那一份，0 号换成一根已经读到头的空管道：之后起的子进程缺省继承 0 号，
+    Windows 上 Python 子进程启动时碰到这根正被另一个线程同步读着的管道会卡死（测试机上实测，外层
+    #282 审查），也不该分走外壳的这根线。用 os.read 读、不经 sys.stdin 的缓冲：退出时还挂着它，
+    解释器会报 Fatal Python error。"""
+    watched = os.dup(0)
+    empty, writer = os.pipe()
+    os.close(writer)
+    os.dup2(empty, 0)
+    os.close(empty)
+
+    def watch() -> None:
+        while os.read(watched, 1 << 16):
+            pass
+        _stop(server, "stdin_closed")
+
+    threading.Thread(target=watch, daemon=True, name="stdin-watch").start()
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
     serving = groups.add_parser("serve", help="起网页后端：HTTP + SSE，端出页面，常驻")
-    serving.add_argument("--host", default="127.0.0.1")
+    serving.add_argument("--host", default="127.0.0.1",
+                         help="听哪个地址；只收 Host 是 127.0.0.1、localhost 或这个地址的请求"
+                              "（0.0.0.0 只能本机打开，别的机器要连写这台的 IP）")
     serving.add_argument("--port", type=int, default=8765)
     serving.add_argument("--ui", default=None,
                          help=f"页面构建目录，缺省 {DEFAULT_UI_DIR}（没构建就只开接口）")

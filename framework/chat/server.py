@@ -663,12 +663,26 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
-        self._sse(first)
+        gone = False
+
+        def deliver(event: ChatEvent) -> None:
+            # 页面重载、断网（外层 #282 审查）：这一轮照样读完、落盘，重开页面在历史里看得到，
+            # turns 也照样数它；扔下不读，真 CLI 的输出管道写满就卡在那里，这段对话一直锁着
+            nonlocal gone
+            if gone:
+                return
+            try:
+                self._sse(event)
+            except OSError as exc:
+                gone = True
+                LOGGER.info("chat_stream_gone chat_id=%s why=%s", conv.chat_id, exc)
+
+        deliver(first)
         for event in events:
-            self._sse(event)
+            deliver(event)
         # 人这一轮说着话时跑完的作业排在收件箱里：接着以「框架」的身份念，事件接在同一条流后面
         for event in notify.follow_up(where, conv, chat, system_prompt):
-            self._sse(event)
+            deliver(event)
 
     def _post_settings(self, rest: list[str], body: dict[str, Any]) -> None:
         """设置那块板的动作，都落到 chat/settings、清单与 key 的读写点、清除。"""

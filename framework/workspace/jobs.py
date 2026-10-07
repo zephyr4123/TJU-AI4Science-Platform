@@ -123,8 +123,10 @@ def own_log() -> None:
     path = os.environ.pop(LOG_ENV, None)
     if not path:
         return
-    log = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
-    null = os.open(os.devnull, os.O_RDONLY)
+    # O_BINARY：Windows 上 os.open 缺省开成文本模式，dup2 会把它带到 1、2，每行成了 \r\r\n
+    binary = getattr(os, "O_BINARY", 0)
+    log = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | binary)
+    null = os.open(os.devnull, os.O_RDONLY | binary)
     for fd, std in ((null, 0), (log, 1), (log, 2)):
         os.dup2(fd, std)
     os.close(log)

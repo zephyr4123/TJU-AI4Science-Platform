@@ -142,10 +142,11 @@ def test_closing_stdin_stops_serve_and_its_turns_but_not_jobs(tmp_path):
         _stop_job(marks)
 
 
-@pytest.mark.skipif(os.name == "nt", reason="SIGTERM / SIGINT 只在 POSIX 上能从外面发")
-@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT])
-def test_sigterm_and_ctrl_c_take_the_same_way_out(tmp_path, sig):
-    """POSIX 上 SIGTERM（launchd、kill）与 Ctrl-C 走同一条退出：先停掉在跑的那一轮，再退 0。"""
+@pytest.mark.skipif(os.name == "nt", reason="SIGTERM / SIGINT / SIGHUP 只在 POSIX 上能从外面发")
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP])
+def test_sigterm_ctrl_c_and_closing_the_terminal_take_the_same_way_out(tmp_path, sig):
+    """POSIX 上 SIGTERM（launchd、kill）、Ctrl-C 与关掉终端窗口（SIGHUP，setup 最后那句「关掉这个
+    窗口服务就停」）走同一条退出：先停掉在跑的那一轮，再退 0。轮次自成会话，挂断信号到不了它们。"""
     home, marks = _home(tmp_path)
     serve = _serve(home)
     try:
@@ -248,3 +249,61 @@ def test_the_port_is_free_again_right_after_serve_closes(tmp_path):
         assert again.wait(timeout=15) == 0
     finally:
         again.kill()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="关窗口、注销、关机的控制台事件只有 Windows 有")
+def test_closing_the_console_window_on_windows_takes_the_same_way_out(monkeypatch):
+    """关掉 PowerShell 窗口、注销、关机发的是控制台事件，Python 不接，进程直接被结束、finally 不跑
+    （外层 #285）：处理函数里自己收拾；Ctrl-C、Ctrl-Break 照旧交给 Python。"""
+    from framework.cli import serve as serving
+
+    killed = []
+    monkeypatch.setattr(serving.procs, "kill_all", lambda: killed.append(True) or [])
+    for event in serving.CONSOLE_CLOSING:
+        assert serving._on_console_event(event) is True
+    assert len(killed) == len(serving.CONSOLE_CLOSING)
+    assert serving._on_console_event(0) is False and len(killed) == len(serving.CONSOLE_CLOSING)
+
+
+def test_children_of_serve_do_not_inherit_the_pipe_the_shell_watches(tmp_path):
+    """--until-stdin-closes 守着外壳给的那根管道：Windows 上 Python 子进程启动时碰到一根正被另一个
+    线程同步读着的管道会卡死（测试机上实测，外层 #282 审查）。之后起的子进程拿到的是一根读到头的空
+    管道：不卡、不是终端、读到空。"""
+    script = tmp_path / "watching.py"
+    script.write_text(
+        "import subprocess, sys\n"
+        "from framework.cli import serve\n"
+        "class Server:\n"
+        "    def shutdown(self):\n"
+        "        print('stopped', flush=True)\n"
+        "serve._watch_stdin(Server())\n"
+        "child = subprocess.run([sys.executable, '-c', 'import sys; print(sys.stdin.isatty(),"
+        " repr(sys.stdin.read()))'], capture_output=True, text=True, timeout=20)\n"
+        "print(child.stdout.strip(), flush=True)\n"
+        "import time; time.sleep(30)\n", encoding="utf-8")
+    watching = subprocess.Popen([sys.executable, str(script)], cwd=REPO_ROOT, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding="utf-8", errors="replace")
+    try:
+        assert watching.stdout.readline().strip() == "False ''", watching.stderr.read()
+        watching.stdin.close()
+        assert watching.stdout.readline().strip() == "stopped", "外壳关了那根管道就叫停"
+    finally:
+        watching.kill()
+        watching.wait()
+
+
+def test_listening_everywhere_says_only_this_machine_gets_in(tmp_path):
+    """`--host 0.0.0.0` 以前从局域网能打开；门禁只认发给本机的请求以后，别的机器打开都是 403（外层
+    #283）。启动时说一句为什么、该怎么写，不让人对着 403 猜。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    serve = _serve(home, "--host", "0.0.0.0", "--until-stdin-closes")
+    try:
+        line = serve.stdout.readline()
+        assert line.startswith("ok http://0.0.0.0:"), line
+    finally:
+        serve.stdin.close()
+        serve.wait(timeout=15)
+    said = (tmp_path / "serve.log").read_text(encoding="utf-8")
+    assert "只收发给本机的请求" in said and "--host 写这台的 IP" in said
