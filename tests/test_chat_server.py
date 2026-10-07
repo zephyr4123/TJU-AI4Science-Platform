@@ -136,7 +136,7 @@ def listed_workspaces(base, project_id="p"):
 
 def test_health_and_catalog(served):
     base, _ = served
-    assert json.loads(call(base, "/health")[2]) == {"ok": True, "checks_ok": True}
+    assert json.loads(call(base, "/health")[2]) == {"ok": True, "checks_ok": True, "turns": 0}
     status, _, body = call(base, "/stages")
     assert status == 200
     stages = json.loads(body)
@@ -621,7 +621,6 @@ def test_save_workflow_endpoint_maps_errors_to_status_codes(served):
 
 def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     """外层 #115：页面上的「停止」与 `ai4sci job stop` 同一个函数；不在跑的 422、没有的 404。"""
-    import subprocess
     import sys
     import time
 
@@ -632,8 +631,7 @@ def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
     directory, _ = outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
                                        flow=None, step=None, requirement=1, chat_id=None)
-    proc = procs.spawn([sys.executable, "-c", "import time; time.sleep(300)"], detach=True,
-                       stdin=subprocess.DEVNULL)
+    proc = procs.spawn_detached([sys.executable, "-c", "import time; time.sleep(300)"])
     time.sleep(0.3)
     ws.jobs.mkdir(parents=True)
     record = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=proc.pid,
@@ -642,7 +640,10 @@ def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     status, _, body = call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {})
     doc = json.loads(body)
     assert status == 201 and doc["status"] == "stopped" and getpass.getuser() in doc["result"]
-    proc.wait(timeout=5)
+    deadline = time.monotonic() + 10  # 作业不是测试进程的子进程，等不了它：看它在不在
+    while procs.pid_alive(proc.pid) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not procs.pid_alive(proc.pid)
     assert call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {})[0] == 422
     assert call(base, "/projects/p/workspaces/w1/jobs/nope/stop", {})[0] == 404
     status, _, body = call(base, "/projects/p/workspaces/w1/outputs/design/1")
@@ -751,6 +752,135 @@ def test_home_side_panel_endpoints(served, tmp_path):
     assert json.loads(call(base, "/usage?days=7")[2])["days"] == 7
     assert call(base, "/usage?days=0")[0] == 422
     assert call(base, "/usage?days=x")[0] == 422
+
+
+# ── 请求的来源：只认发给本机、同源的（外层 #283）────────────────────────────
+def asked(base, method, path, headers, body=None):
+    """照原样发一个请求：Host、Origin、Content-Type 都由用例给（urllib 会自己补 Host）。
+    返回状态码、响应头与解出来的 JSON（不是 JSON 的是原文）。"""
+    import http.client
+    from urllib.parse import urlsplit
+
+    where = urlsplit(base)
+    conn = http.client.HTTPConnection(where.hostname, where.port, timeout=10)
+    try:
+        conn.putrequest(method, path, skip_host=True, skip_accept_encoding=True)
+        data = None if body is None else (body if isinstance(body, bytes)
+                                          else json.dumps(body).encode("utf-8"))
+        for name, value in headers.items():
+            conn.putheader(name, value)
+        if data is not None:
+            conn.putheader("Content-Length", str(len(data)))
+        conn.endheaders(data)
+        resp = conn.getresponse()
+        raw = resp.read().decode("utf-8", errors="replace")
+        try:
+            doc = json.loads(raw)
+        except ValueError:
+            doc = raw
+        return resp.status, resp.headers, doc
+    finally:
+        conn.close()
+
+
+def test_requests_from_other_sites_are_refused(served, tmp_path):
+    """任何网页都能对本机服务发「简单请求」（不预检的 POST）：存 key、清空家、让助理动手；DNS
+    rebinding 之后还能同源读走对话与文件。服务只认发给 127.0.0.1 / localhost 的、带 Origin 就得与
+    Host 同源、POST 只收 JSON。被拒的一件事都没做成。"""
+    base, _ = served
+    here = base.removeprefix("http://")
+    json_type = {"Content-Type": "application/json"}
+    new_project = {"id": "evil", "title": "x"}
+    # 别的网站：Origin 不是自己
+    status, _, doc = asked(base, "POST", "/projects",
+                           {"Host": here, "Origin": "http://evil.example", **json_type},
+                           new_project)
+    assert status == 403 and "Origin" in doc["error"]
+    # 本机别的端口上的页面也不是同源
+    status, _, _ = asked(base, "POST", "/projects",
+                         {"Host": here, "Origin": "http://localhost:8888", **json_type},
+                         new_project)
+    assert status == 403
+    # DNS rebinding：浏览器以为同源，Host 是攻击者的域名；读也不行，页面本身也不给
+    for path in ("/settings", "/projects/p", "/"):
+        status, _, doc = asked(base, "GET", path, {"Host": "evil.example" + here[here.index(":"):]})
+        assert status == 403 and "Host" in doc["error"], path
+    assert asked(base, "GET", "/health", {})[0] == 403  # 不带 Host
+    # 沙箱里的 iframe、file:// 打开的页面发的是 Origin: null
+    status, _, doc = asked(base, "POST", "/projects",
+                           {"Host": here, "Origin": "null", **json_type}, new_project)
+    assert status == 403 and "null" in doc["error"]
+    # 表单与 text/plain 的 fetch 不用预检：不是 JSON 一律不收，没有 body 的也一样
+    status, _, doc = asked(base, "POST", "/projects", {"Host": here, "Content-Type": "text/plain"},
+                           new_project)
+    assert status == 415 and "-H 'Content-Type: application/json'" in doc["error"]
+    status, _, _ = asked(base, "POST", "/settings/reset",
+                         {"Host": here, "Content-Type": "application/x-www-form-urlencoded"},
+                         b"confirm=x")
+    assert status == 415
+    assert asked(base, "POST", "/projects/p/chats", {"Host": here})[0] == 415
+    assert not (tmp_path / "projects" / "evil").exists(), "被拒的请求建出了项目"
+    assert json.loads(call(base, "/projects/p/chats")[2]) == []
+
+
+def test_the_page_curl_the_dev_proxy_and_an_ssh_tunnel_still_get_through(served, tmp_path):
+    """被拒的只该是别人的网页。同源的页面、curl（不带 Origin）、Vite 开发代理（changeOrigin:
+    false，Host 与 Origin 都是 localhost:5173）、SSH 隧道（127.0.0.1:18765 转到服务的端口）都
+    照常。"""
+    base, _ = served
+    here = base.removeprefix("http://")
+    json_type = {"Content-Type": "application/json; charset=utf-8"}
+    shapes = {"页面": {"Host": here, "Origin": base},
+              "curl": {"Host": here},
+              "Vite 代理": {"Host": "localhost:5173", "Origin": "http://localhost:5173"},
+              "SSH 隧道": {"Host": "127.0.0.1:18765", "Origin": "http://127.0.0.1:18765"}}
+    for n, (label, headers) in enumerate(shapes.items()):
+        status, _, doc = asked(base, "POST", "/projects", {**headers, **json_type},
+                               {"id": f"p{n}", "title": label})
+        assert status == 201, (label, doc)
+        assert asked(base, "GET", "/settings", headers)[0] == 200, label
+        assert asked(base, "GET", "/", headers)[0] == 200, label
+    assert asked(base, "GET", "/health", {"Host": "LOCALHOST:8765"})[0] == 200
+
+
+def test_the_gate_takes_the_host_the_server_was_told_to_listen_on():
+    """人显式让服务听在非回环的地址上（`--host 192.168.1.5`）：发给那个地址的也认；别的照样拒。"""
+    from framework.chat.server import refusal
+
+    hosts = frozenset({"127.0.0.1", "localhost", "192.168.1.5"})
+    assert refusal("GET", {"Host": "192.168.1.5:8765"}, hosts) is None
+    assert refusal("POST", {"Host": "192.168.1.5:8765", "Origin": "http://192.168.1.5:8765",
+                            "Content-Type": "application/json"}, hosts) is None
+    assert refusal("GET", {"Host": "192.168.1.6:8765"}, hosts) is not None
+    # 认不出的 Host 一律拒：带用户名的、带路径的、不是端口的
+    for odd in ("localhost:80@evil.example", "localhost/x", "localhost:abc", "localhost:"):
+        assert refusal("GET", {"Host": odd}, hosts) is not None, odd
+
+
+def test_no_page_can_be_framed_and_raw_files_run_sandboxed(served, tmp_path):
+    """别的网站把页面嵌进 iframe 诱导点击（清除那颗按住生效的键）：每个响应都禁止被嵌。`/raw`
+    原样端出 agent 写的 HTML / SVG：不许按内容猜类型、当沙箱里的文档跑，拿不到页面的来源。HEAD 与
+    OPTIONS 照旧 501，不发任何 CORS 头。"""
+    from tests.fixtures.runs_factory import make_run
+
+    base, _ = served
+    make_run(tmp_path)
+    here = {"Host": base.removeprefix("http://")}
+    responses = [asked(base, "GET", path, here) for path in
+                 ("/health", "/", "/assets/app-abc123.js", "/studio/x/y/z")]
+    responses.append(asked(base, "GET", "/health", {"Host": "evil.example"}))
+    responses += [asked(base, method, "/health", here) for method in ("HEAD", "OPTIONS")]
+    for status, headers, _ in responses:
+        assert headers["X-Frame-Options"] == "DENY", status
+        assert "frame-ancestors 'none'" in headers["Content-Security-Policy"], status
+    assert [r[0] for r in responses[-2:]] == [501, 501]
+    for _, headers, _ in responses[-2:]:
+        assert not [h for h in headers if h.lower().startswith("access-control-")]
+    status, headers, _ = asked(base, "GET", "/projects/p/workspaces/toy/raw?path=requirement.md",
+                               here)
+    assert status == 200 and headers["X-Content-Type-Options"] == "nosniff"
+    policy = headers["Content-Security-Policy"]
+    assert "sandbox" in policy and "frame-ancestors 'none'" in policy
 
 
 def test_dev_proxy_lists_every_api_root():

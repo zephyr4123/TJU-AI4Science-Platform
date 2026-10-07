@@ -1,4 +1,4 @@
-"""`ai4sci serve`：起网页的后端（HTTP + SSE）并把页面端出去，常驻直到 Ctrl-C。
+"""`ai4sci serve`：起网页的后端（HTTP + SSE）并把页面端出去，常驻直到叫停。
 
 cli 层里唯一常驻的命令：它不是"跑一个能力"，是给页面一个门。能力清单、流程库、拼流程检查与描述符表
 从 `capabilities.discover` 与 `contracts.workflows` 拿，以函数传给 server
@@ -7,23 +7,46 @@ cli 层里唯一常驻的命令：它不是"跑一个能力"，是给页面一�
 
 页面是 `ui/web` 构建出来的静态文件（`ui/README.md`）：缺省端 `ui/web/dist`，没构建就只开接口。
 TUI 不走这里——它是终端进程，直接当这些接口的客户端。
+
+起与停（外层 #282 §3、#285，外壳与后端的约定）：绑上地址以后 stdout 打且只打一行 `ok http://…`，日志
+全走 stderr；绑不上一句话退 3。叫停有三种，走同一条路：Ctrl-C、POSIX 上的 SIGTERM、带
+`--until-stdin-closes` 时标准输入读到头（外壳退出时关掉它；外壳崩了内核替它关）。先不再接请求，
+再把这个服务起的、还在跑的进程树（`procs` 的登记：一轮对话的 CLI 与它派生的一切）逐棵杀掉，退 0；
+后台作业不在登记里，照跑。登记同时落在平台的家里的 `run/serve-<pid>.json`：服务自己崩了、被杀了，
+下一个服务起来时按它收掉上一个留下的轮次。
 """
 
 from __future__ import annotations
 
 import argparse
+import errno
+import logging
+import os
+import signal
 import sys
+import threading
 from pathlib import Path
 
+import procs
 from framework import paths, skills
 from framework.capabilities import abilities, discover, stage_table
 from framework.chat import guide, settings
 from framework.chat.server import ChatServer
 from framework.cli import compute as compute_cli
-from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE, library, setup_logging
+from framework.cli._common import (
+    EXIT_INVALID,
+    EXIT_OK,
+    EXIT_PORT,
+    EXIT_USAGE,
+    library,
+    setup_logging,
+)
 from framework.contracts import workflows
 
+LOGGER = logging.getLogger("ai4sci.serve")
 DEFAULT_UI_DIR = paths.ui_dir()
+# 在跑的服务的登记文件：`serve-<pid>.json`，放在平台的家里的 `run/`（`paths.run_dir`）
+RUN_FILE = "serve-{pid}.json"
 
 
 def _add_compute(body: dict) -> dict:
@@ -127,15 +150,61 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except guide.GuideMissing as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID
+    except OSError as exc:  # 绑不上（GuideMissing 也是 OSError，上一条先接走了）
+        print(f"{args.host}:{args.port} 用不了：{_unbindable(exc)}", file=sys.stderr)
+        return EXIT_PORT
+    run = paths.run_dir()
+    for left in sorted(run.glob(RUN_FILE.format(pid="*"))):
+        procs.reap(left)  # 主人已经不在的那几份：上一个服务崩了留下的轮次
+    procs.keep_in(run / RUN_FILE.format(pid=os.getpid()))
+    _stop_on_signal(server)
+    if args.until_stdin_closes:
+        threading.Thread(target=_stop_when_stdin_closes, args=(server,), daemon=True,
+                         name="stdin-watch").start()
     host, port = server.server_address[:2]
     print(f"ok http://{host}:{port}\thome={server.home}\tui={ui_dir or '-'}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        pass
+        LOGGER.info("serve_stopping reason=ctrl_c")
     finally:
         server.server_close()
+        killed = procs.kill_all()
+        LOGGER.info("serve_stopped killed=%s", killed)
     return EXIT_OK
+
+
+def _unbindable(exc: OSError) -> str:
+    """绑不上的原因，一句人话。Windows 上装过 Hyper-V、WSL、Docker 的机器，保留端口段每次开机都变，
+    落进去报的是 WSAEACCES（PermissionError），不是「被占」。"""
+    if exc.errno in (errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", errno.EADDRINUSE)):
+        return "端口被别的程序占着：换一个 --port，或先关掉占着它的那个"
+    if isinstance(exc, PermissionError):
+        return "系统不让用这个端口（Windows 的保留端口段，或要管理员权限）：换一个 --port"
+    if exc.errno in (errno.EADDRNOTAVAIL, getattr(errno, "WSAEADDRNOTAVAIL", errno.EADDRNOTAVAIL)):
+        return "本机没有这个地址：--host 写错了？"
+    return str(exc)
+
+
+def _stop(server: ChatServer, reason: str) -> None:
+    """叫停：不再接请求，`serve_forever` 返回，主线程接着收拾。`shutdown` 要等主线程的循环走完，
+    所以另起一个线程调（在主线程里调会自己等自己）。"""
+    LOGGER.info("serve_stopping reason=%s", reason)
+    threading.Thread(target=server.shutdown, daemon=True, name="serve-stop").start()
+
+
+def _stop_on_signal(server: ChatServer) -> None:
+    """POSIX 上 SIGTERM（launchd、kill、外壳收拾时）与 Ctrl-C 走同一条退出；Windows 上发不进来。"""
+    if os.name != "nt":
+        signal.signal(signal.SIGTERM, lambda signum, frame: _stop(server, "SIGTERM"))
+
+
+def _stop_when_stdin_closes(server: ChatServer) -> None:
+    """标准输入读到头就叫停：外壳退出时关掉它，外壳崩了内核替它关（外层 #285）。读到的内容不管。"""
+    stream = sys.stdin.buffer
+    while stream.read1(1 << 16):
+        pass
+    _stop(server, "stdin_closed")
 
 
 def add_parser(groups: argparse._SubParsersAction) -> None:
@@ -144,4 +213,6 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
     serving.add_argument("--port", type=int, default=8765)
     serving.add_argument("--ui", default=None,
                          help=f"页面构建目录，缺省 {DEFAULT_UI_DIR}（没构建就只开接口）")
+    serving.add_argument("--until-stdin-closes", action="store_true",
+                         help="标准输入读到头就停（外壳起服务时用：外壳退出或崩了都会关掉它）")
     serving.set_defaults(func=cmd_serve)

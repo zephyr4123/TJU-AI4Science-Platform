@@ -29,6 +29,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+from backends import AgentMissing
 from compute import ComputeError
 from framework import agents
 from framework.capabilities import abilities, discover
@@ -188,7 +189,9 @@ def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports:
         jobs.attach_output(ws.jobs, job_id, meta.id, meta.flow)
     try:
         line = args.module.run(directory, inputs, ports, **params)
-    except CapabilityFailed as exc:
+    # 执行层的 CLI 找不到（外壳起的服务 PATH 不一样，外层 #282）是研究者要处理的事，与能力说的失败
+    # 一样记：那句人话，不是「平台内部错误」
+    except (CapabilityFailed, AgentMissing) as exc:
         outputs.close_output(directory, meta, ok=False, line=str(exc))
         return EXIT_INVALID, f"{exc}\noutput={meta.id}（没成，留在盘上）"
     outputs.close_output(directory, meta, ok=True, line=line)

@@ -26,6 +26,14 @@ def _env(monkeypatch, ws: workspace.Workspace) -> None:
     monkeypatch.chdir(ws.root)
 
 
+def _gone(pid: int, timeout_s: float = 10.0) -> bool:
+    """作业不是测试进程的子进程（`spawn_detached`），等不了它：看它在不在。"""
+    deadline = time.monotonic() + timeout_s
+    while procs.pid_alive(pid) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    return not procs.pid_alive(pid)
+
+
 def _wait_done(jobs_dir: Path, job_id: str, timeout_s: float = 90.0) -> jobs.Job:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -58,6 +66,26 @@ def test_spawned_job_runs_the_capability_and_writes_back(tmp_path: Path, monkeyp
     assert jobs.running_for(ws.jobs, "verification/1") is None
     assert jobs.running_jobs(ws.jobs) == []
 
+
+
+def test_a_job_opens_its_own_log_and_its_children_write_there_too(tmp_path: Path):
+    """外层 #284：作业的三个标准流一个都不接（Windows 上以 explorer 为父进程起，句柄传不过去），日志
+    由作业自己按路径打开；它起的子进程不另接也落进同一份日志，环境里不再带那个路径。"""
+    log = tmp_path / "job.log"
+    body = ("import subprocess, sys\n"
+            "from framework.workspace import jobs\n"
+            "jobs.own_log()\n"
+            "print('出 stdout')\n"
+            "print('出 stderr', file=sys.stderr)\n"
+            "subprocess.run([sys.executable, '-c', "
+            "\"import os; print('child', os.environ.get('AI4SCI_JOB_LOG'))\"], check=True)\n"
+            "input()\n")  # stdin 是空的：读到 EOF 就抛，退出码非零
+    done = subprocess.run([sys.executable, "-c", body], stdin=subprocess.DEVNULL,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,
+                          env={**os.environ, "PYTHONPATH": str(REPO_ROOT), jobs.LOG_ENV: str(log)})
+    text = log.read_text(encoding="utf-8")
+    assert "出 stdout" in text and "出 stderr" in text and "child None" in text
+    assert done.returncode != 0 and "EOFError" in text
 
 
 def test_a_job_belongs_to_the_flow_its_output_was_placed_in(tmp_path: Path, monkeypatch):
@@ -114,11 +142,11 @@ def test_stop_kills_the_whole_tree_and_closes_the_output(tmp_path: Path):
                                        flow=None, step=None, requirement=1, chat_id=None)
     # 顶上一个 python 像作业那样起，再起一个自成进程组的孙子（像执行层的 Bash、harness 的 launcher）
     marker = tmp_path / "grandchild.pid"
-    proc = procs.spawn(
+    proc = procs.spawn_detached(
         [sys.executable, "-c",
          "import subprocess,sys,time; p = subprocess.Popen([sys.executable,'-c','import time; "
          f"time.sleep(300)'], start_new_session=True); open({str(marker)!r}, 'w').write("
-         "str(p.pid)); time.sleep(300)"], detach=True, stdin=subprocess.DEVNULL)
+         "str(p.pid)); time.sleep(300)"])
     deadline = time.monotonic() + 10
     while not marker.exists() and time.monotonic() < deadline:
         time.sleep(0.05)
@@ -131,13 +159,10 @@ def test_stop_kills_the_whole_tree_and_closes_the_output(tmp_path: Path):
     (ws.jobs / "job-s.json").write_text(json.dumps(record.__dict__), encoding="utf-8")
 
     stopped = jobs.stop(ws, "job-s", by="zephyr")
-    proc.wait(timeout=5)
+    assert _gone(proc.pid)
     assert stopped.status == "stopped" and stopped.exit_code is None and "zephyr" in stopped.result
     assert jobs.effective_status(jobs.load(ws.jobs, "job-s")) == "stopped"
-    deadline = time.monotonic() + 10  # 孙进程也死了，不留孤儿烧 CPU
-    while procs.pid_alive(grandchild) and time.monotonic() < deadline:
-        time.sleep(0.05)
-    assert not procs.pid_alive(grandchild)
+    assert _gone(grandchild)  # 孙进程也死了，不留孤儿烧 CPU
     meta = output.read_meta(directory)
     assert meta.status == "failed" and "人停的" in meta.error
     with pytest.raises(jobs.JobNotRunning, match="stopped"):
@@ -178,8 +203,7 @@ def test_stop_also_cancels_whatever_runs_under_the_output_on_its_compute(tmp_pat
     monkeypatch.setattr(computes, "instance", lambda name: Box() if name == "box" else None)
 
     def running_job(job_id: str) -> None:
-        proc = procs.spawn([sys.executable, "-c", "import time; time.sleep(300)"], detach=True,
-                           stdin=subprocess.DEVNULL)
+        proc = procs.spawn_detached([sys.executable, "-c", "import time; time.sleep(300)"])
         record = jobs.Job(job_id=job_id, cap="design", stage="design", argv=[], pid=proc.pid,
                           started_at="t", output="design/1")
         ws.jobs.mkdir(parents=True, exist_ok=True)

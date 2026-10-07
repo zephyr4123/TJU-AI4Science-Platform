@@ -43,14 +43,16 @@ def test_reset_logs_out_both_clis_then_leaves_an_empty_marked_home(tmp_path: Pat
 
 def test_reset_keeps_what_the_installer_put_there(tmp_path: Path):
     """外层 #277：清除是回到刚装好的样子，一行命令装的程序（`bin/` `tools/`）留着；卸载才删
-    整个家。"""
+    整个家。在跑的服务的登记（`run/`，外层 #285）也留着：清除时服务就开着。"""
     home, _ = _home(tmp_path)
     (home / paths.BIN_DIRNAME).mkdir()
     (home / paths.BIN_DIRNAME / "ai4sci").write_text("#!/bin/sh\n", encoding="utf-8")
     (home / paths.TOOLS_DIRNAME / "claude_code").mkdir(parents=True)
+    (home / paths.RUN_DIRNAME).mkdir()
+    (home / paths.RUN_DIRNAME / "serve-1.json").write_text("{}", encoding="utf-8")
     reset.reset(home, logout=lambda name: ([sys.executable, "-c", "pass"], dict(os.environ)))
     assert sorted(p.name for p in home.iterdir()) == sorted(
-        [paths.MARKER_NAME, paths.BIN_DIRNAME, paths.TOOLS_DIRNAME])
+        [paths.MARKER_NAME, paths.BIN_DIRNAME, paths.TOOLS_DIRNAME, paths.RUN_DIRNAME])
     assert (home / paths.TOOLS_DIRNAME / "claude_code").is_dir()
 
 

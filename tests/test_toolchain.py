@@ -24,14 +24,15 @@ from tests.fixtures.fake_cli import fake_cli
 
 def _registry(root: Path, name: str, version: str, says: str, *,
               files: dict[str, str] | None = None, integrity: str | None = None,
-              monkeypatch) -> None:
+              body: str = "", monkeypatch) -> None:
     """在 `root` 下造一棵假 npm 仓库：主包的 latest、程序包的元数据与 tgz。程序包里
-    `<Dist.root>/<Dist.entry>` 是一个 `--version` 打 `says` 的假 CLI，`files` 是旁边别的文件。"""
+    `<Dist.root>/<Dist.entry>` 是一个 `--version` 打 `says` 的假 CLI（打之前先跑 `body`），`files`
+    是旁边别的文件。"""
     spec = backends.install_of(name)
     dist = spec.dist(toolchain.platform_key(), version)
     src = root / "src" / dist.root
     (src / dist.entry).parent.mkdir(parents=True, exist_ok=True)
-    fake_cli(src / dist.entry, f"print({says!r})\n")
+    fake_cli(src / dist.entry, f"{body}print({says!r})\n")
     for rel, body in (files or {}).items():
         path = src / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -119,6 +120,28 @@ def test_find_falls_back_to_the_one_on_path_and_judges_its_version(tmp_path, mon
     assert toolchain.find("claude_code").ok
     monkeypatch.setenv("PATH", "/nonexistent")
     assert toolchain.find("codex") is None
+
+
+@pytest.mark.parametrize("name", ["codex", "claude_code"])
+def test_asking_a_cli_its_version_writes_nothing_outside_the_home(name, tmp_path, monkeypatch):
+    """外层 #286：`codex --version` 会在它的 home 里建 `tmp/`，setup 认一遍、装一遍就在用户的
+    `~/.codex` 建了目录。认与装都带上这家的私有目录（适配器的 `Install.home_env`）。假 CLI 往
+    `$<home_env>`（没设就 `~/.<名字>`）里落一个文件。"""
+    person = tmp_path / "person"
+    monkeypatch.setenv("HOME", str(person))
+    monkeypatch.setenv("USERPROFILE", str(person))
+    spec = backends.install_of(name)
+    monkeypatch.delenv(spec.home_env, raising=False)
+    says = "codex-cli 9.9.9" if name == "codex" else "9.9.9 (Claude Code)"
+    _registry(tmp_path / "npm", name, "9.9.9", says, monkeypatch=monkeypatch, body=(
+        "import os, pathlib\n"
+        f"home = os.environ.get({spec.home_env!r}) or pathlib.Path.home() / '.{name}'\n"
+        "(pathlib.Path(home) / 'tmp').mkdir(parents=True, exist_ok=True)\n"))
+    assert toolchain.install(name).ok  # 装的时候跑一次 --version
+    found = toolchain.find(name)  # 认的时候再跑一次
+    assert found.ok and found.private
+    assert not person.exists(), "家外面多了东西"
+    assert (paths.agent_home(name) / "tmp").is_dir()
 
 
 def test_an_npm_shell_shim_on_windows_is_not_good_enough(tmp_path, monkeypatch):
