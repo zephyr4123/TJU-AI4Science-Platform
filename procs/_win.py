@@ -14,8 +14,11 @@ Windows 的 bash 只要所在的 Job 许脱离，就给它起的每个子进程�
 作业（`spawn_detached`，外层 #284）要活过起它的那一轮、那个服务、外壳的 Job，又不能靠脱离：以当前
 会话的 explorer 为父进程起（`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`），Job 从指定的父进程继承，作业
 生来就不在任何 Job 里、也不是任何人的后代，再照常放进它自己那棵树的 Job。句柄同样从 explorer 继承，
-所以作业的三个标准流一个都不接，日志由作业自己按路径打开。会话里没有 explorer（SSH、服务里起的）就
-照旧起、试着脱离，把为什么没能脱离说出来。
+所以作业的三个标准流一个都不接，日志由作业自己按路径打开。身份（token）也从 explorer 继承：只有它与
+本进程是同一个用户、同一级权限时才借它——以管理员身份跑的服务借普通权限的 explorer，作业就降了权，
+写不进服务建的只给管理员的目录（2026-10-07 真机：Python 3.13 起 `mkdir(mode=0o700)` 建的目录就是
+这样）。会话里没有 explorer（SSH、服务里起的）或身份对不上，就照旧起、试着脱离，把为什么没能脱离
+说出来。
 """
 
 from __future__ import annotations
@@ -47,6 +50,9 @@ PROCESS_DUP_HANDLE = 0x0040
 PROCESS_SET_QUOTA = 0x0100
 PROCESS_SUSPEND_RESUME = 0x0800
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+TOKEN_QUERY = 0x0008
+TOKEN_USER = 1  # TOKEN_INFORMATION_CLASS
+TOKEN_ELEVATION = 20
 STILL_ACTIVE = 259
 ERROR_ACCESS_DENIED = 5
 ERROR_ALREADY_EXISTS = 183
@@ -86,6 +92,14 @@ class _ProcessInformation(ctypes.Structure):
 
 _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 _u32 = ctypes.WinDLL("user32", use_last_error=True)
+_a32 = ctypes.WinDLL("advapi32", use_last_error=True)
+_a32.OpenProcessToken.argtypes = (wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE))
+_a32.OpenProcessToken.restype = wintypes.BOOL
+_a32.GetTokenInformation.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
+                                     wintypes.DWORD, wintypes.LPDWORD)
+_a32.GetTokenInformation.restype = wintypes.BOOL
+_a32.GetLengthSid.argtypes = (wintypes.LPVOID,)
+_a32.GetLengthSid.restype = wintypes.DWORD
 _ntdll = ctypes.WinDLL("ntdll")
 _u32.GetShellWindow.restype = wintypes.HWND
 _u32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, wintypes.LPDWORD)
@@ -222,7 +236,32 @@ def _shell() -> tuple[int, str]:
     if not _k32.IsProcessInJob(shell, None, ctypes.byref(inside)) or inside.value:
         _k32.CloseHandle(shell)
         return 0, f"explorer（进程 {pid.value}）自己在 Job 里"
+    ours = _identity(_k32.GetCurrentProcess())
+    if ours is None or _identity(shell) != ours:
+        _k32.CloseHandle(shell)
+        return 0, (f"explorer（进程 {pid.value}）与本进程不是同一个用户或同一级权限"
+                   "（以管理员身份运行的？），借它起的作业会换成它的身份")
     return shell, ""
+
+
+def _identity(process: int) -> tuple[bytes, int] | None:
+    """进程的身份：用户的 SID 与提没提权（TokenElevation）；查不出是 None。"""
+    token = wintypes.HANDLE()
+    if not _a32.OpenProcessToken(process, TOKEN_QUERY, ctypes.byref(token)):
+        return None
+    try:
+        size = wintypes.DWORD()
+        _a32.GetTokenInformation(token, TOKEN_USER, None, 0, ctypes.byref(size))  # 问要多大
+        user = ctypes.create_string_buffer(size.value)
+        elevated = wintypes.DWORD()
+        if not (_a32.GetTokenInformation(token, TOKEN_USER, user, size, ctypes.byref(size))
+                and _a32.GetTokenInformation(token, TOKEN_ELEVATION, ctypes.byref(elevated),
+                                             ctypes.sizeof(elevated), ctypes.byref(size))):
+            return None
+        sid = ctypes.cast(user, ctypes.POINTER(wintypes.LPVOID))[0]  # TOKEN_USER 开头是 SID 指针
+        return ctypes.string_at(sid, _a32.GetLengthSid(sid)), elevated.value
+    finally:
+        _k32.CloseHandle(token)
 
 
 def _spawn_in_place(argv: list[str], *, env: dict[str, str] | None, cwd: str | None) -> int:
