@@ -143,7 +143,7 @@ def test_closing_stdin_stops_serve_and_its_turns_but_not_jobs(tmp_path):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="SIGTERM / SIGINT / SIGHUP 只在 POSIX 上能从外面发")
-@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP])
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT, getattr(signal, "SIGHUP", None)])
 def test_sigterm_ctrl_c_and_closing_the_terminal_take_the_same_way_out(tmp_path, sig):
     """POSIX 上 SIGTERM（launchd、kill）、Ctrl-C 与关掉终端窗口（SIGHUP，setup 最后那句「关掉这个
     窗口服务就停」）走同一条退出：先停掉在跑的那一轮，再退 0。轮次自成会话，挂断信号到不了它们。"""
