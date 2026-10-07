@@ -3,6 +3,7 @@
 # dependencies = [
 #     "cos-python-sdk-v5==1.9.44",
 #     "tencentcloud-sdk-python-cdn==3.1.169",
+#     "cryptography==50.0.2",
 # ]
 # ///
 """cdn.py wheel vX.Y.Z —— 把一行命令与桌面 App 要取的东西传到腾讯云 CDN（外层 #277 #282）。
@@ -26,18 +27,24 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
 import re
 import runpy
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
 import time
 import tomllib
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
@@ -48,6 +55,10 @@ MIN_DESKTOP = runpy.run_path(str(ROOT / "framework" / "desktop.py"))["MIN_DESKTO
 BUCKET = os.environ.get("COS_BUCKET", "zephyr-media-1322280257")
 REGION = os.environ.get("COS_REGION", "ap-shanghai")
 CDN = os.environ.get("CDN_BASE", "https://media.zephyrxiang.com")
+# 外壳内置的更新器公钥（spec §3 冻结）；platform.json 与外壳的更新包都用这一对 key 签
+TAURI_CONF = ROOT / "ui" / "desktop" / "src-tauri" / "tauri.conf.json"
+# CDN 的证书剩不到这么多天就不发版：过期了一行命令的安装与外壳的更新都会断（spec §7）
+CERT_DAYS = 30
 PREFIX = "ai4science/dist"
 UV_RELEASES = "https://github.com/astral-sh/uv/releases/download"
 UV_ARCHIVES = ("aarch64-apple-darwin.tar.gz", "x86_64-apple-darwin.tar.gz",
@@ -157,14 +168,66 @@ def plan(tag: str, prefix: str, work: Path, *,
     return items
 
 
-def tauri_sign(path: Path) -> Path:
+def tauri_sign(path: Path, pubkey: str) -> Path:
     """用更新器那把 key 签（外壳用内置的公钥验，spec §3）：ui/desktop 钉的 tauri CLI，key 与口令从
-    环境变量来。签名写在旁边的 <文件>.sig。"""
+    环境变量来，签名写在旁边的 <文件>.sig。签完当场用外壳的公钥验一遍：secrets 里的 key 配错了，
+    外壳会把 platform.json 当作取不到、再也不升级，没人看得见。"""
     if not os.environ.get("TAURI_SIGNING_PRIVATE_KEY"):
         die("缺 TAURI_SIGNING_PRIVATE_KEY（更新器的私钥，CI 里是 secrets）")
     subprocess.run(["npx", "--no-install", "tauri", "signer", "sign", str(path)],
                    cwd=ROOT / "ui" / "desktop", check=True)
-    return path.with_name(path.name + ".sig")
+    sig = path.with_name(path.name + ".sig")
+    verify(path.read_bytes(), sig.read_text(encoding="utf-8"), pubkey)
+    return sig
+
+
+def updater_pubkey(given: str | None) -> str:
+    """外壳内置的更新器公钥：缺省读 tauri.conf.json；--pubkey 给了用它（拿测试的 key 先验一遍）。"""
+    if given:
+        return given
+    if not TAURI_CONF.is_file():
+        die(f"没有 {TAURI_CONF}：用 --pubkey 给更新器的公钥")
+    return json.loads(TAURI_CONF.read_text(encoding="utf-8"))["plugins"]["updater"]["pubkey"]
+
+
+def _b64(text: str) -> bytes:
+    """更新器的 base64 不认换行、空格这类多出来的字符，这里也不认。"""
+    return base64.b64decode(text, validate=True)
+
+
+def verify(data: bytes, signature: str, pubkey: str) -> str:
+    """照外壳的更新器验一份 tauri 的签名（minisign；签名与公钥都是 base64 包着的 minisign 文本，
+    更新器里是 minisign-verify）。验过返回签名里的 trusted comment（全局签名也盖着它），验不过
+    就停。"""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    try:
+        _, key_line = _b64(pubkey).decode("utf-8").splitlines()
+        _, sig_line, trusted_line, global_line = _b64(signature).decode("utf-8").splitlines()
+        key, sig, global_sig = _b64(key_line), _b64(sig_line), _b64(global_line)
+        public = Ed25519PublicKey.from_public_bytes(key[10:])
+    except ValueError as exc:  # base64 不对、行数不对、公钥长度不对：更新器同样不认
+        die(f"不是一份 tauri 的签名或公钥：{exc}")
+    if not trusted_line.startswith("trusted comment: ") or key[:2] != b"Ed" \
+            or sig[:2] not in (b"Ed", b"ED") or sig[2:10] != key[2:10]:
+        die("签名不是这把公钥签的（key id 对不上）或格式不对")
+    trusted = trusted_line.removeprefix("trusted comment: ")
+    # ED 签的是内容的 BLAKE2b-512（tauri 签的都是这种），Ed 是旧式、签内容本身
+    message = hashlib.blake2b(data).digest() if sig[:2] == b"ED" else data
+    try:
+        public.verify(sig[10:], message)
+        public.verify(global_sig, sig[10:] + trusted.encode("utf-8"))
+    except InvalidSignature:
+        die("签名验不过：内容被改过，或不是这把 key 签的")
+    return trusted
+
+
+def signed_version(trusted: str) -> str | None:
+    """trusted comment 里的版本：tauri 写成 Tab 分隔的 key:value（timestamp、file、version），
+    更新器开了 requireSignedVersion 就拿它对清单里的版本。"""
+    return next((field.removeprefix("version:") for field in trusted.split("\t")
+                 if field.startswith("version:")), None)
 
 
 def client_from_env():
@@ -242,10 +305,35 @@ def purge(urls: list[str]) -> None:
     print(f"ok 刷新 {len(urls)} 个地址的缓存（任务 {task}）")
 
 
+def cert_not_after(host: str) -> str:
+    context = ssl.create_default_context()
+    with socket.create_connection((host, 443), timeout=30) as sock, \
+            context.wrap_socket(sock, server_hostname=host) as tls:
+        return tls.getpeercert()["notAfter"]
+
+
+def check_cert(not_after: str, now: datetime) -> None:
+    days = (ssl.cert_time_to_seconds(not_after) - now.timestamp()) / 86400
+    if days < CERT_DAYS:
+        die(f"{CDN} 的证书 {not_after} 到期，只剩 {days:.0f} 天（不到 {CERT_DAYS} 天）："
+            "先换证书再发版")
+    print(f"ok {CDN} 的证书 {not_after} 到期，还有 {days:.0f} 天")
+
+
+def cmd_cert(args: argparse.Namespace) -> int:
+    check_cert(cert_not_after(urllib.parse.urlsplit(CDN).hostname), datetime.now(UTC))
+    return 0
+
+
+def cmd_uv_version(args: argparse.Namespace) -> int:
+    print(uv_version())
+    return 0
+
+
 def cmd_wheel(args: argparse.Namespace) -> int:
+    sign = None if args.dry_run else partial(tauri_sign, pubkey=updater_pubkey(args.pubkey))
     with tempfile.TemporaryDirectory() as tmp:
-        items = plan(args.tag.removeprefix("v"), args.prefix.rstrip("/"), Path(tmp),
-                     sign=None if args.dry_run else tauri_sign)
+        items = plan(args.tag.removeprefix("v"), args.prefix.rstrip("/"), Path(tmp), sign=sign)
         if args.dry_run:
             for item in items:
                 print(f"{CDN}/{item.key}\t{item.path.stat().st_size}\t{item.cache}")
@@ -264,8 +352,12 @@ def main(argv: list[str] | None = None) -> int:
     wheel = sub.add_parser("wheel", help="平台的 wheel、安装脚本、uv 的发布包、platform.json")
     wheel.add_argument("tag", help="vX.Y.Z 或 vX.Y.Z-rc.N")
     wheel.add_argument("--prefix", default=PREFIX, help=f"对象键前缀，缺省 {PREFIX}")
+    wheel.add_argument("--pubkey", help="更新器的公钥，缺省读 ui/desktop 的 tauri.conf.json")
     wheel.add_argument("--dry-run", action="store_true", help="只列要传什么，不签")
     wheel.set_defaults(run=cmd_wheel)
+    sub.add_parser("cert", help=f"CDN 的证书剩不到 {CERT_DAYS} 天就失败").set_defaults(run=cmd_cert)
+    sub.add_parser("uv-version", help="uv.lock 里 uv 的版本（桌面包的 sidecar 用）").set_defaults(
+        run=cmd_uv_version)
     args = ap.parse_args(argv)
     return args.run(args)
 

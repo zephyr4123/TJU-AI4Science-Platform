@@ -8,10 +8,12 @@ again」）。这里用假 client 证明：失败了照 SDK 的说法再调、�
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib.util
 import io
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -19,6 +21,17 @@ import pytest
 from framework import desktop
 
 SCRIPT = Path(__file__).resolve().parents[1] / ".github" / "scripts" / "cdn.py"
+# tauri CLI 2.12.1 用一把只为测试生成的 key 签的（`tauri signer sign --app-version 1.9.0`）：
+# 证明 cdn.py 验的就是外壳的更新器认的那种签名，不是自己造的格式
+TEST_PUBKEY = ("dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUyMEJDMEZCOUJCMEQ5RkYKUldU"
+               "LzJiQ2IrOEFMNGh0TFo0SkpTNzFlWjBPYkY1ZXF0SHBnVWFxVjQ0R2xXWHVTei9QUzdMd2oK")
+SIGNED = b"AAAI4S 1.9.0 shell bundle\n"
+SIGNATURE = ("dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVULzJiQ2Ir"
+             "OEFMNG5CdTVVUEhaaFhTS3lYaGIzSTBqQ2w1K3Vsd2UrdktuUjJkSDZaSWNPTTVkVDUvaVlScWVtTUsz"
+             "OExnaVFvbFFvemttdnRQSXZyMmVlbzFpdE5NY2c0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDox"
+             "NzkxMzcxNjk1CWZpbGU6YnVuZGxlLmJpbgl2ZXJzaW9uOjEuOS4wCjNuT1AvaEVEc0JCd1JhajlkbFFl"
+             "WldVOHlXTHNTYXZPSWdMOVkreTMxODBMQW1CQ2ZzdmV2cU5hZks5aXgvdnk1SHV2SUFRc0tLVGhTQ1NS"
+             "dkJOTUNBPT0K")
 
 
 def _cdn():
@@ -238,3 +251,45 @@ def test_an_official_release_writes_a_platform_json_with_what_the_shell_checks(
     assert [(i.key, i.cache) for i in items[-2:]] == [
         ("ai4science/dist/platform.json", cdn.LATEST),
         ("ai4science/dist/platform.json.sig", cdn.LATEST)]
+
+
+def test_a_signature_from_the_tauri_cli_verifies_like_the_updater_does(cdn):
+    trusted = cdn.verify(SIGNED, SIGNATURE, TEST_PUBKEY)
+    assert cdn.signed_version(trusted) == "1.9.0"
+
+
+def _edited(signature: str, old: str, new: str) -> str:
+    text = base64.b64decode(signature).decode().replace(old, new)
+    return base64.b64encode(text.encode()).decode()
+
+
+def test_a_signature_does_not_verify_other_bytes_an_edited_comment_or_another_key(cdn, capsys):
+    """更新器拿 latest.json 里的签名验下到的包、外壳拿内置的公钥验 platform.json：这几样验不过的
+    都得在发版时就拦下，不然已装的外壳全部更新失败。trusted comment 里的版本也在全局签名底下，
+    改不得；签名后面多一个换行，更新器的 base64 不认。"""
+    key_line = base64.b64decode(TEST_PUBKEY).decode().splitlines()[1]
+    other_id = base64.b64encode(b"Ed" + b"\0" * 8 + base64.b64decode(key_line)[10:]).decode()
+    for data, signature, pubkey in (
+            (SIGNED + b"!", SIGNATURE, TEST_PUBKEY),
+            (SIGNED, _edited(SIGNATURE, "version:1.9.0", "version:1.9.1"), TEST_PUBKEY),
+            (SIGNED, SIGNATURE, _edited(TEST_PUBKEY, key_line, other_id)),
+            (SIGNED, SIGNATURE + "\n", TEST_PUBKEY)):
+        with pytest.raises(SystemExit):
+            cdn.verify(data, signature, pubkey)
+    assert capsys.readouterr().err.count("cdn: ") == 4
+
+
+def test_a_certificate_with_less_than_30_days_left_stops_the_release(cdn, capsys):
+    """CDN 的证书 2026-11-22 到期：过期了一行命令的安装与外壳的更新都会断（spec §7），发布作业第一步
+    就查。"""
+    not_after = "Nov 22 13:59:59 2026 GMT"
+    cdn.check_cert(not_after, datetime(2026, 10, 7, tzinfo=UTC))
+    with pytest.raises(SystemExit):
+        cdn.check_cert(not_after, datetime(2026, 10, 24, tzinfo=UTC))
+    assert "Nov 22" in capsys.readouterr().err
+
+
+def test_the_uv_version_for_the_desktop_build_comes_from_uv_lock(cdn, capsys):
+    """桌面构建的 uv sidecar 照 uv.lock 的版本取（release.yml 调这个）。"""
+    assert cdn.main(["uv-version"]) == 0
+    assert capsys.readouterr().out.strip() == cdn.uv_version()

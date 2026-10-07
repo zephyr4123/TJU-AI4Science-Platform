@@ -11,9 +11,10 @@ dependencies = [
   "ruff>=0.12",         # 设计草稿封 harness 前的 lint（`python -m ruff`，experiment/drafting.py）
 ]
 
-# 开发时的工具：`uv sync` 缺省装上（PEP 735），装的包里没有
+# 开发时的工具：`uv sync` 缺省装上（PEP 735），装的包里没有。cryptography：发版脚本 cdn.py 照更新器
+# 验 minisign 签名（Ed25519，标准库没有），测试要能 import 它（外层 #282）
 [dependency-groups]
-dev = ["pytest>=8.3"]
+dev = ["pytest>=8.3", "cryptography>=50"]
 
 [project.scripts]
 ai4sci = "framework.cli:main"
