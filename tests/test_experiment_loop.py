@@ -19,9 +19,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+import procs
 from compute import Job
 from compute.local import LocalCompute
-from compute.procs import group_alive
 from framework.capabilities.auto_research import (
     InflightPending,
     ResumeMismatch,
@@ -458,7 +458,7 @@ def test_keyboard_interrupt_cancels_the_in_flight_job(tmp_path):
     job = Job.from_json(
         (run_dir / "iters" / "iter_1" / "job.json").read_text(encoding="utf-8"))
     assert [j.pgid for j in compute.cancelled] == [job.pgid], "在飞的任务没被 cancel"
-    assert not group_alive(job.pgid), "被中断的那一轮还留着活着的进程组"
+    assert not procs.tree_alive(job.pgid), "被中断的那一轮还留着活着的进程组"
 
 
 # ── A-6 / A-7：假成功与动 harness ───────────────────────────────────────
@@ -772,7 +772,8 @@ def test_harness_gets_budget_and_inner_k_from_the_framework(tmp_path):
     seen = json.loads((run_dir / "iters" / "iter_1" / "env-seen.json")
                       .read_text(encoding="utf-8"))
     assert seen["AI4SCI_INNER_K"] == "4" and seen["AI4SCI_BUDGET_S"] == "2"
-    assert seen["AI4SCI_SEED"] == "42" and seen["AI4SCI_PYTHON"].endswith("/.venv/bin/python")
+    assert seen["AI4SCI_SEED"] == "42"
+    assert Path(seen["AI4SCI_PYTHON"]) == layout.venv_python(run_dir)
 
 
 def test_inner_k_defaults_to_one_and_rejects_zero(tmp_path):

@@ -149,3 +149,19 @@ def test_probe_tells_how_to_log_in_with_the_command_of_this_install(monkeypatch)
     keyed = AgentProbe(items=[("登录", False, "DeepSeek 的 key 还没填")], installed=True)
     monkeypatch.setattr(agents.backends, "probe", lambda name, link: keyed)
     assert agents.probe("codex").items == [("登录", False, "DeepSeek 的 key 还没填")]
+
+
+def test_probe_tells_how_to_install_or_upgrade_with_the_command_of_this_install(monkeypatch):
+    """外层 #277：没装、版本不够，适配器只报事实，装上它的命令（`ai4sci setup`）由框架补。"""
+    from framework import paths
+
+    monkeypatch.setattr(paths, "cli", lambda: "ai4sci")
+    missing = AgentProbe(items=[("装了没", False, "找不到 `claude`")])
+    monkeypatch.setattr(agents.backends, "probe", lambda name, link: missing)
+    assert agents.probe("claude_code").items == [
+        ("装了没", False, "找不到 `claude`，终端里跑 `ai4sci setup` 装上")]
+    stale = AgentProbe(items=[("装了没", True, "/x"), ("版本", False, "2.0.0，要 ≥ 2.1.276")],
+                       installed=True)
+    monkeypatch.setattr(agents.backends, "probe", lambda name, link: stale)
+    assert agents.probe("claude_code").items[1] == (
+        "版本", False, "2.0.0，要 ≥ 2.1.276，终端里跑 `ai4sci setup` 换新版")

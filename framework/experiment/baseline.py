@@ -18,12 +18,11 @@ auto-research 会接。第一轮真任务里远端脚本自己 rm -rf 了 baseli
 
 from __future__ import annotations
 
-import shutil
 import sys
 from pathlib import Path
 
 from compute import Compute
-from framework import paths
+from framework import files, paths
 from framework.contracts.capability import CapabilityFailed
 from framework.experiment import env, headroom
 from framework.experiment import pack as packs
@@ -54,7 +53,7 @@ def run_baseline(pack: Path, compute: Compute, *, check_headroom: bool = True) -
     repeat_k = budget.get("repeat_k", 3)
     stale = pack / packs.BASELINE_DIRNAME
     if stale.is_dir():
-        shutil.rmtree(stale)  # 本机算力时和远端是同一个目录，删一次就够
+        files.remove_tree(stale)  # 本机算力时和远端是同一个目录，删一次就够
     remote = compute.remote_dir_for(pack)
     compute.sync(pack, remote)
     # 环境是基线的一部分，不是人要记得先跑的另一条命令；建不出来就是基线跑不了
@@ -64,7 +63,7 @@ def run_baseline(pack: Path, compute: Compute, *, check_headroom: bool = True) -
         raise CapabilityFailed(str(exc)) from exc
     harness_env = env.harness_env(Path(python), float(budget["wall_clock_s"]), inner_k)
     timeout_s = float(budget["wall_clock_s"]) * (1 + int(repeat_k)) * BASELINE_TIMEOUT_RATIO
-    outcome = compute.run(remote, ["bash", "harness/make_run0.sh"], harness_env, timeout_s)
+    outcome = compute.run(remote, [*compute.bash, "harness/make_run0.sh"], harness_env, timeout_s)
     # harness 的两路输出都走 stderr（诊断）：stdout 只留给协调层读的那一行结论（P-14）
     for text in (outcome.stdout, outcome.stderr):
         if text.strip():

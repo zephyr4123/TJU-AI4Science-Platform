@@ -28,7 +28,7 @@ from framework.experiment.results import read_results
 
 LOGGER = logging.getLogger("ai4sci.experiment")
 
-LAUNCH_CMD = ["bash", "harness/launcher.sh"]
+LAUNCH_SCRIPT = "harness/launcher.sh"
 CODE_PREFIX = "code/"
 
 
@@ -63,7 +63,7 @@ def judge_run(
     run_n.mkdir(parents=True, exist_ok=True)  # 本地那份：job.json 与回来的产物放这儿
     # harness 只经 $AI4SCI_PYTHON 起解释器（任务跑在这次实验自己的 venv 里，在跑实验的那台机器上），
     # 预算与内部重复次数也由这里保证给出：launcher 不该再把它们写成常数
-    job = compute.submit(remote_n, LAUNCH_CMD,
+    job = compute.submit(remote_n, [*compute.bash, LAUNCH_SCRIPT],
                          {env.SEED_ENV: str(ctx.seed),
                           **env.harness_env(Path(ctx.python), ctx.wall_clock_s, ctx.inner_k)},
                          timeout_s=ctx.wall_clock_s * BUDGET_OVERRUN_RATIO)

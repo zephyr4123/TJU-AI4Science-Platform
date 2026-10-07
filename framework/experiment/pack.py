@@ -18,7 +18,7 @@ import json
 import math
 import re
 import statistics
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import jsonschema
@@ -264,7 +264,8 @@ def _check_harness(pack: Path) -> list[str]:
             )
             continue
         expected, name = parts[0].lower(), parts[1].lstrip("*").strip()
-        if name.startswith("/") or ".." in Path(name).parts:
+        if (PurePosixPath(name).is_absolute() or PureWindowsPath(name).is_absolute()
+                or ".." in Path(name).parts):
             problems.append(f"harness/SHA256SUMS:{lineno}: 文件名越界，实际 {name!r}")
             continue
         target = hdir / name

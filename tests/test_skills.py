@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from framework import paths, skills
+from framework import mirrors, paths, skills
 from framework.chat import guide
 from framework.cli import main
 from framework.skills import library, provenance, run, shelves
@@ -52,7 +52,8 @@ def write_skill(root: Path, name: str, body: str = "# 正文\n\n用法。\n", *,
 
 def _lock(script: Path) -> None:
     proc = subprocess.run([*run.uv_argv(), "lock", "--script", str(script)],
-                          capture_output=True, text=True, env=run.uv_env(), check=False)
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=run.uv_env(), check=False)
     assert proc.returncode == 0, proc.stderr
 
 
@@ -110,13 +111,15 @@ def test_shipped_pdf_script_runs_locked(tmp_path):
     """`uv run --locked` 能起——平台自带的环境由 `make skills` 预热过，这是 make check 的一步。"""
     script = skills.find("pdf").scripts[0]
     proc = subprocess.run([*run.uv_argv(), *run.UV_RUN_ARGS, str(script), "--help"],
-                          capture_output=True, text=True, env=run.uv_env(), check=False)
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=run.uv_env(), check=False)
     assert proc.returncode == 0, f"跑 make skills 预热 pdf 的环境：{proc.stderr[-800:]}"
     assert "--input" in proc.stdout and "--out" in proc.stdout
     # 输入不存在：退 2、stderr 说清、不写任何东西
     proc = subprocess.run([*run.uv_argv(), *run.UV_RUN_ARGS, str(script),
                            "--input", str(tmp_path / "nope.pdf")],
-                          capture_output=True, text=True, env=run.uv_env(), check=False)
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=run.uv_env(), check=False)
     assert proc.returncode == 2 and "不存在" in proc.stderr and not list(tmp_path.iterdir())
 
 
@@ -281,6 +284,19 @@ def test_missing_skill_md_is_rejected_and_a_long_body_only_noted(tmp_path):
     long_body = "\n".join("行" for _ in range(library.BODY_MAX_LINES + 1)) + "\n"
     skill = library.load_skill(write_skill(tmp_path, "long", long_body))
     assert any("规范建议" in n for n in skill.notes)
+
+
+def test_lockfiles_point_at_the_domestic_mirror(tmp_path):
+    """外层 #277：uv 照锁文件装依赖时用锁文件里写的地址、不看镜像设置，锁文件要对着国内源锁。"""
+    skill = write_skill(tmp_path, "abroad", scripts={"go.py": HELLO_PY})
+    lock = library.lock_path(skill / "scripts" / "go.py")
+    lock.write_text(lock.read_text(encoding="utf-8") + (
+        '\n[[package]]\nname = "x"\nversion = "1.0"\n'
+        'source = { registry = "https://pypi.org/simple" }\n'
+        'wheels = [{ url = "https://files.pythonhosted.org/packages/a/b/x.whl" }]\n'),
+        encoding="utf-8")
+    with pytest.raises(library.SkillInvalid, match="对着官方 PyPI 锁的"):
+        library.load_skill(skill)
 
 
 def test_scripts_need_a_pep723_header_and_a_lockfile(tmp_path):
@@ -513,6 +529,23 @@ def test_pick_script_wants_a_name_only_when_there_are_several(tmp_path):
         run.pick_script(none, None)
 
 
+def test_uv_keeps_its_python_in_the_home_and_downloads_from_domestic_mirrors(monkeypatch):
+    """外层 #277：平台起 uv 时缓存与 Python 都放在平台的家里，下载走国内源；用户自己设了源的
+    （CI 在国外，设回 PyPI）用他的。"""
+    for name in ("UV_DEFAULT_INDEX", "UV_INDEX_URL", "UV_PYTHON_INSTALL_MIRROR", "HF_ENDPOINT"):
+        monkeypatch.delenv(name, raising=False)
+    env = run.uv_env()
+    assert env["UV_CACHE_DIR"] == str(paths.uv_cache_dir())
+    assert env["UV_PYTHON_INSTALL_DIR"] == str(paths.python_dir())
+    # 家外面不留东西：不放入口、不登记 Windows 注册表（外层 #210）
+    assert env["UV_PYTHON_INSTALL_BIN"] == "0" and env["UV_PYTHON_INSTALL_REGISTRY"] == "0"
+    assert env["UV_DEFAULT_INDEX"] == mirrors.PYPI_INDEX
+    assert env["UV_PYTHON_INSTALL_MIRROR"] == mirrors.PYTHON_DOWNLOADS
+    assert env["HF_ENDPOINT"] == mirrors.HF_ENDPOINT
+    monkeypatch.setenv("UV_DEFAULT_INDEX", "https://pypi.org/simple")
+    assert run.uv_env()["UV_DEFAULT_INDEX"] == "https://pypi.org/simple"
+
+
 def test_run_script_passes_args_through_and_returns_the_exit_code(tmp_path, capfd):
     skill = library.load_skill(write_skill(tmp_path, "echo", scripts={"go.py": HELLO_PY}))
     code = run.run_script(skill.scripts[0], ["--input", "x.pdf", "--out", "d"], cwd=tmp_path)
@@ -598,7 +631,8 @@ def test_cli_run_with_ws_starts_the_script_inside_that_workspace(libraries, capf
 
 def _make_skills() -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, "-m", "framework.skills"], capture_output=True,
-                          text=True, env={**run.uv_env(), "PYTHONPATH": str(REPO_ROOT)},
+                          text=True, encoding="utf-8", errors="replace",
+                          env={**run.uv_env(), "PYTHONPATH": str(REPO_ROOT)},
                           check=False, cwd=REPO_ROOT)
 
 
@@ -664,12 +698,13 @@ def test_download_skill_clones_at_a_commit_and_checks_sha256(tmp_path):
     subprocess.run(["git", "-C", str(up), "commit", "-qm", "init"], check=True,
                    env={**dict(__import__("os").environ), **env})
     sha = subprocess.run(["git", "-C", str(up), "rev-parse", "HEAD"], capture_output=True,
-                         text=True, check=True).stdout.strip()
+                         text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
     ws = tmp_path / "ws"
     ws.mkdir()
     code = run.run_script(fetch, ["git", str(up), "--commit", sha], cwd=ws)
     assert code == 0
-    receipt = json.loads((ws / "materials" / "up" / ".ai4sci-download.json").read_text("utf-8"))
+    text = (ws / "materials" / "up" / ".ai4sci-download.json").read_text(encoding="utf-8")
+    receipt = json.loads(text)
     assert receipt["kind"] == "git" and receipt["commit"] == sha and receipt["license"] == "LICENSE"
     assert receipt["out"] == "materials/up" and receipt["files"] == 2
     assert run.run_script(fetch, ["git", str(up)], cwd=ws) == 2  # 已存在不覆盖

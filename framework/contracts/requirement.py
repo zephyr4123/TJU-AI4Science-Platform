@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from framework.files import write_atomic
+from framework.files import read_text, write_atomic
 
 FILE_NAME = "requirement.md"
 LOCK_NAME = "requirement.lock"
@@ -100,7 +100,7 @@ def read_lock(root: Path) -> dict[str, Any] | None:
     lock = lock_path(root)
     if not lock.is_file():
         return None
-    doc = json.loads(lock.read_text(encoding="utf-8"))
+    doc = json.loads(read_text(lock))
     for key in ("version", "by", "confirmed_at", "sha256"):
         if key not in doc:
             raise ValueError(f"{lock} 缺 {key}，不是一份确认记录")

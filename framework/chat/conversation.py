@@ -33,7 +33,6 @@ import math
 import os
 import re
 import secrets
-import shutil
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
@@ -41,8 +40,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import procs
 from backends import OFFICIAL, Chat, ChatEvent, Tuning
-from framework.files import write_atomic
+from framework.files import read_text, remove_tree, write_atomic
 
 LOGGER = logging.getLogger("ai4sci.chat")
 META_NAME = "meta.json"
@@ -155,7 +155,7 @@ def load_conversation(chats_dir: Path, chat_id: str) -> Conversation:
     meta = directory / META_NAME
     if not meta.is_file():
         raise ConversationNotFound(f"对话不存在或没有 {META_NAME}：{directory}")
-    conv = Conversation(**json.loads(meta.read_text(encoding="utf-8")))
+    conv = Conversation(**json.loads(read_text(meta)))
     conv._dir = directory
     return conv
 
@@ -192,7 +192,7 @@ def remove_conversation(conv: Conversation, chat: Chat | None) -> None:
         raise ConversationBusy(f"这段对话正有一轮在跑（{conv.dir / INFLIGHT_NAME}），等它结束再删")
     if chat is not None and conv.session_id:
         chat.forget(conv.session_id, Path(conv.cwd))
-    shutil.rmtree(conv.dir)
+    remove_tree(conv.dir)
     LOGGER.info("chat_removed chat_id=%s backend=%s session=%s", conv.chat_id, conv.backend,
                 conv.session_id)
 
@@ -231,7 +231,7 @@ def running_turn(conv: Conversation) -> dict[str, Any] | None:
     if not busy(conv):
         return None
     try:
-        lock = json.loads((conv.dir / INFLIGHT_NAME).read_text(encoding="utf-8"))
+        lock = json.loads(read_text(conv.dir / INFLIGHT_NAME))
     except (OSError, ValueError):
         return None  # 锁刚建、还没写完
     n = lock.get("turn")
@@ -331,7 +331,7 @@ def _acquire(conv: Conversation) -> Path:
                 raise ConversationBusy(
                     f"这段对话正有一轮在跑（{inflight}），等它结束再发") from None
             LOGGER.warning("chat_stale_lock chat_id=%s lock=%s", conv.chat_id,
-                           inflight.read_text(encoding="utf-8"))
+                           read_text(inflight))
             inflight.unlink(missing_ok=True)
             continue
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -446,19 +446,13 @@ def _sections(text: str) -> dict[tuple[str, int], str]:
 def _lock_holder_alive(inflight: Path) -> bool:
     """锁里记的进程还在不在。老格式的锁（没 pid）当它还在——宁可让人等，不误杀真在跑的一轮。"""
     try:
-        doc = json.loads(inflight.read_text(encoding="utf-8"))
+        doc = json.loads(read_text(inflight))
         pid = int(doc.get("pid", 0))
     except (ValueError, OSError):
         return True
     if pid <= 0:
         return True
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+    return procs.pid_alive(pid)
 
 
 def _next_turn(directory: Path) -> int:

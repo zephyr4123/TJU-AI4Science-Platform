@@ -19,7 +19,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from framework import paths
+from framework import files, paths
 from framework.contracts import requirement
 from framework.contracts.capability import Capability, CapabilityFailed, Inputs, Param, Ports
 from framework.experiment import drafting, env
@@ -160,7 +160,7 @@ def _prepare(pack: Path, workspace: Path, code: str) -> None:
         if changed and _same_interpreter(materials / env.ENV_DIRNAME, pack / env.ENV_DIRNAME):
             # 现成环境补了几个包（ai4sci env add）：解释器没变、清单多了几行，刷新快照接着干——
             # 真跑时镜像环境缺 scipy，补上之后不该让执行层把壳从头再写一遍
-            shutil.rmtree(pack / env.ENV_DIRNAME)
+            files.remove_tree(pack / env.ENV_DIRNAME)
             shutil.copytree(materials / env.ENV_DIRNAME, pack / env.ENV_DIRNAME)
             LOGGER.info("reproduction_env_refreshed pack=%s changed=%s", pack, changed)
             return
@@ -221,9 +221,11 @@ def _upstream_of(src: Path, name: str) -> dict[str, str]:
                 "commit": str(doc.get("commit", doc.get("sha256", "")))}
     if (src / ".git").exists():
         head = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"],
-                              capture_output=True, text=True, check=False)
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", check=False)
         origin = subprocess.run(["git", "-C", str(src), "remote", "get-url", "origin"],
-                                capture_output=True, text=True, check=False)
+                                capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", check=False)
         return {"name": name, "source": origin.stdout.strip() if origin.returncode == 0 else "",
                 "commit": head.stdout.strip() if head.returncode == 0 else ""}
     return {"name": name, "source": "", "commit": ""}

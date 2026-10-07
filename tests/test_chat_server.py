@@ -625,14 +625,15 @@ def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     import sys
     import time
 
+    import procs
     from framework.workspace import jobs, outputs
 
     base, _ = served
     ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
     directory, _ = outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
                                        flow=None, step=None, requirement=1, chat_id=None)
-    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"],
-                            start_new_session=True)
+    proc = procs.spawn([sys.executable, "-c", "import time; time.sleep(300)"], detach=True,
+                       stdin=subprocess.DEVNULL)
     time.sleep(0.3)
     ws.jobs.mkdir(parents=True)
     record = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=proc.pid,

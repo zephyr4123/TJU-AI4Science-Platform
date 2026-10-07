@@ -20,7 +20,7 @@ from compute.local import LocalCompute
 from framework.chat import boards
 from framework.cli import show
 from framework.contracts import output, requirement
-from framework.experiment import layout
+from framework.experiment import env, layout
 from framework.workspace import jobs, outputs
 from framework.workspace import project as project_mod
 from tests.fixtures import packs_factory as pf
@@ -40,7 +40,8 @@ def run_cli(*args: str, cwd: Path | None = None,
             env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "framework.cli", *args],
-        capture_output=True, text=True, timeout=120, check=False, cwd=cwd or REPO_ROOT,
+        capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=120, check=False, cwd=cwd or REPO_ROOT,
         env={**os.environ, "PYTHONPATH": str(REPO_ROOT), **(env or {})},
     )
 
@@ -85,7 +86,8 @@ def test_project_and_workspace_new_and_show(tmp_path):
                    env=env).returncode == EXIT_USAGE
     ai = run_cli("workspace", "new", "vision", "--template", "ai", cwd=project_dir, env=env)
     assert ai.returncode == EXIT_OK
-    assert "## 指标与基线" in (project_dir / "workspaces" / "vision" / "requirement.md").read_text()
+    text = (project_dir / "workspaces" / "vision" / "requirement.md").read_text(encoding="utf-8")
+    assert "## 指标与基线" in text
     listed = run_cli("show", "projects", env=env)
     assert listed.returncode == EXIT_OK, listed.stderr
     assert listed.stdout.splitlines() == [f"paper\t一篇论文\t2 个工作区\t跑着 0\t{project_dir}"]
@@ -270,7 +272,8 @@ def test_cap_auto_research_opens_an_output_and_continues_it(tmp_path, monkeypatc
 
 def test_cap_records_failures_on_disk_and_refuses_them_as_inputs(tmp_path):
     pack = pf.make_pack(tmp_path)
-    (pack.pack / "harness" / "evaluate.py").write_text("# 改了但没更新 SHA256SUMS\n")
+    (pack.pack / "harness" / "evaluate.py").write_text(
+        "# 改了但没更新 SHA256SUMS\n", encoding="utf-8")
     proc = run_cli("cap", "auto-research", "--from", "design/1", **in_pack(pack))
     assert proc.returncode == EXIT_INVALID and "sha256" in proc.stderr.lower()
     assert "output=experiment/1（没成，留在盘上）" in proc.stderr
@@ -497,6 +500,29 @@ def test_show_caps_lists_stages_with_empty_stages_visible_and_five_columns():
     assert "used_by=research" in experiment
     assert any(line.startswith("  职责：") for line in lines)
     assert any(line.startswith("  终止条件：") for line in lines)
+
+
+def test_output_is_utf8_even_when_the_pipe_is_not():
+    """中文 Windows 上标准输出接到管道时 Python 按 GBK 编码，平台一打印 GBK 里没有的字（²、✓）就崩，
+    Win11 真机基线里 `show caps --json` 就栽在这（外层 #210）。这里用 PYTHONIOENCODING 在任何系统上
+    造出同样的管道。"""
+    proc = run_cli("show", "caps", "--json", env={"PYTHONIOENCODING": "gbk"})
+    assert proc.returncode == EXIT_OK, proc.stderr
+    assert json.loads(proc.stdout)
+
+
+def test_python_the_platform_starts_runs_in_utf8_mode(monkeypatch, capsys):
+    """skill 脚本、harness、作业都是平台起的 Python：设 UTF-8 模式，`open()` 与打印在 Windows 上也是
+    UTF-8，与 macOS 上一样（真机基线里 skill 打印 R² 就崩）；人自己设了的照他的。"""
+    from framework.cli import main
+
+    monkeypatch.delenv("PYTHONUTF8", raising=False)
+    assert main(["show", "caps", "--json"]) == EXIT_OK
+    assert os.environ["PYTHONUTF8"] == "1"
+    monkeypatch.setenv("PYTHONUTF8", "0")
+    assert main(["show", "caps", "--json"]) == EXIT_OK
+    assert os.environ["PYTHONUTF8"] == "0"
+    capsys.readouterr()
 
 
 def test_show_caps_json_is_descriptor_dicts_with_used_by():
@@ -759,8 +785,8 @@ def test_baseline_runs_make_run0_with_the_guaranteed_env_and_reports_headroom(tm
     seen = json.loads((pack.pack / "baseline-env.json").read_text(encoding="utf-8"))
     assert seen["inner_k"] == "7"
     assert seen["budget"] == f"{scoring['budget']['wall_clock_s']:g}"
-    assert seen["python"] == str(pack.pack / ".venv" / "bin" / "python")
-    assert (pack.pack / ".venv" / "bin" / "python").is_file()
+    assert seen["python"] == env.venv_python(pack.pack / ".venv").as_posix()  # 正斜杠，bash 认
+    assert env.venv_python(pack.pack / ".venv").is_file()
 
 
 def test_baseline_stops_when_the_headroom_check_fails_or_the_script_is_missing(tmp_path):

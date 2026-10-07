@@ -46,7 +46,7 @@ import yaml
 
 from framework.contracts.capability import PARAM_TYPES, Capability
 from framework.contracts.stages import STAGE_NAMES as STAGES
-from framework.files import write_atomic
+from framework.files import read_text, write_atomic
 
 STOP = "断点"
 # 格子上挂的名字的两种 tag（framework/capabilities/abilities.py 是出处；这里只是响应体里的两个词）
@@ -181,7 +181,7 @@ def load_valid(root: Path) -> list[Workflow]:
 def load_workflow(path: Path) -> Workflow:
     path = Path(path)
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(read_text(path))
     except yaml.YAMLError as exc:
         raise WorkflowInvalid(f"{path.name}: YAML 语法错误：{exc}") from exc
     return parse_workflow(path.name, raw)

@@ -17,7 +17,7 @@ from typing import Any
 import yaml
 
 from compute import Compute
-from framework import paths
+from framework import files, paths
 from framework.experiment import drafting, env, gitwork, headroom, layout
 from framework.experiment import pack as packs
 from framework.experiment.checkpoint import read_checkpoint, write_checkpoint
@@ -80,7 +80,7 @@ def open_experiment(
     except env.EnvBuildError:
         for child in run_dir.iterdir():
             if child.name != "meta.yaml":
-                shutil.rmtree(child) if child.is_dir() else child.unlink()
+                files.remove_tree(child) if child.is_dir() else child.unlink()
         raise
     baseline = json.loads((layout.baseline(work) / "results.json").read_text(encoding="utf-8"))
     best_metric = baseline["metrics"][packs.primary_metric(scoring)["name"]]

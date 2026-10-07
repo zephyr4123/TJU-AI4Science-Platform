@@ -47,9 +47,11 @@ flowchart TB
 | `capabilities/` | 能力库的「步骤」那一半：一个步骤一个子包，互不 import，各导出 `DESCRIPTOR` 与 `run(output_dir, inputs, ports, **params)`；`discover()` 扫目录并断言签名；`abilities.py` 是能力库的出处（步骤 + skill 两个 tag）；`MAIN_FILES` 阶段主文件表 | 现有八个：`literature_search` `literature_read` `design` `reproduction` `auto_research` `analysis` `reproducibility` `verify` |
 | `cli/` | 命令行，一类一个模块，`__init__.py` 逐行装配（没有注册表，加一条就加一行）；`_common.py` 退出码、当前项目与工作区、按名字取端口、`refuse_if_assistant` | 清单以 `ai4sci --help` 为准 |
 
-分层之外的顶层模块是**唯一读取点**：`paths.py`（仓根、出厂件、平台的家与家里每样东西的位置、五个 `*_ROOT` 环境变量）、`computes.py`（家里的 `computes.yaml`）、`agents.py`（家里的 `agents.yaml`，以及起适配器时交给它的 `Link`）、`keys.py`（家里的 `keys.yaml`）。分层包可以 import 它们，它们不许 import 分层包。
+分层之外的顶层模块是**唯一读取点**：`paths.py`（仓根、出厂件、平台的家与家里每样东西的位置、五个 `*_ROOT` 环境变量）、`computes.py`（家里的 `computes.yaml`）、`agents.py`（家里的 `agents.yaml`，以及起适配器时交给它的 `Link`）、`keys.py`（家里的 `keys.yaml`）、`mirrors.py`（国内源的地址）、`toolchain.py`（两家 CLI 装在家里的 `tools/`：认、下载、校验、解包，外层 #277）。分层包可以 import 它们，它们不许 import 分层包。
 
-两个**端口**在包外：`backends/`（`Runner` 执行层一次会话、`Chat` 协调层多轮续接，两个 Protocol；适配器 `claude_code.py`、`codex.py` 各一个文件，`_procs.py` 杀进程树、`_snapshot.py` 前后快照 diff）与 `compute/`（`Compute` Protocol；`local.py`、`ssh.py`）。端口不 import framework，相互也不 import；按名字取适配器走显式字典 `_BACKENDS` / `_COMPUTES`，名字不对抛 `BackendNotFound` / `ComputeNotFound`，绝不回退。
+两个**端口**在包外：`backends/`（`Runner` 执行层一次会话、`Chat` 协调层多轮续接，两个 Protocol；适配器 `claude_code.py`、`codex.py` 各一个文件，`_snapshot.py` 前后快照 diff）与 `compute/`（`Compute` Protocol；`local.py`、`ssh.py`）。端口不 import framework，相互也不 import；按名字取适配器走显式字典 `_BACKENDS` / `_COMPUTES`，名字不对抛 `BackendNotFound` / `ComputeNotFound`，绝不回退。
+
+最底下是 `procs/`（进程树：起、查、杀，POSIX 用进程组、Windows 用 Job Object，外层 #210）：两个端口与框架（`--detach` 的作业、对话锁）都用它，它不 import 仓里任何包。
 
 下层要用上层的东西怎么办：**由上层注入函数或回调**，不反向 import。`chat/server.py` 不认识 `capabilities`，能力清单、流程检查、描述符表由 `cli/serve.py` 以函数传进 `ChatServer`；`workspace/removal.py` 通过回调接 `chat/removal.py`。
 
@@ -60,7 +62,7 @@ flowchart TB
 | 层 | 用什么 | 为什么 |
 |---|---|---|
 | 语言 | Python ≥ 3.12（`pyproject.toml`），本机与 CI 3.14；全部文件 `from __future__ import annotations` | |
-| 运行时依赖 | 只有 `pyyaml`、`jsonschema`、`uv`（`python -m uv` 调用） | 框架零模型调用、单人本机服务，标准库够用；加一个依赖要说清为什么标准库不够，并过「四看」（维护活跃度、社区规模、许可证、安全记录） |
+| 运行时依赖 | 只有 `pyyaml`、`jsonschema`、`uv` 与 `ruff`（后两个以 `python -m` 调用，`tests/test_packaging.py` 查用到的都在） | 框架零模型调用、单人本机服务，标准库够用；加一个依赖要说清为什么标准库不够，并过「四看」（维护活跃度、社区规模、许可证、安全记录） |
 | CLI | `argparse`，`cli/__init__.py` 逐行装配 | 没有注册表，diff 里一眼看到加了什么 |
 | HTTP | 标准库 `ThreadingHTTPServer` + 手写 SSE（`chat/server.py`） | 四十来个端点、本机单人，不值得引 web 框架 |
 | 配置文件 | YAML 一律 `safe_load`；JSON Schema Draft 2020-12（`experiment/schemas/`） | |
@@ -135,7 +137,7 @@ sequenceDiagram
 - **原子写与锁**：一边写一边有人读的状态文件（作业记录、对话 meta、产出 meta 与签字、需求的锁、流程文件、checkpoint）一律走 `framework/files.py::write_atomic`（同目录临时文件 + `os.replace`，外层 #204）；能力边跑边追加的进度（产出目录的 `progress.jsonl`，页面画进度面板用，外层 #242）走同一处的 `append_event`（整行一次写、进程内一把锁，每行带 `at`）；对话忙锁用 `O_EXCL` 并记 pid（`chat/conversation.py`）。
 - **执行层改了什么只信前后快照 diff**（`backends/_snapshot.py`），不采信 CLI 自报；越界在事后判。
 - **回调注入代替反向 import**（见 §1）。
-- **有第二个用例才抽象**：两个能力或两个端口要共用小工具时先各写一份（`kill_tree` 有两份）；共用的读写只在族包（`experiment/`）里。
+- **有第二个用例才抽象**：两个能力或两个端口要共用小工具时先各写一份；真有了第二、第三个用例再收成一处（杀进程树原先两份，Windows 上要 Job Object 时收成 `procs/`）；共用的读写只在族包（`experiment/`）里。
 - **一个概念一处读取点**：根目录只在 `paths.py`，按人的两份清单只在 `computes.py` / `agents.py`，每个环境变量只读一次、断言一次。
 
 命名与注释：
@@ -160,7 +162,7 @@ sequenceDiagram
 
 | 变量 | 读取点 | 意思 |
 |---|---|---|
-| `AI4SCI_HOME` | `paths.py` | 平台的家（设置、key、项目、编辑台、两家 CLI 的私有目录、uv 缓存）；不设是 `~/.ai4sci`，指的目录得已经在 |
+| `AI4SCI_HOME` | `paths.py` | 平台的家（设置、key、项目、编辑台、两家 CLI 的私有目录、uv 缓存、一行命令装的程序 `bin/` `tools/`）；不设是 `~/.ai4sci`，指的目录得已经在 |
 | `AI4SCI_WORKFLOWS_ROOT` `AI4SCI_DOMAINS_ROOT` `AI4SCI_TEMPLATES_ROOT` `AI4SCI_SKILLS_ROOT` `AI4SCI_CURATED_SKILLS_ROOT` | `paths.py` | 五种出厂件库的位置（平台自带的 skill 与收录的分两处）；指向的不是目录当场炸 |
 | `AI4SCI_PROJECT` | `workspace/project.py` | 当前项目（不设从 cwd 往上找 `project.md`） |
 | `AI4SCI_CHAT_ID` | `workspace/jobs.py`、`cli/_common.py`；适配器 `build_env` 设 | 调命令的那段对话：作业记下来，跑完把结果排进它的收件箱；人的动作据此拒助理 |
@@ -169,7 +171,9 @@ sequenceDiagram
 | `AI4SCI_EXECUTOR_TIMEOUT_S` `_MAX_TURNS` `_MAX_BUDGET_USD` | `executor/session.py` | 执行层一次会话的上限 |
 | `AI4SCI_ENV_BUILD_TIMEOUT_S` | `experiment/env.py` | 建课题 venv 的超时 |
 | `AI4SCI_PYTHON` `AI4SCI_BUDGET_S` `AI4SCI_INNER_K` `AI4SCI_START_EPOCH` | `experiment/env.py`（框架**保证**给 harness） | harness 拿不到必须停，写默认值判不合法；`AI4SCI_SEED` 是唯一允许缺省的 |
-| `UV_CACHE_DIR` | 平台**设给** uv（`skills/run.py`、`experiment/env.py`） | uv 缓存在家里的 `cache/uv/`；不读用户 shell 里的这个变量 |
+| `UV_CACHE_DIR` `UV_PYTHON_INSTALL_DIR` | 平台**设给** uv（`skills/run.py` 的 `uv_overlay`，本机实验环境同一份） | uv 缓存在家里的 `cache/uv/`、Python 装在 `tools/python/`；不读用户 shell 里的这两个变量 |
+| `UV_DEFAULT_INDEX` `UV_PYTHON_INSTALL_MIRROR` `HF_ENDPOINT` | 平台**补给** uv（`mirrors.missing`，地址只在 `mirrors.py`，外层 #277） | 国内源：清华 PyPI、npmmirror 的 Python、hf-mirror；用户 shell 里设了的（含 `UV_INDEX_URL`）用他的，CI 设回官方源 |
+| `DISABLE_AUTOUPDATER` | 平台**设给** Claude Code（`backends/claude_code.py` 的 `build_env`） | 关它的自动更新：它去国外的桶取新版；版本由 `ai4sci setup` 管 |
 
 模型、思考深度、哪家 agent 归家里的 `agents.yaml`（`ai4sci agent use`），算力归 `computes.yaml`（`ai4sci compute add`）；两份都不进 git。**key 不走环境变量**（外层 #265）：供应商的 key 与 OpenAlex 的 key 都在家里的 `keys.yaml`（0600，读写点 `keys.py`，设置页填，页面只见末四位）；shell 里设的同名变量平台不认。测试里整个家指到 tmp（`tests/conftest.py`）。
 
