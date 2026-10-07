@@ -2,8 +2,10 @@
 # 技术栈：Python，uv 管一切（红线：依赖不装全局）——.venv 按 uv.lock 同步，改依赖走 `make lock`；
 # skill 的脚本各自带依赖（PEP 723 + 锁文件），环境在 uv 的全机缓存里，`make skills` 预热（纲领 P-22）。
 # 页面是 ui/web 的 Node 项目，依赖钉在 package-lock.json，只装在 ui/web/node_modules。
+# 桌面 App 的外壳是 ui/desktop（Rust + Tauri），真入口是它的 npm 脚本（跨平台），这里只转调（外层 #282）。
 # 两种人（外层 #138）：改代码的 clone 仓库 `make up`；只用的装 Release 里的 wheel，`ai4sci serve`。
-.PHONY: up check changelog lint test venv lock package release ui ui-auto ui-check skills clean purge
+.PHONY: up check changelog lint test venv lock package release ui ui-auto ui-check skills clean purge \
+        desktop desktop-check desktop-build
 
 VENV := .venv
 PY   := $(VENV)/bin/python
@@ -44,8 +46,9 @@ package: venv                      ## make package VERSION=0.2.0 → dist/ai4sci
 release:                           ## make release VERSION=0.2.0 → 轮转 CHANGELOG、提交、打 tag（不 push）
 	.github/scripts/release.sh $(VERSION)
 
-clean:                             ## 删仓里装出来的东西：.venv、node_modules、页面构建、打包暂存；不碰配置、登录、数据
+clean:                             ## 删仓里装出来的东西：.venv、node_modules、页面构建、打包暂存、外壳的构建；不碰配置、登录、数据
 	rm -rf $(VENV) $(UI)/node_modules $(UI)/dist framework/shipped dist build
+	rm -rf $(DESKTOP)/node_modules $(addprefix $(DESKTOP)/src-tauri/,target gen icons binaries)
 
 purge: clean                       ## 再把 uv 的缓存清掉（skill 的环境下次要重建）
 	-$(UV) cache clean
@@ -68,4 +71,20 @@ ui-check: $(UI)/node_modules/.stamp    ## 页面门禁：素材不进仓（P-17�
 
 $(UI)/node_modules/.stamp: $(UI)/package.json $(UI)/package-lock.json
 	cd $(UI) && npm ci --no-audit --no-fund
+	touch $@
+
+# ── 桌面 App（ui/desktop，Rust + Tauri）：要 Rust 与 Node；依赖只进 ui/desktop/node_modules 与 src-tauri/target ──
+DESKTOP := ui/desktop
+
+desktop: venv ui-auto $(DESKTOP)/node_modules/.stamp  ## 源码跑桌面 App：后端用仓里 .venv 的 ai4sci，identifier 换成 .dev
+	npm --prefix $(DESKTOP) run dev
+
+desktop-check: $(DESKTOP)/node_modules/.stamp     ## 外壳的门禁：图标与 sidecar、cargo fmt --check、clippy -D warnings、cargo test、不许有调试端口
+	npm --prefix $(DESKTOP) run check
+
+desktop-build: $(DESKTOP)/node_modules/.stamp     ## 本机出安装包（Mac 上 .app + .dmg）
+	npm --prefix $(DESKTOP) run build
+
+$(DESKTOP)/node_modules/.stamp: $(DESKTOP)/package.json $(DESKTOP)/package-lock.json
+	cd $(DESKTOP) && npm ci --no-audit --no-fund
 	touch $@
