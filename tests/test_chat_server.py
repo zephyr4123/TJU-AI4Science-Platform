@@ -382,6 +382,8 @@ def test_settings_endpoints_snapshot_check_and_computes(served, tmp_path):
     assert table["chat"] == table["executor"] == "claude_code"
     codex = next(e for e in table["entries"] if e["name"] == "codex")
     assert codex["title"] == "Codex" and codex["last_check"] is None
+    # 登录命令照服务自己这份安装给，页面照抄（外层 #274）
+    assert codex["login"] == f"{paths.cli()} agent login codex"
     assert codex["models"][0]["id"] == "a"  # 清单跟着服务接的那家适配器（剧本）走
     assert [c["name"] for c in snap["computes"]] == ["local"]
     # 每个供应商能不能联网照官方文档登记，页面标「不能联网」只提醒不拦；自定义不知道（外层 #266）

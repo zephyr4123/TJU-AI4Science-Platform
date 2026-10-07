@@ -95,7 +95,7 @@ platform/
 
 两种人两条路。
 
-**只用**：装 Release 里的 wheel，不 clone、不装 node、不设环境变量。前提只有 uv 和你要用的那家 coding agent CLI（claude 或 codex，登录好）。
+**只用**：装 Release 里的 wheel，不 clone、不装 node、不设环境变量。前提只有 uv 和你要用的那家 coding agent CLI（claude 或 codex）装好；登录在平台里做（见下）。
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh                   # 装 uv（一次）
@@ -105,6 +105,22 @@ ai4sci serve                                # 起服务，浏览器开 http://12
 ```
 
 包里自带页面、流程、模板、skill、领域包、指南；用起来长出的一切都在**平台的家** `~/.ai4sci` 里（要放别处设 `AI4SCI_HOME`），清除在页面「设置 → 存放」或 `ai4sci reset`；接机器、换底座都在页面「设置」里或对话里跟助理说。文献检索不要 key 也能跑；常用的话去 [openalex.org/settings/api](https://openalex.org/settings/api) 领一个免费 key，在页面「设置」里填进去，额度大十倍（纲领 P-27）。key 都存在平台的家里、只有你能读，不走环境变量。
+
+**接谁的模型、怎么登录**（1.7 起，外层 #263）：平台用家里的私有目录起 CLI，**你自己终端里 `claude` / `codex login` 登的账号平台不认**。在页面「设置 → AI」里选供应商：用官方订阅的，终端里跑 `ai4sci agent login claude_code`（或 `codex`），浏览器里授权后点「检查」；用 DeepSeek、Kimi 这类的，在同一页粘贴 key。设置里「登录」那一行给的命令照抄就能跑——终端里的 `ai4sci` 不是起服务的那一份时，它会写全路径。
+
+**升级**：装的 wheel 换新版本的地址再装一遍；改代码的拉代码再起。终端里的 `ai4sci` 要和起服务的是同一份：源码跑的命令在仓库的 `.venv/bin/ai4sci`；PATH 上留着以前装的 wheel，`which ai4sci` 看一眼，不用了就 `uv tool uninstall ai4sci`。
+
+```bash
+uv tool install --force https://github.com/zephyr4123/TJU-AI4Science-Platform/releases/download/vX.Y.Z/ai4sci-X.Y.Z-py3-none-any.whl
+git pull && make up                         # 改代码的
+```
+
+从 1.6 及以前升到 1.7：家搬到了 `~/.ai4sci`，官方账号要在平台里重新登录一次（上面那条命令）；旧的项目、编辑台、两份清单、对话记录用一行搬过来，不用 clone 外层仓。旧数据根：装 wheel 的是 `~/ai4sci`，源码跑的是仓库目录。先不加 `--apply` 看会搬什么，旧的一样不删：
+
+```bash
+uv run https://raw.githubusercontent.com/zephyr4123/TJU-AI4Science/main/scripts/oneoff/migrate-to-home-263.py ~/ai4sci
+uv run https://raw.githubusercontent.com/zephyr4123/TJU-AI4Science/main/scripts/oneoff/migrate-to-home-263.py ~/ai4sci --apply
+```
 
 **改代码**：clone 仓库，前提是 uv + node 22 + git。
 

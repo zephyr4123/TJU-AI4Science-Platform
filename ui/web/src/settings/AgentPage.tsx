@@ -46,7 +46,7 @@ export function AgentPage({ entry, roles, keys, ctx }: {
         {provider?.id === 'custom' && <CustomRows entry={entry} ctx={ctx} onSaved={() => setPickingCustom(false)} />}
         {provider?.key
           ? <Row label="key" note="只存在本机，页面只见末四位"><KeyField name={provider.key} title={provider.title} tail={keys[provider.key]} ctx={ctx} /></Row>
-          : <Row label="登录" note={`在终端里运行 ai4sci agent login ${entry.name}，在浏览器里授权`} />}
+          : <Row label="登录" note={`在终端里运行 ${entry.login}，在浏览器里授权`} />}
         <Row label="模型">
           <GlideSelect ariaLabel={`${entry.title} 的模型`} value={entry.model} disabled={busy} size="md" align="right" placement="bottom"
                        options={entry.models.map((c) => ({ value: c.id, label: c.label, tag: c.note || undefined }))}

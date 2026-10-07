@@ -37,6 +37,7 @@ from pathlib import Path
 
 from backends import (
     CUSTOM,
+    LOGIN_ITEM,
     OFFICIAL,
     AgentProbe,
     ChatEvent,
@@ -697,16 +698,16 @@ def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> Ag
             doc = {}
         result.logged_in = status.returncode == 0 and bool(doc.get("loggedIn"))
         if not result.logged_in:
-            result.items.append(("登录", False, "平台里还没登录：终端里跑 `ai4sci agent login "
-                                 "claude_code`，浏览器里授权后再检查"))
+            result.items.append((LOGIN_ITEM, False, "平台里还没登录"))
             return result
-        result.items.append(("登录", True, str(doc.get("authMethod") or "已登录")))
+        result.items.append((LOGIN_ITEM, True, str(doc.get("authMethod") or "已登录")))
     else:  # 用 key 的供应商：key 在平台的家里（外层 #265），这里只看填了没有
         result.logged_in = bool(link.key)
         if not result.logged_in:
-            result.items.append(("登录", False, f"{picked.title} 的 key 还没填：设置 → AI 里粘贴"))
+            result.items.append((LOGIN_ITEM, False,
+                                 f"{picked.title} 的 key 还没填：设置 → AI 里粘贴"))
             return result
-        result.items.append(("登录", True, f"{picked.title} 的 key 已填"))
+        result.items.append((LOGIN_ITEM, True, f"{picked.title} 的 key 已填"))
     started = time.monotonic()
     argv = [cli, "-p", "Reply with exactly the word pong and nothing else.",
             "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",

@@ -27,6 +27,9 @@
 from __future__ import annotations
 
 import os
+import shlex
+import shutil
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -59,11 +62,27 @@ AGENTS_FILENAME = "agents.yaml"
 COMPUTES_FILENAME = "computes.yaml"
 KEYS_FILENAME = "keys.yaml"
 UV_CACHE_PARTS = ("cache", "uv")
+CLI_NAME = "ai4sci"
 
 
 def from_source() -> bool:
     """在仓库里跑（clone + make up）还是装的包在跑：仓根下有 pyproject.toml 就是仓库。"""
     return (REPO_ROOT / "pyproject.toml").is_file()
+
+
+def cli() -> str:
+    """人在终端里敲什么才跑到这一份安装上（外层 #274）：页面与自检让人照抄的命令用它。入口脚本与
+    解释器在同一个 bin 目录（venv 的 `.venv/bin`、`uv tool` 的工具目录都是）；PATH 上找到的
+    `ai4sci` 就是它（`~/.local/bin` 的软链也算）写 `ai4sci`，不是就写全路径——源码跑的 `.venv/bin`
+    多半不在 PATH 上，PATH 上还可能留着以前装的旧版本，照抄 `ai4sci` 会跑到别的版本上。"""
+    here = Path(sys.executable).parent
+    mine = shutil.which(CLI_NAME, path=str(here))
+    if mine is None:  # 只有 `python -m framework.cli` 能跑的安装
+        return f"{shlex.quote(sys.executable)} -m framework.cli"
+    found = shutil.which(CLI_NAME)
+    if found is not None and Path(found).resolve() == Path(mine).resolve():
+        return CLI_NAME
+    return shlex.quote(mine)
 
 
 def home() -> Path:
