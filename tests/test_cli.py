@@ -297,6 +297,8 @@ def test_flow_take_then_stops_are_enforced_when_following_the_flow(tmp_path, mon
     taken = run_cli("flow", "take", "research", **in_pack(pack))
     assert taken.returncode == EXIT_OK, taken.stderr
     assert taken.stdout.startswith("ok research\tflows/research.yaml\t6 项")
+    # 取到手当场把流程的说明推给助理：什么时候选它、断点要核什么、怎么走（外层 #287）
+    assert "什么时候选它：" in taken.stdout and "断点「评分指标核对」" in taken.stdout
     again = run_cli("flow", "take", "research", **in_pack(pack))
     assert again.returncode == EXIT_INVALID and "已经有" in again.stderr
     renamed = run_cli("flow", "take", "research", "--as", "research-5", **in_pack(pack))
@@ -501,6 +503,39 @@ def test_show_caps_lists_stages_with_empty_stages_visible_and_five_columns():
     assert any(line.startswith("  职责：") for line in lines)
     assert any(line.startswith("  终止条件：") for line in lines)
 
+
+
+def test_show_cap_prints_one_capability_its_flags_and_its_guide_for_the_assistant():
+    """外层 #287：一个能力的全部——一行头、五栏、每个参数的写法与缺省、能不能接着干、要不要算力，
+    最后接它给研究助理的说明（assistant.md）。名字不对退 2；是 skill 的名字就指到 skill show。"""
+    proc = run_cli("show", "cap", "design")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert lines[0].startswith("设计\tdesign\t评分脚本与基线\t") and "used_by=" in lines[0]
+    assert any(line.startswith("  职责：") for line in lines)
+    assert "  --domain <文字>，缺省 generic：" in proc.stdout
+    assert "  --continue <阶段目录>/<序号>：" in proc.stdout
+    assert "  --compute <名字>：" in proc.stdout
+    assert "# 评分脚本与基线：给研究助理的说明" in proc.stdout
+    verify = run_cli("show", "cap", "verify")
+    assert verify.returncode == EXIT_OK and "--continue" not in verify.stdout
+    missing = run_cli("show", "cap", "nope")
+    assert missing.returncode == EXIT_USAGE and "库里没有叫 'nope' 的能力（有：" in missing.stderr
+    skill = run_cli("show", "cap", "pdf")
+    assert skill.returncode == EXIT_USAGE and "ai4sci skill show pdf" in skill.stderr
+
+
+def test_show_workflow_prints_one_workflow_and_its_guide():
+    """外层 #287：库里一条流程的全部——来源、经过的阶段、断点、一句话，加给研究助理的说明。"""
+    proc = run_cli("show", "workflow", "research")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert lines[0] == ("research\t从设计到验证\t出厂\t"
+                        "设计 → ◆评分指标核对 → 实验(auto-research) → 分析 → 验证 → ◆验收")
+    assert lines[1].startswith("  评分脚本与基线，人核对")
+    assert "什么时候选它：" in proc.stdout and "断点「评分指标核对」" in proc.stdout
+    missing = run_cli("show", "workflow", "nope")
+    assert missing.returncode == EXIT_USAGE and "库里没有叫 'nope' 的流程（有：" in missing.stderr
 
 def test_output_is_utf8_even_when_the_pipe_is_not():
     """中文 Windows 上标准输出接到管道时 Python 按 GBK 编码，平台一打印 GBK 里没有的字（²、✓）就崩，

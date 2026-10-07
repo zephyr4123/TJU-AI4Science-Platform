@@ -54,6 +54,10 @@ def cmd_take(args: argparse.Namespace) -> int:
         return EXIT_INVALID
     print(f"ok {taken.name}\tflows/{taken.name}.yaml\t{len(taken.stages)} 项"
           f"\tnext=按需要改它的阶段、能力参数或断点，ai4sci show flows 校验；然后从第一项开始走")
+    # 取到手当场把流程的说明推给助理（外层 #287）：什么时候选它、断点要核什么、怎么走
+    if taken.guide:
+        print()
+        print(taken.guide)
     return EXIT_OK
 
 

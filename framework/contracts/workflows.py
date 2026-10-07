@@ -460,8 +460,9 @@ def describe_dir(root: Path, catalog: dict[str, Capability], skills: Collection[
         try:
             wf = load_workflow(path)
         except WorkflowInvalid as exc:
-            out.append({"name": path.stem, "title": path.stem, "summary": "", "stages": [],
-                        "covers": [], "remarks": [], "problems": [str(exc)], "shipped": shipped})
+            out.append({"name": path.stem, "title": path.stem, "summary": "", "guide": "",
+                        "stages": [], "covers": [], "remarks": [], "problems": [str(exc)],
+                        "shipped": shipped})
             continue
         out += describe([wf], catalog, skills, shipped=shipped)
     return out
