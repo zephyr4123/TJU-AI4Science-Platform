@@ -85,3 +85,21 @@ def test_remove_tree_takes_read_only_files_too(tmp_path):
     obj.chmod(0o444)
     remove_tree(tmp_path / "work")
     assert not (tmp_path / "work").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="ACL 只有 Windows 上有")
+def test_owner_only_drops_explicit_entries_too(tmp_path):
+    """「只有本人能读」：继承来的要去掉，文件自己已经带着的显式条目也要去掉。GitHub 的 Windows
+    runner 上新文件带着显式的 SYSTEM、Administrators、OWNER RIGHTS（外层 #210），只去继承
+    的话 key 文件谁是管理员谁就能读。"""
+    import subprocess
+
+    from framework import files
+
+    target = tmp_path / "secret.txt"
+    target.write_text("x", encoding="utf-8")
+    subprocess.run(["icacls", str(target), "/grant", "*S-1-5-18:F"], capture_output=True,
+                   check=True)  # 显式给 SYSTEM 一条
+    files._owner_only(target)
+    acl = subprocess.run(["icacls", str(target)], capture_output=True, check=True).stdout
+    assert acl.count(b":(") == 1 and b"(I)" not in acl, acl.decode("utf-8", "replace")

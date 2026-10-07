@@ -96,10 +96,13 @@ def _replace(src: Path, dst: Path) -> None:
 
 
 def _owner_only(path: Path) -> None:
-    """Windows 上只有本人能读写：去掉继承来的权限，只给当前用户（按 SID，账户名会本地化）。"""
+    """Windows 上只有本人能读写：只给当前用户（按 SID，账户名会本地化）。新文件可能带着显式的
+    条目（GitHub 的 Windows runner 上是 SYSTEM、Administrators、OWNER RIGHTS），只去继承
+    去不掉它们：先 /reset 换回全部继承，再去掉继承、给本人。"""
     sid = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True,
                          text=True, encoding="utf-8", errors="replace", check=True)
     user = sid.stdout.strip().rsplit(",", 1)[-1].strip('"')
+    subprocess.run(["icacls", str(path), "/reset"], capture_output=True, check=True)
     subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", f"*{user}:F"],
                    capture_output=True, check=True)
 
