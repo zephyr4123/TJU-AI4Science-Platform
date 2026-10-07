@@ -12,7 +12,8 @@
 
 - 一行命令装好平台，全程国内源：`curl -fsSL https://media.zephyrxiang.com/ai4science/dist/install.sh | sh` 装 uv、Python、平台，交给 `ai4sci setup`；装过的跳过，重跑就是升级（外层 #277）
 - `ai4sci setup`：查 git、从 npmmirror 装 Claude Code 与 Codex 的原生程序进平台的家（sha512 校验）、在终端里问 DeepSeek 的 key 并当场试通、起服务开浏览器；`make up` 也走它（外层 #277）
-- 发版把 wheel、安装脚本、uv 的发布包传到腾讯云 CDN（`.github/scripts/cdn.py`，只写 `ai4science/dist/` 的子账号）；`ai4sci --version`；Windows 留 `install.ps1` 的槽（外层 #277 / #210）
+- 发版把 wheel、安装脚本、uv 的发布包传到腾讯云 CDN（`.github/scripts/cdn.py`，只写 `ai4science/dist/` 的子账号）；`ai4sci --version`（外层 #277）
+- Windows（10 1809 以上、11）原生支持：PowerShell 里 `irm …/install.ps1 | iex` 一行装好，缺 Git 时 `ai4sci setup` 从国内镜像装便携版；进程树用 Job Object、harness 走 Git Bash、远端没有 rsync 走 tar（外层 #210）
 
 ### 变更
 
