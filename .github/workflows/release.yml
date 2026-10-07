@@ -7,12 +7,14 @@ name: release
 #     → publish-desktop（等 publish-wheel）：附到同一个 Release → 传到 CDN（外壳改过才改写 latest.json）
 # 桌面构建失败不挡 wheel 的发布。每个作业都能重跑：Release 已在就补传，CDN 上带版本号的同一份跳过。
 # 预发布（-rc.N）标 pre-release、Release Notes 取 Unreleased，CDN 上只传带版本号的；正式版从 main 打。
+# 密钥按步分开：签 platform.json 那一步只有更新器的 key，传 CDN 那一步只有 COS 的凭据；cdn.py 的依赖照
+# cdn.py.lock（--locked）。只有两个 publish 作业能写 Release。
 on:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 # CI 在国外：平台缺省从国内源下载（外层 #277），这里设回官方源（用户自己设了源的，平台不盖）
 env:
@@ -56,6 +58,8 @@ jobs:
   publish-wheel:
     needs: build-wheel
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -64,7 +68,7 @@ jobs:
 
       # 证书 2026-11-22 到期，过期了一行命令的安装与外壳的更新都会断：剩不到 30 天就不发
       - name: CDN 证书还够用
-        run: uv run .github/scripts/cdn.py cert
+        run: uv run --locked .github/scripts/cdn.py cert
 
       - uses: actions/download-artifact@v4
         with:
@@ -94,14 +98,20 @@ jobs:
       - run: npm ci --no-audit --no-fund
         working-directory: ui/desktop
 
+      # 备齐要传的（uv 的发布包、填好版本与 uv sha256 的两份安装脚本、platform.json）并签名：这一步只有
+      # 更新器的 key
+      - name: 签 platform.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: uv run --locked .github/scripts/cdn.py sign "$GITHUB_REF_NAME" --work "${RUNNER_TEMP}/cdn"
+
       # 凭据是只能写 ai4science/dist/、只能刷 media.zephyrxiang.com 缓存的子账号；预发布只传带版本号的
       - name: 传到 CDN
         env:
           TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
           TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: uv run .github/scripts/cdn.py wheel "$GITHUB_REF_NAME"
+        run: uv run --locked .github/scripts/cdn.py wheel "$GITHUB_REF_NAME" --work "${RUNNER_TEMP}/cdn"
 
   build-desktop:
     strategy:
@@ -183,6 +193,8 @@ jobs:
   publish-desktop:
     needs: [publish-wheel, build-desktop]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -201,9 +213,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: find desktop-artifacts -type f -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME" --clobber
 
-      # desktop/<版本>/ 只写一次；正式版换固定的下载地址；外壳改过才改写 latest.json，判定写进作业摘要
+      # desktop/<版本>/ 只写一次；正式版换固定的下载地址；外壳改过才改写 latest.json；publish-wheel 因为
+      # 外壳没跟上没换的最新 platform.json 这时换上。判定写进作业摘要
       - name: 传到 CDN
         env:
           TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
           TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
-        run: uv run .github/scripts/cdn.py desktop "$GITHUB_REF_NAME" --artifacts desktop-artifacts
+        run: uv run --locked .github/scripts/cdn.py desktop "$GITHUB_REF_NAME" --artifacts desktop-artifacts

@@ -6,7 +6,8 @@
 #     "cryptography==50.0.2",
 # ]
 # ///
-"""cdn.py wheel|desktop vX.Y.Z —— 把一行命令与桌面 App 要取的东西传到腾讯云 CDN（外层 #277 #282）。
+"""cdn.py sign|wheel|desktop vX.Y.Z —— 把一行命令与桌面 App 要取的东西传到腾讯云 CDN
+（外层 #277 #282）。
 
 一行命令（`install/install.sh`）全程国内源：平台的 wheel、安装脚本、uv 的发布包都从我们自己的 CDN 取
 （Claude Code 闭源不转发，平台装它时从 npmmirror 取）。发版流水线在 `make package` 之后跑这一步：
@@ -19,8 +20,14 @@
     ai4science/dist/platform.json(.sig)                                最新版与安装件的 sha256
 
 <版本> 是 wheel 文件名里的 PEP 440 写法：tag `v1.9.0-rc.1` 出的是 `1.9.0rc1`（spec §3）。预发布只传
-带版本号的，不动最新的那几份。uv 的版本照 uv.lock（平台依赖的那一版），从 GitHub 取、对它自己的
-.sha256。
+带版本号的，不动最新的那几份；正式版也不往回换（CDN 上已经是更新的一版）。最新的 platform.json 要的
+外壳（min_desktop）CDN 上还没有时也先不换，等 `desktop` 传完外壳再换：不然从官网下的旧外壳打不开。
+uv 的版本照 uv.lock（平台依赖的那一版），从 GitHub 取、对它自己的 .sha256，每个平台的 sha256 写进
+两份安装脚本。
+
+签名与上传分两步（两步的环境里各只有自己那组密钥）：`sign` 在 --work 目录里备齐要传的东西、用更新器
+的 key 签 platform.json；`wheel` 用同一个目录、只带 COS 的凭据传。重跑时桶里已有这一版的
+platform.json 与签名，就用桶里那份签名（tauri 每次签都带新的时间戳）。
 
 `desktop` 在桌面包构建完之后跑，传 tauri build 的产物（spec §7，<版本> 是 tag 的 SemVer 写法）：
 
@@ -32,7 +39,7 @@
 
 凭据从环境变量来（TENCENTCLOUD_SECRET_ID / _KEY，CI 里是 secrets，只能写这个前缀、能刷 CDN 的
 子账号）；签名的 key 也是（TAURI_SIGNING_PRIVATE_KEY / _PASSWORD）。`--prefix` 换前缀先在测试目录
-里真验一遍，`--dry-run` 只列不传、不签。
+里真验一遍，`--dry-run` 只列不传、不签。依赖照 cdn.py.lock（`uv run --locked`）。
 """
 
 from __future__ import annotations
@@ -149,6 +156,11 @@ def official(version: str) -> bool:
     return re.fullmatch(r"\d+\.\d+\.\d+", version) is not None
 
 
+def older(version: str, than: str) -> bool:
+    """两个正式版（X.Y.Z）比先后：最新的那几份只认正式版。"""
+    return tuple(map(int, version.split("."))) < tuple(map(int, than.split(".")))
+
+
 def built_wheel(tag: str) -> tuple[Path, str]:
     """make package 出的 wheel 与它的版本。版本从文件名取：rc 的 tag 是 SemVer（1.9.0-rc.1），
     setuptools-scm 把它规范成 PEP 440 的 1.9.0rc1，`ai4sci --version`、安装脚本、CDN 的目录都用这个
@@ -176,8 +188,10 @@ def plan(tag: str, prefix: str, work: Path, *,
     uv = uv_version()
     uv_sha256 = {}
     for name in UV_ARCHIVES:
-        archive = fetch(f"{UV_RELEASES}/{uv}/uv-{name}", work / f"uv-{name}")
-        check = fetch(f"{UV_RELEASES}/{uv}/uv-{name}.sha256", work / f"uv-{name}.sha256")
+        archive, check = work / f"uv-{name}", work / f"uv-{name}.sha256"
+        if not (archive.is_file() and check.is_file()):  # `sign` 在同一个目录里取过就不再取
+            fetch(f"{UV_RELEASES}/{uv}/uv-{name}", archive)
+            fetch(f"{UV_RELEASES}/{uv}/uv-{name}.sha256", check)
         if check.read_text(encoding="utf-8").split()[0] != sha256(archive):
             die(f"uv-{name} 与 GitHub 上的 .sha256 对不上")
         uv_sha256[name.removesuffix(".tar.gz").removesuffix(".zip")] = sha256(archive)
@@ -219,6 +233,82 @@ def tauri_sign(path: Path, pubkey: str) -> Path:
     sig = path.with_name(path.name + ".sig")
     verify(path.read_bytes(), sig.read_text(encoding="utf-8"), pubkey)
     return sig
+
+
+def signed_already(path: Path, pubkey: str) -> Path:
+    """`sign` 那一步签好的：在旁边、用外壳的公钥验得过（备齐的东西与这次出的 platform.json 是
+    同一份）。"""
+    sig = path.with_name(path.name + ".sig")
+    if not sig.is_file():
+        die(f"没有 {sig}：先在同一个 --work 目录里跑 cdn.py sign")
+    verify(path.read_bytes(), sig.read_text(encoding="utf-8"), pubkey)
+    return sig
+
+
+def settle_signature(items: list[Item], version: str, prefix: str, client) -> None:
+    """重跑 wheel：这一版的 platform.json 已经在桶里（同一份）、签名也在，就用桶里那份签名，最新的
+    那份也用它。tauri 每次签都带新的时间戳，新签的与桶里不可变的那份同名不同内容，重跑就永远
+    失败。"""
+    manifest = next(item for item in items if item.key == f"{prefix}/{version}/platform.json")
+    sig = next(item for item in items if item.key == f"{prefix}/{version}/platform.json.sig")
+    if not (client.object_exists(Bucket=BUCKET, Key=sig.key)
+            and client.object_exists(Bucket=BUCKET, Key=manifest.key)
+            and _bucket_sha256(client, manifest.key) == sha256(manifest.path)):
+        return
+    sig.path.write_bytes(_read(client, sig.key))
+    print(f"skip 重签 {sig.key}（桶里已有这一版的清单与签名，用桶里那份）")
+
+
+class Published(NamedTuple):
+    """CDN 上最新的那几份现在是哪一版（没有是 None）：两份安装脚本、platform.json、外壳的
+    latest.json。"""
+    scripts: str | None
+    manifest: str | None
+    shell: str | None
+
+
+def published(prefix: str) -> Published:
+    def script_version(url: str) -> str | None:
+        try:
+            with urllib.request.urlopen(url, timeout=60) as resp:
+                text = resp.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+            return None
+        found = re.search(r'^VERSION="([^"]+)"$', text, re.M)
+        return found.group(1) if found else None
+
+    return Published(script_version(f"{CDN}/{prefix}/install.sh"),
+                     latest_on_cdn(f"{CDN}/{prefix}/platform.json"),
+                     latest_on_cdn(f"{CDN}/{prefix}/desktop/latest.json"))
+
+
+def keep_latest(items: list[Item], version: str, now: Published,
+                min_desktop: str = MIN_DESKTOP) -> tuple[list[Item], list[str]]:
+    """正式版的「最新」那几份换不换，返回留下的与为什么：CDN 上已经是更新的一版就不往回换（回头
+    重跑旧版的作业）；platform.json 要的外壳 CDN 上还没有（这一版抬了 min_desktop、或第一次发外壳）
+    先不换，留给 `desktop` 传完外壳再换——不然从官网下的旧外壳卡在「先更新桌面 App」，又没有新的
+    可更新。"""
+    drop, why = set(), []
+    scripts = {f"/{name}" for name in ("install.sh", "install.ps1")}
+    manifests = {"/platform.json", "/platform.json.sig"}
+
+    def latest(endings: set[str]) -> set[str]:
+        return {item.key for item in items if item.cache == LATEST
+                and any(item.key.endswith(ending) for ending in endings)}
+
+    if now.scripts and official(now.scripts) and older(version, now.scripts):
+        drop |= latest(scripts)
+        why.append(f"CDN 上的安装脚本已经是 {now.scripts}，不换回 {version}")
+    if now.manifest and older(version, now.manifest):
+        drop |= latest(manifests)
+        why.append(f"CDN 上的 platform.json 已经是 {now.manifest}，不换回 {version}")
+    elif now.shell is None or older(now.shell, min_desktop):
+        drop |= latest(manifests)
+        why.append(f"这一版要外壳 ≥ {min_desktop}，CDN 上的外壳是 {now.shell or '（还没有）'}："
+                   "最新的 platform.json 留给 desktop 传完外壳再换")
+    return [item for item in items if item.key not in drop], why
 
 
 def updater_pubkey(given: str | None) -> str:
@@ -445,14 +535,15 @@ def write_once(items: list[Item], client, *, retryable: tuple[type[BaseException
 def publish_desktop(v: str, prefix: str, files: dict[str, Path], client, *,
                     retryable: tuple[type[BaseException], ...], work: Path, rewrite: bool,
                     notes: str, pubkey: str, head: Callable[[str], tuple[int, int]] = head,
-                    now: datetime) -> list[str]:
+                    now: datetime, shell_on_cdn: str | None = None) -> list[str]:
     """传桌面包，返回要刷缓存的地址。先 desktop/<版本>/，正式版再换固定的下载地址，外壳改过
-    （rewrite）最后传 latest.json（传前校验）：更新器读到新清单时包已经在了。预发布只传带版本号的。
+    （rewrite）再传 latest.json（传前校验）：更新器读到新清单时包已经在了；最后把 wheel 那一步留下
+    没换的最新 platform.json 换上。预发布、比 CDN 上的外壳（shell_on_cdn）旧的只传带版本号的。
     """
     base = f"{prefix}/desktop"
     versioned = [Item(f"{base}/{v}/{name}", path, IMMUTABLE) for name, path in files.items()]
     files = write_once(versioned, client, retryable=retryable, work=work)
-    if not official(v):
+    if not official(v) or (shell_on_cdn and older(v, shell_on_cdn)):
         return []
     fixed = [Item(f"{base}/{link}", files[name.format(v=v)], LATEST, attachment=True)
              for link, name in FIXED]
@@ -467,7 +558,35 @@ def publish_desktop(v: str, prefix: str, files: dict[str, Path], client, *,
         path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         upload([Item(f"{base}/latest.json", path, LATEST)], client, retryable=retryable)
         purged.append(f"{CDN}/{base}/latest.json")
-    return purged
+    shell = v if rewrite else shell_on_cdn
+    return purged + promote_manifest(v, prefix, shell, client, retryable=retryable, work=work)
+
+
+def promote_manifest(v: str, prefix: str, shell: str | None, client, *,
+                     retryable: tuple[type[BaseException], ...], work: Path) -> list[str]:
+    """最新的 platform.json 换成这一版的（`keep_latest` 让 wheel 那一步留下的）：CDN 上的外壳
+    （shell）够这一版要的 min_desktop 了才换；已经是这一版或更新的不动。拷的是桶里 `<版本>/` 那
+    两份。"""
+    latest = f"{prefix}/platform.json"
+    if client.object_exists(Bucket=BUCKET, Key=latest):
+        current = json.loads(_read(client, latest))["version"]
+        if not older(current, v):
+            return []
+    versioned = f"{prefix}/{v}/platform.json"
+    if not client.object_exists(Bucket=BUCKET, Key=versioned):
+        die(f"桶里没有 {versioned}：先跑这一版的 publish-wheel")
+    wanted = json.loads(_read(client, versioned))["min_desktop"]
+    if shell is None or older(shell, wanted):
+        summary(f"最新的 platform.json 没换：{v} 要外壳 ≥ {wanted}，CDN 上的外壳是 {shell}")
+        return []
+    items = []
+    for name in ("platform.json", "platform.json.sig"):
+        local = work / f"latest-{name}"
+        local.write_bytes(_read(client, f"{prefix}/{v}/{name}"))
+        items.append(Item(f"{prefix}/{name}", local, LATEST))
+    upload(items, client, retryable=retryable)
+    summary(f"最新的 platform.json 换成 {v}（CDN 上的外壳 {shell} 够它要的 {wanted}）")
+    return [f"{CDN}/{item.key}" for item in items]
 
 
 def summary(line: str) -> None:
@@ -510,16 +629,35 @@ def cmd_uv_version(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sign(args: argparse.Namespace) -> int:
+    work = Path(args.work)
+    work.mkdir(parents=True, exist_ok=True)
+    plan(args.tag.removeprefix("v"), args.prefix.rstrip("/"), work,
+         sign=partial(tauri_sign, pubkey=updater_pubkey(args.pubkey)))
+    print(f"ok 备齐、签好：{work}")
+    return 0
+
+
 def cmd_wheel(args: argparse.Namespace) -> int:
-    sign = None if args.dry_run else partial(tauri_sign, pubkey=updater_pubkey(args.pubkey))
-    with tempfile.TemporaryDirectory() as tmp:
-        items = plan(args.tag.removeprefix("v"), args.prefix.rstrip("/"), Path(tmp), sign=sign)
-        if args.dry_run:
-            for item in items:
+    prefix = args.prefix.rstrip("/")
+    if args.dry_run:
+        with tempfile.TemporaryDirectory() as tmp:
+            for item in plan(args.tag.removeprefix("v"), prefix, Path(tmp)):
                 print(f"{CDN}/{item.key}\t{item.path.stat().st_size}\t{item.cache}")
-            return 0
-        client, retryable = client_from_env()
-        upload(items, client, retryable=retryable)
+        return 0
+    if not args.work:
+        die("要 --work：先在同一个目录里跑 cdn.py sign")
+    work = Path(args.work)
+    items = plan(args.tag.removeprefix("v"), prefix, work,
+                 sign=partial(signed_already, pubkey=updater_pubkey(args.pubkey)))
+    version = next(item.key for item in items if item.key.endswith(".whl")).split("/")[-2]
+    client, retryable = client_from_env()
+    settle_signature(items, version, prefix, client)
+    if official(version):
+        items, why = keep_latest(items, version, published(prefix))
+        for line in why:
+            summary(f"平台 {version}：{line}")
+    upload(items, client, retryable=retryable)
     latest = [f"{CDN}/{item.key}" for item in items if item.cache == LATEST]
     if latest:
         purge(latest)
@@ -529,11 +667,15 @@ def cmd_wheel(args: argparse.Namespace) -> int:
 def cmd_desktop(args: argparse.Namespace) -> int:
     v, prefix = args.tag.removeprefix("v"), args.prefix.rstrip("/")
     files = shell_files(Path(args.artifacts), v)
-    if official(v):
-        base = latest_on_cdn(f"{CDN}/{prefix}/desktop/latest.json")
-        rewrite, reason = shell_changed(base, f"v{v}")
-    else:
+    base = latest_on_cdn(f"{CDN}/{prefix}/desktop/latest.json") if official(v) else None
+    if not official(v):
         rewrite, reason = False, "预发布只传带版本号的，不碰 latest.json 与固定的下载地址"
+    elif base and older(v, base):
+        rewrite, reason = False, (f"比 CDN 上的外壳 {base} 旧（重跑旧版的作业）：只补 "
+                                  f"desktop/{v}/，不碰固定的下载地址、latest.json 与最新的 "
+                                  "platform.json")
+    else:
+        rewrite, reason = shell_changed(base, f"v{v}")
     summary(f"桌面 App {v}：{'改写' if rewrite else '不改写'} latest.json。{reason}")
     if args.dry_run:
         for name, path in files.items():
@@ -544,7 +686,8 @@ def cmd_desktop(args: argparse.Namespace) -> int:
     client, retryable = client_from_env()
     with tempfile.TemporaryDirectory() as tmp:
         purged = publish_desktop(v, prefix, files, client, retryable=retryable, work=Path(tmp),
-                                 rewrite=rewrite, notes=notes, pubkey=pubkey, now=datetime.now(UTC))
+                                 rewrite=rewrite, notes=notes, pubkey=pubkey, now=datetime.now(UTC),
+                                 shell_on_cdn=base)
     if purged:
         purge(purged)
     return 0
@@ -553,10 +696,15 @@ def cmd_desktop(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="把一行命令与桌面 App 要取的东西传到腾讯云 CDN")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    sign = sub.add_parser("sign", help="在 --work 目录里备齐 wheel 那一步要传的、签 platform.json")
     wheel = sub.add_parser("wheel", help="平台的 wheel、安装脚本、uv 的发布包、platform.json")
-    wheel.add_argument("tag", help="vX.Y.Z 或 vX.Y.Z-rc.N")
-    wheel.add_argument("--prefix", default=PREFIX, help=f"对象键前缀，缺省 {PREFIX}")
-    wheel.add_argument("--pubkey", help="更新器的公钥，缺省读 ui/desktop 的 tauri.conf.json")
+    for each in (sign, wheel):
+        each.add_argument("tag", help="vX.Y.Z 或 vX.Y.Z-rc.N")
+        each.add_argument("--prefix", default=PREFIX, help=f"对象键前缀，缺省 {PREFIX}")
+        each.add_argument("--pubkey", help="更新器的公钥，缺省读 ui/desktop 的 tauri.conf.json")
+    sign.add_argument("--work", required=True, help="备齐的东西放哪（wheel 用同一个）")
+    sign.set_defaults(run=cmd_sign)
+    wheel.add_argument("--work", help="sign 备齐、签好的目录")
     wheel.add_argument("--dry-run", action="store_true", help="只列要传什么，不签")
     wheel.set_defaults(run=cmd_wheel)
     desktop = sub.add_parser("desktop", help="桌面包：desktop/<版本>/、固定的下载地址、latest.json")

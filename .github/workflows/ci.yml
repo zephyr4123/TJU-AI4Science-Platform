@@ -59,7 +59,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        include:
+          - os: macos-latest
+            target: universal-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     env:
       UV_DEFAULT_INDEX: https://pypi.org/simple
@@ -88,6 +92,15 @@ jobs:
           workspaces: ui/desktop/src-tauri -> target
       - run: npm ci --no-audit --no-fund
         working-directory: ui/desktop
+      # 发版那条路（release.yml 的 build-desktop）：照 uv.lock 的版本下 uv、Mac 合成通用包、Windows 在
+      # Git Bash 里解 zip。只在发版时才跑的路径在 PR 上先跑一遍
+      - name: 像发版那样准备 sidecar
+        shell: bash
+        run: node ui/desktop/scripts/prepare.mjs --uv-version "$(python .github/scripts/cdn.py uv-version)" --target "${{ matrix.target }}"
       - name: 外壳的门禁（与本地 make desktop-check 相同）
         run: npm run check
         working-directory: ui/desktop
+      # check 作业在 Linux 上：Mac 上判「平台还开着」要连进程的环境一起看，这条只有 Mac 跑得到
+      - name: 安装脚本（Mac）
+        if: runner.os == 'macOS'
+        run: uv run pytest tests/test_install_script.py

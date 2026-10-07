@@ -349,18 +349,34 @@ def _shell_build(where: Path, v: str = "1.9.0") -> dict[str, Path]:
     return {name: where / name for name in bodies}
 
 
-def _publish(cdn, client, where: Path, v: str, *, rewrite: bool, files=None):
-    """传一遍桌面包；CDN 回源到假桶，HEAD 照桶里那份答。"""
+def _wheel_went_up(client, v: str, *, latest: bool = True, min_desktop: str = "1.9.0") -> None:
+    """publish-wheel 已经传了的：这一版的 platform.json（与签名），latest 时最新的那份也换成了
+    它。"""
+    body = json.dumps({"version": v, "min_desktop": min_desktop}).encode()
+    keys = [f"ai4science/dist/{v}/platform.json"] + (["ai4science/dist/platform.json"] if latest
+                                                     else [])
+    for key in keys:
+        client.objects[key] = (body, {})
+        client.objects[key + ".sig"] = (f"签 {v}".encode(), {})
+
+
+def _publish(cdn, client, where: Path, v: str, *, rewrite: bool, files=None,
+             shell_on_cdn: str | None = None):
+    """传一遍桌面包；CDN 回源到假桶，HEAD 照桶里那份答。publish-wheel 先跑过：桶里没有这一版的
+    platform.json 就按 wheel 那一步已经换了最新的放一份。"""
     def head(url: str) -> tuple[int, int]:
         found = client.objects.get(url.removeprefix(f"{cdn.CDN}/"))
         return (200, len(found[0])) if found else (404, -1)
 
+    if f"ai4science/dist/{v}/platform.json" not in client.objects:
+        _wheel_went_up(client, v)
     work = where / "work"
     work.mkdir(parents=True)
     return cdn.publish_desktop(v, "ai4science/dist", files or _shell_build(where / "build", v),
                                client, retryable=(Flaky,), work=work, rewrite=rewrite,
                                notes="这一版的说明", pubkey=TEST_PUBKEY, head=head,
-                               now=datetime(2026, 10, 20, 8, tzinfo=UTC))
+                               now=datetime(2026, 10, 20, 8, tzinfo=UTC),
+                               shell_on_cdn=shell_on_cdn)
 
 
 def test_the_build_outputs_are_found_by_their_endings_whatever_the_product_name(
@@ -441,8 +457,8 @@ def test_a_rerun_after_a_rebuild_keeps_the_version_dir_already_in_the_bucket(cdn
     _publish(cdn, client, tmp_path / "second", "1.9.0", rewrite=True, files=rebuilt)
     base = "ai4science/dist/desktop"
     assert client.calls == [f"{base}/AAAI4S.dmg", f"{base}/AAAI4S-setup.exe", f"{base}/latest.json"]
-    assert client.reads == [f"{base}/1.9.0/AAAI4S_1.9.0_universal.dmg",
-                            f"{base}/1.9.0/AAAI4S.app.tar.gz.sig"]
+    assert [key for key in client.reads if key.startswith(f"{base}/")] == [
+        f"{base}/1.9.0/AAAI4S_1.9.0_universal.dmg", f"{base}/1.9.0/AAAI4S.app.tar.gz.sig"]
     assert client.objects[f"{base}/AAAI4S.dmg"][0] == b"dmg"
     manifest = json.loads(client.objects[f"{base}/latest.json"][0])
     assert manifest["platforms"]["darwin-aarch64"]["signature"] == SIGNATURE
@@ -557,3 +573,98 @@ def test_an_rc_dry_run_lists_its_version_dir_and_writes_the_decision_to_the_job_
     assert listed == [f"ai4science/dist/desktop/1.9.0-rc.1/{name}" for name in
                       _shell_build(tmp_path / "x", "1.9.0-rc.1")]
     assert "latest.json" in summary.read_text(encoding="utf-8")
+
+
+def test_a_rerun_of_the_wheel_job_uses_the_signature_already_in_the_bucket(
+        cdn, packaged, tmp_path):
+    """tauri 每次签都带新的时间戳：第一遍传完 `<ver>/platform.json.sig` 后在后面失败（#281 那种），
+    重跑新签的与桶里不可变的那份同名不同内容，作业永远失败、最新的 platform.json 永远传不上去。桶里
+    已有同一份清单与签名，就用桶里那份，最新的那份也用它。"""
+    packaged("1.9.0")
+    signed = iter(["第一遍签的", "第二遍签的"])
+
+    def sign(path: Path) -> Path:
+        sig = path.with_name(path.name + ".sig")
+        sig.write_text(next(signed), encoding="utf-8")
+        return sig
+
+    client = FakeClient()
+    for run in ("one", "two"):
+        (tmp_path / run).mkdir()
+    first = cdn.plan("1.9.0", "ai4science/dist", tmp_path / "one", sign=sign)
+    cdn.upload([item for item in first if item.cache == cdn.IMMUTABLE], client, retryable=(Flaky,))
+    again = cdn.plan("1.9.0", "ai4science/dist", tmp_path / "two", sign=sign)
+    cdn.settle_signature(again, "1.9.0", "ai4science/dist", client)
+    cdn.upload(again, client, retryable=(Flaky,))
+    assert client.objects["ai4science/dist/platform.json.sig"][0] == "第一遍签的".encode()
+    assert client.objects["ai4science/dist/1.9.0/platform.json.sig"][0] == "第一遍签的".encode()
+
+
+def _latest_items(cdn, tmp_path: Path) -> list:
+    return [cdn.Item(f"ai4science/dist/{name}", tmp_path / name, cache)
+            for name, cache in (("1.9.1/install.sh", cdn.IMMUTABLE), ("install.sh", cdn.LATEST),
+                                ("install.ps1", cdn.LATEST), ("platform.json", cdn.LATEST),
+                                ("platform.json.sig", cdn.LATEST))]
+
+
+def test_the_latest_ones_never_go_back_and_wait_for_the_shell_they_need(cdn, tmp_path):
+    """正式版的「最新」那几份：回头重跑旧版的作业不往回换；这一版要的外壳 CDN 上还没有（抬了
+    min_desktop、第一次发外壳），最新的 platform.json 先不换，不然从官网下的旧外壳卡在启动页。"""
+    items = _latest_items(cdn, tmp_path)
+
+    def kept(now, min_desktop="1.9.0"):
+        left, why = cdn.keep_latest(items, "1.9.1", now, min_desktop)
+        return sorted(item.key.removeprefix("ai4science/dist/") for item in left
+                      if item.cache == cdn.LATEST), why
+
+    assert kept(cdn.Published("1.9.0", "1.9.0", "1.9.0")) == (
+        ["install.ps1", "install.sh", "platform.json", "platform.json.sig"], [])
+    assert kept(cdn.Published("1.9.1", "1.9.1", "1.9.1"))[0] == [
+        "install.ps1", "install.sh", "platform.json", "platform.json.sig"], "同一版重跑"
+    left, why = kept(cdn.Published("1.10.0", "1.10.0", "1.10.0"))
+    assert left == [] and len(why) == 2, "重跑旧版"
+    left, why = kept(cdn.Published("1.9.0", "1.9.0", "1.9.0"), min_desktop="1.9.1")
+    assert left == ["install.ps1", "install.sh"] and "留给 desktop" in why[0]
+    assert kept(cdn.Published(None, None, None))[0] == ["install.ps1", "install.sh"], "第一次发外壳"
+    assert len(cdn.keep_latest(items, "1.9.1", cdn.Published(None, None, None))[0]) == 3
+
+
+def test_the_desktop_job_puts_up_the_latest_manifest_the_wheel_job_left(cdn, tmp_path):
+    """wheel 那一步因为外壳没跟上（这里是第一次发外壳）留下的最新 platform.json，desktop 传完外壳就
+    换上；外壳没改、CDN 上的外壳也不够它要的，就留着、写进作业摘要。"""
+    client = FakeClient()
+    _wheel_went_up(client, "1.9.0", latest=False)
+    purged = _publish(cdn, client, tmp_path / "first-shell", "1.9.0", rewrite=True)
+    latest = ["ai4science/dist/platform.json", "ai4science/dist/platform.json.sig"]
+    assert client.calls[-2:] == latest
+    assert json.loads(client.objects[latest[0]][0])["version"] == "1.9.0"
+    assert client.objects[latest[1]][0] == "签 1.9.0".encode()
+    assert purged[-2:] == [f"{cdn.CDN}/{key}" for key in latest]
+
+    stuck = FakeClient()
+    _wheel_went_up(stuck, "1.8.0")
+    _wheel_went_up(stuck, "1.9.0", latest=False)
+    _publish(cdn, stuck, tmp_path / "same-shell", "1.9.0", rewrite=False, shell_on_cdn="1.8.0")
+    assert json.loads(stuck.objects[latest[0]][0])["version"] == "1.8.0"
+
+
+def test_rerunning_an_older_desktop_job_only_fills_its_own_version_dir(cdn, tmp_path):
+    """v1.9.0 的 publish-desktop 失败过，v1.10.0 已经发了；回头重跑 v1.9.0 不能把固定下载地址、
+    latest.json、最新的 platform.json 换回旧版。"""
+    client = FakeClient()
+    _wheel_went_up(client, "1.10.0")
+    _wheel_went_up(client, "1.9.0", latest=False)
+    assert _publish(cdn, client, tmp_path, "1.9.0", rewrite=False, shell_on_cdn="1.10.0") == []
+    assert all(key.startswith("ai4science/dist/desktop/1.9.0/") for key in client.calls)
+    assert json.loads(client.objects["ai4science/dist/platform.json"][0])["version"] == "1.10.0"
+
+
+def test_the_upload_step_only_takes_what_the_sign_step_signed(cdn, packaged, tmp_path, capsys):
+    """签名与上传分两步、各只有自己那组密钥：上传那步在同一个目录里找签好的，没有就停。"""
+    packaged("1.9.0")
+    work = tmp_path / "work"
+    work.mkdir()
+    with pytest.raises(SystemExit):
+        cdn.plan("1.9.0", "ai4science/dist", work,
+                 sign=lambda path: cdn.signed_already(path, TEST_PUBKEY))
+    assert "先在同一个 --work 目录里跑 cdn.py sign" in capsys.readouterr().err

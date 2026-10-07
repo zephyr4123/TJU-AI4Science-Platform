@@ -90,6 +90,10 @@ function sidecarFromVenv() {
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 
+// Windows 上点名用系统自带的 bsdtar（Windows 10 起就有，解得了 zip）：发版在 Git Bash 里跑，PATH 最前是
+// Git 带的 GNU tar，它不认 zip
+const TAR = WINDOWS ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar'
+
 async function fetchBytes(url) {
   const resp = await fetch(url)
   if (!resp.ok) throw new Error(`取不到 ${url}：HTTP ${resp.status}`)
@@ -104,7 +108,7 @@ async function uvFromRelease(version, triple, work) {
   if (sha256(bytes) !== want) throw new Error(`${archive} 与它的 .sha256 对不上`)
   const dir = mkdtempSync(join(work, `${triple}-`))
   writeFileSync(join(dir, archive), bytes)
-  run('tar', ['-xf', archive], { cwd: dir })  // Windows 10 起自带的 tar 也解 zip
+  run(TAR, ['-xf', archive], { cwd: dir })
   const exe = triple.includes('windows') ? join(dir, 'uv.exe') : join(dir, `uv-${triple}`, 'uv')
   if (!existsSync(exe)) throw new Error(`${archive} 里没有 uv`)
   return exe
