@@ -384,7 +384,8 @@ def test_probe_walks_the_four_questions(link: Link, home: Path, tmp_path):
     logged_out = _fake_codex(tmp_path / "out", logged_in=False)
     result = cx.probe(link, cli=str(logged_out))
     assert not result.ok and not result.logged_in
-    assert "ai4sci agent login codex" in result.items[2][2]
+    # 只报事实；人该敲哪一份 ai4sci 由框架补（外层 #274）
+    assert result.items[2][2].endswith("平台里还没登录") and "ai4sci" not in result.items[2][2]
 
     missing = cx.probe(link, cli=str(tmp_path / "nope" / "codex"))
     assert not missing.installed and not missing.ok and "装 Codex CLI" in missing.items[0][2]

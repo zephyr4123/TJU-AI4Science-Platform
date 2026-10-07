@@ -288,6 +288,8 @@ export interface AgentEntry {
   /** 用谁的模型（官方登录 official、DeepSeek…、自定义 custom）；模型清单跟着它走 */
   provider: string
   providers: ProviderRow[]
+  /** 登录这家官方账号的命令，照服务自己这份安装写：PATH 上的 ai4sci 不是它时是全路径（外层 #274） */
+  login: string
   /** 只有自定义供应商才有：接口地址与人填的模型名 */
   base_url: string
   custom_models: string[]

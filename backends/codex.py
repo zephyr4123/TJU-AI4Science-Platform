@@ -87,6 +87,7 @@ from pathlib import Path
 from backends import (
     CATALOG_DIR,
     CUSTOM,
+    LOGIN_ITEM,
     OFFICIAL,
     AgentProbe,
     ChatEvent,
@@ -718,18 +719,18 @@ def probe(link: Link, cli: str = "codex", speak_timeout_s: float = 120.0) -> Age
         status = subprocess.run([cli, "login", "status"], capture_output=True, text=True,
                                 timeout=30, env=build_env(30.0, home, link))
         result.logged_in = status.returncode == 0
+        said = (status.stderr or status.stdout).strip()
         if not result.logged_in:
-            said = (status.stderr or status.stdout).strip() or "Not logged in"
-            result.items.append(("登录", False, f"{said}：平台里还没登录，终端里跑 `ai4sci agent "
-                                 "login codex`，浏览器里授权后再检查"))
+            result.items.append((LOGIN_ITEM, False, f"{said or 'Not logged in'}：平台里还没登录"))
             return result
-        result.items.append(("登录", True, (status.stderr or status.stdout).strip() or "已登录"))
+        result.items.append((LOGIN_ITEM, True, said or "已登录"))
     else:  # 用 key 的供应商：key 在平台的家里（外层 #265），这里只看填了没有
         result.logged_in = bool(link.key)
         if not result.logged_in:
-            result.items.append(("登录", False, f"{picked.title} 的 key 还没填：设置 → AI 里粘贴"))
+            result.items.append((LOGIN_ITEM, False,
+                                 f"{picked.title} 的 key 还没填：设置 → AI 里粘贴"))
             return result
-        result.items.append(("登录", True, f"{picked.title} 的 key 已填"))
+        result.items.append((LOGIN_ITEM, True, f"{picked.title} 的 key 已填"))
     started = time.monotonic()
     write_rules(home, ())
     argv = [cli, "exec", *BASE_ARGS, "--ephemeral", "--color", "never", "-C", str(home),

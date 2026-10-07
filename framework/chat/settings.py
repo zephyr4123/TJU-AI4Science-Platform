@@ -52,7 +52,7 @@ def agents_table(knobs: KnobsOf = agents.knobs_of) -> dict[str, Any]:
         picked = knobs(name)
         entries.append({"name": name, "title": entry.title, "provider": entry.provider,
                         "base_url": entry.base_url, "custom_models": list(entry.models),
-                        "providers": _providers(name),
+                        "providers": _providers(name), "login": agents.login_hint(name),
                         "model": entry.model, "effort": entry.effort,
                         "models": [asdict(c) for c in picked.models],
                         "efforts": [asdict(c) for c in picked.efforts],

@@ -130,3 +130,22 @@ def test_custom_provider_takes_an_address_and_model_names():
     doc = yaml.safe_load(agents.path().read_text(encoding="utf-8"))["agents"]["codex"]
     assert doc["base_url"] == "https://llm.lab/v1" and doc["models"] == ["qwen3-coder"]
     assert agents.link("codex").base_url == "https://llm.lab/v1"
+
+
+def test_probe_tells_how_to_log_in_with_the_command_of_this_install(monkeypatch):
+    """外层 #274：适配器只报「平台里还没登录」，登录命令由框架照服务自己这份安装补上（PATH 上的
+    `ai4sci` 可能是旧版本）；用 key 的供应商没有登录这回事，不补。"""
+    from framework import paths
+
+    out = AgentProbe(items=[("装了没", True, "/x"), ("登录", False, "平台里还没登录")],
+                     installed=True)
+    monkeypatch.setattr(agents.backends, "probe", lambda name, link: out)
+    monkeypatch.setattr(paths, "cli", lambda: "/repo/.venv/bin/ai4sci")
+    got = agents.probe("codex")
+    assert got.items[1] == ("登录", False, "平台里还没登录，终端里跑 `/repo/.venv/bin/ai4sci agent "
+                                         "login codex`，浏览器里授权后再检查")
+    assert agents.login_hint("codex") == "/repo/.venv/bin/ai4sci agent login codex"
+    agents.use("codex", provider="deepseek", knobs=fake_knobs)
+    keyed = AgentProbe(items=[("登录", False, "DeepSeek 的 key 还没填")], installed=True)
+    monkeypatch.setattr(agents.backends, "probe", lambda name, link: keyed)
+    assert agents.probe("codex").items == [("登录", False, "DeepSeek 的 key 还没填")]

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -88,3 +89,33 @@ def test_only_a_home_the_platform_made_carries_the_marker(monkeypatch, tmp_path:
     empty.mkdir()
     monkeypatch.setenv(paths.HOME_ENV, str(empty))
     assert (paths.home() / paths.MARKER_NAME).is_file()
+
+
+def _script(folder: Path) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    exe = folder / "ai4sci"
+    exe.write_text("#!/bin/sh\n", encoding="utf-8")
+    exe.chmod(0o755)
+    return exe
+
+
+def test_cli_names_this_install_not_whatever_ai4sci_is_first_on_path(monkeypatch, tmp_path: Path):
+    """外层 #274：页面让人照抄的命令要跑到起服务的这一份安装上。源码跑的 `.venv/bin` 多半不在
+    PATH 上，PATH 上还可能留着以前装的旧 wheel（照抄 `ai4sci agent login` 报没有 login）：
+    不是同一份就写全路径。入口脚本与解释器在同一个 bin 目录（venv、`uv tool` 都是）。"""
+    mine = _script(tmp_path / "my env" / "bin")
+    old = _script(tmp_path / "old" / "bin")
+    monkeypatch.setattr(paths.sys, "executable", str(mine.parent / "python"))
+    monkeypatch.setenv("PATH", str(mine.parent))
+    assert paths.cli() == "ai4sci"
+    linked = tmp_path / "local" / "bin"  # uv tool：~/.local/bin/ai4sci 是工具目录里那个的软链
+    linked.mkdir(parents=True)
+    (linked / "ai4sci").symlink_to(mine)
+    monkeypatch.setenv("PATH", str(linked))
+    assert paths.cli() == "ai4sci"
+    monkeypatch.setenv("PATH", f"{old.parent}{os.pathsep}{mine.parent}")
+    assert paths.cli() == f"'{mine}'"  # 路径里有空格，照抄也得跑得通
+    monkeypatch.setenv("PATH", str(tmp_path / "nothing"))
+    assert paths.cli() == f"'{mine}'"
+    mine.unlink()  # 只有 `python -m framework.cli` 能跑的安装
+    assert paths.cli() == f"'{mine.parent / 'python'}' -m framework.cli"

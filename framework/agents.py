@@ -31,6 +31,7 @@ import yaml
 import backends
 from backends import (
     CUSTOM,
+    LOGIN_ITEM,
     OFFICIAL,
     TITLES,
     AgentProbe,
@@ -137,8 +138,20 @@ def runner(name: str) -> Runner:
 
 
 def probe(name: str) -> AgentProbe:
-    """自检一家（四句人话，P-25）：照设置里这家的供应商。"""
-    return backends.probe(name, link(name))
+    """自检一家（四句人话，P-25）：照设置里这家的供应商。官方登录没登上时，登录命令由这里补
+    （外层 #274）：适配器不知道人该敲哪一份 `ai4sci`，照抄错一份就是「没有 login」。"""
+    picked = link(name)
+    got = backends.probe(name, picked)
+    if picked.provider == OFFICIAL and not got.logged_in:
+        how = f"终端里跑 `{login_hint(name)}`，浏览器里授权后再检查"
+        got.items = [(item, ok, f"{text}，{how}" if item == LOGIN_ITEM and not ok else text)
+                     for item, ok, text in got.items]
+    return got
+
+
+def login_hint(name: str) -> str:
+    """登录这家官方账号的那条命令，照服务自己这份安装写（`paths.cli`）。"""
+    return f"{paths.cli()} agent login {name}"
 
 
 def login_command(name: str) -> tuple[list[str], dict[str, str]]:

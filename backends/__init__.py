@@ -90,6 +90,7 @@ class Price:
 # 供应商里两个特殊的名字：官方登录（订阅，不要 key）与自定义（人填地址与模型名）
 OFFICIAL = "official"
 CUSTOM = "custom"
+LOGIN_ITEM = "登录"  # 自检里登录那一项的名字（`AgentProbe`）
 CATALOG_DIR = Path(__file__).parent / "catalog"
 
 
@@ -337,7 +338,9 @@ class Chat(Protocol):
 
 @dataclass
 class AgentProbe:
-    """自检一家 CLI 的结果（纲领 P-25 四句人话）：一项一行（名字、过没过、一句话给人看）。
+    """自检一家 CLI 的结果（纲领 P-25 四句人话）：一项一行（名字、过没过、一句话给人看）。登录那一项
+    叫 `LOGIN_ITEM`：官方登录没登上只报事实，人该敲哪条命令由框架补（它知道服务是哪一份安装，
+    外层 #274）。
 
     不过也不抛：`ai4sci agent check` 要把整张报告打给人看，不过关只报告不拒绝保留（同算力）。
     `version` 是 `--version` 读到的原文；`spoke_s` 是说一句话花的秒数（没说成是 NaN）；
