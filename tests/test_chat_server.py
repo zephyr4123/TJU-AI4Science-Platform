@@ -621,7 +621,6 @@ def test_save_workflow_endpoint_maps_errors_to_status_codes(served):
 
 def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     """外层 #115：页面上的「停止」与 `ai4sci job stop` 同一个函数；不在跑的 422、没有的 404。"""
-    import subprocess
     import sys
     import time
 
@@ -632,8 +631,7 @@ def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     ws = spaces.make_workspace(tmp_path, "w1", template="# w1\n\n## 问题\n\n有。\n")
     directory, _ = outputs.open_output(ws, "design", title="t", by="design", inputs=[], params={},
                                        flow=None, step=None, requirement=1, chat_id=None)
-    proc = procs.spawn([sys.executable, "-c", "import time; time.sleep(300)"], detach=True,
-                       stdin=subprocess.DEVNULL)
+    proc = procs.spawn_detached([sys.executable, "-c", "import time; time.sleep(300)"])
     time.sleep(0.3)
     ws.jobs.mkdir(parents=True)
     record = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=proc.pid,
@@ -642,7 +640,10 @@ def test_stop_job_endpoint_kills_and_records(served, tmp_path):
     status, _, body = call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {})
     doc = json.loads(body)
     assert status == 201 and doc["status"] == "stopped" and getpass.getuser() in doc["result"]
-    proc.wait(timeout=5)
+    deadline = time.monotonic() + 10  # 作业不是测试进程的子进程，等不了它：看它在不在
+    while procs.pid_alive(proc.pid) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not procs.pid_alive(proc.pid)
     assert call(base, "/projects/p/workspaces/w1/jobs/job-s/stop", {})[0] == 422
     assert call(base, "/projects/p/workspaces/w1/jobs/nope/stop", {})[0] == 404
     status, _, body = call(base, "/projects/p/workspaces/w1/outputs/design/1")
