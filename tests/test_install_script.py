@@ -20,6 +20,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -190,10 +191,19 @@ def _run(script: Path, home: Path, dist: Path, extra_path: str = "", **extra: st
     return done.stdout
 
 
+def _uv_sha256(tmp_path: Path, uv: str) -> str:
+    """照发版那样写进脚本的 uv 发布包 sha256（`<平台>=<sha256>`，空格分隔）：取 tmp 下假 CDN 里已经
+    放好的那几个包的 .sha256。"""
+    return " ".join(f"{side.name.removeprefix('uv-').split('.')[0]}={side.read_text().split()[0]}"
+                    for side in sorted((tmp_path / "dist" / "uv" / uv).glob("*.sha256")))
+
+
 def _script(tmp_path: Path, version: str, uv: str = "0.0.0-test") -> Path:
     text = SCRIPT.read_text(encoding="utf-8").replace("__VERSION__", version)
     out = tmp_path / f"install-{version}.sh"
-    out.write_text(text.replace("__UV_VERSION__", uv), encoding="utf-8")
+    out.write_text(text.replace("__UV_VERSION__", uv).replace("__UV_SHA256__",
+                                                              _uv_sha256(tmp_path, uv)),
+                   encoding="utf-8")
     return out
 
 
@@ -329,6 +339,50 @@ def test_an_upgrade_while_the_platform_runs_is_refused_with_75_and_touches_nothi
     assert "1.0.1，安装完成" in _run(_script(tmp_path, "1.0.1"), home, dist, AI4SCI_NO_SETUP="1")
 
 
+def _installed_once(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """装好 1.0.0、CDN 上还有 1.0.1：返回家、假 CDN、家里平台的工具目录。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    home.mkdir()
+    _uv_release(dist, "0.0.0-test")
+    for version in ("1.0.0", "1.0.1"):
+        _wheel(dist, version)
+    _run(_script(tmp_path, "1.0.0"), home, dist, AI4SCI_NO_SETUP="1")
+    return home, dist, home / ".ai4sci" / paths.TOOLS_DIRNAME / "ai4sci"
+
+
+@POSIX
+def test_a_file_of_the_platform_open_elsewhere_is_not_the_platform_running(tmp_path):
+    """只认程序本身（外层 #282 审查）：终端里 tail、编辑器开着家里平台的一个文件，不算平台开着。"""
+    home, dist, tools = _installed_once(tmp_path)
+    viewer = subprocess.Popen(["tail", "-f", str(next(tools.rglob("*.py")))])
+    try:
+        done = _sh(_script(tmp_path, "1.0.1"), home, dist, AI4SCI_NO_SETUP="1")
+    finally:
+        viewer.kill()
+        viewer.wait()
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+@pytest.mark.skipif(platform.system() != "Darwin", reason="只有 Mac 的 ps 看得到别的进程的环境")
+def test_on_a_mac_a_platform_python_that_reexecs_itself_still_counts(tmp_path):
+    """Homebrew 这类 framework 构建的 Python 一启动就 re-exec 成 Python.app 的路径，`python -m` 的
+    命令行里看不到家，环境里留着 __PYVENV_LAUNCHER__（外层 #282）。不看这台机器的 venv 用的是哪种
+    Python，拿一个环境里带着它的 uv 来证：系统自带的程序（连拷出来的）ps -E 看不到环境，framework
+    构建的 Python 又会把这个变量改成它自己的 venv。"""
+    home, dist, tools = _installed_once(tmp_path)
+    venv_python = next(tools.rglob("bin/python"))
+    running = subprocess.Popen(
+        [REAL_UV, "run", "--no-project", "--offline", "--python", sys.executable, "python", "-c",
+         "import time; time.sleep(60)"],
+        env={**os.environ, "__PYVENV_LAUNCHER__": str(venv_python)}, start_new_session=True)
+    try:
+        done = _sh(_script(tmp_path, "1.0.1"), home, dist, AI4SCI_NO_SETUP="1")
+    finally:
+        os.killpg(running.pid, signal.SIGKILL)
+        running.wait()
+    assert done.returncode == 75 and "平台还开着" in done.stderr
+
+
 @POSIX
 def test_an_upgrade_that_breaks_halfway_leaves_the_old_platform_working(tmp_path):
     """uv 先删掉旧环境再下依赖：中途断网或被杀，原来能用的平台就没了（外层 #282 审查，uv 0.12.18
@@ -348,6 +402,31 @@ def test_an_upgrade_that_breaks_halfway_leaves_the_old_platform_working(tmp_path
     assert "1.0.1，安装完成" in _run(_script(tmp_path, "1.0.1"), home, dist, AI4SCI_NO_SETUP="1")
     assert _installed(home) == "ai4sci 1.0.1"
     assert sorted(p.name for p in tools.iterdir()) == ["ai4sci", "uv"]  # 暂存的不留
+
+
+@pytest.mark.skipif((platform.system(), platform.machine()) not in TRIPLES,
+                    reason="install.sh 只管 Mac 与 Linux")
+def test_uv_from_the_cdn_is_checked_against_the_script_not_the_cdn(tmp_path):
+    """脚本由签名清单盖着，uv 的 sha256 写在脚本里（外层 #282 审查）：能写桶的人把 uv 的包和它旁边的
+    .sha256 一起换掉，脚本也不跑它。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    home.mkdir()
+    _uv_release(dist, "0.0.0-test")
+    _wheel(dist, "1.0.0")
+    script = _script(tmp_path, "1.0.0")
+    marker = tmp_path / "ran"
+    triple = TRIPLES[(platform.system(), platform.machine())]
+    evil = dist / "uv" / "0.0.0-test" / f"uv-{triple}.tar.gz"
+    with tarfile.open(evil, "w:gz") as tar:
+        body = f'#!/bin/sh\ntouch "{marker}"\nexit 1\n'.encode()
+        for tool in ("uv", "uvx"):
+            entry = tarfile.TarInfo(f"uv-{triple}/{tool}")
+            entry.size, entry.mode = len(body), 0o755
+            tar.addfile(entry, io.BytesIO(body))
+    _sha(evil)  # 旁边那份也换成对得上的
+    done = _sh(script, home, dist, AI4SCI_NO_SETUP="1")
+    assert done.returncode == 1 and "sha256 对不上，没装" in done.stderr
+    assert not marker.exists()
 
 
 @POSIX
@@ -391,7 +470,9 @@ def _ps1_script(tmp_path: Path, version: str, uv: str = "0.0.0-test") -> Path:
     """代入版本的一份，不带 BOM（桌面 App 下载来就这样存）。"""
     script = tmp_path / f"install-{version}.ps1"
     text = PS1.read_text(encoding="utf-8").replace("__VERSION__", version)
-    script.write_text(text.replace("__UV_VERSION__", uv), encoding="utf-8")
+    script.write_text(text.replace("__UV_VERSION__", uv).replace("__UV_SHA256__",
+                                                                 _uv_sha256(tmp_path, uv)),
+                      encoding="utf-8")
     return script
 
 
@@ -535,10 +616,10 @@ def _version_of(home: Path) -> str:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")
 def test_install_ps1_runs_the_way_the_desktop_app_starts_it(tmp_path):
-    """桌面 App 起它（外层 #282）：`-File` 起不带 BOM 的一份时 5.1 按 GBK 读源码、整段读坏，组策略设了
-    AllSigned 的机器上干脆起不来；无窗口起的 Write-Host 按 GBK 出、✓ 成了 ?；失败也退 0，外壳分不出
-    装好没有。按 UTF-8 读成字符串交给脚本块 + 无窗口：输出是 UTF-8，退出码作数——0 装好、75 平台还开着、
-    1 失败；wheel 照签名清单的 sha256 核；升级中途断了原来那份照样能用。"""
+    """桌面 App 起它（外层 #282）：`-File` 起不带 BOM 的一份时 5.1 按 GBK 读源码、整段读坏，
+    组策略设了 AllSigned 的机器上干脆起不来；无窗口起的 Write-Host 按 GBK 出、✓ 成了 ?；失败也退 0，
+    外壳分不出装好没有。按 UTF-8 读成字符串交给脚本块 + 无窗口：输出是 UTF-8，退出码作数——0 装好、
+    75 平台还开着、1 失败；wheel 照签名清单的 sha256 核；升级中途断了原来那份照样能用。"""
     home, dist = tmp_path / "home", tmp_path / "dist"
     _uv_release_windows(dist, "0.0.0-test")
     for version in ("1.0.0", "1.0.1"):

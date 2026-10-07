@@ -260,8 +260,14 @@ def test_an_official_release_writes_a_platform_json_with_what_the_shell_checks(
               "wheel": _sha(wheel)}
     assert manifest == {"version": "1.9.0", "min_desktop": desktop.MIN_DESKTOP, "sha256": hashes}
     for name, path in pinned.items():
-        assert "__VERSION__" not in path.read_text(encoding="utf-8"), name
+        text = path.read_text(encoding="utf-8")
+        assert "__VERSION__" not in text and "__UV_SHA256__" not in text, name
         assert by_key[f"ai4science/dist/{name}"].path == path  # 最新的那份就是这一版的
+        # 脚本由签名清单盖着，uv 的发布包靠写在脚本里的 sha256 也进了签名链（外层 #282 审查）
+        for archive in cdn.UV_ARCHIVES:
+            triple = archive.removesuffix(".tar.gz").removesuffix(".zip")
+            uv = by_key[f"ai4science/dist/uv/{cdn.uv_version()}/uv-{archive}"].path
+            assert f"{triple}={_sha(uv)}" in text, (name, triple)
     assert [(i.key, i.cache) for i in items[-2:]] == [
         ("ai4science/dist/platform.json", cdn.LATEST),
         ("ai4science/dist/platform.json.sig", cdn.LATEST)]

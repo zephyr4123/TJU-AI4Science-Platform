@@ -127,9 +127,13 @@ def fetch(url: str, dest: Path) -> Path:
     return dest
 
 
-def render(script: str, version: str, uv: str) -> str:
+def render(script: str, version: str, uv: str, uv_sha256: dict[str, str]) -> str:
+    """代入版本与每个平台 uv 发布包的 sha256（`<平台>=<sha256>`，空格分隔）：脚本由签名清单
+    盖着，uv 也就在签名链里（外层 #282）。"""
     text = (ROOT / "install" / script).read_text(encoding="utf-8")
-    return text.replace("__VERSION__", version).replace("__UV_VERSION__", uv)
+    pairs = " ".join(f"{triple}={digest}" for triple, digest in uv_sha256.items())
+    return (text.replace("__VERSION__", version).replace("__UV_VERSION__", uv)
+            .replace("__UV_SHA256__", pairs))
 
 
 class Item(NamedTuple):
@@ -170,17 +174,19 @@ def plan(tag: str, prefix: str, work: Path, *,
     items = [Item(f"{prefix}/{version}/{wheel.name}", wheel, IMMUTABLE),
              Item(f"{prefix}/{version}/{side.name}", side, IMMUTABLE)]
     uv = uv_version()
+    uv_sha256 = {}
     for name in UV_ARCHIVES:
         archive = fetch(f"{UV_RELEASES}/{uv}/uv-{name}", work / f"uv-{name}")
         check = fetch(f"{UV_RELEASES}/{uv}/uv-{name}.sha256", work / f"uv-{name}.sha256")
         if check.read_text(encoding="utf-8").split()[0] != sha256(archive):
             die(f"uv-{name} 与 GitHub 上的 .sha256 对不上")
+        uv_sha256[name.removesuffix(".tar.gz").removesuffix(".zip")] = sha256(archive)
         items += [Item(f"{prefix}/uv/{uv}/{archive.name}", archive, IMMUTABLE),
                   Item(f"{prefix}/uv/{uv}/{check.name}", check, IMMUTABLE)]
     pinned = {}
     for script in ("install.sh", "install.ps1"):
         pinned[script] = work / script
-        pinned[script].write_text(render(script, version, uv), encoding="utf-8")
+        pinned[script].write_text(render(script, version, uv, uv_sha256), encoding="utf-8")
         items.append(Item(f"{prefix}/{version}/{script}", pinned[script], IMMUTABLE))
     manifest = work / "platform.json"
     manifest.write_text(json.dumps({

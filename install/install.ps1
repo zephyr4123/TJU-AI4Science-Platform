@@ -30,6 +30,9 @@ $ProgressPreference = 'SilentlyContinue'  # 5.1 的下载进度条让 Invoke-Web
 
 $VERSION = '__VERSION__'
 $UV_VERSION = '__UV_VERSION__'
+# uv 发布包的 sha256（`<平台>=<sha256>`，空格分隔）：发版时照 GitHub 上核过的写进来。这份脚本由签名
+# 清单盖着（外层 #282），uv 也就跟着在签名链里，不信 CDN 上它旁边那份 .sha256
+$UV_SHA256 = '__UV_SHA256__'
 $DIST = if ($env:AI4SCI_DIST) { $env:AI4SCI_DIST } else { 'https://media.zephyrxiang.com/ai4science/dist' }
 $PYPI_INDEX = 'https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple'
 $PYTHON_DOWNLOADS = 'https://registry.npmmirror.com/-/binary/python-build-standalone'
@@ -136,7 +139,9 @@ try {
         'Arm64' { 'aarch64-pc-windows-msvc' }
         default { Stop-Install 'uv' "Windows $arch 没有现成的安装包" }
       }
-      Fetch "$DIST/uv/$UV_VERSION/uv-$triple.zip" (Join-Path $work 'uv.zip') 'uv'
+      $signed = $UV_SHA256.Split(' ') | Where-Object { $_.StartsWith("$triple=") } | Select-Object -First 1
+      if (-not $signed) { Stop-Install 'uv' "这份安装脚本里没有 $triple 的 uv 的 sha256" }
+      Fetch "$DIST/uv/$UV_VERSION/uv-$triple.zip" (Join-Path $work 'uv.zip') 'uv' $signed.Substring($triple.Length + 1)
       # 不用 Expand-Archive：模块里的函数不认这里的 $ProgressPreference，会画一大片进度条
       Add-Type -AssemblyName System.IO.Compression.FileSystem
       [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $work 'uv.zip'), (Join-Path $work 'uv'))

@@ -21,6 +21,9 @@ set -eu
 
 VERSION="__VERSION__"
 UV_VERSION="__UV_VERSION__"
+# uv 发布包的 sha256（`<平台>=<sha256>`，空格分隔）：发版时照 GitHub 上核过的写进来。这份脚本由签名
+# 清单盖着（外层 #282），uv 也就跟着在签名链里，不信 CDN 上它旁边那份 .sha256
+UV_SHA256="__UV_SHA256__"
 DIST="${AI4SCI_DIST:-https://media.zephyrxiang.com/ai4science/dist}"
 PYPI_INDEX="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 PYTHON_DOWNLOADS="https://registry.npmmirror.com/-/binary/python-build-standalone"
@@ -56,13 +59,16 @@ at_least() {
     exit 0 }'
 }
 
-# 下载 $1 到 $2，$3 是哪一项；sha256 照 $4（签名清单里的）核，没给就照 CDN 上旁边的 .sha256：
-# 对不上就停，不装半份
+# 下载：连不上 15 秒就算，连着 60 秒每秒不到 1 KB 就当卡住（连接还在、数据不来），不干等
+get() { curl -fsSL --retry 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 "$@"; }
+
+# 下载 $1 到 $2，$3 是哪一项；sha256 照 $4（签名清单里的、脚本里写好的）核，没给就照 CDN 上旁边的
+# .sha256：对不上就停，不装半份
 fetch() {
-  curl -fsSL --retry 3 -o "$2" "$1" || die "$3" "取不到 $1"
+  get -o "$2" "$1" || die "$3" "取不到 $1"
   want=$(printf '%s' "${4:-}" | tr 'A-F' 'a-f')
   if [ -z "${want}" ]; then
-    want=$(curl -fsSL --retry 3 "$1.sha256" | awk '{print $1}') || die "$3" "取不到 $1.sha256"
+    want=$(get "$1.sha256" | awk '{print $1}') || die "$3" "取不到 $1.sha256"
   fi
   if command -v sha256sum >/dev/null 2>&1; then
     got=$(sha256sum "$2" | awk '{print $1}')
@@ -88,20 +94,26 @@ uv_ok() {
   [ -x "$1" ] && at_least "$("$1" --version 2>/dev/null | awk '{print $2}')" "${UV_VERSION}"
 }
 
-# 平台还开着：命令行里带着家里这份平台的进程（网页版服务、后台作业、助理的会话），不算自己。在跑的
-# 程序底下换代码，它们会读到半新半旧的文件。Mac 上平台若跑在 Homebrew 这类 framework 构建的 Python
-# 上，它一启动就把自己 re-exec 成 Python.app 里那个路径，命令行里看不到家；它的环境里留着
-# __PYVENV_LAUNCHER__=<家里的 python>，所以 Mac 上连环境一起看（-E）。ps 的输出先落到文件再数：
-# 管道里 awk 自己的环境带着这两个路径，会被数进去
+# 平台还开着：跑的就是家里这份平台的进程（网页版服务、后台作业、助理的会话），不算自己。在跑的程序
+# 底下换代码，它们会读到半新半旧的文件。只认程序本身：命令行以家里的平台开头（venv 的 python、bin 里
+# 的 ai4sci），或者是一个 python 跑家里的平台；参数里提到家里文件的（tail、编辑器）不算。Mac 上平台若
+# 跑在 Homebrew 这类 framework 构建的 Python 上，它一启动就把自己 re-exec 成 Python.app 里那个路径，
+# `python -m` 起的命令行里就看不到家；它的环境里留着 __PYVENV_LAUNCHER__=<家里的 python>，所以 Mac 上
+# 连环境一起看（-E）。环境里常有 export 的 key：直接接给 awk、不落盘
 busy() {
-  if [ "$(uname -s)" = Darwin ]; then
-    ps -A -E -o pid= -o args= > "${work}/ps" 2>/dev/null || true
-  else
-    ps -A -o pid= -o args= > "${work}/ps" 2>/dev/null || true
-  fi
-  SELF=$$ A="${TOOLS}/ai4sci/" B="${BIN}/ai4sci" awk '
-    $1 != ENVIRON["SELF"] && (index($0, ENVIRON["A"]) || index($0, ENVIRON["B"])) { n++ }
-    END { print n + 0 }' "${work}/ps"
+  flags="-A"
+  [ "$(uname -s)" = Darwin ] && flags="-A -E"
+  # shellcheck disable=SC2086
+  ps ${flags} -o pid= -o args= 2>/dev/null | SELF=$$ A="${TOOLS}/ai4sci/" B="${BIN}/ai4sci" awk '
+    function home(s) { return index(s, ENVIRON["A"]) == 1 || index(s, ENVIRON["B"]) == 1 }
+    $1 == ENVIRON["SELF"] { next }
+    {
+      line = substr($0, index($0, $2))
+      first = $2; sub(/.*\//, "", first)
+      if (home(line) || (first ~ /^[Pp]ython/ && home(substr(line, length($2) + 2))) ||
+          index($0, " __PYVENV_LAUNCHER__=" ENVIRON["A"])) n++
+    }
+    END { print n + 0 }'
 }
 
 # 找以前装在 uv 缺省位置的那份：工具目录用缺省的，缓存仍在家里
@@ -128,7 +140,9 @@ elif uv_ok "${TOOLS}/uv/uv"; then
   say "✓" "uv" "已装，跳过"
 else
   triple=$(target)
-  fetch "${DIST}/uv/${UV_VERSION}/uv-${triple}.tar.gz" "${work}/uv.tar.gz" uv
+  signed=$(echo "${UV_SHA256}" | tr ' ' '\n' | awk -F= -v t="${triple}" '$1 == t { print $2 }')
+  [ -n "${signed}" ] || die "uv" "这份安装脚本里没有 ${triple} 的 uv 的 sha256"
+  fetch "${DIST}/uv/${UV_VERSION}/uv-${triple}.tar.gz" "${work}/uv.tar.gz" uv "${signed}"
   mkdir -p "${TOOLS}/uv"
   tar -xzf "${work}/uv.tar.gz" -C "${work}"
   cp "${work}/uv-${triple}/uv" "${work}/uv-${triple}/uvx" "${TOOLS}/uv/"
