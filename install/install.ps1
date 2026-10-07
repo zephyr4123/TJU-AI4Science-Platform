@@ -33,7 +33,7 @@ $UV_VERSION = '__UV_VERSION__'
 # uv 发布包的 sha256（`<平台>=<sha256>`，空格分隔）：发版时照 GitHub 上核过的写进来。这份脚本由签名
 # 清单盖着（外层 #282），uv 也就跟着在签名链里，不信 CDN 上它旁边那份 .sha256
 $UV_SHA256 = '__UV_SHA256__'
-$DIST = if ($env:AI4SCI_DIST) { $env:AI4SCI_DIST } else { 'https://media.zephyrxiang.com/ai4science/dist' }
+$DIST = $(if ($env:AI4SCI_DIST) { $env:AI4SCI_DIST } else { 'https://media.zephyrxiang.com/ai4science/dist' }).TrimEnd('/')  # 末尾带 / 的也拼成一道斜杠（外层 #282）
 $PYPI_INDEX = 'https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple'
 $PYTHON_DOWNLOADS = 'https://registry.npmmirror.com/-/binary/python-build-standalone'
 $PYTHON_WANTED = '>=3.12'

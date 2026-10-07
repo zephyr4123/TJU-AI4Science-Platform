@@ -286,6 +286,20 @@ POSIX = pytest.mark.skipif((platform.system(), platform.machine()) not in TRIPLE
                            reason="install.sh 只管 Mac 与 Linux")
 
 
+@POSIX
+def test_a_dist_given_with_a_trailing_slash_is_joined_without_doubling_it(tmp_path):
+    """`AI4SCI_DIST` 末尾带 `/`（人照着地址栏抄的、桌面 App 测试时设的）：拼出来的地址不该是
+    `dist//1.0.0`——CDN 现在认，换一家不一定（外层 #282 端到端）。这份 CDN 上没有 wheel，看取不到时
+    报的那个地址。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    home.mkdir()
+    _uv_release(dist, "0.0.0-test")
+    done = _sh(_script(tmp_path, "1.0.0"), home, dist, AI4SCI_DIST=dist.as_uri() + "/")
+    out = done.stdout + done.stderr
+    assert done.returncode == 1, out
+    assert f"取不到 {dist.as_uri()}/1.0.0/" in out and "//1.0.0" not in out, out
+
+
 def _installed(home: Path) -> str:
     exe = home / ".ai4sci" / paths.BIN_DIRNAME / "ai4sci"
     return subprocess.run([exe, "--version"], capture_output=True, text=True, encoding="utf-8",
@@ -573,6 +587,23 @@ def test_install_ps1_stops_on_a_tampered_download_without_closing_the_window(tmp
     out = _run_ps1(tmp_path, "1.0.0", home, dist)
     assert "sha256 对不上，没装" in out and "没装完" in out
     assert not (home / paths.BIN_DIRNAME / "ai4sci.exe").exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")
+def test_install_ps1_joins_a_dist_with_a_trailing_slash_without_doubling_it(tmp_path):
+    """同 install.sh 那条：`AI4SCI_DIST` 末尾带 `/` 也拼成一道斜杠（外层 #282 端到端在 Windows 上
+    看到的）。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    _uv_release_windows(dist, "0.0.0-test")
+    script = _ps1_script(tmp_path, "1.0.0")
+    done, _ = _keeping_user_path(lambda: subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Restricted", "-Command",
+         f"& {{ Get-Content -Raw -Encoding UTF8 '{script}' | Invoke-Expression }} 2>&1 "
+         "| ForEach-Object { \"$_\" }"],
+        env={**_ps1_env(home, dist), "AI4SCI_DIST": dist.as_uri() + "/"}, capture_output=True,
+        stdin=subprocess.DEVNULL, timeout=600, check=False))
+    out = done.stdout.decode("utf-8", "replace") + done.stderr.decode("utf-8", "replace")
+    assert f"取不到 {dist.as_uri()}/1.0.0/" in out, out
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")

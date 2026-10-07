@@ -25,6 +25,7 @@ UV_VERSION="__UV_VERSION__"
 # 清单盖着（外层 #282），uv 也就跟着在签名链里，不信 CDN 上它旁边那份 .sha256
 UV_SHA256="__UV_SHA256__"
 DIST="${AI4SCI_DIST:-https://media.zephyrxiang.com/ai4science/dist}"
+DIST="${DIST%/}"  # 末尾带 / 的也拼成一道斜杠（外层 #282）
 PYPI_INDEX="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 PYTHON_DOWNLOADS="https://registry.npmmirror.com/-/binary/python-build-standalone"
 PYTHON_WANTED=">=3.12"
