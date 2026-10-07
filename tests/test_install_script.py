@@ -29,6 +29,7 @@ import pytest
 
 from framework import mirrors, paths
 from framework.skills import run
+from tests.fixtures.fake_cli import fake_cli
 
 SCRIPT = Path(__file__).resolve().parents[1] / "install" / "install.sh"
 PS1 = SCRIPT.with_name("install.ps1")
@@ -372,38 +373,70 @@ def _uv_release_windows(dist: Path, version: str) -> None:
     _sha(target)
 
 
-def _run_ps1(tmp_path: Path, version: str, home: Path, dist: Path) -> str:
-    """照 `irm | iex` 的样子跑：脚本读成字符串交给 iex，执行策略 Restricted（研究者的电脑缺省
-    就是）；用户的 Path 在注册表里，跑完原样还回去。stderr 并进来（`2>&1`）：ISE、存日志的
-    `| Tee-Object` 都这样，5.1 在这种宿主里把原生程序写 stderr 当错误，最严的情形一起测。"""
-    import winreg
-
+def _ps1_script(tmp_path: Path, version: str, uv: str = "0.0.0-test", bom: bool = False) -> Path:
+    """代入版本的一份；`bom`：桌面 App 存成带 UTF-8 BOM 的文件再 `-File` 起（外层 #282）。"""
     script = tmp_path / f"install-{version}.ps1"
-    script.write_text(PS1.read_text(encoding="utf-8").replace("__VERSION__", version)
-                      .replace("__UV_VERSION__", "0.0.0-test"), encoding="utf-8")
+    text = PS1.read_text(encoding="utf-8").replace("__VERSION__", version)
+    script.write_text(("\ufeff" if bom else "") + text.replace("__UV_VERSION__", uv),
+                      encoding="utf-8")
+    return script
+
+
+def _ps1_env(home: Path, dist: Path, extra_path: str = "", **extra: str) -> dict[str, str]:
     system = Path(os.environ["SystemRoot"])
     python_dir = Path(sys._base_executable).parent  # 有够版本的 Python：不去下
-    env = {**{k: v for k, v in os.environ.items() if not k.startswith(("UV_", "AI4SCI_"))},
-           "AI4SCI_HOME": str(home), "AI4SCI_DIST": dist.as_uri(),
-           "PATH": os.pathsep.join([str(system / "System32"), str(system),
-                                    str(system / "System32" / "WindowsPowerShell" / "v1.0"),
-                                    str(python_dir)])}
+    return {**{k: v for k, v in os.environ.items() if not k.startswith(("UV_", "AI4SCI_"))},
+            "AI4SCI_HOME": str(home), "AI4SCI_DIST": dist.as_uri(),
+            "PATH": os.pathsep.join(p for p in (
+                extra_path, str(system / "System32"), str(system),
+                str(system / "System32" / "WindowsPowerShell" / "v1.0"), str(python_dir)) if p),
+            **extra}
+
+
+def _keeping_user_path(run):
+    """用户的 Path 在注册表里：脚本会往里加 bin\\，跑完原样还回去；返回跑的结果与跑完时的 Path。"""
+    import winreg
+
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0,
                         winreg.KEY_READ | winreg.KEY_WRITE) as key:
         saved = winreg.QueryValueEx(key, "Path")
         try:
-            done = subprocess.run(
-                ["powershell", "-NoProfile", "-ExecutionPolicy", "Restricted", "-Command",
-                 f"& {{ Get-Content -Raw -Encoding UTF8 '{script}' | Invoke-Expression }} 2>&1 "
-                 "| ForEach-Object { \"$_\" }"],
-                env=env, capture_output=True, stdin=subprocess.DEVNULL, timeout=600,
-                check=False)
-            path_now = winreg.QueryValueEx(key, "Path")[0]
+            done = run()
+            return done, winreg.QueryValueEx(key, "Path")[0]
         finally:
             winreg.SetValueEx(key, "Path", 0, saved[1], saved[0])
+
+
+def _run_ps1(tmp_path: Path, version: str, home: Path, dist: Path) -> str:
+    """照 `irm | iex` 的样子跑：脚本读成字符串交给 iex，执行策略 Restricted（研究者的电脑缺省
+    就是）；用户的 Path 在注册表里，跑完原样还回去。stderr 并进来（`2>&1`）：ISE、存日志的
+    `| Tee-Object` 都这样，5.1 在这种宿主里把原生程序写 stderr 当错误，最严的情形一起测。"""
+    script = _ps1_script(tmp_path, version)
+    done, path_now = _keeping_user_path(lambda: subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Restricted", "-Command",
+         f"& {{ Get-Content -Raw -Encoding UTF8 '{script}' | Invoke-Expression }} 2>&1 "
+         "| ForEach-Object { \"$_\" }"],
+        env=_ps1_env(home, dist), capture_output=True, stdin=subprocess.DEVNULL, timeout=600,
+        check=False))
     out = done.stdout.decode("utf-8", "replace") + done.stderr.decode("utf-8", "replace")
     assert done.returncode == 0, out
     return out + f"\nPATH={path_now}"
+
+
+def _run_ps1_as_desktop(script: Path, home: Path, dist: Path, extra_path: str = "",
+                        **extra: str) -> subprocess.CompletedProcess:
+    """照桌面 App 起的样子（外层 #282，desktop.md §3）：带 BOM 的一份、5.1 的完整路径、`-File`、
+    无窗口（CREATE_NO_WINDOW）、标准输入接管道（接 NUL 时 isatty 是真）、`AI4SCI_NO_SETUP=1`。
+    stdout 按 UTF-8 严格解：解不开就是又按 GBK 出了。"""
+    powershell = (Path(os.environ["SystemRoot"]) / "System32" / "WindowsPowerShell" / "v1.0"
+                  / "powershell.exe")
+    env = _ps1_env(home, dist, extra_path, AI4SCI_NO_SETUP="1", **extra)
+    done, _ = _keeping_user_path(lambda: subprocess.run(
+        [str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+         str(script)], env=env, capture_output=True, input=b"", timeout=600, check=False,
+        creationflags=subprocess.CREATE_NO_WINDOW))
+    return subprocess.CompletedProcess(done.args, done.returncode, done.stdout.decode("utf-8"),
+                                       done.stderr.decode("utf-8", "replace"))
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")
@@ -475,3 +508,77 @@ def test_install_ps1_repairs_a_broken_install(tmp_path):
     _run_ps1(tmp_path, "1.0.0", home, dist)
     next((home / paths.TOOLS_DIRNAME).rglob("ai4sci_fake.py")).unlink()
     assert "ai4sci        1.0.0，安装完成" in _run_ps1(tmp_path, "1.0.0", home, dist)
+
+
+def _version_of(home: Path) -> str:
+    return subprocess.run([home / paths.BIN_DIRNAME / "ai4sci.exe", "--version"],
+                          capture_output=True, text=True, encoding="utf-8",
+                          check=False).stdout.strip()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")
+def test_install_ps1_runs_the_way_the_desktop_app_starts_it(tmp_path):
+    """桌面 App 起它（外层 #282）：无 BOM 时 5.1 按 GBK 读源码，整段读坏；无窗口起的 Write-Host 按
+    GBK 出、✓ 成了 ?；失败也退 0，外壳分不出装好没有。带 BOM 的一份 + -File + 无窗口：输出是 UTF-8，
+    退出码作数——0 装好、75 平台还开着、1 失败；wheel 照签名清单的 sha256 核；升级中途断了原来那份
+    照样能用。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    _uv_release_windows(dist, "0.0.0-test")
+    for version in ("1.0.0", "1.0.1"):
+        _wheel(dist, version)
+    side = dist / "1.0.0" / "ai4sci-1.0.0-py3-none-any.whl.sha256"
+    signed = side.read_text(encoding="utf-8").split()[0]
+    side.write_text(f"{'0' * 64}  ai4sci-1.0.0-py3-none-any.whl\n", encoding="utf-8")
+    first = _ps1_script(tmp_path, "1.0.0", bom=True)
+    done = _run_ps1_as_desktop(first, home, dist, AI4SCI_WHEEL_SHA256=signed)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert not done.stdout.startswith("\ufeff") and "?" not in done.stdout
+    assert "  ✓ ai4sci        1.0.0，安装完成" in done.stdout and "ran setup" not in done.stdout
+    assert _version_of(home) == "ai4sci 1.0.0"
+
+    newer = _ps1_script(tmp_path, "1.0.1", bom=True)
+    done = _run_ps1_as_desktop(newer, home, dist, AI4SCI_WHEEL_SHA256=signed)
+    assert done.returncode == 1 and "sha256 对不上，没装" in done.stdout
+
+    venv_python = next((home / paths.TOOLS_DIRNAME).rglob("Scripts/python.exe"))
+    running = subprocess.Popen([venv_python, "-c", "import time; time.sleep(120)"])
+    try:
+        done = _run_ps1_as_desktop(newer, home, dist)
+    finally:
+        running.kill()
+        running.wait()
+    assert done.returncode == 75 and "平台还开着（1 个进程在用它）" in done.stdout
+
+    uv_dir = home / paths.TOOLS_DIRNAME / "uv"
+    fake_cli(uv_dir / "uv", f"""import os, shutil, subprocess, sys
+args = sys.argv[1:]
+if args[:2] == ["tool", "install"] and "--offline" not in args:
+    shutil.rmtree(os.path.join(os.environ["UV_TOOL_DIR"], "ai4sci"), ignore_errors=True)
+    print("error: 下到一半断了", file=sys.stderr)
+    sys.exit(2)
+sys.exit(subprocess.run([{REAL_UV!r}, *args]).returncode)
+""")
+    done = _run_ps1_as_desktop(newer, home, dist)
+    assert done.returncode == 1 and "原来那份照样能用" in done.stdout
+    assert _version_of(home) == "ai4sci 1.0.0"
+
+    shutil.copyfile(Path(REAL_UV).with_suffix(".exe"), uv_dir / "uv.exe")
+    done = _run_ps1_as_desktop(newer, home, dist)
+    assert done.returncode == 0 and "1.0.1，安装完成" in done.stdout
+    assert _version_of(home) == "ai4sci 1.0.1"
+    assert sorted(p.name for p in (home / paths.TOOLS_DIRNAME).iterdir()) == ["ai4sci", "uv"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="install.ps1 只管 Windows")
+def test_install_ps1_does_not_use_a_uv_older_than_the_pinned_one(tmp_path):
+    """外壳把它带的 uv 放在 PATH 最前，外壳又很少更新（外层 #282 审查）：低于钉的版本就当没有。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    _uv_release_windows(dist, "0.0.2-test")
+    _wheel(dist, "1.0.0")
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    old_uv = 'import sys\nprint("uv 0.0.1") if sys.argv[1:] == ["--version"] else sys.exit(9)\n'
+    fake_cli(stale / "uv", old_uv)
+    script = _ps1_script(tmp_path, "1.0.0", uv="0.0.2-test", bom=True)
+    done = _run_ps1_as_desktop(script, home, dist, str(stale))
+    assert done.returncode == 0 and "uv            0.0.2-test，下载完成" in done.stdout
