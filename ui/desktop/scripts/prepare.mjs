@@ -116,8 +116,13 @@ async function sidecarFromRelease(version, target) {
     mkdirSync(BINARIES, { recursive: true })
     const dest = join(BINARIES, sidecarName(target))
     if (target === UNIVERSAL) {
+      // 通用包是两种架构各编一遍再合：编每一遍时 tauri-build 要那个架构自己的 sidecar，打包时要合成的那份
       const slices = []
-      for (const arch of ['aarch64-apple-darwin', 'x86_64-apple-darwin']) slices.push(await uvFromRelease(version, arch, work))
+      for (const arch of ['aarch64-apple-darwin', 'x86_64-apple-darwin']) {
+        const slice = await uvFromRelease(version, arch, work)
+        copyFileSync(slice, join(BINARIES, sidecarName(arch)))
+        slices.push(slice)
+      }
       run('lipo', ['-create', '-output', dest, ...slices])
     } else {
       copyFileSync(await uvFromRelease(version, target, work), dest)
