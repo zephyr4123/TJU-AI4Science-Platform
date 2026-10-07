@@ -7,6 +7,7 @@ validate）用剧本执行层测全。
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -139,7 +140,7 @@ def test_good_draft_is_sealed_lint_clean_validates_and_gets_the_domain(ws):
     assert outcome.changed_files == sorted(GOOD_DRAFT)
     hdir = pack / "harness"
     for name in ("launcher.sh", "make_run0.sh"):
-        assert (hdir / name).stat().st_mode & 0o111, f"{name} 没有执行位"
+        assert os.name == "nt" or (hdir / name).stat().st_mode & 0o111, f"{name} 没有执行位"
     text = (hdir / "SHA256SUMS").read_text(encoding="utf-8")
     listed = [ln.split("  ")[1] for ln in text.splitlines()]
     assert listed == outcome.sealed

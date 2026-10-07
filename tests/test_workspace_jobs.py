@@ -152,7 +152,7 @@ def test_stop_also_cancels_whatever_runs_under_the_output_on_its_compute(tmp_pat
 
     class Box:
         def remote_dir_for(self, local_dir):
-            return f"/box{Path(local_dir).resolve()}"
+            return f"/box/{Path(local_dir).resolve().as_posix().lstrip('/')}"
 
         def cancel_under(self, remote_dir):
             calls.append(remote_dir)
@@ -172,7 +172,8 @@ def test_stop_also_cancels_whatever_runs_under_the_output_on_its_compute(tmp_pat
 
     running_job("job-a")
     stopped = jobs.stop(ws, "job-a", by="zephyr")
-    assert stopped.status == "stopped" and calls == [f"/box{directory.resolve()}"]
+    assert stopped.status == "stopped"
+    assert calls == [f"/box/{directory.resolve().as_posix().lstrip('/')}"]
     assert output.read_meta(directory).status == "failed"
     # 远端够不着：本机照样停了、记录说清远端没停，错抛给叫停的人
     running_job("job-b")

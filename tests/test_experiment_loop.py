@@ -772,7 +772,8 @@ def test_harness_gets_budget_and_inner_k_from_the_framework(tmp_path):
     seen = json.loads((run_dir / "iters" / "iter_1" / "env-seen.json")
                       .read_text(encoding="utf-8"))
     assert seen["AI4SCI_INNER_K"] == "4" and seen["AI4SCI_BUDGET_S"] == "2"
-    assert seen["AI4SCI_SEED"] == "42" and seen["AI4SCI_PYTHON"].endswith("/.venv/bin/python")
+    assert seen["AI4SCI_SEED"] == "42"
+    assert Path(seen["AI4SCI_PYTHON"]) == layout.venv_python(run_dir)
 
 
 def test_inner_k_defaults_to_one_and_rejects_zero(tmp_path):

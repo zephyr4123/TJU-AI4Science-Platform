@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+import procs
 from framework.experiment import env
 from framework.experiment import pack as packs
 from tests.fixtures import packs_factory as pf
@@ -310,7 +311,7 @@ def test_fake_success_is_caught_by_harness(tmp_path):
     pack = pf.make_pack(tmp_path)
     (pack.pack / "code" / "train.py").write_text(pf.FAKE_SUCCESS_TRAIN_PY, encoding="utf-8")
     proc = subprocess.run(
-        ["bash", str(pack.pack / "harness" / "launcher.sh")],
+        [procs.bash(), str(pack.pack / "harness" / "launcher.sh")],
         capture_output=True,
         text=True, encoding="utf-8", errors="replace",
         timeout=60,
@@ -351,7 +352,7 @@ def test_real_pack_runs_end_to_end_if_present(tmp_path):
     python = env.build_venv(task_dir, task_dir / env.VENV_DIRNAME)
     clean = {k: v for k, v in os.environ.items() if not k.startswith("AI4SCI_")}
     proc = subprocess.run(
-        ["bash", str(task_dir / "harness" / "launcher.sh")],
+        [procs.bash(), str(task_dir / "harness" / "launcher.sh")],
         capture_output=True,
         text=True, encoding="utf-8", errors="replace",
         timeout=120,
@@ -373,8 +374,10 @@ def test_seal_harness_sets_exec_bits_and_lists_every_file(tmp_path):
     (hdir / "launcher.sh").chmod(0o644)
     names = packs.seal_harness(pack.pack)
     assert names == ["evaluate.py", "launcher.sh", "make_run0.sh"]
-    assert os.access(hdir / "launcher.sh", os.X_OK) and os.access(hdir / "make_run0.sh", os.X_OK)
-    assert not os.access(hdir / "evaluate.py", os.X_OK)  # 只给脚本加执行位
+    if os.name != "nt":  # Windows 没有执行位：脚本一律 `bash <脚本>` 起
+        assert os.access(hdir / "launcher.sh", os.X_OK)
+        assert os.access(hdir / "make_run0.sh", os.X_OK)
+        assert not os.access(hdir / "evaluate.py", os.X_OK)  # 只给脚本加执行位
     text = (hdir / "SHA256SUMS").read_text(encoding="utf-8")
     listed = [ln.split("  ")[1] for ln in text.splitlines()]
     assert listed == names

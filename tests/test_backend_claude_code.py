@@ -10,7 +10,10 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
+import shlex
 import sys
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -363,8 +366,9 @@ def test_sessions_live_in_the_platform_home_not_the_persons_claude_dir(tmp_path:
     home = tmp_path / "claude_code"
     assert build_env(1.0, Link(home=home))["CLAUDE_CONFIG_DIR"] == str(home)
     chat = ClaudeCodeChat(Link(home=home))
-    cwd = tmp_path / "my_ws"
-    encoded = str(cwd.resolve()).replace("/", "-").replace("_", "-")  # CLI 把下划线也换掉
+    cwd = Path(tempfile.gettempdir()) / "my_ws"  # 短一点：Windows 没开长路径时 260 个字符封顶
+    # CLI 把不是字母数字的都换成 `-`：斜杠、下划线，Windows 上还有盘符的冒号与反斜杠
+    encoded = re.sub(r"[^A-Za-z0-9]", "-", str(cwd.resolve()))
     session = home / "projects" / encoded / f"{SID}.jsonl"
     session.parent.mkdir(parents=True)
     session.write_text("{}\n", encoding="utf-8")
@@ -397,7 +401,8 @@ def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatc
     monkeypatch.setenv("PATH", "/usr/bin")
     env = build_env(1.0, LINK)
     assert env["PATH"].startswith(f"/usr/bin{os.pathsep}")  # 追加在后，系统命令在前
-    assert shutil.which("ai4sci", path=env["PATH"]) == str(Path(sys.executable).parent / "ai4sci")
+    found = shutil.which("ai4sci", path=env["PATH"])
+    assert found and Path(found).parent == Path(sys.executable).parent  # Windows 上是 ai4sci.EXE
     monkeypatch.delenv("PATH")
     assert build_env(1.0, LINK)["PATH"] == str(Path(sys.executable).parent)
 
@@ -666,8 +671,10 @@ def test_the_key_reaches_the_cli_through_a_private_file_not_env_or_argv(tmp_path
     assert not any("sk-ds-secret" in a for a in argv)
     helper = json.loads(argv[argv.index("--settings") + 1])["apiKeyHelper"]
     key_file = link.home / KEY_FILE
-    assert helper == f"cat {key_file}" and key_file.read_text(encoding="utf-8") == "sk-ds-secret"
-    assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+    assert helper == f"cat {shlex.quote(str(key_file))}"
+    assert key_file.read_text(encoding="utf-8") == "sk-ds-secret"
+    # Windows 没有权限位：私有目录在本人的用户目录下，系统的 ACL 只给本人
+    assert os.name == "nt" or stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert key_args(Link(home=tmp_path / "cc")) == []  # 官方订阅不要 key
     anthropic = Link(home=tmp_path / "cc", provider="anthropic", key="sk-ant")
     assert key_args(anthropic)[0] == "--settings" and "ANTHROPIC_BASE_URL" not in build_env(

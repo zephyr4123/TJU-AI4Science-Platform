@@ -70,7 +70,7 @@ def test_missing_lock_file_is_a_problem_even_for_zero_deps(tmp_path):
 def test_build_venv_creates_an_isolated_interpreter_of_the_declared_version(tmp_path):
     task_dir = make_env(tmp_path)
     python = env.build_venv(task_dir, task_dir / env.VENV_DIRNAME)
-    assert python == task_dir / ".venv" / "bin" / "python"
+    assert python == env.venv_python(task_dir / ".venv")
     assert python.is_file()
     # 真的是另一个环境：prefix 落在任务目录下，不是平台 venv 的那个
     out = subprocess.run([str(python), "-c", "import sys; print(sys.prefix)"],
@@ -179,7 +179,7 @@ def test_add_packages_installs_into_the_existing_interpreter_and_refreezes(tmp_p
 
     venv = tmp_path / "throwaway"
     subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
-    python = str(venv / "bin" / "python")
+    python = str(env.venv_python(venv))
     target = tmp_path / "materials" / "env"
     with pytest.raises(env.EnvBuildError, match="先 ai4sci env use"):
         env.add_packages(target, LocalCompute(), ["six"])

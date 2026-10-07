@@ -134,7 +134,7 @@ def test_file_view_lists_a_directory_one_level_and_reads_files(tmp_path):
     ws = pack.workspace
     (ws.root / "materials" / "big.log").write_bytes(b"x" * (boards.TEXT_LIMIT + 10))
     (ws.root / "materials" / "blob.bin").write_bytes(b"\x00\x01\x02")
-    (ws.root / "materials" / "\u6570\u636e.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    (ws.root / "materials" / "\u6570\u636e.csv").write_bytes(b"a,b\n1,2\n")  # 原样的字节
 
     top = boards.list_dir(ws, "")
     assert top["path"] == ""

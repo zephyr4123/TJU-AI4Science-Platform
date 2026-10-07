@@ -224,7 +224,8 @@ def test_chat_argv_opens_with_the_guide_and_resumes_by_thread_id(link: Link, hom
     for argv in (first, second):
         config = _config(argv)
         assert config["sandbox_mode"] == '"workspace-write"'
-        assert str(tmp_path.resolve()) in config["sandbox_workspace_write.writable_roots"]
+        roots = tomllib.loads(f"r = {config['sandbox_workspace_write.writable_roots']}")["r"]
+        assert str(tmp_path.resolve()) in roots
         assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
         assert config["model_reasoning_effort"] == '"high"'
 

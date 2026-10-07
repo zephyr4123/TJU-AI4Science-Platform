@@ -20,7 +20,7 @@ from compute.local import LocalCompute
 from framework.chat import boards
 from framework.cli import show
 from framework.contracts import output, requirement
-from framework.experiment import layout
+from framework.experiment import env, layout
 from framework.workspace import jobs, outputs
 from framework.workspace import project as project_mod
 from tests.fixtures import packs_factory as pf
@@ -785,8 +785,8 @@ def test_baseline_runs_make_run0_with_the_guaranteed_env_and_reports_headroom(tm
     seen = json.loads((pack.pack / "baseline-env.json").read_text(encoding="utf-8"))
     assert seen["inner_k"] == "7"
     assert seen["budget"] == f"{scoring['budget']['wall_clock_s']:g}"
-    assert seen["python"] == str(pack.pack / ".venv" / "bin" / "python")
-    assert (pack.pack / ".venv" / "bin" / "python").is_file()
+    assert seen["python"] == env.venv_python(pack.pack / ".venv").as_posix()  # 正斜杠，bash 认
+    assert env.venv_python(pack.pack / ".venv").is_file()
 
 
 def test_baseline_stops_when_the_headroom_check_fails_or_the_script_is_missing(tmp_path):

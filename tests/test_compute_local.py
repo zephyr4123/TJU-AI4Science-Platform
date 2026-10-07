@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
+import sys
 import time
 from pathlib import Path
 
@@ -60,7 +62,8 @@ def test_put_refuses_to_overwrite_an_existing_snapshot(tmp_path):
 def test_submit_wait_success_writes_logs_and_env(tmp_path):
     compute = LocalCompute()
     job = compute.submit(
-        tmp_path, ["python3", "-c", "import os,sys; print(os.environ['AI4SCI_SEED']); sys.exit(0)"],
+        tmp_path,
+        [sys.executable, "-c", "import os,sys; print(os.environ['AI4SCI_SEED']); sys.exit(0)"],
         {"AI4SCI_SEED": "42"}, timeout_s=30,
     )
     status = compute.wait(job)
@@ -72,16 +75,15 @@ def test_submit_wait_success_writes_logs_and_env(tmp_path):
 
 def test_submit_nonzero_exit_is_reported_not_swallowed(tmp_path):
     compute = LocalCompute()
-    job = compute.submit(tmp_path, ["python3", "-c", "raise SystemExit(3)"], {}, timeout_s=30)
+    job = compute.submit(tmp_path, [sys.executable, "-c", "raise SystemExit(3)"], {}, timeout_s=30)
     assert compute.wait(job).exit_code == 3
 
 
 def test_wait_timeout_cancels_whole_process_group(tmp_path):
     """起一个 sleep 60 的任务，wait(timeout_s=1) 后 timed_out=True 且进程组无存活。"""
     compute = LocalCompute()
-    job = compute.submit(
-        tmp_path, ["bash", "-c", "python3 -c 'import time; time.sleep(60)'"], {}, timeout_s=600
-    )
+    sleeper = f"{shlex.quote(sys.executable)} -c 'import time; time.sleep(60)'"
+    job = compute.submit(tmp_path, [procs.bash(), "-c", sleeper], {}, timeout_s=600)
     started = time.monotonic()
     status = compute.wait(job, timeout_s=1)
     assert status.timed_out is True
@@ -93,7 +95,7 @@ def test_wait_timeout_cancels_whole_process_group(tmp_path):
 def test_job_json_roundtrip_then_wait_reports_unknown_exit_code(tmp_path):
     """续跑读回的 job：进程已经不在，退出码必须是"未知"（None），不许拿 0 蒙混。"""
     compute = LocalCompute()
-    job = compute.submit(tmp_path, ["python3", "-c", "raise SystemExit(0)"], {}, timeout_s=30)
+    job = compute.submit(tmp_path, [sys.executable, "-c", "raise SystemExit(0)"], {}, timeout_s=30)
     (tmp_path / "job.json").write_text(job.to_json(), encoding="utf-8")
     assert compute.wait(job).exit_code == 0  # 亲爹这轮拿得到
 
@@ -135,7 +137,7 @@ def test_exit_status_unknown_is_not_ok():
 
 def test_cancel_is_idempotent_on_dead_job(tmp_path):
     compute = LocalCompute()
-    job = compute.submit(tmp_path, ["python3", "-c", "pass"], {}, timeout_s=30)
+    job = compute.submit(tmp_path, [sys.executable, "-c", "pass"], {}, timeout_s=30)
     compute.wait(job)
     compute.cancel(job)  # 已经死了再杀一次不许抛
-    assert os.getpgid(0) != job.pgid
+    assert procs.group_of(os.getpid()) != job.pgid
