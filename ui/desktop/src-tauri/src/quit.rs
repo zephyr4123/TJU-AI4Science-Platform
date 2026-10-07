@@ -17,7 +17,7 @@ use crate::serve;
 use crate::shell::{GRACE, Shell};
 use crate::window;
 
-/// 系统对话框问一句：点了 `yes` 是 true
+/// 系统对话框问一句：点了 `yes` 是 true；`yes` 在确定键（回车）上，Esc、关掉对话框算 `no`
 pub async fn ask<R: Runtime>(app: &AppHandle<R>, text: &str, yes: &str, no: &str) -> bool {
     let (tx, rx) = oneshot::channel();
     dialog(app, text)
@@ -61,11 +61,13 @@ pub async fn may_interrupt<R: Runtime>(app: &AppHandle<R>) -> bool {
     match serve::turns(&shell.loopback, &url).await {
         Some(turns) if turns > 0 => {
             log::info!("quit.turns_running turns={turns}");
-            !ask(
+            // 「仍然退出」在确定键上：Esc、关掉对话框落在取消键，取消该是不退（端到端在 Windows 上按 Esc
+            // 就退了、打断了那一轮）
+            ask(
                 app,
                 "助理这一轮还没回完，退出会打断它",
-                "等它回完",
                 "仍然退出",
+                "等它回完",
             )
             .await
         }
