@@ -4,6 +4,10 @@ Python 那边是同一份事实、端到端照它装一遍。
 端到端不连网：CDN 换成 tmp 下一棵 `file://` 的假目录（uv 的发布包是转调真 uv 的小脚本，平台的
 wheel 是手搓的、`ai4sci` 只会报版本与回显参数），`HOME` 指到 tmp，PATH 只有系统目录与一个 Python。
 真从 CDN 装的那一遍在发版后真跑。
+
+桌面 App 起的那一种（外层 #282，`docs/specs/desktop.md` §3「装与升级」）：`AI4SCI_NO_SETUP=1` 不交给
+setup、`AI4SCI_WHEEL_SHA256` 照签名清单核 wheel、平台还开着退 75、升级先暂存再离线换、太老的 uv
+不用；Windows 上照外壳的样子用 `-File` 跑带 BOM 的一份、无窗口起，输出是 UTF-8。
 """
 
 from __future__ import annotations
@@ -135,31 +139,46 @@ def _uv_release(dist: Path, version: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(target, "w:gz") as tar:
         for tool in ("uv", "uvx"):
-            body = f'#!/bin/sh\nexec "{REAL_UV}" "$@"\n'.encode()
+            body = _uv_wrapper().encode()
             entry = tarfile.TarInfo(f"uv-{triple}/{tool}")
             entry.size, entry.mode = len(body), 0o755
             tar.addfile(entry, io.BytesIO(body))
     _sha(target)
 
 
-def _run(script: Path, home: Path, dist: Path, extra_path: str = "") -> str:
+def _uv_wrapper(fail_downloads: bool = False) -> str:
+    """转调真 uv 的小脚本。`fail_downloads`：不带 --offline 的 `tool install` 先删掉它要装进的那个
+    环境再失败——uv 删掉旧环境以后才下依赖，中途断网、被杀就是这个样子（外层 #282 审查）。"""
+    broken = ('case " $* " in *" tool install "*) case " $* " in *" --offline "*) ;; *)\n'
+              '  rm -rf "${UV_TOOL_DIR}/ai4sci"; echo "error: 下到一半断了" >&2; exit 2 ;; esac ;; '
+              'esac\n') if fail_downloads else ""
+    return f'#!/bin/sh\n{broken}exec "{REAL_UV}" "$@"\n'
+
+
+def _sh(script: Path, home: Path, dist: Path, extra_path: str = "",
+        **extra: str) -> subprocess.CompletedProcess:
     python_dir = str(Path(sys.executable).resolve().parent)  # 真解释器的目录：里面没有 uv
     # LANG 要是 UTF-8：Mac 的 /bin/sh 在 UTF-8 下会把 `$VAR，` 里全角逗号的头一个字节读进变量名
     # （2026-10-07 真从 CDN 装时撞上的），不带它测不出来
     env = {"HOME": str(home), "SHELL": "/bin/zsh", "AI4SCI_DIST": dist.as_uri(),
            "LANG": "en_US.UTF-8",
-           "PATH": os.pathsep.join(p for p in (extra_path, python_dir, "/usr/bin", "/bin") if p)}
-    done = subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True,
+           "PATH": os.pathsep.join(p for p in (extra_path, python_dir, "/usr/bin", "/bin") if p),
+           **extra}
+    return subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True,
                           encoding="utf-8", errors="replace",
                           stdin=subprocess.DEVNULL, timeout=300, check=False)
+
+
+def _run(script: Path, home: Path, dist: Path, extra_path: str = "", **extra: str) -> str:
+    done = _sh(script, home, dist, extra_path, **extra)
     assert done.returncode == 0, done.stdout + done.stderr
     return done.stdout
 
 
-def _script(tmp_path: Path, version: str) -> Path:
+def _script(tmp_path: Path, version: str, uv: str = "0.0.0-test") -> Path:
     text = SCRIPT.read_text(encoding="utf-8").replace("__VERSION__", version)
     out = tmp_path / f"install-{version}.sh"
-    out.write_text(text.replace("__UV_VERSION__", "0.0.0-test"), encoding="utf-8")
+    out.write_text(text.replace("__UV_VERSION__", uv), encoding="utf-8")
     return out
 
 
@@ -233,6 +252,109 @@ def test_a_tampered_download_stops_the_install(tmp_path):
                           stdin=subprocess.DEVNULL, timeout=300, check=False)
     assert done.returncode == 1 and "sha256 对不上，没装" in done.stderr
     assert not (home / ".ai4sci" / paths.BIN_DIRNAME / "ai4sci").exists()
+
+
+POSIX = pytest.mark.skipif((platform.system(), platform.machine()) not in TRIPLES,
+                           reason="install.sh 只管 Mac 与 Linux")
+
+
+def _installed(home: Path) -> str:
+    exe = home / ".ai4sci" / paths.BIN_DIRNAME / "ai4sci"
+    return subprocess.run([exe, "--version"], capture_output=True, text=True, encoding="utf-8",
+                          check=False).stdout.strip()
+
+
+@POSIX
+def test_for_the_desktop_it_stops_before_setup_and_checks_the_wheel_by_the_signed_sha256(
+        tmp_path):
+    """桌面 App 自己起 setup（不问 key、不起服务，外层 #282）：`AI4SCI_NO_SETUP=1` 装好平台就退 0。
+    wheel 照签名清单里的 sha256（`AI4SCI_WHEEL_SHA256`）核，不信 CDN 上的 .sha256：CDN 被改了，旁边
+    那份 sha256 也能一起改。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    home.mkdir()
+    _uv_release(dist, "0.0.0-test")
+    _wheel(dist, "1.0.0")
+    side = dist / "1.0.0" / "ai4sci-1.0.0-py3-none-any.whl.sha256"
+    signed = side.read_text(encoding="utf-8").split()[0]
+    side.write_text(f"{'0' * 64}  ai4sci-1.0.0-py3-none-any.whl\n", encoding="utf-8")
+    out = _run(_script(tmp_path, "1.0.0"), home, dist, AI4SCI_NO_SETUP="1",
+               AI4SCI_WHEEL_SHA256=signed.upper())
+    assert "ai4sci        1.0.0，安装完成" in out and "ran setup" not in out
+    assert _installed(home) == "ai4sci 1.0.0"
+
+    side.write_text(f"{signed}  ai4sci-1.0.0-py3-none-any.whl\n", encoding="utf-8")
+    _wheel(dist, "1.0.1")
+    done = _sh(_script(tmp_path, "1.0.1"), home, dist, AI4SCI_NO_SETUP="1",
+               AI4SCI_WHEEL_SHA256=signed)  # 1.0.0 的 sha256：对不上 1.0.1
+    assert done.returncode == 1 and "sha256 对不上，没装" in done.stderr
+    assert _installed(home) == "ai4sci 1.0.0"
+
+
+@POSIX
+def test_an_upgrade_while_the_platform_runs_is_refused_with_75_and_touches_nothing(tmp_path):
+    """网页版服务、后台作业开着时换掉它们底下的代码，它们会读到半新半旧的文件（外层 #282）：Mac 也像
+    Windows 那样先查、停下，退出码 75 让外壳分得清「被拒」与「失败」。不用装的时候不查。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    home.mkdir()
+    _uv_release(dist, "0.0.0-test")
+    for version in ("1.0.0", "1.0.1"):
+        _wheel(dist, version)
+    _run(_script(tmp_path, "1.0.0"), home, dist, AI4SCI_NO_SETUP="1")
+    venv_python = next((home / ".ai4sci" / paths.TOOLS_DIRNAME / "ai4sci").rglob("bin/python"))
+    running = subprocess.Popen([venv_python, "-c", "import time; time.sleep(120)"])
+    try:
+        done = _sh(_script(tmp_path, "1.0.1"), home, dist, AI4SCI_NO_SETUP="1")
+        same = _sh(_script(tmp_path, "1.0.0"), home, dist, AI4SCI_NO_SETUP="1")
+    finally:
+        running.kill()
+        running.wait()
+    assert done.returncode == 75 and "平台还开着（1 个进程在用它）" in done.stderr
+    assert _installed(home) == "ai4sci 1.0.0"
+    assert same.returncode == 0 and "1.0.0，已装，跳过" in same.stdout
+    assert "1.0.1，安装完成" in _run(_script(tmp_path, "1.0.1"), home, dist, AI4SCI_NO_SETUP="1")
+
+
+@POSIX
+def test_an_upgrade_that_breaks_halfway_leaves_the_old_platform_working(tmp_path):
+    """uv 先删掉旧环境再下依赖：中途断网或被杀，原来能用的平台就没了（外层 #282 审查，uv 0.12.18
+    `tool/install.rs`）。升级先装进暂存目录（下载都在这一步），成了再离线换进去。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    home.mkdir()
+    _uv_release(dist, "0.0.0-test")
+    for version in ("1.0.0", "1.0.1"):
+        _wheel(dist, version)
+    _run(_script(tmp_path, "1.0.0"), home, dist, AI4SCI_NO_SETUP="1")
+    tools = home / ".ai4sci" / paths.TOOLS_DIRNAME
+    (tools / "uv" / "uv").write_text(_uv_wrapper(fail_downloads=True), encoding="utf-8")
+    done = _sh(_script(tmp_path, "1.0.1"), home, dist, AI4SCI_NO_SETUP="1")
+    assert done.returncode == 1 and "原来那份照样能用" in done.stderr
+    assert _installed(home) == "ai4sci 1.0.0"
+    (tools / "uv" / "uv").write_text(_uv_wrapper(), encoding="utf-8")
+    assert "1.0.1，安装完成" in _run(_script(tmp_path, "1.0.1"), home, dist, AI4SCI_NO_SETUP="1")
+    assert _installed(home) == "ai4sci 1.0.1"
+    assert sorted(p.name for p in tools.iterdir()) == ["ai4sci", "uv"]  # 暂存的不留
+
+
+@POSIX
+def test_a_uv_older_than_the_pinned_one_is_not_used(tmp_path):
+    """外壳把它带的 uv 放在 PATH 最前，外壳又很少更新（外层 #282 审查）：PATH 上、家里的 uv 低于脚本
+    钉的版本就当没有，取钉了版本的那份。"""
+    home, dist = tmp_path / "home", tmp_path / "dist"
+    home.mkdir()
+    _uv_release(dist, "0.0.2-test")
+    _wheel(dist, "1.0.0")
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    old_uv = '#!/bin/sh\n[ "$1" = --version ] && echo "uv 0.0.1" && exit 0\nexit 9\n'
+    (stale / "uv").write_text(old_uv, encoding="utf-8")
+    (stale / "uv").chmod(0o755)
+    script = _script(tmp_path, "1.0.0", uv="0.0.2-test")
+    out = _run(script, home, dist, str(stale), AI4SCI_NO_SETUP="1")
+    assert "uv            0.0.2-test，下载完成" in out
+    mine = home / ".ai4sci" / paths.TOOLS_DIRNAME / "uv" / "uv"
+    mine.write_text(old_uv, encoding="utf-8")
+    assert "uv            0.0.2-test，下载完成" in _run(script, home, dist, AI4SCI_NO_SETUP="1")
+    assert "uv            已装，跳过" in _run(script, home, dist, AI4SCI_NO_SETUP="1")
 
 
 # ── Windows：install.ps1 ───────────────────────────────────────────────────────
