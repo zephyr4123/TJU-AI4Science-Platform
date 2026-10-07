@@ -101,7 +101,7 @@ platform/
 
 **桌面 App**（外层 #282）：下载 [Mac 通用包](https://media.zephyrxiang.com/ai4science/dist/desktop/AAAI4S.dmg)（Apple 芯片与 Intel 都是它）或 [Windows 安装包](https://media.zephyrxiang.com/ai4science/dist/desktop/AAAI4S-setup.exe)（按用户装，不要管理员）。第一次打开它自己装好平台（约两分钟，进度画在窗口里），装好进页面；助理还不能说话就弹窗让你粘 DeepSeek 的 key、当场试通。以后每次打开一两秒进页面，平台有新版本先自动升级，App 自己有新版本会问一句。关窗口：Mac 上只是收起（点 Dock 图标回来，Cmd+Q 才退出），Windows 上就是退出；退出时后台实验照跑，跑完自己叫醒助理。
 
-- Mac 还没配苹果的签名：先把 AAAI4S 拖进「应用程序」再打开；第一次被拦就去「系统设置 → 隐私与安全性」点「仍要打开」（一小时内有效）、输入开机密码。
+- Mac 的包签了名、过了苹果公证：先把 AAAI4S 拖进「应用程序」再打开（没拖进去它会提示你先拖）。
 - Windows 弹「Windows 已保护你的电脑」：点「更多信息 → 仍要运行」。
 - 卸载 App 不碰 `~/.ai4sci`（网页版也在用它）；要连平台一起删，照下面「卸载」。
 

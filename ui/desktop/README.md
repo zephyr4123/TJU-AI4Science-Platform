@@ -35,7 +35,7 @@
 
 版本号只在发版时由 tag 注入，`tauri.conf.json` 与 `Cargo.toml` 里的 `0.0.0` 是占位；占位版本的外壳从不更新自己。
 
-外壳自己的东西在系统给 App 的目录里（标识 `com.zephyrxiang.aaai4s`，源码桌面是 `….dev`）：Mac 上日志 `~/Library/Logs/<标识>/shell.log`、状态 `~/Library/Application Support/<标识>/shell.json`（上次的端口、跑通过 setup 的版本、登录 shell 的 PATH、上次查版本的时刻）；Windows 在 `%LOCALAPPDATA%\<标识>\` 与 `%APPDATA%\<标识>\` 下。
+外壳自己的东西在系统给 App 的目录里（标识 `com.zephyrxiang.aaai4s`，源码桌面是 `….dev`）：Mac 上日志 `~/Library/Logs/<标识>/shell.log`、状态 `~/Library/Application Support/<标识>/shell.json`（上次的端口、跑通过 setup 的版本与家、登录 shell 的 PATH、上次查到版本的时刻、这个发布地址上见过的最新清单）；Windows 在 `%LOCALAPPDATA%\<标识>\` 与 `%APPDATA%\<标识>\` 下。
 
 ## 4. 国内镜像（写在自己机器上，不进仓库：CI 在国外）
 
@@ -54,7 +54,7 @@
 
 ## 5. 怎么测
 
-- **`cargo test`**（`npm run check` 里）：纯逻辑的单测在各模块里；`tests/supervise.rs` 用假的 `ai4sci`（`src-tauri/examples/fake_ai4sci.rs`，`cargo test` 顺带编出来）真起进程：读版本、setup 的进度行、serve 的 `ok` 行与 `/health`、关掉标准输入后 serve 与它起的「对话轮次」都没了、不理标准输入的 serve 被整棵收拾、端口用不了退 3；`tests/splash.rs` 查启动页的标与 favicon 是同三条路径、只用 `textContent`、只用本地的东西。每个检查器带反例。
+- **`cargo test`**（`npm run check` 里）：纯逻辑的单测在各模块里；`tests/supervise.rs` 用假的 `ai4sci`（`src-tauri/examples/fake_ai4sci.rs`，`cargo test` 顺带编出来）真起进程：读版本、setup 的进度行、serve 的 `ok` 行与 `/health`、关掉标准输入后 serve 与它起的「对话轮次」都没了、不理标准输入的 serve 被整棵收拾、连着不说话的子进程被收掉、端口用不了退 3；`tests/splash.rs` 查启动页的标与 favicon 是同三条路径、只用 `textContent`、只用本地的东西。每个检查器带反例。
 - **连真后端**：`npm run check` 里的 `tests/supervise.rs` 最后一条，在临时的家里真起仓里 `.venv` 的 `ai4sci serve`（先 `make venv`），读那一行、问 `/health`、关掉标准输入后 5 秒内退出、端口放出来；后端那边改了约定，这里先红。
 - **手动走一遍**：像用户一样起（Mac 用 `open`，不要从开发的终端直接跑二进制，不然继承了终端的 PATH）。不装平台、只看外壳的话，让它起假的 `ai4sci`：
 
