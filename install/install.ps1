@@ -67,10 +67,11 @@ function Invoke-Logged([string]$exe, [string[]]$argv, [hashtable]$envs = @{}) {
   return $code
 }
 
-# uv 的环境：Python、平台本体、缓存都在家里，下载走国内源；装 Python 不往 ~\.local\bin 放入口
+# uv 的环境：Python、平台本体、缓存都在家里，下载走国内源；装 Python 不往 ~\.local\bin 放入口、
+# 不登记进注册表（登记了，删掉家以后注册表里还指着它，别的 uv 还会找到它，外层 #210 真机撞上）
 $UV_HOME = @{
   UV_PYTHON_INSTALL_DIR = (Join-Path $TOOLS 'python'); UV_PYTHON_INSTALL_MIRROR = $PYTHON_DOWNLOADS
-  UV_PYTHON_INSTALL_BIN = '0'; UV_DEFAULT_INDEX = $PYPI_INDEX
+  UV_PYTHON_INSTALL_BIN = '0'; UV_PYTHON_INSTALL_REGISTRY = '0'; UV_DEFAULT_INDEX = $PYPI_INDEX
   UV_CACHE_DIR = (Join-Path $HOME_DIR 'cache\uv')
   UV_TOOL_DIR = (Join-Path $TOOLS 'ai4sci'); UV_TOOL_BIN_DIR = $BIN
 }
@@ -106,7 +107,9 @@ try {
         default { Stop-Install 'uv' "Windows $arch 没有现成的安装包" }
       }
       Fetch "$DIST/uv/$UV_VERSION/uv-$triple.zip" (Join-Path $work 'uv.zip') 'uv'
-      Expand-Archive -Force (Join-Path $work 'uv.zip') (Join-Path $work 'uv')
+      # 不用 Expand-Archive：模块里的函数不认这里的 $ProgressPreference，会画一大片进度条
+      Add-Type -AssemblyName System.IO.Compression.FileSystem
+      [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $work 'uv.zip'), (Join-Path $work 'uv'))
       New-Item -ItemType Directory -Force (Join-Path $TOOLS 'uv') | Out-Null
       Copy-Item (Join-Path $work 'uv\*.exe') (Join-Path $TOOLS 'uv')
       $UV = $mine

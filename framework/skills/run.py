@@ -26,6 +26,9 @@ UV_RUN_ARGS = ("run", "--locked", "--script")
 UV_LOCK_CHECK_ARGS = ("lock", "--check", "--script")
 UV_CACHE_ENV = "UV_CACHE_DIR"
 PYTHON_DIR_ENV = "UV_PYTHON_INSTALL_DIR"
+# uv 装 Python 时别往家外面放东西：不在 ~/.local/bin 放入口、不登记进 Windows 注册表（登记了，删掉家
+# 以后注册表里还指着它，外层 #210 真机撞上）
+PYTHON_STAYS_HOME = {"UV_PYTHON_INSTALL_BIN": "0", "UV_PYTHON_INSTALL_REGISTRY": "0"}
 UV_SYNC_ARGS = ("sync", "--locked", "--script")
 
 
@@ -45,7 +48,7 @@ def uv_overlay() -> dict[str, str]:
     `~/.cache/uv`、不往 uv 的缺省位置装第二份 Python，清除缓存时一起走），下载走国内源（用户自己设了
     源的不盖，`mirrors.missing`）。本机建实验环境也用这一份（`experiment/env.py`）。"""
     return {UV_CACHE_ENV: str(paths.uv_cache_dir()), PYTHON_DIR_ENV: str(paths.python_dir()),
-            **mirrors.missing(os.environ)}
+            **PYTHON_STAYS_HOME, **mirrors.missing(os.environ)}
 
 
 def uv_env() -> dict[str, str]:

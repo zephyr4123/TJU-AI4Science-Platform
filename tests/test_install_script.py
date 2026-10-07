@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 
 from framework import mirrors, paths
+from framework.skills import run
 
 SCRIPT = Path(__file__).resolve().parents[1] / "install" / "install.sh"
 PS1 = SCRIPT.with_name("install.ps1")
@@ -61,6 +62,8 @@ def test_the_script_and_the_platform_agree_on_mirrors_and_places():
     for name in (paths.BIN_DIRNAME, paths.TOOLS_DIRNAME, paths.PYTHON_DIRNAME, paths.MARKER_NAME,
                  "\\".join(paths.UV_CACHE_PARTS)):
         assert f"'{name}'" in ps1, name
+    for name, value in run.PYTHON_STAYS_HOME.items():  # Python 不往家外面放东西
+        assert f"{name} = '{value}'" in ps1, name
 
 
 def _sha(path: Path) -> None:

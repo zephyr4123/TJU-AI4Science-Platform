@@ -537,6 +537,8 @@ def test_uv_keeps_its_python_in_the_home_and_downloads_from_domestic_mirrors(mon
     env = run.uv_env()
     assert env["UV_CACHE_DIR"] == str(paths.uv_cache_dir())
     assert env["UV_PYTHON_INSTALL_DIR"] == str(paths.python_dir())
+    # 家外面不留东西：不放入口、不登记 Windows 注册表（外层 #210）
+    assert env["UV_PYTHON_INSTALL_BIN"] == "0" and env["UV_PYTHON_INSTALL_REGISTRY"] == "0"
     assert env["UV_DEFAULT_INDEX"] == mirrors.PYPI_INDEX
     assert env["UV_PYTHON_INSTALL_MIRROR"] == mirrors.PYTHON_DOWNLOADS
     assert env["HF_ENDPOINT"] == mirrors.HF_ENDPOINT
