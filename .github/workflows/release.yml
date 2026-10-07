@@ -12,6 +12,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # CI 在国外：平台缺省从国内源下载（外层 #277），这里设回官方源（用户自己设了源的，平台不盖）
+    env:
+      UV_DEFAULT_INDEX: https://pypi.org/simple
+      UV_PYTHON_INSTALL_MIRROR: https://github.com/astral-sh/python-build-standalone/releases/download
     steps:
       - uses: actions/checkout@v4
         with:

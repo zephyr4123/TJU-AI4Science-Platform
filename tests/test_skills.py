@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from framework import paths, skills
+from framework import mirrors, paths, skills
 from framework.chat import guide
 from framework.cli import main
 from framework.skills import library, provenance, run, shelves
@@ -511,6 +511,21 @@ def test_pick_script_wants_a_name_only_when_there_are_several(tmp_path):
     none = library.load_skill(write_skill(tmp_path, "none"))
     with pytest.raises(library.SkillInvalid, match="没有脚本"):
         run.pick_script(none, None)
+
+
+def test_uv_keeps_its_python_in_the_home_and_downloads_from_domestic_mirrors(monkeypatch):
+    """外层 #277：平台起 uv 时缓存与 Python 都放在平台的家里，下载走国内源；用户自己设了源的
+    （CI 在国外，设回 PyPI）用他的。"""
+    for name in ("UV_DEFAULT_INDEX", "UV_INDEX_URL", "UV_PYTHON_INSTALL_MIRROR", "HF_ENDPOINT"):
+        monkeypatch.delenv(name, raising=False)
+    env = run.uv_env()
+    assert env["UV_CACHE_DIR"] == str(paths.uv_cache_dir())
+    assert env["UV_PYTHON_INSTALL_DIR"] == str(paths.python_dir())
+    assert env["UV_DEFAULT_INDEX"] == mirrors.PYPI_INDEX
+    assert env["UV_PYTHON_INSTALL_MIRROR"] == mirrors.PYTHON_DOWNLOADS
+    assert env["HF_ENDPOINT"] == mirrors.HF_ENDPOINT
+    monkeypatch.setenv("UV_DEFAULT_INDEX", "https://pypi.org/simple")
+    assert run.uv_env()["UV_DEFAULT_INDEX"] == "https://pypi.org/simple"
 
 
 def test_run_script_passes_args_through_and_returns_the_exit_code(tmp_path, capfd):

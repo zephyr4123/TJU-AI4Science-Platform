@@ -19,12 +19,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from framework import paths
+from framework import mirrors, paths
 from framework.skills.library import Skill, SkillInvalid, lock_path
 
 UV_RUN_ARGS = ("run", "--locked", "--script")
 UV_LOCK_CHECK_ARGS = ("lock", "--check", "--script")
 UV_CACHE_ENV = "UV_CACHE_DIR"
+PYTHON_DIR_ENV = "UV_PYTHON_INSTALL_DIR"
 UV_SYNC_ARGS = ("sync", "--locked", "--script")
 
 
@@ -39,11 +40,18 @@ def uv_argv() -> list[str]:
     return [sys.executable, "-m", "uv"]
 
 
+def uv_overlay() -> dict[str, str]:
+    """平台起 uv 时盖在环境上的几项：缓存与 Python 放在平台的家里（外层 #263 / #277：不写本机的
+    `~/.cache/uv`、不往 uv 的缺省位置装第二份 Python，清除缓存时一起走），下载走国内源（用户自己设了
+    源的不盖，`mirrors.missing`）。本机建实验环境也用这一份（`experiment/env.py`）。"""
+    return {UV_CACHE_ENV: str(paths.uv_cache_dir()), PYTHON_DIR_ENV: str(paths.python_dir()),
+            **mirrors.missing(os.environ)}
+
+
 def uv_env() -> dict[str, str]:
-    """起 uv 的环境：缓存指到平台的家（外层 #263：不写本机的 `~/.cache/uv`，清除时一起走）；去掉
-    VIRTUAL_ENV——脚本环境在 uv 的缓存里，不是平台 venv，留着它 uv 每次都打一行 warning 到 stderr，
-    agent 会当成出了错。"""
-    env = {**os.environ, UV_CACHE_ENV: str(paths.uv_cache_dir())}
+    """起 uv 的环境：`uv_overlay` 盖在本进程的环境上；去掉 VIRTUAL_ENV——脚本环境在 uv 的缓存里，
+    不是平台 venv，留着它 uv 每次都打一行 warning 到 stderr，agent 会当成出了错。"""
+    env = {**os.environ, **uv_overlay()}
     env.pop("VIRTUAL_ENV", None)
     return env
 
