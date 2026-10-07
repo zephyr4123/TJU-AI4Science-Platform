@@ -6,7 +6,6 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::Duration;
 
 use crate::contract::{MAC_LANG, SET_ENV, STRIPPED_ENV};
@@ -87,6 +86,7 @@ pub fn between_markers(output: &str) -> Option<&str> {
 #[cfg(unix)]
 pub async fn login_path(shell: &Path, timeout: Duration) -> Option<String> {
     use process_wrap::tokio::{CommandWrap, KillOnDrop, ProcessGroup};
+    use std::process::Stdio;
     use tokio::io::AsyncReadExt;
 
     let mut cmd = tokio::process::Command::new(shell);
