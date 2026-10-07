@@ -43,6 +43,10 @@ KEY_ATTEMPTS = 3
 LABEL_WIDTH = 14
 SERVE_WAIT_S = 30.0
 MAC_GIT_STUB = "/usr/bin/git"  # 没装命令行工具时它只会弹安装框
+# Windows 缺省一条路径最多 260 个字符（外层 #210）：项目深、包多时会撞上；开不开要管理员
+LONG_PATHS_KEY = r"SYSTEM\CurrentControlSet\Control\FileSystem"
+LONG_PATHS_FIX = (r"New-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem "
+                  "-Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force")
 
 
 def interactive() -> bool:
@@ -85,12 +89,29 @@ def git_ready() -> tuple[bool, str]:
     return False, "没装：用系统的包管理器装 git"
 
 
+def long_paths_hint() -> str | None:
+    """Windows 没开长路径就给一行管理员命令；不拦（多数课题撞不上），也不替人改系统设置。"""
+    if sys.platform != "win32":
+        return None
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, LONG_PATHS_KEY) as key:
+            if winreg.QueryValueEx(key, "LongPathsEnabled")[0] == 1:
+                return None
+    except OSError:
+        pass  # 没这一项就是没开
+    return f"没开（一条路径最多 260 个字符）：管理员 PowerShell 里跑一次 {LONG_PATHS_FIX}"
+
+
 def cmd_setup(args: argparse.Namespace) -> int:
     refused = refuse_if_assistant("装平台、填 key ")
     if refused is not None:
         return refused
     git_ok, note = git_ready()
     _line(git_ok, "git", note)
+    if (hint := long_paths_hint()) is not None:
+        print(f"  ! {'long paths':<{LABEL_WIDTH}}{hint}", flush=True)
     clis_ok = all([_cli(name) for name in available_backends()])
     model_ok = _model()
     done = git_ok and clis_ok and model_ok

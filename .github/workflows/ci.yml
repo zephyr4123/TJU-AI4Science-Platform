@@ -28,3 +28,25 @@ jobs:
           cache-dependency-path: ui/web/package-lock.json
       - name: 门禁（与本地 make check 完全相同）
         run: make check
+
+  # Windows 上只跑后端测试（外层 #210）：页面构建、make 与 skill 门禁不在 Windows 上做（开发平台用 Mac /
+  # Linux），这里证明的是装好的平台在 Windows 上的行为——进程树、编码、路径、Git Bash、install.ps1
+  windows:
+    runs-on: windows-latest
+    env:
+      UV_DEFAULT_INDEX: https://pypi.org/simple
+      UV_PYTHON_INSTALL_MIRROR: https://github.com/astral-sh/python-build-standalone/releases/download
+    steps:
+      # 用 wheel 的人拿到的文件是 LF（在 Linux 上打的包）；runner 缺省的 autocrlf 会把仓库检出成 CRLF
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: pytest
+        run: |
+          uv sync --locked
+          uv run pytest
