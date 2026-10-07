@@ -252,7 +252,15 @@ def key_args(link: Link) -> list[str]:
     tmp.write_text(link.key, encoding="utf-8")
     tmp.chmod(0o600)
     os.replace(tmp, path)
-    return ["--settings", json.dumps({"apiKeyHelper": f"cat {shlex.quote(str(path))}"})]
+    return ["--settings", json.dumps({"apiKeyHelper": _print_file(path)})]
+
+
+def _print_file(path: Path) -> str:
+    """把文件原样打到 stdout 的一条命令：CLI 在 Windows 上用 cmd.exe 跑 apiKeyHelper（2026-10-07
+    真机：`cat` 报「不是内部或外部命令」），那边是 `type "…"`，别处 `cat`（外层 #210）。"""
+    if procs.WINDOWS:
+        return f'type "{path}"'
+    return f"cat {shlex.quote(str(path))}"
 
 
 def prompt_file(link: Link, text: str) -> Path:

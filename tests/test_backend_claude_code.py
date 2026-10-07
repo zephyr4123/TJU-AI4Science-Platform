@@ -671,7 +671,9 @@ def test_the_key_reaches_the_cli_through_a_private_file_not_env_or_argv(tmp_path
     assert not any("sk-ds-secret" in a for a in argv)
     helper = json.loads(argv[argv.index("--settings") + 1])["apiKeyHelper"]
     key_file = link.home / KEY_FILE
-    assert helper == f"cat {shlex.quote(str(key_file))}"
+    # Windows 上 CLI 用 cmd.exe 跑它：type；别处 cat
+    printed = f'type "{key_file}"' if os.name == "nt" else f"cat {shlex.quote(str(key_file))}"
+    assert helper == printed
     assert key_file.read_text(encoding="utf-8") == "sk-ds-secret"
     # Windows 没有权限位：私有目录在本人的用户目录下，系统的 ACL 只给本人
     assert os.name == "nt" or stat.S_IMODE(key_file.stat().st_mode) == 0o600
