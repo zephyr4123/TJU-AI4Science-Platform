@@ -14,12 +14,15 @@ import re
 import shlex
 import sys
 import tempfile
+import time
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+import procs
 from backends import BackendNotFound, Link, Runner, RunResult, available_backends, get_backend
+from backends import claude_code as cc
 from backends._snapshot import diff, snapshot
 from backends.claude_code import (
     WEB_TOOLS,
@@ -376,6 +379,36 @@ def test_sessions_live_in_the_platform_home_not_the_persons_claude_dir(tmp_path:
     chat.forget(SID, cwd)
     assert not session.exists() and not (home / "session-env" / SID).exists()
     chat.forget(SID, cwd)  # 幂等
+
+
+def test_probe_reports_a_rejected_key_in_seconds_in_the_apis_own_words(tmp_path: Path,
+                                                                        monkeypatch):
+    """key 错了 CLI 也照 401 重试十次、退避两分多钟（2026-10-07 实测 2.1.292，`api_retry` 事件
+    error_status 401），自检等不到它的报错就超时：「key 不对」成了「120 秒没回话」，页面分不出该不该
+    弹「填 key」（外层 #282）。自检只说一句，少重试几次就报；报的是 API 自己那句，不是 stderr 里
+    CLI 的杂讯（用 DeepSeek 的模型时它每次都打一行 unrecognized_model）。"""
+    reply = "Failed to authenticate. API Error: 401 Authentication Fails, Your api key: ****0000"
+    (tmp_path / "bin").mkdir()
+    cli = fake_cli(tmp_path / "bin" / "claude", f"""import json, os, sys, time
+if sys.argv[1:] == ["--version"]:
+    print("2.1.292 (Claude Code)")
+    sys.exit(0)
+if "CLAUDE_CODE_MAX_RETRIES" not in os.environ:
+    time.sleep(30)  # 照真 CLI：401 也重试十次
+print(json.dumps({{"type": "system", "subtype": "init", "session_id": "s"}}))
+print(json.dumps({{"type": "result", "subtype": "success", "is_error": True,
+                  "api_error_status": 401, "result": {reply!r}}}))
+print('[claude-code:unrecognized_model] {{"model":"deepseek-flash[1m]"}}', file=sys.stderr)
+sys.exit(1)
+""")
+    monkeypatch.setattr(procs, "bash", lambda: "bash")  # Windows 上探测要 Git Bash
+    started = time.monotonic()
+    got = cc.probe(Link(home=tmp_path / "home", provider="deepseek", key="sk-0000", cli=cli),
+                   speak_timeout_s=20)
+    assert time.monotonic() - started < 15
+    name, ok, note = got.items[-1]
+    assert (name, ok) == ("说话", False) and not got.ok
+    assert "401 Authentication Fails" in note and "unrecognized_model" not in note
 
 
 def test_login_and_logout_run_in_the_platform_home(tmp_path: Path):
