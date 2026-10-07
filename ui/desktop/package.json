@@ -1,0 +1,14 @@
+{
+  "name": "aaai4s-desktop",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/run.mjs dev",
+    "check": "node scripts/run.mjs check",
+    "build": "node scripts/run.mjs build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.1"
+  }
+}
