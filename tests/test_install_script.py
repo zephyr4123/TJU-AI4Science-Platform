@@ -81,6 +81,17 @@ def test_install_ps1_has_no_two_variables_that_are_one():
     assert _case_clashes("$TOOLS = 'a'\n$tools = uv tool list\n$BIN\n") == [["TOOLS", "tools"]]
 
 
+# 5.1 里这几个是模块里的脚本函数，不是编进去的 cmdlet：从 pwsh（7）里再开 5.1 时会继承 7 的
+# PSModulePath，这几个就加载不到（GitHub 的 runner 撞上的，人在 pwsh 窗口里敲 powershell 也一样）
+SCRIPT_DEFINED_IN_51 = ("Get-FileHash", "Expand-Archive", "Compress-Archive", "New-TemporaryFile",
+                        "New-Guid", "Format-Hex", "Import-PowerShellDataFile")
+
+
+def test_install_ps1_only_uses_commands_built_into_51():
+    code = "\n".join(line.split("#", 1)[0] for line in PS1.read_text(encoding="utf-8").splitlines())
+    assert [name for name in SCRIPT_DEFINED_IN_51 if name in code] == []
+
+
 def _sha(path: Path) -> None:
     path.with_name(path.name + ".sha256").write_text(
         f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n", encoding="utf-8")

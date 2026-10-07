@@ -48,7 +48,11 @@ function Fetch([string]$url, [string]$dest, [string]$label) {
     Stop-Install $label "取不到 ${url}：$($_.Exception.Message)"
   }
   $want = ([IO.File]::ReadAllText("$dest.sha256")).Trim().Split()[0]
-  $got = (Get-FileHash -Algorithm SHA256 $dest).Hash
+  # 用 .NET 算，不用 Get-FileHash：5.1 里它是模块的脚本函数，从 pwsh 里开的 5.1 加载不到
+  $sha = [Security.Cryptography.SHA256]::Create()
+  $stream = [IO.File]::OpenRead($dest)
+  try { $got = -join ($sha.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') }) }
+  finally { $stream.Dispose(); $sha.Dispose() }
   if ($got -ne $want) { Stop-Install $label "$url 的 sha256 对不上，没装" }
 }
 

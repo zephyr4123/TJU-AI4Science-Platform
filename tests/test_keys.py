@@ -11,12 +11,14 @@ import pytest
 from framework import keys, paths
 
 
-def _only_the_owner_can_read(file) -> bool:
-    """POSIX 看权限位 0600；Windows 看 ACL：不继承、只有一条（本人）。"""
+def _not_only_the_owner(file) -> str:
+    """能读的不止本人就说出来（空串是只有本人）。POSIX 看权限位 0600；Windows 看 ACL：不继承、
+    只有一条（本人）。"""
     if os.name != "nt":
-        return stat.S_IMODE(file.stat().st_mode) == 0o600
+        mode = stat.S_IMODE(file.stat().st_mode)
+        return "" if mode == 0o600 else oct(mode)
     acl = subprocess.run(["icacls", str(file)], capture_output=True, check=True).stdout
-    return acl.count(b":(") == 1 and b"(I)" not in acl
+    return "" if acl.count(b":(") == 1 and b"(I)" not in acl else acl.decode("utf-8", "replace")
 
 
 def test_keys_round_trip_in_the_home_and_only_the_owner_can_read_them():
@@ -24,7 +26,7 @@ def test_keys_round_trip_in_the_home_and_only_the_owner_can_read_them():
     keys.put("deepseek", " sk-abcdef0123456789 ")
     keys.put("openalex", "oa-key-1234")
     file = paths.keys_file()
-    assert _only_the_owner_can_read(file)
+    assert _not_only_the_owner(file) == ""
     assert keys.get("deepseek") == "sk-abcdef0123456789"  # 粘贴带的空白去掉
     assert keys.load() == {"deepseek": "sk-abcdef0123456789", "openalex": "oa-key-1234"}
     keys.remove("openalex")
