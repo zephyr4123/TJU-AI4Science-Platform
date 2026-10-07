@@ -206,7 +206,7 @@ def _ruff_fix_imports(pack: Path) -> None:
         raise DraftFailed(
             f"ruff --fix-only 跑不起来（退出码 {proc.returncode}）："
             f"{proc.stderr.strip().splitlines()[-1:] or '无输出'}；"
-            "平台 venv 里要有 ruff（requirements.lock）"
+            "ruff 是平台的运行时依赖（pyproject.toml），重装平台"
         )
     if proc.stdout.strip():
         LOGGER.info("draft_ruff_fix pack=%s %s", pack, proc.stdout.strip().splitlines()[-1])
@@ -231,7 +231,7 @@ def _ruff(pack: Path) -> list[str]:
         raise DraftFailed(
             f"ruff 跑不起来（退出码 {proc.returncode}）："
             f"{proc.stderr.strip().splitlines()[-1:] or '无输出'}；"
-            "平台 venv 里要有 ruff（requirements.lock）"
+            "ruff 是平台的运行时依赖（pyproject.toml），重装平台"
         )
     # 路径一律写斜杠（Windows 上 ruff 报 `harness\\evaluate.py:1:1:`），喂回执行层与人看的是同一种
     return [_slashed(line) for line in proc.stdout.splitlines()

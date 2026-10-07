@@ -24,6 +24,10 @@
 - 协调层的指南不再放命令行：Claude Code 走 `--append-system-prompt-file`、Codex 走私有 home 里的 profile；正文走 stdin（Windows 一条命令行 32767 字，外层 #210）
 - 子进程与文本文件一律按 UTF-8 读写，平台起的 Python 设 UTF-8 模式，门禁扫漏写的 `encoding`（外层 #210）
 
+### 修复
+
+- 装的包里没有 ruff，设计作业封 harness 时报「No module named ruff」：ruff 从 dev 组挪进运行时依赖，门禁查框架 `python -m` 起的模块都在依赖里（外层 #210）
+
 ## [1.7.2] - 2026-10-07
 
 ### 修复

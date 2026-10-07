@@ -62,7 +62,7 @@ flowchart TB
 | 层 | 用什么 | 为什么 |
 |---|---|---|
 | 语言 | Python ≥ 3.12（`pyproject.toml`），本机与 CI 3.14；全部文件 `from __future__ import annotations` | |
-| 运行时依赖 | 只有 `pyyaml`、`jsonschema`、`uv`（`python -m uv` 调用） | 框架零模型调用、单人本机服务，标准库够用；加一个依赖要说清为什么标准库不够，并过「四看」（维护活跃度、社区规模、许可证、安全记录） |
+| 运行时依赖 | 只有 `pyyaml`、`jsonschema`、`uv` 与 `ruff`（后两个以 `python -m` 调用，`tests/test_packaging.py` 查用到的都在） | 框架零模型调用、单人本机服务，标准库够用；加一个依赖要说清为什么标准库不够，并过「四看」（维护活跃度、社区规模、许可证、安全记录） |
 | CLI | `argparse`，`cli/__init__.py` 逐行装配 | 没有注册表，diff 里一眼看到加了什么 |
 | HTTP | 标准库 `ThreadingHTTPServer` + 手写 SSE（`chat/server.py`） | 四十来个端点、本机单人，不值得引 web 框架 |
 | 配置文件 | YAML 一律 `safe_load`；JSON Schema Draft 2020-12（`experiment/schemas/`） | |
