@@ -9,10 +9,16 @@ again」）。这里用假 client 证明：失败了照 SDK 的说法再调、�
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
+import http.server
 import importlib.util
 import io
 import json
+import re
+import subprocess
+import threading
+import urllib.error
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -62,6 +68,10 @@ class FakeClient:
     def get_object(self, Bucket, Key):  # noqa: N803
         self.reads.append(Key)
         return {"Body": FakeBody(self.objects[Key][0])}
+
+    def download_file(self, Bucket, Key, DestFilePath):  # noqa: N803
+        self.reads.append(Key)
+        Path(DestFilePath).write_bytes(self.objects[Key][0])
 
     def upload_file(self, Bucket, Key, LocalFilePath, **headers):  # noqa: N803
         self.calls.append(Key)
@@ -293,3 +303,224 @@ def test_the_uv_version_for_the_desktop_build_comes_from_uv_lock(cdn, capsys):
     """桌面构建的 uv sidecar 照 uv.lock 的版本取（release.yml 调这个）。"""
     assert cdn.main(["uv-version"]) == 0
     assert capsys.readouterr().out.strip() == cdn.uv_version()
+
+
+def _shell_build(where: Path, v: str = "1.9.0") -> dict[str, Path]:
+    """tauri build 出的五样，已是 CDN 上的名字；两个更新包的内容就是测试签名签过的那几个字节。"""
+    where.mkdir(parents=True, exist_ok=True)
+    bodies = {f"AAAI4S_{v}_universal.dmg": b"dmg", "AAAI4S.app.tar.gz": SIGNED,
+              "AAAI4S.app.tar.gz.sig": SIGNATURE.encode(), f"AAAI4S_{v}_x64-setup.exe": SIGNED,
+              f"AAAI4S_{v}_x64-setup.exe.sig": SIGNATURE.encode()}
+    for name, body in bodies.items():
+        (where / name).write_bytes(body)
+    return {name: where / name for name in bodies}
+
+
+def _publish(cdn, client, where: Path, v: str, *, rewrite: bool, files=None):
+    """传一遍桌面包；CDN 回源到假桶，HEAD 照桶里那份答。"""
+    def head(url: str) -> tuple[int, int]:
+        found = client.objects.get(url.removeprefix(f"{cdn.CDN}/"))
+        return (200, len(found[0])) if found else (404, -1)
+
+    work = where / "work"
+    work.mkdir(parents=True)
+    return cdn.publish_desktop(v, "ai4science/dist", files or _shell_build(where / "build", v),
+                               client, retryable=(Flaky,), work=work, rewrite=rewrite,
+                               notes="这一版的说明", pubkey=TEST_PUBKEY, head=head,
+                               now=datetime(2026, 10, 20, 8, tzinfo=UTC))
+
+
+def test_the_build_outputs_are_found_by_their_endings_whatever_the_product_name(
+        cdn, tmp_path, capsys):
+    """download-artifact 按构建分目录放；tauri 出的名字跟 productName 走，CDN 上的名字是定的（spec
+    §7）。少一样、多一样（缓存里留下的旧包）都停，不猜。"""
+    mac = tmp_path / "desktop-macos-latest" / "universal-apple-darwin" / "release" / "bundle"
+    win = tmp_path / "desktop-windows-latest" / "release" / "bundle" / "nsis"
+    built = [mac / "dmg" / "Aaai4s_1.9.0_universal.dmg", mac / "macos" / "Aaai4s.app.tar.gz",
+             mac / "macos" / "Aaai4s.app.tar.gz.sig", win / "Aaai4s_1.9.0_x64-setup.exe",
+             win / "Aaai4s_1.9.0_x64-setup.exe.sig"]
+    for path in built:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(path.name.encode())
+    found = cdn.shell_files(tmp_path, "1.9.0")
+    assert {name: path.name for name, path in found.items()} == {
+        "AAAI4S_1.9.0_universal.dmg": "Aaai4s_1.9.0_universal.dmg",
+        "AAAI4S.app.tar.gz": "Aaai4s.app.tar.gz", "AAAI4S.app.tar.gz.sig": "Aaai4s.app.tar.gz.sig",
+        "AAAI4S_1.9.0_x64-setup.exe": "Aaai4s_1.9.0_x64-setup.exe",
+        "AAAI4S_1.9.0_x64-setup.exe.sig": "Aaai4s_1.9.0_x64-setup.exe.sig"}
+    (mac / "Old.app.tar.gz").write_bytes(b"old")
+    with pytest.raises(SystemExit):
+        cdn.shell_files(tmp_path, "1.9.0")
+    (mac / "Old.app.tar.gz").unlink()
+    built[3].unlink()
+    with pytest.raises(SystemExit):
+        cdn.shell_files(tmp_path, "1.9.0")
+    assert "_1.9.0_x64-setup.exe" in capsys.readouterr().err
+
+
+def test_an_official_shell_goes_up_version_dir_first_then_the_links_then_latest_json(
+        cdn, tmp_path):
+    """desktop/<版本>/ → 固定下载地址（短缓存、按附件下载）→ latest.json 最后传（spec §7）：更新器
+    读到新清单时包已经在了。两个 Mac 架构共用一个通用包；签名是 .sig 的全文。"""
+    client = FakeClient()
+    purged = _publish(cdn, client, tmp_path, "1.9.0", rewrite=True)
+    base = "ai4science/dist/desktop"
+    assert client.calls == [*(f"{base}/1.9.0/{name}" for name in _shell_build(tmp_path / "x")),
+                            f"{base}/AAAI4S.dmg", f"{base}/AAAI4S-setup.exe", f"{base}/latest.json"]
+    for link in ("AAAI4S.dmg", "AAAI4S-setup.exe"):
+        assert client.headers[f"{base}/{link}"]["ContentDisposition"] == "attachment"
+        assert client.headers[f"{base}/{link}"]["CacheControl"] == cdn.LATEST
+    manifest = json.loads(client.objects[f"{base}/latest.json"][0])
+    url = f"{cdn.CDN}/{base}/1.9.0"
+    mac = {"url": f"{url}/AAAI4S.app.tar.gz", "signature": SIGNATURE}
+    windows = {"url": f"{url}/AAAI4S_1.9.0_x64-setup.exe", "signature": SIGNATURE}
+    assert manifest == {"version": "1.9.0", "notes": "这一版的说明",
+                        "pub_date": "2026-10-20T08:00:00Z",
+                        "platforms": {"darwin-aarch64": mac, "darwin-x86_64": mac,
+                                      "windows-x86_64": windows}}
+    assert purged == [f"{cdn.CDN}/{base}/{name}"
+                      for name in ("AAAI4S.dmg", "AAAI4S-setup.exe", "latest.json")]
+
+
+def test_an_unchanged_shell_keeps_latest_json_and_an_rc_only_puts_up_its_version_dir(
+        cdn, tmp_path):
+    """外壳没改不往已装的人推，固定下载地址照样换成这一版；rc 不碰 latest.json 与固定下载地址。"""
+    client = FakeClient()
+    _publish(cdn, client, tmp_path / "same", "1.9.0", rewrite=False)
+    assert client.calls[5:] == ["ai4science/dist/desktop/AAAI4S.dmg",
+                                "ai4science/dist/desktop/AAAI4S-setup.exe"]
+    rc = FakeClient()
+    assert _publish(cdn, rc, tmp_path / "rc", "1.9.0-rc.1", rewrite=True) == []
+    assert len(rc.calls) == 5
+    assert all(key.startswith("ai4science/dist/desktop/1.9.0-rc.1/") for key in rc.calls)
+
+
+def test_a_rerun_after_a_rebuild_keeps_the_version_dir_already_in_the_bucket(cdn, tmp_path):
+    """重跑整个流水线会重新出包，字节与签名都和桶里那份不一样：desktop/<版本>/ 只写一次，固定下载
+    地址与 latest.json 照桶里那份来（spec §7）。只取回不一样的那几份：几十 MB 的包从上海取回美国的
+    runner，能不取就不取。"""
+    client = FakeClient()
+    _publish(cdn, client, tmp_path / "first", "1.9.0", rewrite=False)
+    rebuilt = _shell_build(tmp_path / "rebuilt")
+    rebuilt["AAAI4S_1.9.0_universal.dmg"].write_bytes(b"rebuilt dmg")
+    rebuilt["AAAI4S.app.tar.gz.sig"].write_text("rebuilt", encoding="utf-8")
+    client.calls.clear()
+    _publish(cdn, client, tmp_path / "second", "1.9.0", rewrite=True, files=rebuilt)
+    base = "ai4science/dist/desktop"
+    assert client.calls == [f"{base}/AAAI4S.dmg", f"{base}/AAAI4S-setup.exe", f"{base}/latest.json"]
+    assert client.reads == [f"{base}/1.9.0/AAAI4S_1.9.0_universal.dmg",
+                            f"{base}/1.9.0/AAAI4S.app.tar.gz.sig"]
+    assert client.objects[f"{base}/AAAI4S.dmg"][0] == b"dmg"
+    manifest = json.loads(client.objects[f"{base}/latest.json"][0])
+    assert manifest["platforms"]["darwin-aarch64"]["signature"] == SIGNATURE
+
+
+def test_latest_json_is_checked_before_it_goes_up(cdn, tmp_path, capsys):
+    """更新器先整份校验再比版本，坏一条所有平台都更新失败（spec §7）：键不齐、签名验不过、签名里的
+    版本不是清单的版本、CDN 上取不到或长度不对，都在传之前拦下。"""
+    files = _shell_build(tmp_path)
+    url = f"{cdn.CDN}/ai4science/dist/desktop/1.9.0"
+    local = {f"{url}/{name}": path for name, path in files.items()}
+
+    def head(target: str) -> tuple[int, int]:
+        return 200, local[target].stat().st_size
+
+    manifest = cdn.latest_json("1.9.0", "说明", url, files, datetime(2026, 10, 20, tzinfo=UTC))
+    cdn.check_latest(manifest, local, TEST_PUBKEY, head)
+    no_date = {key: value for key, value in manifest.items() if key != "pub_date"}
+    no_windows = copy.deepcopy(manifest)
+    del no_windows["platforms"]["windows-x86_64"]
+    bad_signature = copy.deepcopy(manifest)
+    bad_signature["platforms"]["windows-x86_64"]["signature"] = _edited(
+        SIGNATURE, "version:1.9.0", "version:1.9.1")
+    other_version = {**manifest, "version": "1.9.1"}
+    cases = [(no_date, head), (no_windows, head), (bad_signature, head), (other_version, head),
+             (manifest, lambda target: (200, head(target)[1] - 1)),
+             (manifest, lambda target: (404, -1))]
+    for broken, answer in cases:
+        with pytest.raises(SystemExit):
+            cdn.check_latest(broken, local, TEST_PUBKEY, answer)
+    assert capsys.readouterr().err.count("cdn: ") == len(cases)
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t",
+                    "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", *args],
+                   cwd=repo, check=True, capture_output=True)
+
+
+def test_latest_json_is_rewritten_only_when_the_shell_changed_since_the_version_on_the_cdn(
+        cdn, tmp_path, capsys):
+    """外壳改过才往已装的人推（ADR-0005）。基准是 CDN 上那一版、不是上一个 tag：1.8.2 换了图标
+    但那一版桌面构建失败，1.8.3 与上一个 tag 比没改，这次改动就永远推不出去。图标从品牌标生成，
+    算外壳；外壳的 README 不算。"""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    for tag, changes in (("v1.8.0", {"ui/desktop/src-tauri/main.rs": "1",
+                                     "ui/web/public/favicon.svg": "A", "framework/x.py": "1"}),
+                         ("v1.8.1", {"ui/desktop/README.md": "文档", "framework/x.py": "2"}),
+                         ("v1.8.2", {"ui/web/public/favicon.svg": "三色的 A"}),
+                         ("v1.8.3", {"framework/x.py": "3"}),
+                         ("v1.8.4", {"ui/desktop/src-tauri/main.rs": "2"})):
+        for name, text in changes.items():
+            (repo / name).parent.mkdir(parents=True, exist_ok=True)
+            (repo / name).write_text(text, encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", tag)
+        _git(repo, "tag", tag)
+    assert cdn.shell_changed(None, "v1.8.0", repo)[0]
+    assert not cdn.shell_changed("1.8.0", "v1.8.1", repo)[0]
+    assert cdn.shell_changed("1.8.0", "v1.8.3", repo)[0]
+    assert not cdn.shell_changed("1.8.2", "v1.8.3", repo)[0]
+    assert cdn.shell_changed("1.8.3", "v1.8.4", repo)[0]
+    assert not cdn.shell_changed("1.8.4", "v1.8.4", repo)[0]  # 同一版重跑
+    with pytest.raises(SystemExit):
+        cdn.shell_changed("0.1.0", "v1.8.4", repo)
+    assert "v0.1.0" in capsys.readouterr().err
+
+
+@pytest.fixture
+def site():
+    """本机一个 HTTP 服务：路径 → (状态码, 内容)，没登记的 404。"""
+    pages: dict[str, tuple[int, bytes]] = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802  http.server 的写法
+            status, body = pages.get(self.path, (404, b""))
+            self.send_response(status)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield pages, f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
+def test_the_base_is_what_the_cdn_serves_and_only_a_404_means_the_first_time(cdn, site):
+    """CDN 一时出错当成「第一次」，就会把 latest.json 改写成没改过外壳的这一版、白推一次
+    （spec §7）。"""
+    pages, url = site
+    pages["/latest.json"] = (200, b'{"version": "1.9.0"}')
+    pages["/broken.json"] = (502, b"")
+    assert cdn.latest_on_cdn(f"{url}/latest.json") == "1.9.0"
+    assert cdn.latest_on_cdn(f"{url}/missing.json") is None
+    with pytest.raises(urllib.error.HTTPError):
+        cdn.latest_on_cdn(f"{url}/broken.json")
+
+
+def test_an_rc_dry_run_lists_its_version_dir_and_writes_the_decision_to_the_job_summary(
+        cdn, tmp_path, monkeypatch, capsys):
+    build = tmp_path / "artifacts"
+    _shell_build(build, "1.9.0-rc.1")
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    assert cdn.main(["desktop", "v1.9.0-rc.1", "--artifacts", str(build), "--dry-run"]) == 0
+    listed = re.findall(r"ai4science/dist/desktop/\S+", capsys.readouterr().out)
+    assert listed == [f"ai4science/dist/desktop/1.9.0-rc.1/{name}" for name in
+                      _shell_build(tmp_path / "x", "1.9.0-rc.1")]
+    assert "latest.json" in summary.read_text(encoding="utf-8")
