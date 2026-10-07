@@ -175,8 +175,8 @@ def spawn_detached(argv: list[str], *, env: dict[str, str] | None,
     """起作业的根：以当前会话的 explorer 为父进程，再放进它自己那棵树的 Job。返回 pid 与要人知道的
     一句（没有 explorer 时为什么照旧起；空是没事）。"""
     shell, why = _shell()
-    if not shell:
-        LOGGER.warning("spawn_detached_without_shell why=%s argv0=%s", why, argv[0])
+    if not shell:  # 为什么交给调用方写进作业日志、记 WARNING；这里只留一行 info
+        LOGGER.info("spawn_detached_without_shell why=%s argv0=%s", why, argv[0])
         return _spawn_in_place(argv, env=env, cwd=cwd), (
             f"作业没能脱离起它的进程（{why}）：起它的那一轮或服务结束时，它可能被一起结束")
     attributes = None
