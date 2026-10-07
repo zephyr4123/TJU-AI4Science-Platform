@@ -160,9 +160,9 @@ def built_wheel(tag: str) -> tuple[Path, str]:
 
 def plan(tag: str, prefix: str, work: Path, *,
          sign: Callable[[Path], Path] | None = None) -> list[Item]:
-    """一份清单，先不可变的、最后最新的那几份；sha256 当场核对，不对就停。每一版都写一份带版本号的
-    `<ver>/platform.json`（外壳装那一版前照它核安装脚本），正式版再换最新的 `platform.json`（外壳拿它
-    判断有没有新版本，spec §3）；给了 sign 就签（--dry-run 不签）。"""
+    """一份清单，先不可变的、最后最新的那几份；sha256 当场核对，不对就停。每一版都写一份带版本号
+    的 `<ver>/platform.json`（外壳装那一版前照它核安装脚本），正式版再换最新的 `platform.json`
+    （外壳拿它判断有没有新版本，spec §3）；给了 sign 就签（--dry-run 不签）。"""
     wheel, version = built_wheel(tag)
     side = wheel.with_name(wheel.name + ".sha256")
     if side.read_text(encoding="utf-8").split()[0] != sha256(wheel):
