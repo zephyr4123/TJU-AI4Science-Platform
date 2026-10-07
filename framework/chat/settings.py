@@ -157,31 +157,55 @@ def snapshot(knobs: KnobsOf = agents.knobs_of, home: Path | None = None) -> dict
 
 
 def assistant(table: dict[str, Any]) -> dict[str, Any]:
-    """助理那家（对话用）现在能不能说话，只看它的 last_check（外层 #282）：算力、存放、执行层那家
-    没过都不算——不然 AutoDL 关机也弹「填 key」。没检查过是 unchecked；第一个没过的那项是登录，或说话
-    时 API 以 401 拒了 key，是 needs_key；别的没过（余额不足、没回话、没装）是 cannot_talk，原因照
-    自检的原话，DeepSeek 余额不足换成一句去哪充值。"""
+    """助理那家（对话用）现在能不能说话（外层 #282）：算力、存放、执行层那家没过都不算——不然
+    AutoDL 关机也弹「填 key」。`needs_key` 只给填一把 DeepSeek 的 key 就能好的情形（页面照它弹
+    那扇窗，试通会把两家都切到 DeepSeek）：助理用 DeepSeek 而 key 没填、被拒，或官方订阅还没登录过
+    （第一次打开）。别的要 key 的供应商 key 不对、官方订阅登录过期是 `cannot_talk`，原因说去哪改。
+    要 key 的供应商 key 不在，不等自检就是缺 key；其余照 last_check，没检查过是 unchecked。余额
+    不足、没回话、没装照自检的原话，DeepSeek 余额不足换成一句去哪充值。"""
     name = table["chat"]
     entry = next(e for e in table["entries"] if e["name"] == name)
+    provider = next((p for p in entry["providers"] if p["id"] == entry["provider"]), {})
+    title, key_name = provider.get("title", entry["provider"]), provider.get("key")
+    quick = entry["provider"] == agents.QUICKSTART_PROVIDER
+    keyed_state = NEEDS_KEY if quick else CANNOT_TALK
     check = entry["last_check"]
     row = {"agent": name, "provider": entry["provider"], "state": UNCHECKED, "reason": None,
-           "checked_at": None}
+           "checked_at": check.get("at") if check else None}
+    if key_name and keys.get(key_name) is None:
+        return {**row, "state": keyed_state, "reason": f"{title} 的 key 还没填：设置 → AI 里粘贴"}
     if not check:
         return row
-    row["checked_at"] = check.get("at")
     if check.get("ok"):
         return {**row, "state": READY}
     failed = next((i for i in check.get("items") or () if not i.get("ok")), {})
     item, note = str(failed.get("name") or ""), str(failed.get("note") or "没有结果")
-    title = next((p["title"] for p in entry["providers"] if p["id"] == entry["provider"]),
-                 entry["provider"])
     if item == LOGIN_ITEM:
-        return {**row, "state": NEEDS_KEY, "reason": note}
+        return {**row, "state": NEEDS_KEY if quick or not key_name else CANNOT_TALK, "reason": note}
     if _KEY_REJECTED.search(note):
-        return {**row, "state": NEEDS_KEY, "reason": f"{title} 不认这把 key：换一把再试"}
-    if entry["provider"] == agents.QUICKSTART_PROVIDER and _NO_BALANCE.search(note):
+        if not key_name:
+            return {**row, "state": CANNOT_TALK,
+                    "reason": f"{title}：登录过期了，终端里运行 {entry['login']}"}
+        where = "换一把再试" if quick else "设置 → AI 里换一把"
+        return {**row, "state": keyed_state, "reason": f"{title} 不认这把 key：{where}"}
+    if quick and _NO_BALANCE.search(note):
         note = f"{title} 余额不足：去 {agents.QUICKSTART_SITE} 充值"
     return {**row, "state": CANNOT_TALK, "reason": note}
+
+
+def put_key(name: str, value: str, knobs: KnobsOf = agents.knobs_of,
+            home: Path | None = None) -> dict[str, Any]:
+    """存一把 key，用它的那几家上次自检的结论作废（页面会再探一次），回新的整份。"""
+    keys.put(name, value)
+    agents.forget_checks(name, knobs)
+    return snapshot(knobs, home)
+
+
+def remove_key(name: str, knobs: KnobsOf = agents.knobs_of,
+               home: Path | None = None) -> dict[str, Any]:
+    keys.remove(name)
+    agents.forget_checks(name, knobs)
+    return snapshot(knobs, home)
 
 
 def problems(snap: dict[str, Any] | None = None, knobs: KnobsOf = agents.knobs_of,

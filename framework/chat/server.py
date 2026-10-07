@@ -694,11 +694,11 @@ class Handler(BaseHTTPRequestHandler):
                 name, value = body.get("name"), body.get("value")
                 if not isinstance(name, str) or not isinstance(value, str):
                     return self._error(HTTPStatus.BAD_REQUEST, "要带 name 与 value（字符串）")
-                keys.put(name, value)
-                return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+                return self._json(settings.put_key(name, value, self.server.knobs_of,
+                                                   self.server.home))
             if len(rest) == 3 and rest[0] == "keys" and rest[2] == "remove":
-                keys.remove(rest[1])
-                return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+                return self._json(settings.remove_key(rest[1], self.server.knobs_of,
+                                                      self.server.home))
             if rest == ["quickstart"]:
                 key = body.get("key")
                 if not isinstance(key, str):

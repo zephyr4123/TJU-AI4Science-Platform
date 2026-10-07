@@ -319,6 +319,8 @@ def use(name: str, *, roles: tuple[str, ...] = (), provider: str | None = None,
         if new != entry.provider or picked.models != knobs(name).models:
             entry.model, entry.effort = picked.model, picked.effort
             entry.last_check = None  # 上次检查的是别的供应商，不作数了
+        elif url != entry.base_url:
+            entry.last_check = None  # 自定义的地址换了：检查的是原来那个地方
         entry.provider = new
         entry.base_url, entry.models = (url, names) if new == CUSTOM else ("", ())
     else:
@@ -332,6 +334,16 @@ def use(name: str, *, roles: tuple[str, ...] = (), provider: str | None = None,
         setattr(registry, role, name)
     save(registry)
     return entry
+
+
+def forget_checks(key_name: str, knobs: KnobsOf = knobs_of) -> None:
+    """这把 key 换了、删了：用它的那几家上次自检的结论不作数了（外层 #282 审查）。"""
+    registry = load(knobs)
+    for entry in registry.entries.values():
+        used = provider_of(entry.name, entry.provider, entry.base_url, entry.models).key
+        if used == key_name and entry.last_check is not None:
+            entry.last_check = None
+    save(registry)
 
 
 def record_check(name: str, probe: AgentProbe, knobs: KnobsOf = knobs_of) -> Entry:
