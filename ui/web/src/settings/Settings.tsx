@@ -2,7 +2,8 @@
 // 样式跟全站）。点地方栏的「设置」不换地方，弹一个玻璃大窗：左栏按分类列——常规；AI 下每家一项；能力下文献检索；
 // 平台下算力、存放——点一项右边出那一页，页里按小标题分节、一项一行（`kit.tsx`）。哪项上次检查没过，项后一枚红点。
 // 窄屏窗铺满，先是分类清单，点进去一页，左上「‹ 设置」回清单。一切改动即刻写回平台的家里的清单（外层 #263）。
-// 页面一起来就取的那一份也给「助理还不能说话」那扇窗（`KeyPrompt`，外层 #282）：助理那家缺 key 时弹，设置窗开着时不弹。
+// 页面一起来就取的那一份也给「助理还不能说话」那扇窗（`KeyPrompt`，外层 #282）：助理那家缺 key 时弹，设置窗开着时不弹；
+// 切回窗口时重读一份，key 在页面外面填好了窗自己关。
 import { Books, CaretLeft, CaretRight, Database, GearSix, HardDrives, X } from '@phosphor-icons/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
@@ -72,9 +73,20 @@ export function Settings({ open, onOpenChange, onChanged }: {
   const [inside, setInside] = useState(false)
 
   // 页面一起来就先取一份，点开时已经在手上；每次打开再重读（上次那份先摆着，不闪）
-  useEffect(() => {
+  const reload = useCallback(() => {
     api.settings().then((next) => { setDoc(next); setError(null) }).catch((exc: unknown) => setError(exc instanceof Error ? exc.message : String(exc)))
-  }, [open])
+  }, [])
+  useEffect(reload, [open, reload])
+  // 切回这个窗口也重读：四种用法共用一份后端，key 可能刚在终端里（`ai4sci setup`）或另一个页面里填过，弹着的窗该自己关
+  useEffect(() => {
+    const back = () => { if (!document.hidden) reload() }
+    window.addEventListener('focus', back)
+    document.addEventListener('visibilitychange', back)
+    return () => {
+      window.removeEventListener('focus', back)
+      document.removeEventListener('visibilitychange', back)
+    }
+  }, [reload])
 
   const act = useCallback(async (key: string, run: () => Promise<SettingsDoc>, judge?: (doc: SettingsDoc) => boolean) => {
     setBusy(key)

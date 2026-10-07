@@ -11,7 +11,7 @@
 ### 新增
 
 - 桌面 App（`ui/desktop/`，Tauri）：Mac 通用包与 Windows 安装包，第一次打开装好平台、在页面里问 key；后端随 wheel 升级，外壳走自带的更新器；源码跑 `make desktop`（外层 #282）
-- 页面「助理还不能说话」：助理那家缺 key 时弹窗粘 DeepSeek 的 key、当场试通；`/settings` 加 `assistant`，新端点 `POST /settings/quickstart`（外层 #282）
+- 页面「助理还不能说话」：助理那家缺 key 时弹窗粘 DeepSeek 的 key、当场试通；切回窗口时重读设置，在终端或别的页面里填好 key 窗自己关；`/settings` 加 `assistant`，新端点 `POST /settings/quickstart`（外层 #282）
 - `ai4sci setup --no-input`：不问、不探模型、不开浏览器，不接终端时打下载进度；`ai4sci serve --until-stdin-closes`；`/health` 加 `turns`（外层 #282 #285）
 - 安装脚本认 `AI4SCI_NO_SETUP`、`AI4SCI_WHEEL_SHA256`；平台开着时退 75（Mac 补上这项检查）；升级先装进暂存目录、成了再换，中途断网旧的照样能用（外层 #282）
 - 发版出桌面包、签名的 `platform.json` 与带版本号的 `install.ps1`；`cdn.py` 改成子命令（`sign` `wheel` `desktop` `cert` `uv-version`），依赖锁进 `cdn.py.lock`；CI 加 desktop 作业（外层 #282）
