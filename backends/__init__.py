@@ -17,6 +17,7 @@ from __future__ import annotations
 import importlib
 import json
 import math
+import shutil
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from functools import cache
@@ -26,9 +27,9 @@ from typing import Any, Protocol, runtime_checkable
 __all__ = ["RunResult", "Runner", "ChatEvent", "Choice", "Tuning", "Knobs", "Chat", "AgentProbe",
            "Usage", "Price", "Provider", "Link", "Dist", "Install", "OFFICIAL", "CUSTOM",
            "INSTALLED_ITEM", "VERSION_ITEM", "LOGIN_ITEM",
-           "KeyMissing", "BackendNotFound", "get_backend", "get_chat", "probe", "login_command",
-           "logout_command", "install_of", "read_usage", "price", "prices", "providers",
-           "provider_of", "available_backends"]
+           "KeyMissing", "AgentMissing", "BackendNotFound", "require_cli", "get_backend",
+           "get_chat", "probe", "login_command", "logout_command", "install_of", "read_usage",
+           "price", "prices", "providers", "provider_of", "available_backends"]
 
 
 @dataclass
@@ -189,6 +190,19 @@ class Install:
 
 class KeyMissing(ValueError):
     """选了要 key 的供应商、平台的家里却没有这把 key：一句话说去设置里填。"""
+
+
+class AgentMissing(FileNotFoundError):
+    """这家 CLI 找不到（家里没装、PATH 上也没有）：一句给人看的话，不起进程。"""
+
+
+def require_cli(name: str, cli: str) -> None:
+    """起这家 CLI 之前先找它（外层 #282）：外壳、计划任务起的服务拿到的 PATH 与终端里的不一样，
+    找不到时 Popen 抛的是英文 errno，页面上是 500。设置页的「检查」会说该敲哪条命令装上（命令由框架
+    补，适配器不知道人该敲哪一份 `ai4sci`）。"""
+    if shutil.which(cli) is None:
+        raise AgentMissing(f"{TITLES.get(name, name)} 没装上：找不到 `{cli}`。"
+                           "设置 → AI 里点「检查」看怎么装，或换一家")
 
 
 @dataclass(frozen=True)

@@ -444,6 +444,18 @@ else:
     assert (link.home / "tmp" / "--version").is_file()
 
 
+def test_a_missing_cli_is_one_sentence_not_a_crash(link: Link, tmp_path):
+    """外层 #282：CLI 找不到不是 500 加英文 errno：对话那一轮一条人话，执行层抛 AgentMissing。"""
+    from backends import AgentMissing
+
+    gone = replace(link, cli=str(tmp_path / "nope" / "codex"))
+    events = list(cx.CodexChat(gone).turn("hi", tmp_path, 5, session_id=None, system_prompt="",
+                                          allowed_paths=[], bash_rules=()))
+    assert [e.kind for e in events] == ["error"] and events[0].text.startswith("Codex 没装上")
+    with pytest.raises(AgentMissing, match="Codex 没装上"):
+        cx.CodexRunner(gone).run("hi", tmp_path, 5, [tmp_path])
+
+
 def test_probe_is_reachable_through_the_port(link: Link, home: Path, monkeypatch, tmp_path):
     """`backends.probe("codex")` 调的是模块级 `probe()`：形状对不上要在端口那层炸。"""
     cli = _fake_codex(tmp_path / "bin")

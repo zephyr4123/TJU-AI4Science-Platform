@@ -683,6 +683,25 @@ def test_cap_analysis_runs_the_capability_with_the_named_backend(tmp_path, monke
     assert "from\texperiment/1" in shown.stdout
 
 
+def test_cap_says_which_agent_is_not_installed_instead_of_a_platform_bug(tmp_path, monkeypatch,
+                                                                         capsys):
+    """外层 #282：外壳起的服务 PATH 与终端里的不一样，执行层的 CLI 可能找不到。这是研究者要处理的
+    事，不是平台的 bug：产出记失败、原因是那句人话，退出码 1。"""
+    from backends import AgentMissing
+    from framework.cli import main
+
+    run_dir, pack = rf.make_run(tmp_path)
+    env_of(pack, monkeypatch)
+    runner = ScriptedRunner([], raise_at=1,
+                            exception=AgentMissing("Claude Code 没装上：找不到 `claude`"))
+    monkeypatch.setattr("framework.agents.runner", lambda name: runner)
+    assert main(["cap", "analysis", "--from", "experiment/1"]) == EXIT_INVALID
+    err = capsys.readouterr().err
+    assert err.startswith("Claude Code 没装上") and "平台内部错误" not in err
+    meta = output.read_meta(pack.workspace.root / "analysis" / "1")
+    assert meta.status == "failed" and "没装上" in meta.error
+
+
 # ── output new：助理不经能力开产出 ─────────────────────────────────────────
 def test_output_new_opens_a_directory_for_hand_written_outputs(tmp_path):
     pack = pf.make_pack(tmp_path)

@@ -132,8 +132,9 @@ def test_runner_uses_the_same_env_as_chat_so_bare_ai4sci_resolves(monkeypatch, t
 
     monkeypatch.setattr("backends.claude_code.spawn", fake_popen)
     monkeypatch.setenv("PATH", "/usr/bin")
+    present = Link(home=HOME, cli=sys.executable)  # 起之前要找得到它；起的那一步换成了假的
     with pytest.raises(RuntimeError, match="没有 result 事件"):
-        ClaudeCodeRunner(LINK).run("hi", tmp_path, 7.0, [tmp_path])
+        ClaudeCodeRunner(present).run("hi", tmp_path, 7.0, [tmp_path])
     env = seen["env"]
     assert env["PATH"].endswith(str(Path(sys.executable).parent))
     assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
@@ -693,6 +694,21 @@ def test_a_missing_key_says_where_to_fill_it_instead_of_starting_the_cli():
                   .turn("hi", Path("/tmp"), 5, session_id=None, system_prompt="",
                         allowed_paths=[], bash_rules=()))
     assert [e.kind for e in events] == ["error"] and "设置" in events[0].text
+
+
+def test_a_missing_cli_is_one_sentence_not_a_crash(tmp_path):
+    """外层 #282：外壳、计划任务起的服务拿到的 PATH 与终端里的不一样，CLI 找不到时 Popen 抛的是英文
+    errno，页面上是 500。对话那一轮吐一条人话的错误，执行层抛 AgentMissing，都不起进程。"""
+    from backends import AgentMissing
+    from backends.claude_code import ClaudeCodeChat
+
+    gone = Link(home=tmp_path / "cc", cli=str(tmp_path / "nope" / "claude"))
+    events = list(ClaudeCodeChat(gone).turn("hi", tmp_path, 5, session_id=None,
+                                            system_prompt="", allowed_paths=[], bash_rules=()))
+    assert [e.kind for e in events] == ["error"] and events[0].is_error
+    assert events[0].text.startswith("Claude Code 没装上：找不到")
+    with pytest.raises(AgentMissing, match="Claude Code 没装上"):
+        ClaudeCodeRunner(gone).run("hi", tmp_path, 5, [tmp_path])
 
 
 def test_models_follow_the_provider_and_third_party_ids_go_straight_to_the_cli(tmp_path):

@@ -94,6 +94,7 @@ from backends import (
     LOGIN_ITEM,
     OFFICIAL,
     VERSION_ITEM,
+    AgentMissing,
     AgentProbe,
     ChatEvent,
     Choice,
@@ -107,6 +108,7 @@ from backends import (
     Tuning,
     Usage,
     price,
+    require_cli,
 )
 from backends._snapshot import diff, snapshot
 from backends._stdin import feed
@@ -502,6 +504,7 @@ class CodexRunner:
             tuning: Tuning | None = None, max_turns: int | None = None,
             max_budget_usd: float | None = None) -> RunResult:
         # max_turns / max_budget_usd：Codex 没有这两个闸（文档与 --help 都没有），超时是唯一的闸
+        require_cli(NAME, self.cli)  # 找不到就抛 AgentMissing：一句人话，不是 Popen 的英文 errno
         home = codex_home(self.link, "executor")
         before = snapshot(cwd)
         argv = self.build_argv(cwd, allowed_paths, bash_rules, tuning, home=home)
@@ -693,7 +696,9 @@ class CodexChat:
             argv = self.build_argv(cwd, session_id=session_id, system_prompt=system_prompt,
                                    allowed_paths=allowed_paths, bash_rules=bash_rules,
                                    tuning=tuning, home=home)
-        except KeyMissing as exc:  # 选了要 key 的供应商却没填：这一轮说清楚，不起 CLI
+            require_cli(NAME, self.cli)
+        # 选了要 key 的供应商却没填、CLI 没装上：这一轮说清楚，不起 CLI
+        except (KeyMissing, AgentMissing) as exc:
             yield ChatEvent("error", text=str(exc), is_error=True)
             return
         err: list[str] = []
