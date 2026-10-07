@@ -1,8 +1,9 @@
 """清除平台的家（外层 #263，主人 2026-10-06：用户带着干净的环境进来，想清除时一把删干净）。
 
 `ai4sci reset` 与设置页「清除全部数据」都走 `reset()`：先让两家 CLI 在平台的私有目录里登出——
-Claude Code 的登录记在系统钥匙串里（按配置目录分开），只删目录会留下那一条——再整个删掉家，
-留一个只有标记的空家：回到刚装好的样子（`AI4SCI_HOME` 指的目录也还在，下次起得来）。
+Claude Code 的登录记在系统钥匙串里（按配置目录分开），只删目录会留下那一条——再删掉家里的一切，
+只留标记与一行命令装的程序（`bin/` `tools/`，外层 #277）：回到刚装好的样子（`AI4SCI_HOME` 指的
+目录也还在，下次起得来）。卸载是删整个家，不归这里。
 
 三道闸，任何一道不过都不删（ResetRefused，一句给人看的话）：
 - 家里要有平台放的标记（`paths.MARKER_NAME`）：`AI4SCI_HOME` 指错了（指到 `~`、指到别人的目录）
@@ -25,6 +26,8 @@ from framework.workspace import jobs, project
 
 LOGGER = logging.getLogger("ai4sci.reset")
 LOGOUT_TIMEOUT_S = 60
+# 清除不碰的：家的标记与一行命令装的程序（外层 #277）
+KEPT = frozenset({paths.MARKER_NAME, paths.BIN_DIRNAME, paths.TOOLS_DIRNAME})
 
 # 谁来给登出命令：缺省是真适配器（测试里换成不碰 CLI 的）
 Logout = Callable[[str], tuple[list[str], dict[str, str]]]
@@ -57,7 +60,7 @@ def check(home: Path) -> None:
 
 
 def reset(home: Path, logout: Logout = agents.logout_command) -> list[str]:
-    """登出两家、清空整个家；返回做了什么（一行一件，给人看）。"""
+    """登出两家、清空家里除 `KEPT` 以外的一切；返回做了什么（一行一件，给人看）。"""
     home = Path(home).resolve()
     check(home)
     done: list[str] = []
@@ -74,9 +77,13 @@ def reset(home: Path, logout: Logout = agents.logout_command) -> list[str]:
         done.append(f"{name}：{'已登出' if proc.returncode == 0 else '没有可登出的'}"
                     f"{('（' + note + '）') if note else ''}")
         LOGGER.info("reset_logout backend=%s exit=%s", name, proc.returncode)
-    shutil.rmtree(home)
-    home.mkdir()
-    paths.mark(home)
+    for child in home.iterdir():
+        if child.name in KEPT:
+            continue
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
     done.append(f"已清空 {home}")
     LOGGER.info("reset_done home=%s", home)
     return done
