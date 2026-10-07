@@ -194,8 +194,11 @@ def _run(script: Path, home: Path, dist: Path, extra_path: str = "", **extra: st
 def _uv_sha256(tmp_path: Path, uv: str) -> str:
     """照发版那样写进脚本的 uv 发布包 sha256（`<平台>=<sha256>`，空格分隔）：取 tmp 下假 CDN 里已经
     放好的那几个包的 .sha256。"""
-    return " ".join(f"{side.name.removeprefix('uv-').split('.')[0]}={side.read_text().split()[0]}"
-                    for side in sorted((tmp_path / "dist" / "uv" / uv).glob("*.sha256")))
+    pairs = []
+    for side in sorted((tmp_path / "dist" / "uv" / uv).glob("*.sha256")):
+        triple = side.name.removeprefix("uv-").split(".")[0]
+        pairs.append(f"{triple}={side.read_text(encoding='utf-8').split()[0]}")
+    return " ".join(pairs)
 
 
 def _script(tmp_path: Path, version: str, uv: str = "0.0.0-test") -> Path:
