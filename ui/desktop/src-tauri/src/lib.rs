@@ -2,4 +2,11 @@
 //! 不另起后端。外壳只依赖 `contract.rs` 里的后端约定，不认识框架内部。
 
 pub mod contract;
+pub mod env;
+pub mod http;
+pub mod logfile;
+pub mod manifest;
+pub mod places;
+pub mod progress;
+pub mod state;
 pub mod version;
