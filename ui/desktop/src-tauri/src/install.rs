@@ -129,7 +129,7 @@ async fn fetch_script(
     let bytes = tokio::time::timeout(SCRIPT_TIMEOUT, get)
         .await
         .map_err(|_| format!("{} 秒内没取到 {url}", SCRIPT_TIMEOUT.as_secs()))?
-        .map_err(|error| format!("取不到 {url}：{error}"))?;
+        .map_err(|error| format!("取不到 {url}：{}", error.without_url()))?;
     match &target.script_sha256 {
         Some(want) if &sha256_hex(&bytes) != want => {
             Err(format!("{url} 的 sha256 与签名清单对不上，没跑"))

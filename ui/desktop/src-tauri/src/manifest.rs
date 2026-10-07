@@ -92,13 +92,13 @@ pub async fn fetch(client: &reqwest::Client, dist: &Url, pubkey: &str) -> Result
             .get(url.clone())
             .send()
             .await
-            .map_err(|error| format!("取不到 {url}：{error}"))?;
+            .map_err(|error| format!("取不到 {url}：{}", error.without_url()))?;
         let resp = resp
             .error_for_status()
-            .map_err(|error| format!("取不到 {url}：{error}"))?;
+            .map_err(|error| format!("取不到 {url}：{}", error.without_url()))?;
         resp.bytes()
             .await
-            .map_err(|error| format!("取不到 {url}：{error}"))
+            .map_err(|error| format!("取不到 {url}：{}", error.without_url()))
     };
     let both = async { tokio::try_join!(get(MANIFEST_NAME), get(MANIFEST_SIG_NAME)) };
     let (body, sig) = tokio::time::timeout(FETCH_TIMEOUT, both)
