@@ -27,7 +27,7 @@ from typing import Any
 import yaml
 
 from framework.contracts.stages import STAGE_SLUGS, is_slug
-from framework.files import write_atomic
+from framework.files import read_text, write_atomic
 
 META_NAME = "meta.yaml"
 SIGNED_NAME = "signed.json"
@@ -141,7 +141,7 @@ def read_meta(output_dir: Path) -> Meta:
     path = meta_path(output_dir)
     if not path.is_file():
         raise OutputNotFound(f"不是产出目录（没有 {META_NAME}）：{output_dir}")
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    raw = yaml.safe_load(read_text(path))
     if not isinstance(raw, dict):
         raise ValueError(f"{path} 顶层不是映射")
     inputs = [Input(**i) for i in raw.pop("from", []) or []]
@@ -217,7 +217,7 @@ def read_signed(output_dir: Path) -> dict[str, Any] | None:
     path = signed_path(output_dir)
     if not path.is_file():
         return None
-    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc = json.loads(read_text(path))
     for key in ("by", "signed_at", "sha256"):
         if key not in doc:
             raise ValueError(f"{path} 缺 {key}，不是一份签字记录")

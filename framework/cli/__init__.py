@@ -4,12 +4,12 @@
 产出目录）、`requirement confirm` / `sign` 人的确认、`show` 查询（只读）、`flow` 取流程与删实例、
 `output` 建产出与删、`job stop` 停作业、`env` 环境清单（resolve / use / add）、`compute` 接机器
 （P-23）、`agent` 与 `check` 底座与自检（P-25）、`skill` 工具包（两层 agent 都能用，P-22）、
-`project` / `workspace` / `chat` / `serve` 入口。每类一个模块，本文件只做两件事：把它们的 parser
-装配起来、导出 `main`。
+`project` / `workspace` / `chat` / `serve` 入口、`setup` 装好平台以后接着做的事（外层 #277）。
+每类一个模块，本文件只做两件事：把它们的 parser 装配起来、导出 `main`。
 四层里的最上面一层，可以 import 下面任何一层；反过来没有任何一层认识 CLI。
 
 每条子命令只干一件事、跑完就退，用退出码表态，不常驻、不等人（P-10）；
-唯一例外是 `serve`，它是网页的门，常驻：
+例外是 `serve`（网页的门，常驻）与 `setup`（人第一次装好时跑：在终端里问 key，最后起 `serve`）：
 
     0  通过
     1  没通过（问题一行一条打到 stderr）
@@ -19,8 +19,12 @@
 from __future__ import annotations
 
 import argparse
+import io
+import os
 import sys
+from importlib import metadata
 
+from framework import paths, toolchain
 from framework.cli import (
     agent,
     cap,
@@ -35,6 +39,7 @@ from framework.cli import (
     requirement,
     reset,
     serve,
+    setup,
     show,
     sign,
     skill,
@@ -46,6 +51,8 @@ __all__ = ["build_parser", "main"]
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ai4sci", description="TJU AI for Science 平台 CLI")
+    # 一行命令重跑时拿它判平台是不是已经是这一版（外层 #277）
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_version()}")
     groups = parser.add_subparsers(dest="group", required=True)
     # 加一条子命令 = 加一个模块 + 这里加一行：没有注册表，diff 里一眼能看到（P-8）
     cap.add_parser(groups)
@@ -64,12 +71,33 @@ def build_parser() -> argparse.ArgumentParser:
     workspace.add_parser(groups)
     chat.add_parser(groups)
     serve.add_parser(groups)
+    setup.add_parser(groups)
     reset.add_parser(groups)
     return parser
 
 
+def _version() -> str:
+    try:
+        return metadata.version(paths.CLI_NAME)
+    except metadata.PackageNotFoundError:  # 没装成包、只把源码放在 PYTHONPATH 上跑
+        return "未知"
+
+
 def main(argv: list[str] | None = None) -> int:
+    _utf8()
+    toolchain.use_private_git()  # Windows 上家里装的 Git（外层 #210）
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
     args.argv = argv  # 原样的命令行：`cap ... --detach` 要把同一条命令起成作业
     return int(args.func(args))
+
+
+def _utf8() -> None:
+    """平台的输入输出与它起的 Python 一律 UTF-8（外层 #210）：中文 Windows 上标准输出接到管道
+    或文件时 Python 按 GBK 编码，打印 GBK 里没有的字（²、✓）当场崩；skill、harness、作业这些平台
+    起的 Python 也设 UTF-8 模式，`open()` 与打印和 macOS / Linux 上一样。人自己设了 PYTHONUTF8 的
+    照他的。"""
+    os.environ.setdefault("PYTHONUTF8", "1")
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper) and stream.encoding.lower() != "utf-8":
+            stream.reconfigure(encoding="utf-8", errors="replace")

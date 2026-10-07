@@ -62,7 +62,8 @@ def test_harness_runs_in_the_run_venv_not_the_platform_one(tmp_path):
     run_dir = open_run(pack)
     runner = ScriptedRunner([{"code/train.py": RECORDING_TRAIN_PY}])
     run_loop(run_dir, runner, LocalCompute(), max_iters=1)
-    preds = json.loads((layout.iter_run(run_dir, 1) / "predictions.json").read_text("utf-8"))
+    text = (layout.iter_run(run_dir, 1) / "predictions.json").read_text(encoding="utf-8")
+    preds = json.loads(text)
     assert Path(preds["python"]).resolve() == layout.venv_python(run_dir).resolve()
 
 

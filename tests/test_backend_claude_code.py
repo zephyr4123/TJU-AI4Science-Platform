@@ -10,9 +10,11 @@ from __future__ import annotations
 import json
 import math
 import os
-import subprocess
+import re
+import shlex
 import sys
-import time
+import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -24,10 +26,11 @@ from backends.claude_code import (
     ClaudeCodeRunner,
     build_env,
     final_metrics,
-    kill_tree,
     parse_events,
+    rule_path,
 )
 from framework import paths
+from tests.fixtures.fake_cli import fake_cli
 
 # 测试里的私有目录：只拼 argv、环境的用不着它真在；真 CLI 的测试用平台家里那份（要先在平台里登录过）
 HOME = Path("/nonexistent/ai4sci-home/claude_code")
@@ -68,27 +71,27 @@ def test_backend_not_found_lists_available_names():
 def test_argv_turns_allowed_paths_into_absolute_tool_rules(tmp_path: Path):
     code = tmp_path / "code"
     code.mkdir()
-    argv = ClaudeCodeRunner(LINK).build_argv("改点东西", tmp_path, [code])
+    argv = ClaudeCodeRunner(LINK).build_argv(tmp_path, [code])
     rules = argv[argv.index("--allowedTools") + 1 : argv.index("--max-turns")]
     # `//` 前缀是实测结论：单个 `/` 会被当成项目根相对路径，规则不生效
-    assert f"Edit(//{str(code).lstrip('/')}/**)" in rules
-    assert f"Write(//{str(code).lstrip('/')}/**)" in rules
-    assert f"Read(//{str(tmp_path).lstrip('/')}/**)" in rules
+    assert f"Edit(//{rule_path(code.resolve()).lstrip('/')}/**)" in rules
+    assert f"Write(//{rule_path(code.resolve()).lstrip('/')}/**)" in rules
+    assert f"Read(//{rule_path(tmp_path.resolve()).lstrip('/')}/**)" in rules
     # 没给 bash_rules 就一条 Bash 规则都不该有：Bash 是绕开路径白名单的口子
     assert not [r for r in rules if r.startswith("Bash(")]
     # 端口给的是与 CLI 无关的命令前缀，这家翻成 `Bash(<前缀> *)`
-    with_skill = ClaudeCodeRunner(LINK).build_argv("改点东西", tmp_path, [code], ("ai4sci skill",))
+    with_skill = ClaudeCodeRunner(LINK).build_argv(tmp_path, [code], ("ai4sci skill",))
     assert "Bash(ai4sci skill *)" in with_skill[with_skill.index("--allowedTools"):]
     assert "ai4sci skill" not in with_skill  # 裸前缀不进 argv
 
 
 def test_runner_argv_takes_per_session_turn_and_budget_limits(tmp_path: Path):
     """外层 #122：读别人整个仓库再写壳的会话要比缺省的 30 轮多；能力给的上限进 argv，不给用缺省。"""
-    argv = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path], max_turns=80,
+    argv = ClaudeCodeRunner(LINK).build_argv(tmp_path, [tmp_path], max_turns=80,
                                          max_budget_usd=6.0)
     assert argv[argv.index("--max-turns") + 1] == "80"
     assert argv[argv.index("--max-budget-usd") + 1] == "6.0"
-    default = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path])
+    default = ClaudeCodeRunner(LINK).build_argv(tmp_path, [tmp_path])
     assert default[default.index("--max-turns") + 1] == "30"
 
 
@@ -98,8 +101,8 @@ def test_argv_grants_the_clis_own_web_tools_on_both_layers(tmp_path: Path):
     from backends.claude_code import ClaudeCodeChat
 
     assert WEB_TOOLS == ("WebSearch", "WebFetch")
-    runner = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path])
-    chat = ClaudeCodeChat(LINK).build_argv("hi", tmp_path, session_id=None, system_prompt="",
+    runner = ClaudeCodeRunner(LINK).build_argv(tmp_path, [tmp_path])
+    chat = ClaudeCodeChat(LINK).build_argv(tmp_path, session_id=None, system_prompt="",
                                        allowed_paths=[], bash_rules=())
     for argv in (runner, chat):
         rules = argv[argv.index("--allowedTools") + 1:argv.index("--max-turns")]
@@ -108,12 +111,15 @@ def test_argv_grants_the_clis_own_web_tools_on_both_layers(tmp_path: Path):
 
 def test_runner_uses_the_same_env_as_chat_so_bare_ai4sci_resolves(monkeypatch, tmp_path: Path):
     """执行层要跑 `ai4sci skill …`（纲领 P-22）：venv 的 bin 在 PATH 上、后台关掉、Bash 超时对齐。
-    断言 Popen 收到的就是 build_env 的结果，而不是继承的裸环境。"""
+    断言起进程收到的就是 build_env 的结果，而不是继承的裸环境。"""
+    import io
+
     seen: dict = {}
 
     class FakeProc:
         pid = os.getpid()
         returncode = 0
+        stdin = io.StringIO()
         stdout = iter(())
         stderr = iter(())
 
@@ -124,7 +130,7 @@ def test_runner_uses_the_same_env_as_chat_so_bare_ai4sci_resolves(monkeypatch, t
         seen["env"] = kw["env"]
         return FakeProc()
 
-    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    monkeypatch.setattr("backends.claude_code.spawn", fake_popen)
     monkeypatch.setenv("PATH", "/usr/bin")
     with pytest.raises(RuntimeError, match="没有 result 事件"):
         ClaudeCodeRunner(LINK).run("hi", tmp_path, 7.0, [tmp_path])
@@ -135,7 +141,7 @@ def test_runner_uses_the_same_env_as_chat_so_bare_ai4sci_resolves(monkeypatch, t
 
 
 def test_argv_carries_isolation_flags_and_never_bypasses_permissions(tmp_path: Path):
-    argv = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path])
+    argv = ClaudeCodeRunner(LINK).build_argv(tmp_path, [tmp_path])
     for flag in ("--no-session-persistence", "--strict-mcp-config", "--disable-slash-commands",
                  "--setting-sources", "--output-format", "stream-json", "--verbose"):
         assert flag in argv
@@ -149,7 +155,7 @@ def test_argv_carries_isolation_flags_and_never_bypasses_permissions(tmp_path: P
 def test_env_config_has_read_points_and_defaults(tmp_path: Path, monkeypatch):
     from backends import Tuning
 
-    argv = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path])
+    argv = ClaudeCodeRunner(LINK).build_argv(tmp_path, [tmp_path])
     assert argv[argv.index("--max-turns") + 1] == "30"
     assert argv[argv.index("--max-budget-usd") + 1] == "2.0"
     # 模型与深度永远显式传（P-25：从不让 CLI 自己猜）：没给用起点 sonnet / medium
@@ -161,20 +167,20 @@ def test_env_config_has_read_points_and_defaults(tmp_path: Path, monkeypatch):
 
     monkeypatch.setenv("AI4SCI_EXECUTOR_MAX_TURNS", "7")
     monkeypatch.setenv("AI4SCI_EXECUTOR_MAX_BUDGET_USD", "0.5")
-    argv = ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path],
+    argv = ClaudeCodeRunner(LINK).build_argv(tmp_path, [tmp_path],
                                              tuning=Tuning(model="opus"))
     assert argv[argv.index("--max-turns") + 1] == "7"
     assert argv[argv.index("--max-budget-usd") + 1] == "0.5"
     assert argv[argv.index("--model") + 1] == "opus"
     with pytest.raises(ValueError, match="模型 'gpt' 不在清单上"):
-        ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path], tuning=Tuning(model="gpt"))
+        ClaudeCodeRunner(LINK).build_argv(tmp_path, [tmp_path], tuning=Tuning(model="gpt"))
 
 
 @pytest.mark.parametrize("value", ["0", "-3"])
 def test_env_config_rejects_nonsense_instead_of_falling_back(tmp_path: Path, monkeypatch, value):
     monkeypatch.setenv("AI4SCI_EXECUTOR_MAX_TURNS", value)
     with pytest.raises(AssertionError):
-        ClaudeCodeRunner(LINK).build_argv("hi", tmp_path, [tmp_path])
+        ClaudeCodeRunner(LINK).build_argv(tmp_path, [tmp_path])
 
 
 # --- 事件解析 --------------------------------------------------------------
@@ -265,40 +271,6 @@ def test_snapshot_skips_symlinks(tmp_path: Path):
     assert sorted(snapshot(tmp_path)) == ["real.txt"]
 
 
-# --- 进程组清理 ------------------------------------------------------------
-
-
-def test_kill_tree_reaches_children_in_their_own_process_group(tmp_path: Path):
-    """复刻实测的孤儿形态：CLI 的 Bash 工具把子进程起在**另一个**进程组里。
-
-    只 killpg(自己那组) 时 R-1 实测留下过 PPID=1 的孤儿 sleep；这里用 setsid 造同样的形状。
-    """
-    marker = tmp_path / "child.pid"
-    script = (f"import os,sys,time,subprocess;"
-              f"p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'],"
-              f"start_new_session=True);"
-              f"open({str(marker)!r},'w').write(str(p.pid));time.sleep(60)")
-    parent = subprocess.Popen([sys.executable, "-c", script], start_new_session=True)
-    deadline = time.monotonic() + 10
-    while not marker.exists() and time.monotonic() < deadline:
-        time.sleep(0.05)
-    assert marker.exists(), "子进程没起来，测试前提不成立"
-    child_pid = int(marker.read_text())
-    assert os.getpgid(child_pid) != os.getpgid(parent.pid), "测试前提：子进程自成一组"
-
-    kill_tree(parent.pid)
-    parent.wait(timeout=10)
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        try:
-            os.kill(child_pid, 0)
-        except ProcessLookupError:
-            break
-        time.sleep(0.05)
-    else:
-        pytest.fail(f"孤儿进程 {child_pid} 还活着")
-
-
 # --- 真 CLI 冒烟（默认 skip）-----------------------------------------------
 
 
@@ -332,18 +304,15 @@ def test_run_drains_stderr_instead_of_deadlocking(tmp_path: Path):
     用一个假 CLI 顶替 claude：往 stderr 狂写 1 MB，再往 stdout 吐一条合法 result 事件。
     只读 stdout 的实现会在这里等到超时。
     """
-    fake = tmp_path / "fake-claude"
-    fake.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys, json\n"
-        "sys.stderr.write('W' * (1 << 20))\n"
-        "print(json.dumps({'type': 'result', 'total_cost_usd': 0.01, 'duration_ms': 5}))\n",
-        encoding="utf-8",
-    )
-    fake.chmod(0o755)
+    fake = fake_cli(tmp_path / "fake-claude",
+                    "import sys, json\n"
+                    "sys.stdin.read()\n"
+                    "sys.stderr.write('W' * (1 << 20))\n"
+                    "print(json.dumps({'type': 'result', 'total_cost_usd': 0.01, "
+                    "'duration_ms': 5}))\n")
     cwd = tmp_path / "work"
     cwd.mkdir()
-    runner = ClaudeCodeRunner(LINK, cli=str(fake))
+    runner = ClaudeCodeRunner(replace(LINK, cli=fake))
     result = runner.run("noop", cwd=cwd, timeout_s=10.0, allowed_paths=[cwd])
     assert result.timed_out is False
     assert result.cost_usd == 0.01
@@ -357,6 +326,16 @@ from backends.claude_code import ISOLATION_ARGS, ClaudeCodeChat, _translate  # n
 
 CHAT_FIXTURE = Path(__file__).parent / "fixtures" / "claude_chat_sample.jsonl"
 SID = "d1fc75c5-dec5-427a-88f9-e9f810e42c89"
+
+
+def test_absolute_paths_in_rules_take_the_form_the_cli_matches():
+    """Windows 上 CLI 先把路径换成 POSIX 形式再匹配（`C:\\Users\\a` → `/c/Users/a`，官方 permissions
+    文档）；照 `C:/Users/...` 写，执行层一个文件都写不进去（外层 #210）。"""
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    assert rule_path(PureWindowsPath(r"C:\Users\a b\ws")) == "/c/Users/a b/ws"
+    assert rule_path(PureWindowsPath(r"D:\data")) == "/d/data"
+    assert rule_path(PurePosixPath("/Users/a/ws")) == "/Users/a/ws"
 
 
 def test_get_chat_returns_chat_shaped_object():
@@ -387,8 +366,9 @@ def test_sessions_live_in_the_platform_home_not_the_persons_claude_dir(tmp_path:
     home = tmp_path / "claude_code"
     assert build_env(1.0, Link(home=home))["CLAUDE_CONFIG_DIR"] == str(home)
     chat = ClaudeCodeChat(Link(home=home))
-    cwd = tmp_path / "my_ws"
-    encoded = str(cwd.resolve()).replace("/", "-").replace("_", "-")  # CLI 把下划线也换掉
+    cwd = Path(tempfile.gettempdir()) / "my_ws"  # 短一点：Windows 没开长路径时 260 个字符封顶
+    # CLI 把不是字母数字的都换成 `-`：斜杠、下划线，Windows 上还有盘符的冒号与反斜杠
+    encoded = re.sub(r"[^A-Za-z0-9]", "-", str(cwd.resolve()))
     session = home / "projects" / encoded / f"{SID}.jsonl"
     session.parent.mkdir(parents=True)
     session.write_text("{}\n", encoding="utf-8")
@@ -421,7 +401,8 @@ def test_chat_env_puts_this_venvs_bin_on_path_so_bare_ai4sci_resolves(monkeypatc
     monkeypatch.setenv("PATH", "/usr/bin")
     env = build_env(1.0, LINK)
     assert env["PATH"].startswith(f"/usr/bin{os.pathsep}")  # 追加在后，系统命令在前
-    assert shutil.which("ai4sci", path=env["PATH"]) == str(Path(sys.executable).parent / "ai4sci")
+    found = shutil.which("ai4sci", path=env["PATH"])
+    assert found and Path(found).parent == Path(sys.executable).parent  # Windows 上是 ai4sci.EXE
     monkeypatch.delenv("PATH")
     assert build_env(1.0, LINK)["PATH"] == str(Path(sys.executable).parent)
 
@@ -444,7 +425,7 @@ def test_translate_turns_text_deltas_into_delta_events_and_ignores_thinking():
 
 
 def test_chat_argv_asks_for_partial_messages(tmp_path: Path):
-    argv = ClaudeCodeChat(LINK).build_argv("hi", tmp_path, session_id=None, system_prompt="",
+    argv = ClaudeCodeChat(LINK).build_argv(tmp_path, session_id=None, system_prompt="",
                                        allowed_paths=[], bash_rules=())
     assert "--include-partial-messages" in argv
 
@@ -453,14 +434,14 @@ def test_chat_argv_adds_readable_dirs_without_write_rules(tmp_path: Path):
     """纲领 P-16：研究助理看得见库（--add-dir 让 Read 在 dontAsk 下不被拒），但库不进写的白名单。"""
     library = tmp_path / "workflows"
     library.mkdir()
-    argv = ClaudeCodeChat(LINK).build_argv("hi", tmp_path / "ws", session_id=None, system_prompt="",
+    argv = ClaudeCodeChat(LINK).build_argv(tmp_path / "ws", session_id=None, system_prompt="",
                                        allowed_paths=[tmp_path / "ws" / "flows"], bash_rules=(),
                                        readable_paths=[library])
     assert argv[argv.index("--add-dir") + 1] == str(library.resolve())
     rules = argv[argv.index("--allowedTools") + 1:argv.index("--max-turns")]
-    assert f"Read(//{library.resolve().as_posix().lstrip('/')}/**)" in rules
+    assert f"Read(//{rule_path(library.resolve()).lstrip('/')}/**)" in rules
     assert not any(r.startswith(("Edit(", "Write(")) and "workflows" in r for r in rules)
-    plain = ClaudeCodeChat(LINK).build_argv("hi", tmp_path, session_id=None, system_prompt="",
+    plain = ClaudeCodeChat(LINK).build_argv(tmp_path, session_id=None, system_prompt="",
                                         allowed_paths=[], bash_rules=())
     assert "--add-dir" not in plain
 
@@ -478,17 +459,19 @@ def test_chat_env_carries_the_chat_id_to_the_buttons_the_agent_presses(monkeypat
 def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
     from backends import Tuning
 
-    chat = ClaudeCodeChat(LINK)
+    chat = ClaudeCodeChat(replace(LINK, home=tmp_path / "claude_code"))
     common = dict(system_prompt="指南", allowed_paths=[tmp_path / "tasks"],
                   bash_rules=(".venv/bin/ai4sci",))
-    first = chat.build_argv("你好", tmp_path, session_id=None, **common)
-    second = chat.build_argv("继续", tmp_path, session_id=SID, **common)
+    first = chat.build_argv(tmp_path, session_id=None, **common)
+    second = chat.build_argv(tmp_path, session_id=SID, **common)
     assert "--resume" not in first
     assert second[second.index("--resume") + 1] == SID
     # 指南只在开会话那一轮送：续接时 CLI 沿用开会话那份，再送也不生效（实测 2.1.286，见适配器
     # 文件头），中途变了由框架把变了的几节塞进话里
-    assert first[first.index("--append-system-prompt") + 1] == "指南"
-    assert "--append-system-prompt" not in second
+    prompt = Path(first[first.index("--append-system-prompt-file") + 1])
+    # 指南落成私有配置目录里的文件，不放命令行（Windows 一条命令行 32767 个字符，外层 #210）
+    assert prompt.read_text(encoding="utf-8") == "指南" and prompt.is_relative_to(chat.link.home)
+    assert "--append-system-prompt-file" not in second
     for argv in (first, second):
         assert "--no-session-persistence" not in argv, "多轮靠 CLI 的会话持久化，不能关"
         assert all(flag in argv for flag in ISOLATION_ARGS if flag)
@@ -497,7 +480,7 @@ def test_chat_argv_resumes_by_session_id_and_keeps_persistence(tmp_path: Path):
         rules = argv[argv.index("--allowedTools") + 1: argv.index("--max-turns")]
         assert "Bash(.venv/bin/ai4sci *)" in rules  # 前缀翻成这家的白名单写法
         assert any(r.startswith("Write(//") and r.endswith("/tasks/**)") for r in rules)
-    picked = chat.build_argv("x", tmp_path, session_id=None, tuning=Tuning(model="opus"), **common)
+    picked = chat.build_argv(tmp_path, session_id=None, tuning=Tuning(model="opus"), **common)
     assert picked[picked.index("--model") + 1] == "opus"
 
 
@@ -539,17 +522,17 @@ def test_chat_argv_always_passes_model_and_effort(tmp_path: Path):
 
     chat = ClaudeCodeChat(LINK)
     common = dict(session_id=None, system_prompt="", allowed_paths=[], bash_rules=())
-    bare = chat.build_argv("x", tmp_path, **common)
+    bare = chat.build_argv(tmp_path, **common)
     assert bare[bare.index("--model") + 1] == "sonnet"
     assert bare[bare.index("--effort") + 1] == "medium"
-    picked = chat.build_argv("x", tmp_path, tuning=Tuning(model="opus", effort="max"), **common)
+    picked = chat.build_argv(tmp_path, tuning=Tuning(model="opus", effort="max"), **common)
     assert picked[picked.index("--model") + 1] == "opus"
     assert picked[picked.index("--effort") + 1] == "max"
-    half = chat.build_argv("x", tmp_path, tuning=Tuning(effort="high"), **common)
+    half = chat.build_argv(tmp_path, tuning=Tuning(effort="high"), **common)
     assert half[half.index("--model") + 1] == "sonnet"
     assert half[half.index("--effort") + 1] == "high"
     with pytest.raises(ValueError, match="思考深度 'ultra' 不在清单上"):
-        chat.build_argv("x", tmp_path, tuning=Tuning(effort="ultra"), **common)
+        chat.build_argv(tmp_path, tuning=Tuning(effort="ultra"), **common)
 
 
 def test_translate_turns_the_sample_stream_into_chat_events():
@@ -684,12 +667,16 @@ def test_the_key_reaches_the_cli_through_a_private_file_not_env_or_argv(tmp_path
     from backends.claude_code import KEY_FILE, key_args
 
     link = Link(home=tmp_path / "cc", provider="deepseek", key="sk-ds-secret")
-    argv = ClaudeCodeRunner(link).build_argv("hi", tmp_path, [tmp_path])
+    argv = ClaudeCodeRunner(link).build_argv(tmp_path, [tmp_path])
     assert not any("sk-ds-secret" in a for a in argv)
     helper = json.loads(argv[argv.index("--settings") + 1])["apiKeyHelper"]
     key_file = link.home / KEY_FILE
-    assert helper == f"cat {key_file}" and key_file.read_text(encoding="utf-8") == "sk-ds-secret"
-    assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+    # Windows 上 CLI 用 cmd.exe 跑它：type；别处 cat
+    printed = f'type "{key_file}"' if os.name == "nt" else f"cat {shlex.quote(str(key_file))}"
+    assert helper == printed
+    assert key_file.read_text(encoding="utf-8") == "sk-ds-secret"
+    # Windows 没有权限位：私有目录在本人的用户目录下，系统的 ACL 只给本人
+    assert os.name == "nt" or stat.S_IMODE(key_file.stat().st_mode) == 0o600
     assert key_args(Link(home=tmp_path / "cc")) == []  # 官方订阅不要 key
     anthropic = Link(home=tmp_path / "cc", provider="anthropic", key="sk-ant")
     assert key_args(anthropic)[0] == "--settings" and "ANTHROPIC_BASE_URL" not in build_env(
@@ -702,7 +689,7 @@ def test_a_missing_key_says_where_to_fill_it_instead_of_starting_the_cli():
 
     with pytest.raises(KeyMissing, match="DeepSeek 的 key 还没填"):
         key_args(Link(home=HOME, provider="deepseek"))
-    events = list(ClaudeCodeChat(Link(home=HOME, provider="deepseek"), cli="/nonexistent")
+    events = list(ClaudeCodeChat(Link(home=HOME, provider="deepseek", cli="/nonexistent"))
                   .turn("hi", Path("/tmp"), 5, session_id=None, system_prompt="",
                         allowed_paths=[], bash_rules=()))
     assert [e.kind for e in events] == ["error"] and "设置" in events[0].text
@@ -714,7 +701,7 @@ def test_models_follow_the_provider_and_third_party_ids_go_straight_to_the_cli(t
     link = Link(home=tmp_path / "cc", provider="deepseek", key="sk-ds")
     knobs = ClaudeCodeChat(link).knobs()
     assert [c.id for c in knobs.models] == ["deepseek-flash", "deepseek-v4-pro"]
-    argv = ClaudeCodeRunner(link).build_argv("hi", tmp_path, [tmp_path])
+    argv = ClaudeCodeRunner(link).build_argv(tmp_path, [tmp_path])
     assert argv[argv.index("--model") + 1] == "deepseek-flash[1m]"
     custom = Link(home=HOME, provider="custom", base_url="https://llm.lab", models=("m1",))
     assert [c.id for c in ClaudeCodeChat(custom).knobs().models] == ["m1"]
@@ -747,8 +734,8 @@ def test_third_party_models_run_with_a_1m_context_window(tmp_path):
     for name, model, window in (("deepseek", "deepseek-flash", "786432"),
                                 ("kimi", "kimi-k3", "1000000")):
         link = Link(home=tmp_path / name, provider=name, key="sk")
-        runner = ClaudeCodeRunner(link).build_argv("hi", tmp_path, [tmp_path])
-        chat = ClaudeCodeChat(link).build_argv("hi", tmp_path, session_id=None, system_prompt="",
+        runner = ClaudeCodeRunner(link).build_argv(tmp_path, [tmp_path])
+        chat = ClaudeCodeChat(link).build_argv(tmp_path, session_id=None, system_prompt="",
                                                allowed_paths=[], bash_rules=())
         for argv in (runner, chat):
             assert argv[argv.index("--model") + 1] == f"{model}[1m]"
@@ -757,7 +744,7 @@ def test_third_party_models_run_with_a_1m_context_window(tmp_path):
     for link in (Link(home=tmp_path / "o"),
                  Link(home=tmp_path / "c", provider="custom", key="sk", base_url="https://llm.lab",
                       models=("m1",))):
-        argv = ClaudeCodeRunner(link).build_argv("hi", tmp_path, [tmp_path])
+        argv = ClaudeCodeRunner(link).build_argv(tmp_path, [tmp_path])
         assert "[1m]" not in argv[argv.index("--model") + 1]
         assert "CLAUDE_CODE_AUTO_COMPACT_WINDOW" not in connect_env(link)
 
@@ -777,14 +764,13 @@ def test_third_party_turn_cost_is_left_for_the_price_table(tmp_path):
     """第三方那一轮的 done 不带 CLI 报的美元（它按缺省价乱算），读的人照价目折算。"""
     from backends.claude_code import ClaudeCodeChat
 
-    fake = tmp_path / "claude"
-    fake.write_text("#!/bin/sh\necho '" + json.dumps(_RESULT) + "'\n", encoding="utf-8")
-    fake.chmod(0o755)
-    third = ClaudeCodeChat(Link(home=tmp_path, provider="deepseek", key="sk"), cli=str(fake))
+    fake = fake_cli(tmp_path / "claude",
+                    f"import sys\nsys.stdin.read()\nprint({json.dumps(_RESULT)!r})\n")
+    third = ClaudeCodeChat(Link(home=tmp_path, provider="deepseek", key="sk", cli=fake))
     done = [e for e in third.turn("hi", tmp_path, 10, session_id=None, system_prompt="",
                                   allowed_paths=[], bash_rules=()) if e.kind == "done"]
     assert len(done) == 1 and math.isnan(done[0].cost_usd)
-    own = ClaudeCodeChat(Link(home=tmp_path), cli=str(fake))
+    own = ClaudeCodeChat(Link(home=tmp_path, cli=fake))
     done = [e for e in own.turn("hi", tmp_path, 10, session_id=None, system_prompt="",
                                 allowed_paths=[], bash_rules=()) if e.kind == "done"]
     assert done[0].cost_usd == pytest.approx(1.2065)

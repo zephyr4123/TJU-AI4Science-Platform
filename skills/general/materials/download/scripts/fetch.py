@@ -20,7 +20,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import re
 import shutil
+import stat
 import subprocess
 import sys
 import urllib.error
@@ -52,6 +55,18 @@ def _prepare_out(out: str | None, default_name: str) -> Path:
     return target
 
 
+def _remove(path: Path) -> None:
+    """失败了把拉了一半的目录删干净：Windows 上 git 的对象文件是只读的，去掉只读再删。"""
+    def writable(remove, target, exc):
+        if not isinstance(exc, PermissionError):
+            raise exc
+        os.chmod(target, stat.S_IWRITE)
+        remove(target)
+
+    if path.exists():
+        shutil.rmtree(path, onexc=writable)
+
+
 def _tally(directory: Path) -> tuple[int, int]:
     files = bytes_ = 0
     for path in directory.rglob("*"):
@@ -69,7 +84,7 @@ def _license(directory: Path) -> str | None:
 
 
 def _receipt(out: Path, doc: dict) -> None:
-    receipt = {**doc, "out": str(out)}
+    receipt = {**doc, "out": out.as_posix()}  # 收据两边一样写：Windows 上也是斜杠
     (out / RECEIPT_NAME).write_text(json.dumps(receipt, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(receipt, ensure_ascii=False))
 
@@ -81,16 +96,17 @@ def _git(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedPro
 def cmd_git(args: argparse.Namespace) -> int:
     if shutil.which("git") is None:
         _fail(EXIT_USAGE, "系统里没有 git")
-    default = args.url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git") or "repo"
+    # 仓库名是最后一段：URL 与 POSIX 路径按 `/` 切，Windows 本机路径还有 `\\`
+    default = re.split(r"[/\\]", args.url.rstrip("/\\"))[-1].removesuffix(".git") or "repo"
     out = _prepare_out(args.out, default)
     clone = _git(["clone", "--quiet", args.url, str(out)])
     if clone.returncode != 0:
-        shutil.rmtree(out, ignore_errors=True)
+        _remove(out)
         _fail(EXIT_NETWORK, f"clone 失败：{clone.stderr.strip()[-800:]}")
     if args.commit:
         checkout = _git(["checkout", "--quiet", "--detach", args.commit], cwd=out)
         if checkout.returncode != 0:
-            shutil.rmtree(out, ignore_errors=True)
+            _remove(out)
             _fail(EXIT_MISMATCH,
                   f"commit {args.commit!r} 不在这个仓库里：{checkout.stderr.strip()[-400:]}")
     head = _git(["rev-parse", "HEAD"], cwd=out).stdout.strip()
@@ -114,11 +130,11 @@ def cmd_file(args: argparse.Namespace) -> int:
                 digest.update(chunk)
                 size += len(chunk)
     except (urllib.error.URLError, OSError, ValueError) as exc:
-        shutil.rmtree(out, ignore_errors=True)
+        _remove(out)
         _fail(EXIT_NETWORK, f"下载失败：{exc}")
     sha = digest.hexdigest()
     if args.sha256 and sha != args.sha256.lower():
-        shutil.rmtree(out, ignore_errors=True)
+        _remove(out)
         _fail(EXIT_MISMATCH, f"sha256 对不上：期望 {args.sha256}，实际 {sha}；文件已删")
     _receipt(out, {"kind": "file", "source": args.url, "sha256": sha, "bytes": size,
                    "file": name})
@@ -139,10 +155,10 @@ def cmd_hf(args: argparse.Namespace) -> int:
         huggingface_hub.snapshot_download(
             args.repo, repo_type=args.type, revision=info.sha, local_dir=str(out), token=False)
     except huggingface_hub.errors.HfHubHTTPError as exc:  # 401 / 403 / 404 都在这
-        shutil.rmtree(out, ignore_errors=True)
+        _remove(out)
         _fail(EXIT_NETWORK, f"Hugging Face 拒绝或找不到 {args.repo}（{args.type}）：{exc}")
     except OSError as exc:
-        shutil.rmtree(out, ignore_errors=True)
+        _remove(out)
         _fail(EXIT_NETWORK, f"下载失败：{exc}")
     files, bytes_ = _tally(out)
     _receipt(out, {"kind": "hf", "source": args.repo, "type": args.type, "commit": info.sha,

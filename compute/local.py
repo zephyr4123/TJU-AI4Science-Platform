@@ -1,4 +1,4 @@
-"""本地算力后端：put=cp，submit=Popen 新进程组，cancel=killpg，get=no-op。
+"""本地算力后端：put=cp，submit=起一棵新进程树（`procs.spawn`），cancel=杀整棵，get=no-op。
 
 本地"远端"就是本机另一个目录（`remote_dir_for` 是恒等映射），所以 `get` 在两边同一目录时
 什么都不用做。即便如此也照走同一个 Protocol：调用点现在就存在（P-8），ssh 是第二个实现，
@@ -16,8 +16,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import procs
 from compute import ExitStatus, Job, Outcome, Probe
-from compute.procs import group_alive, kill_tree
 
 # 快照不带过去的目录：`.git` 是 work/ 的状态载体（run_N 是只读快照，不该有仓）；
 # `.ai4sci` 是执行层事件流日志、`__pycache__` 是字节码，带过去只会让每轮快照越滚越大；
@@ -40,6 +40,11 @@ class LocalCompute:
     def uv(self) -> list[str]:
         """本机的 uv 是平台 venv 里的那份（与 experiment/env.py 同一份），不找系统 PATH 上的。"""
         return [sys.executable, "-m", "uv"]
+
+    @property
+    def bash(self) -> list[str]:
+        """本机跑 harness 的脚本用哪个 bash：Windows 上是 Git Bash（`procs.bash`，外层 #210）。"""
+        return [procs.bash()]
 
     @property
     def scratch(self) -> str:
@@ -76,6 +81,7 @@ class LocalCompute:
         try:
             proc = subprocess.run(cmd, cwd=remote_dir, env={**os.environ, **env},
                                   stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace",
                                   timeout=timeout_s, check=False)
         except subprocess.TimeoutExpired as exc:
             return Outcome(exit_code=124, stdout=str(exc.stdout or ""),
@@ -95,13 +101,12 @@ class LocalCompute:
         out_path, err_path = job_dir / "stdout.log", job_dir / "stderr.log"
         # 日志句柄交给子进程后本进程就撒手：stdout 落盘不进 prompt（P-9）
         with out_path.open("wb") as out, err_path.open("wb") as err:
-            proc = subprocess.Popen(
+            proc = procs.spawn(  # 自成一棵树，超时才有一整棵可杀
                 cmd, cwd=remote_dir, env={**os.environ, **env},
                 stdin=subprocess.DEVNULL, stdout=out, stderr=err,
-                start_new_session=True,  # 自成进程组，超时才有一整组可杀
             )
         self._live[proc.pid] = proc
-        return Job(pid=proc.pid, pgid=os.getpgid(proc.pid), started_at=time.time(),
+        return Job(pid=proc.pid, pgid=procs.group_of(proc.pid), started_at=time.time(),
                    remote_dir=str(remote_dir), stdout_path=str(out_path),
                    stderr_path=str(err_path), timeout_s=float(timeout_s))
 
@@ -118,9 +123,9 @@ class LocalCompute:
                 timed_out = True
         else:
             # 读回的句柄：只能看进程组还在不在，退出码内核不会给非亲代（保持 None=未知）
-            while group_alive(job.pgid) and time.monotonic() < deadline:
+            while procs.tree_alive(job.pgid) and time.monotonic() < deadline:
                 time.sleep(_POLL_S)
-            timed_out = group_alive(job.pgid)
+            timed_out = procs.tree_alive(job.pgid)
         if timed_out:
             self.cancel(job)
             if proc is not None:
@@ -130,7 +135,7 @@ class LocalCompute:
                           stdout_path=job.stdout_path, stderr_path=job.stderr_path)
 
     def cancel(self, job: Job) -> None:
-        kill_tree(job.pid, job.pgid)
+        procs.kill_tree(job.pid, job.pgid)
 
     def remove_dir(self, remote_dir: str) -> None:
         """本机的镜像目录就是那个目录本身；不在就算删过了。"""
@@ -153,13 +158,15 @@ class LocalCompute:
         """本机：解释器、uv、有没有 GPU（nvidia-smi 在不在）、磁盘。"""
         probe = Probe(hostname=platform.node(), python=platform.python_version())
         probe.items.append(("Python", True, f"{probe.python}（平台 venv）"))
-        uv = subprocess.run([*self.uv, "--version"], capture_output=True, text=True, check=False)
+        uv = subprocess.run([*self.uv, "--version"], capture_output=True, text=True,
+                            encoding="utf-8", errors="replace", check=False)
         probe.uv = uv.stdout.strip().split()[-1] if uv.returncode == 0 else ""
         probe.items.append(("uv", uv.returncode == 0, probe.uv or "平台 venv 里没有 uv：make venv"))
         smi = shutil.which("nvidia-smi")
         if smi:
             out = subprocess.run([smi, "--query-gpu=name,memory.total", "--format=csv,noheader"],
-                                 capture_output=True, text=True, check=False)
+                                 capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", check=False)
             probe.gpu = out.stdout.strip().splitlines()[0] if out.returncode == 0 else ""
         probe.items.append(("GPU", True, probe.gpu or "无"))
         usage = shutil.disk_usage(Path.home())

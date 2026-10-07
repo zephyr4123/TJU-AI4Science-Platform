@@ -200,13 +200,13 @@ def _ruff_fix_imports(pack: Path) -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "ruff", "check", "--isolated", "--no-cache", "--fix-only",
          "--select", LINT_AUTOFIX, "--line-length", str(LINT_LINE_LENGTH), "harness"],
-        cwd=pack, capture_output=True, text=True, check=False,
+        cwd=pack, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     if proc.returncode != 0 or "No module named ruff" in proc.stderr:
         raise DraftFailed(
             f"ruff --fix-only 跑不起来（退出码 {proc.returncode}）："
             f"{proc.stderr.strip().splitlines()[-1:] or '无输出'}；"
-            "平台 venv 里要有 ruff（requirements.lock）"
+            "ruff 是平台的运行时依赖（pyproject.toml），重装平台"
         )
     if proc.stdout.strip():
         LOGGER.info("draft_ruff_fix pack=%s %s", pack, proc.stdout.strip().splitlines()[-1])
@@ -225,13 +225,19 @@ def _ruff(pack: Path) -> list[str]:
         [sys.executable, "-m", "ruff", "check", "--isolated", "--no-cache",
          "--output-format", "concise", "--select", LINT_SELECT,
          "--line-length", str(LINT_LINE_LENGTH), "harness"],
-        cwd=pack, capture_output=True, text=True, check=False,
+        cwd=pack, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     if proc.returncode not in (0, 1) or "No module named ruff" in proc.stderr:
         raise DraftFailed(
             f"ruff 跑不起来（退出码 {proc.returncode}）："
             f"{proc.stderr.strip().splitlines()[-1:] or '无输出'}；"
-            "平台 venv 里要有 ruff（requirements.lock）"
+            "ruff 是平台的运行时依赖（pyproject.toml），重装平台"
         )
-    return [line for line in proc.stdout.splitlines()
+    # 路径一律写斜杠（Windows 上 ruff 报 `harness\\evaluate.py:1:1:`），喂回执行层与人看的是同一种
+    return [_slashed(line) for line in proc.stdout.splitlines()
             if line.strip() and not line.startswith(("Found ", "[*]", "All checks passed"))]
+
+
+def _slashed(line: str) -> str:
+    where, sep, rest = line.partition(":")
+    return where.replace("\\", "/") + sep + rest

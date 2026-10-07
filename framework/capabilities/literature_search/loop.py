@@ -40,7 +40,7 @@ from framework.capabilities.literature_search.web import FetchError
 from framework.contracts import requirement
 from framework.contracts.capability import CapabilityFailed, Inputs
 from framework.executor import prompting, session
-from framework.files import append_event, write_atomic
+from framework.files import append_event, read_text, write_atomic
 from framework.workspace import loadout
 
 LOGGER = logging.getLogger("ai4sci.literature")
@@ -303,4 +303,4 @@ def _check_outcome(result: RunResult, allowed: str) -> None:
 def _read(path: Path) -> str:
     if not path.is_file():
         raise CapabilityFailed(f"执行层没有写出 {path.name}")
-    return path.read_text(encoding="utf-8")
+    return read_text(path)

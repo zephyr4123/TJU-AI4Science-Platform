@@ -133,7 +133,7 @@ def check(root: Path | None = None) -> list[Entry]:
     on_disk = {d.name: d for *_, cell in cells([Root(CURATED, root)])
                for d in cell.iterdir() if (d / SKILL_FILE).is_file()}
     for name in sorted(set(on_disk) - set(listed)):
-        problems.append(f"{on_disk[name].relative_to(root)}: 在收录库里但台账里没有")
+        problems.append(f"{on_disk[name].relative_to(root).as_posix()}: 在收录库里但台账里没有")
     for name in sorted(set(listed) - set(on_disk)):
         problems.append(f"{name}: 台账里有但收录库里没有")
     for name in sorted(set(listed) & set(on_disk)):

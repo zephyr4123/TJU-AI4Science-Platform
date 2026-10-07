@@ -28,11 +28,10 @@ import re
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from compute import Compute, Outcome
-from framework import paths
-from framework.skills.run import UV_CACHE_ENV
+from framework.skills.run import uv_overlay
 
 LOGGER = logging.getLogger("ai4sci.env")
 
@@ -77,10 +76,15 @@ class EnvSpec:
 
 
 def harness_env(python: Path, wall_clock_s: float, inner_k: int) -> dict[str, str]:
-    """框架起 harness（内环的 launcher、基线的 make_run0）时给的那组环境变量，两处走同一个函数。"""
+    """框架起 harness（内环的 launcher、基线的 make_run0）时给的那组环境变量，两处走同一个函数。
+
+    解释器一律写成正斜杠（外层 #210）：harness 是 bash 脚本，Windows 本机的 `C:\\…` 原样进字符串、
+    JSON 就坏了，`C:/…` bash 与 Windows 都认；远端的路径在 Windows 上包成 Path 也会变成反斜杠，
+    这里改回来。"""
     assert inner_k >= 1, f"inner_k 要是正整数：{inner_k!r}"
     assert wall_clock_s > 0, f"wall_clock_s 要是正数：{wall_clock_s!r}"
-    return {PYTHON_ENV: str(python), BUDGET_ENV: f"{wall_clock_s:g}", INNER_K_ENV: str(inner_k)}
+    return {PYTHON_ENV: Path(python).as_posix(), BUDGET_ENV: f"{wall_clock_s:g}",
+            INNER_K_ENV: str(inner_k)}
 
 
 def env_dir(task_dir: Path) -> Path:
@@ -88,8 +92,17 @@ def env_dir(task_dir: Path) -> Path:
 
 
 def venv_python(venv_dir: Path) -> Path:
-    """venv 里的解释器路径；只做 POSIX，本项目不跑 Windows。"""
-    return Path(venv_dir) / "bin" / "python"
+    """本机 venv 里的解释器：Windows 上在 `Scripts\\python.exe`，别处在 `bin/python`
+    （外层 #210）。"""
+    return Path(venv_dir) / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
+def _venv_python_on(compute: Compute, venv_dir: str) -> str:
+    """那台机器上 venv 的解释器：按环境建在哪台机器上选，不按平台跑在哪——本机照本机的系统，
+    远端算力是 Linux（windows-adaptation.md §1.2：远端是 Windows 的不做）。"""
+    if compute.kind == "local":
+        return str(venv_python(Path(venv_dir)))
+    return f"{venv_dir}/bin/python"
 
 
 def read_env(task_dir: Path) -> tuple[EnvSpec | None, list[str]]:
@@ -138,8 +151,9 @@ def read_env(task_dir: Path) -> tuple[EnvSpec | None, list[str]]:
     interp_path = edir / INTERPRETER_NAME
     if interp_path.is_file():
         raw = interp_path.read_text(encoding="utf-8").strip()
-        name, _, path = raw.partition(":")
-        if not name or not path.startswith("/"):
+        name, _, path = raw.partition(":")  # 只拆第一个冒号：Windows 本机的路径带盘符（C:\\…）
+        absolute = PurePosixPath(path).is_absolute() or PureWindowsPath(path).is_absolute()
+        if not name or not absolute:
             problems.append(f"{label}{INTERPRETER_NAME}: 期望 <算力名字>:<绝对路径>，实际 {raw!r}")
         else:
             interpreter = (name, path)
@@ -192,7 +206,7 @@ def build_venv_on(compute: Compute, task_dir: str, venv_dir: str) -> str:
             "不会退回到平台 venv 跑任务"
         )
     uv = list(compute.uv)
-    python = f"{venv_dir}/bin/python"
+    python = _venv_python_on(compute, venv_dir)
     lock = f"{task_dir}/{ENV_DIRNAME}/{REQUIREMENTS_NAME}"
     _run_on(compute, task_dir,
             [*uv, "venv", "--quiet", "--clear", "--python", spec.python_version, venv_dir],
@@ -201,7 +215,7 @@ def build_venv_on(compute: Compute, task_dir: str, venv_dir: str) -> str:
         _run_on(compute, task_dir, [*uv, "pip", "sync", "--quiet", "--python", python, lock],
                 what=f"uv pip sync {lock}", timeout_s=env_build_timeout_s())
         check = compute.run(task_dir, [*uv, "pip", "check", "--python", python],
-                            _cache_env(compute), 300)
+                            _uv_env(compute), 300)
         if not check.ok:
             detail = (check.stdout + check.stderr).strip()[-_STDERR_TAIL:]
             raise EnvBuildError(
@@ -260,14 +274,15 @@ def _local_mirror(compute: Compute, remote_dir: str) -> Path:
     return local_dir_for(remote_dir)
 
 
-def _cache_env(compute: Compute) -> dict[str, str]:
-    """本机建环境时 uv 的缓存指到平台的家（外层 #263）；远端机器用它自己的缓存。"""
-    return {UV_CACHE_ENV: str(paths.uv_cache_dir())} if compute.kind == "local" else {}
+def _uv_env(compute: Compute) -> dict[str, str]:
+    """本机建环境时 uv 的缓存、Python、下载源与 skill 脚本同一份（外层 #263 / #277）；远端机器用它
+    自己的缓存与源（`compute/ssh.py` 照那台机器的 pip 配置）。"""
+    return uv_overlay() if compute.kind == "local" else {}
 
 
 def _run_on(compute: Compute, cwd: str, cmd: list[str], *, what: str,
             timeout_s: float) -> Outcome:
-    outcome = compute.run(cwd, cmd, _cache_env(compute), timeout_s)
+    outcome = compute.run(cwd, cmd, _uv_env(compute), timeout_s)
     if not outcome.ok:
         raise EnvBuildError(
             f"{what} 失败（退出码 {outcome.exit_code}）：{outcome.stderr.strip()[-_STDERR_TAIL:]}"

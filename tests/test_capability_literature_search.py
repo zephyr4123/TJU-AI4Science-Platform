@@ -159,7 +159,8 @@ def _screen(cwd: Path) -> None:
     """照 RELEVANT 筛最新那一跳的候选：候选清单是框架写的，W 号从里面读。"""
     rounds = sorted((cwd / "rounds").iterdir(), key=lambda p: int(p.name))
     current = rounds[-1]
-    keys = re.findall(r"^### (W\d+)$", (current / "candidates.md").read_text(), re.M)
+    text = (current / "candidates.md").read_text(encoding="utf-8")
+    keys = re.findall(r"^### (W\d+)$", text, re.M)
     lines = [f"{k} | {'收' if k in RELEVANT else '不收'} | 理由 {k}" for k in keys]
     (current / "decisions.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -192,7 +193,8 @@ def _search(ws, moves, *, max_hops=2, per_hop=10, min_new=1, get=None, **kw):
 
 
 def _pool(out: Path) -> dict[str, dict]:
-    rows = [json.loads(x) for x in (out / "candidates.jsonl").read_text().splitlines()]
+    text = (out / "candidates.jsonl").read_text(encoding="utf-8")
+    rows = [json.loads(x) for x in text.splitlines()]
     return {r["paper"]["key"]: r for r in rows}
 
 
@@ -209,7 +211,7 @@ def test_hops_expand_from_included_papers_and_stop_when_nothing_is_left(ws):
     assert sorted(pool["W6"]["found"]) == ["cites:W1", "cites:W2"]
     assert pool["W1"]["found"] == ["seed"]
     assert pool["W8"]["found"] == ["query:OpenAlex:pinn inverse"]
-    sources = (out / "sources.md").read_text()
+    sources = (out / "sources.md").read_text(encoding="utf-8")
     assert "停在：没有可筛的候选了" in sources
     assert "引用了收录的《Seed paper on PINN inverse problems》" in sources
     assert "被收录的《PINN parameter estimation》引用" in sources
@@ -223,7 +225,8 @@ def test_hops_expand_from_included_papers_and_stop_when_nothing_is_left(ws):
 
 def _events(out: Path) -> list[dict]:
     """progress.jsonl 每行去掉时间。"""
-    rows = [json.loads(x) for x in (out / "progress.jsonl").read_text().splitlines()]
+    text = (out / "progress.jsonl").read_text(encoding="utf-8")
+    rows = [json.loads(x) for x in text.splitlines()]
     assert all(r.pop("at") for r in rows)
     return rows
 
@@ -296,26 +299,29 @@ def test_leads_with_query_words_outrank_more_cited_ones_at_equal_links(ws):
 def test_stops_when_a_hop_adds_fewer_than_the_floor(ws):
     out, runner, _ = _search(ws, [_seeds_move(), _screen, _screen], min_new=4)
     assert runner.calls == 3
-    assert "停在：第 1 跳新收录 3 篇，少于停止下限 4" in (out / "sources.md").read_text()
+    text = (out / "sources.md").read_text(encoding="utf-8")
+    assert "停在：第 1 跳新收录 3 篇，少于停止下限 4" in text
 
 
 def test_zero_hops_screens_only_seeds_and_queries(ws):
     out, runner, line = _search(ws, [_seeds_move(), _screen], max_hops=0)
     assert runner.calls == 2 and "\thops=0\t" in line
     assert set(_pool(out)) == {"W1", "W2", "W8"}
-    assert "停在：到了最多跳数 0" in (out / "sources.md").read_text()
+    assert "停在：到了最多跳数 0" in (out / "sources.md").read_text(encoding="utf-8")
 
 
 def test_nothing_included_at_hop_zero_stops_without_expanding(ws):
     def reject_all(cwd: Path) -> None:
         current = cwd / "rounds" / "0"
-        keys = re.findall(r"^### (W\d+)$", (current / "candidates.md").read_text(), re.M)
-        (current / "decisions.md").write_text("".join(f"{k} | 不收 | 无关\n" for k in keys))
+        text = (current / "candidates.md").read_text(encoding="utf-8")
+        keys = re.findall(r"^### (W\d+)$", text, re.M)
+        (current / "decisions.md").write_text(
+            "".join(f"{k} | 不收 | 无关\n" for k in keys), encoding="utf-8")
     fake = FakeWeb()
     out, runner, line = _search(ws, [_seeds_move(), reject_all], get=fake)
     assert "included=0" in line and runner.calls == 2
     assert not any("cites" in u for u in fake.urls)
-    assert "第 0 跳一篇都没收" in (out / "sources.md").read_text()
+    assert "第 0 跳一篇都没收" in (out / "sources.md").read_text(encoding="utf-8")
 
 
 def test_excluded_paper_never_enters_the_pool(ws):
@@ -354,13 +360,13 @@ def test_undecided_papers_are_rescreened_once_and_only_they(ws):
     def sloppy(cwd: Path) -> None:
         (cwd / "rounds" / "0" / "decisions.md").write_text(
             "W1 | 收 | 相关\nW1 | 收 | 相关\nW9999 | 收 | 抄错的号\n"
-            "W2 | 收 | 相关\nW2 | 不收 | 无关\n")
+            "W2 | 收 | 相关\nW2 | 不收 | 无关\n", encoding="utf-8")
 
     def rest(cwd: Path) -> None:
-        listing = (cwd / "rounds" / "0" / "candidates-rest.md").read_text()
+        listing = (cwd / "rounds" / "0" / "candidates-rest.md").read_text(encoding="utf-8")
         keys = re.findall(r"^### (W\d+)$", listing, re.M)
         (cwd / "rounds" / "0" / "decisions-rest.md").write_text(
-            "".join(f"{k} | 不收 | 补筛 {k}\n" for k in keys))
+            "".join(f"{k} | 不收 | 补筛 {k}\n" for k in keys), encoding="utf-8")
     out, runner, _ = _search(ws, [_seeds_move(), sloppy, rest], max_hops=0)
     assert "### W1" not in runner.prompts[2]
     assert "### W2" in runner.prompts[2] and "### W8" in runner.prompts[2]
@@ -372,10 +378,11 @@ def test_undecided_papers_are_rescreened_once_and_only_they(ws):
 
 def test_still_undecided_after_the_rescreen_fails_with_the_key(ws):
     def half(cwd: Path) -> None:
-        (cwd / "rounds" / "0" / "decisions.md").write_text("W1 | 收 | 相关\n")
+        (cwd / "rounds" / "0" / "decisions.md").write_text("W1 | 收 | 相关\n", encoding="utf-8")
 
     def still_half(cwd: Path) -> None:
-        (cwd / "rounds" / "0" / "decisions-rest.md").write_text("W2 | 收 | 相关\n")
+        (cwd / "rounds" / "0" / "decisions-rest.md").write_text(
+            "W2 | 收 | 相关\n", encoding="utf-8")
     with pytest.raises(CapabilityFailed, match="补筛之后还有 1 篇没有结论：W8"):
         _search(ws, [_seeds_move(), half, still_half])
 
@@ -383,7 +390,7 @@ def test_still_undecided_after_the_rescreen_fails_with_the_key(ws):
 def test_writing_outside_the_decisions_file_fails(ws):
     def sneaky(cwd: Path) -> None:
         _screen(cwd)
-        (cwd / "notes.md").write_text("x")
+        (cwd / "notes.md").write_text("x", encoding="utf-8")
     with pytest.raises(CapabilityFailed, match="之外的文件：notes.md"):
         _search(ws, [_seeds_move(), sneaky])
 
@@ -515,7 +522,7 @@ def test_arxiv_seed_resolves_through_locations_when_the_main_doi_is_the_journal(
     pool = _pool(out)
     assert pool["W10"]["found"] == ["seed"] and pool["W10"]["paper"]["arxiv"] == "2003.06097"
     assert pool["W10"]["paper"]["pdf_url"] == "https://arxiv.org/pdf/2003.06097"
-    assert "查不到的种子" not in (out / "sources.md").read_text()
+    assert "查不到的种子" not in (out / "sources.md").read_text(encoding="utf-8")
 
 
 def test_paper_from_openalex_rebuilds_abstract_and_arxiv_pdf():
@@ -565,7 +572,7 @@ def test_queries_fan_out_to_free_indexes_and_resolve_through_openalex(ws, monkey
     assert {k for k, r in pool.items() if r["hop"] == 0} == {"W1", "W2", "W8", "W5", "W10"}
     assert sorted(pool["W5"]["found"]) == ["query:Crossref:pinn inverse",
                                            "query:Europe PMC:pinn inverse"]
-    sources = (out / "sources.md").read_text()
+    sources = (out / "sources.md").read_text(encoding="utf-8")
     assert "命中 Crossref 2 条、Europe PMC 1 条、OpenAlex 2 条、arXiv 1 条" in sources
     assert "OpenAlex 里取不到的 1 条不算" in sources
     assert "检索词「pinn inverse」（Europe PMC）" in sources
@@ -575,7 +582,7 @@ def test_a_free_index_failing_is_recorded_not_fatal(ws):
     out, _, line = _search(ws, [_seeds_move(), _screen], max_hops=0,
                            get=FakeWeb(fail=("api.crossref.org",)))
     assert line.startswith("literature ok")
-    sources = (out / "sources.md").read_text()
+    sources = (out / "sources.md").read_text(encoding="utf-8")
     assert "## 没查成的检索" in sources and "Crossref「pinn inverse」" in sources
 
 
@@ -646,7 +653,7 @@ def test_a_seed_older_than_since_is_left_out_and_counted(ws, monkeypatch):
     monkeypatch.setitem(CORPUS["W1"], "publication_year", 2019)
     out, _, _ = _search(ws, [_seeds_move(), _screen], max_hops=0, since=2020)
     assert "W1" not in _pool(out)
-    sources = (out / "sources.md").read_text()
+    sources = (out / "sources.md").read_text(encoding="utf-8")
     assert "- 年份：2020 年及以后发表的" in sources
     assert "早于 2020 年的 1 条没筛" in sources
 
@@ -656,7 +663,7 @@ def test_the_period_is_told_to_the_seed_session(ws):
     assert "只要 2023 年及以后发表的" in runner.prompts[0]
     out, runner, _ = _search(ws, [_seeds_move(), _screen], max_hops=0)
     assert "不限年份" in runner.prompts[0]
-    assert "- 年份：不限" in (out / "sources.md").read_text()
+    assert "- 年份：不限" in (out / "sources.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("since", [3, -1, 99999])
@@ -680,7 +687,7 @@ def test_an_index_that_keeps_failing_is_not_asked_again(ws):
     arxiv = [u for u in fake.urls if "export.arxiv.org" in u]
     assert len(arxiv) == 1 + len(indexes.ARXIV_BACKOFF_S)  # 只有第一条检索词重试了一轮
     assert sum("api.crossref.org" in u for u in fake.urls) == 2  # 别家照常两条都查
-    sources = (out / "sources.md").read_text()
+    sources = (out / "sources.md").read_text(encoding="utf-8")
     assert "arXiv「pinn inverse」" in sources
     assert "arXiv：重试用完仍失败，这次当它不可用，之后 1 条检索词没再问" in sources
 
@@ -703,7 +710,8 @@ def test_a_hanging_index_is_cut_off_and_the_others_still_count(ws, monkeypatch):
         release.set()
     assert line.startswith("literature ok")
     assert "W5" in _pool(out)  # Crossref 查到的照收
-    assert "arXiv：到了时限还没查完，2 条检索词没查" in (out / "sources.md").read_text()
+    text = (out / "sources.md").read_text(encoding="utf-8")
+    assert "arXiv：到了时限还没查完，2 条检索词没查" in text
     for lane in threading.enumerate():
         if lane.name.startswith("index-"):
             lane.join(5)
@@ -725,7 +733,8 @@ def test_another_version_of_a_paper_in_the_pool_is_folded_into_it(ws, monkeypatc
     assert pool["W1"]["found"] == ["seed", "query:OpenAlex:pinn inverse"]
     assert pool["W1"]["paper"]["arxiv"] == "2101.00001"
     assert pool["W1"]["paper"]["pdf_url"] == "https://arxiv.org/pdf/2101.00001"
-    assert (out / "sources.md").read_text().count("Seed paper on PINN inverse problems") == 1
+    text = (out / "sources.md").read_text(encoding="utf-8")
+    assert text.count("Seed paper on PINN inverse problems") == 1
 
 
 def test_two_versions_in_one_batch_take_one_slot(ws, monkeypatch):

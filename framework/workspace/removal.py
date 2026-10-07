@@ -17,10 +17,10 @@
 from __future__ import annotations
 
 import logging
-import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from framework import files
 from framework.contracts.output import Meta
 from framework.workspace import jobs, outputs
 from framework.workspace.project import Project
@@ -60,7 +60,7 @@ def remove_output(workspace: Workspace, oid: str) -> Removed:
                              "先删下游，从末端往回删")
     if jobs.running_for(workspace.jobs, meta.id) is not None:
         raise RemovalRefused(f"{meta.id} 正有作业在跑：先 ai4sci job stop")
-    shutil.rmtree(directory)
+    files.remove_tree(directory)
     for job in jobs.jobs_for(workspace.jobs, meta.id):
         jobs.note(workspace.jobs, job.job_id, "产出已删")
     LOGGER.info("output_removed workspace=%s id=%s", workspace.id, meta.id)
@@ -102,7 +102,7 @@ def remove_workspace(workspace: Workspace, *,
             raise RemovalRefused(f"兄弟工作区读过它的产出（{who} 读了 {meta.id}）："
                                  "先删下游，从末端往回删")
     leftovers = remove_mirrors(workspace, metas)
-    shutil.rmtree(workspace.root)
+    files.remove_tree(workspace.root)
     LOGGER.info("workspace_removed id=%s leftovers=%s", workspace.id, leftovers)
     return Removed(workspace.id, leftovers)
 
@@ -118,7 +118,7 @@ def remove_project(project: Project, *, forget_chats: Callable[[Project], list[s
     for workspace in spaces:
         metas = [meta for _, meta in outputs.list_outputs(workspace)]
         leftovers += remove_mirrors(workspace, metas)
-    shutil.rmtree(project.root)
+    files.remove_tree(project.root)
     LOGGER.info("project_removed id=%s workspaces=%d leftovers=%s", project.id, len(spaces),
                 leftovers)
     return Removed(project.id, leftovers)

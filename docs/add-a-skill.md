@@ -74,25 +74,26 @@ metadata:                                   # 可选：字符串到字符串；�
 - 依赖用 PEP 723 内联元数据，**不手写**：
 
   ```bash
+  export UV_DEFAULT_INDEX=https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple   # 对着国内源锁
   .venv/bin/python -m uv add --script skills/<name>/scripts/<x>.py <包>
   .venv/bin/python -m uv lock --script skills/<name>/scripts/<x>.py      # 出 <x>.py.lock，进仓
   ```
 
-  只用标准库的脚本也要有头（`dependencies = []`）与锁。`requires-python` 由脚本自己定，与框架的 Python（≥ 3.12）、课题的 venv 都无关。
+  只用标准库的脚本也要有头（`dependencies = []`）与锁。锁要对着国内源锁（外层 #277）：uv 照锁文件里写的地址下载、不看镜像设置，锁文件里出现官方 PyPI 的地址（`pypi.org`、`files.pythonhosted.org`）门禁就不过，删掉锁文件、设好上面那个变量再锁一遍。`requires-python` 由脚本自己定，与框架的 Python（≥ 3.12）、课题的 venv 都无关。
 - 运行一律 `uv run --locked`（`ai4sci skill run` 就是这么起的）：环境在 uv 的全机缓存里，所有工作区共享一份；锁对不上就报错。**不建工作区级 venv。** 平台自带的由 `make skills` 预热；收录的与领域包的几百个不全量预热，第一次运行时按锁建环境（要联网一次，`ai4sci` 的命令在两家适配器里都在沙箱外跑）。
 - 一个 skill 一个脚本时 `ai4sci skill run <name> …` 直接起它；几个脚本时调用方要 `--script <文件名>` 点名，SKILL.md 里写清。
 - 脚本要过仓库的 ruff（`make lint` 扫 `skills/`；收录的保持上游原样，不扫）。
 
 ## 承接与门禁
 
-- `make skills`：扫三处库，一个不合格都不行；零 key；收录台账与目录对账；平台自带的每个脚本 `uv lock --check` + `uv sync`（预热）并探测 `ai4sci-system-tools`。它在 `make check` 里，CI 也跑。
+- `make skills`：扫三处库，一个不合格都不行（锁文件对着国内源锁也在这里查）；零 key；收录台账与目录对账；平台自带的每个脚本 `uv lock --check` + `uv sync`（预热）并探测 `ai4sci-system-tools`。它在 `make check` 里，CI 也跑。
 - `tests/test_skills.py`：出厂的三处库逐条过门禁；格式规则、宽进与隔离、零 key、台账用假 skill 验。`tests/test_workspace_loadout.py`：按项目装载。
 - 起会话时框架拼 `<available_skills>`：研究助理每轮按项目现算（`framework/chat/guide.py`），执行层按产出目录所在的项目算（`framework/executor/prompting.py`），都从 `framework/workspace/loadout.py` 一处取。不靠任何 agent 的原生 skill 加载。
 
 ## 一步一步（自己写一个）
 
 1. 在分类表里找到它的架与 tag，`mkdir skills/<架>/<tag>/<name>`（平台自带）或 `domains/<包>/skills/<架>/<tag>/<name>`，写 `SKILL.md`（上面的四件事）。
-2. 要脚本就写 `scripts/<x>.py`，`uv add --script` 加依赖、`uv lock --script` 出锁。
+2. 要脚本就写 `scripts/<x>.py`，`uv add --script` 加依赖、`uv lock --script` 出锁（对着国内源，见上）。
 3. `make skills` 过门禁。
 4. 挂到一个工作区的流程实例上（`- 文献: [<name>]`），`ai4sci skill show <name>`、`ai4sci skill run <name> --help` 看一眼 agent 会看到什么。
 5. `make check`。

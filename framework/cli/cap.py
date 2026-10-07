@@ -185,7 +185,7 @@ def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports:
     except (ValueError, output.OutputNotFound) as exc:
         return EXIT_INVALID, str(exc)
     if job_id:
-        jobs.attach_output(ws.jobs, job_id, meta.id)
+        jobs.attach_output(ws.jobs, job_id, meta.id, meta.flow)
     try:
         line = args.module.run(directory, inputs, ports, **params)
     except CapabilityFailed as exc:
@@ -254,7 +254,6 @@ def _detach(args: argparse.Namespace, ws: Workspace, descriptor: Capability) -> 
     argv = [a for a in args.argv if a != "--detach"]
     job = jobs.spawn(ws.jobs, argv, cap=descriptor.name, stage=descriptor.stage_slug,
                      chat_id=os.environ.get(jobs.CHAT_ID_ENV),
-                     flow=getattr(args, "flow", "") or None,
                      output=getattr(args, "continuing", None))
     job = _settle(ws, job)
     if job.status != "running":

@@ -12,6 +12,9 @@
       projects/ studio/   项目与编辑台
       claude_code/ codex/ 两家 CLI 的私有目录：会话记录、平台自己的登录
       cache/uv/           skill 与实验环境的依赖缓存
+      bin/ tools/         一行命令装出来的程序（外层 #277）：bin/ 只有 ai4sci、进 PATH；tools/ 下
+                          是平台本体、Python、uv、两家 CLI 的原生程序。清除留着它们（回到刚装好的
+                          样子）
 
 平台不再写用户自己的 `~/.claude`、`~/.codex`、`~/.config`。流程库是两层合起来看：出厂的只读，
 人存的在家里的 `studio/workflows/`（外层 #149）。
@@ -62,6 +65,11 @@ AGENTS_FILENAME = "agents.yaml"
 COMPUTES_FILENAME = "computes.yaml"
 KEYS_FILENAME = "keys.yaml"
 UV_CACHE_PARTS = ("cache", "uv")
+# 一行命令装出来的程序（外层 #277）：install/install.sh 写死了同样的名字，
+# tests/test_install_script.py 对账
+BIN_DIRNAME = "bin"
+TOOLS_DIRNAME = "tools"
+PYTHON_DIRNAME = "python"
 CLI_NAME = "ai4sci"
 
 
@@ -78,11 +86,26 @@ def cli() -> str:
     here = Path(sys.executable).parent
     mine = shutil.which(CLI_NAME, path=str(here))
     if mine is None:  # 只有 `python -m framework.cli` 能跑的安装
-        return f"{shlex.quote(sys.executable)} -m framework.cli"
+        return f"{_typed(sys.executable)} -m framework.cli"
     found = shutil.which(CLI_NAME)
-    if found is not None and Path(found).resolve() == Path(mine).resolve():
+    if found is not None and _same_program(Path(found), Path(mine)):
         return CLI_NAME
-    return shlex.quote(mine)
+    return _typed(mine)
+
+
+def _same_program(a: Path, b: Path) -> bool:
+    """同一份安装：软链解析到同一个文件；Windows 上 uv tool 是把入口复制进 bin（2026-10-07 真机：
+    逐字节相同、不是链接），入口里写死了它那份解释器，内容一样就是同一份（外层 #210）。"""
+    if a.resolve() == b.resolve():
+        return True
+    return sys.platform == "win32" and a.read_bytes() == b.read_bytes()
+
+
+def _typed(program: str) -> str:
+    """照抄进终端的写法：POSIX 的 shell 用 shlex；Windows 是 PowerShell，路径带空格要 `& "…"`。"""
+    if sys.platform != "win32":
+        return shlex.quote(program)
+    return f'& "{program}"' if " " in program else program
 
 
 def home() -> Path:
@@ -130,6 +153,22 @@ def uv_cache_dir() -> Path:
     """uv 的缓存：skill 脚本与实验环境的依赖都装在这；平台起 uv 时显式交给它（`UV_CACHE_DIR`），
     不用本机的 `~/.cache/uv`，清除时一起走。"""
     return home().joinpath(*UV_CACHE_PARTS)
+
+
+def bin_dir() -> Path:
+    """家里进 PATH 的那个目录：一行命令装的 `ai4sci` 在这（外层 #277）。"""
+    return home() / BIN_DIRNAME
+
+
+def tools_dir() -> Path:
+    """一行命令装出来的程序（外层 #277）：`tools/<名字>/`，两家 CLI 的名字就是适配器的名字。"""
+    return home() / TOOLS_DIRNAME
+
+
+def python_dir() -> Path:
+    """uv 装 Python 装到这（`UV_PYTHON_INSTALL_DIR`）：一行命令装平台时、平台起 uv 时都指这里，
+    不往本机 uv 的缺省位置放第二份。"""
+    return tools_dir() / PYTHON_DIRNAME
 
 
 def workflows_root() -> Path:

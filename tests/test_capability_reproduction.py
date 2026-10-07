@@ -202,8 +202,8 @@ def test_continue_refreshes_the_env_snapshot_after_env_add_but_refuses_a_real_ch
     cap.run(pack, _inputs(workspace, lit), Ports(runner=ScriptedRunner([_shell()]),
                                                   compute=LocalCompute()), code=UPSTREAM)
     lock = workspace.materials / "env" / "requirements.lock"
-    lock.write_text("# ai4sci env add 补装：scipy\nscipy==1.15.3\n" + lock.read_text("utf-8"),
-                    encoding="utf-8")
+    old = lock.read_text(encoding="utf-8")
+    lock.write_text("# ai4sci env add 补装：scipy\nscipy==1.15.3\n" + old, encoding="utf-8")
     line = cap.run(pack, _inputs(workspace, lit), Ports(runner=ScriptedRunner([]),
                                                          compute=LocalCompute()))
     assert line.startswith("reproduction ok\tsession=-")

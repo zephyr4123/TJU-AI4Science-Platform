@@ -31,9 +31,11 @@ import yaml
 import backends
 from backends import (
     CUSTOM,
+    INSTALLED_ITEM,
     LOGIN_ITEM,
     OFFICIAL,
     TITLES,
+    VERSION_ITEM,
     AgentProbe,
     BackendNotFound,
     Chat,
@@ -46,7 +48,7 @@ from backends import (
     get_backend,
     get_chat,
 )
-from framework import keys, paths
+from framework import keys, paths, toolchain
 
 ROLES = ("chat", "executor")
 ROLE_LABELS = {"chat": "对话用", "executor": "执行用"}
@@ -116,14 +118,17 @@ def provider_of(name: str, provider: str, base_url: str = "",
 
 def link(name: str, provider: str | None = None) -> Link:
     """这家 CLI 这次怎么接（外层 #263 / #266）：私有目录在平台的家里；供应商缺省照文件里这家选的
-    （续一段老对话时给它 meta 里记的），key 从家里的 keys.yaml 取。"""
+    （续一段老对话时给它 meta 里记的），key 从家里的 keys.yaml 取；程序用家里装的那份，没装是 None、
+    适配器用 PATH 上的（外层 #277）。"""
     raw = _raw_entry(name)
     picked = provider or str(raw.get("provider") or OFFICIAL)
     base_url = str(raw.get("base_url") or "") if picked == CUSTOM else ""
     models = tuple(str(m) for m in raw.get("models") or ()) if picked == CUSTOM else ()
     key_name = provider_of(name, picked, base_url, models).key
+    exe = toolchain.private_cli(name)
     return Link(home=paths.agent_home(name), provider=picked,
-                key=keys.get(key_name) if key_name else None, base_url=base_url, models=models)
+                key=keys.get(key_name) if key_name else None, base_url=base_url, models=models,
+                cli=None if exe is None else str(exe))
 
 
 def chat(name: str, provider: str | None = None) -> Chat:
@@ -138,14 +143,17 @@ def runner(name: str) -> Runner:
 
 
 def probe(name: str) -> AgentProbe:
-    """自检一家（四句人话，P-25）：照设置里这家的供应商。官方登录没登上时，登录命令由这里补
-    （外层 #274）：适配器不知道人该敲哪一份 `ai4sci`，照抄错一份就是「没有 login」。"""
+    """自检一家（四句人话，P-25）：照设置里这家的供应商。没过的那项由这里补上人该敲的命令：没装、
+    版本不够是 `ai4sci setup`（外层 #277），官方登录没登上是 `ai4sci agent login`（外层 #274）——
+    适配器不知道人该敲哪一份 `ai4sci`，照抄错一份就是「没有 login」。"""
     picked = link(name)
     got = backends.probe(name, picked)
+    hows = {INSTALLED_ITEM: f"终端里跑 `{paths.cli()} setup` 装上",
+            VERSION_ITEM: f"终端里跑 `{paths.cli()} setup` 换新版"}
     if picked.provider == OFFICIAL and not got.logged_in:
-        how = f"终端里跑 `{login_hint(name)}`，浏览器里授权后再检查"
-        got.items = [(item, ok, f"{text}，{how}" if item == LOGIN_ITEM and not ok else text)
-                     for item, ok, text in got.items]
+        hows[LOGIN_ITEM] = f"终端里跑 `{login_hint(name)}`，浏览器里授权后再检查"
+    got.items = [(item, ok, f"{text}，{hows[item]}" if not ok and item in hows else text)
+                 for item, ok, text in got.items]
     return got
 
 

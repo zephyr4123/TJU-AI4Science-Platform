@@ -4,7 +4,8 @@
 为什么在工作区层：作业是框架的磁盘状态，"在盘上、谁都能读"；它不认识能力，
 也不认识对话——属于哪段对话只是记一个 id，跑完叫醒 agent 的活在 chat 层。
 为什么是独立进程不是线程：调用命令的是协调 agent 的一轮对话，轮次一结束它的进程树就没了；
-作业要活过那一刻，只能另起会话（`start_new_session`），stdout / stderr 落到自己的日志文件。
+作业要活过那一刻，只能另起一棵进程树（`procs.spawn(detach=True)`），stdout / stderr 落到自己的
+日志文件。
 
 记录只写两次：起的时候（running）、结束的时候（done / failed，由子进程自己回写）。中途死了
 （机器重启、`kill -9`）记录停在 running，`effective_status` 拿 pid 探一下不在了就报 lost——
@@ -25,10 +26,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import procs
 from compute import ComputeError
-from compute.procs import kill_tree
 from framework import computes
-from framework.files import write_atomic
+from framework.files import read_text, write_atomic
 from framework.workspace import outputs
 from framework.workspace.root import Workspace
 
@@ -64,7 +65,8 @@ class Job:
     log: str = ""
     # 跑完叫醒那段对话的结果（chat 层写的一句话）；没有对话的作业是 None
     wake: str | None = None
-    # 照哪条流程跑的（--flow）；没照流程是 None。页面靠它把跑着的作业画到那条流程上
+    # 产出记在哪条流程下（开了产出与 output 一起回写；--flow 省了也一样）；没照流程是 None。
+    # 页面靠它把跑着的作业画到那条流程上
     flow: str | None = None
     # 这个作业产的那次产出（子进程开了目录再回写）；接着干的作业开工时就知道
     output: str | None = None
@@ -78,7 +80,7 @@ def _path(jobs_dir: Path, job_id: str) -> Path:
 
 
 def spawn(jobs_dir: Path, argv: list[str], *, cap: str, stage: str, chat_id: str | None,
-          flow: str | None = None, output: str | None = None) -> Job:
+          output: str | None = None) -> Job:
     """起 `ai4sci <argv>` 当作业：新会话、日志落盘、记录写 running，立刻返回。
 
     `argv` 是去掉了 `--detach` 的那条命令；子进程从 `AI4SCI_JOB_ID` 知道自己是作业。
@@ -91,24 +93,25 @@ def spawn(jobs_dir: Path, argv: list[str], *, cap: str, stage: str, chat_id: str
     job_id = f"job-{stamp:%Y%m%dT%H%M%SZ}-{secrets.token_hex(2)}"
     log_path = root / f"{job_id}.log"
     with log_path.open("w", encoding="utf-8") as log:
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "framework.cli", *argv],
+        proc = procs.spawn(
+            [sys.executable, "-m", "framework.cli", *argv], detach=True,
             stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-            start_new_session=True, env={**os.environ, JOB_ID_ENV: job_id},
+            env={**os.environ, JOB_ID_ENV: job_id},
         )
     job = Job(job_id=job_id, cap=cap, stage=stage, argv=list(argv), pid=proc.pid,
               started_at=stamp.isoformat(timespec="seconds"), chat_id=chat_id, log=str(log_path),
-              flow=flow, output=output)
+              output=output)
     _save(jobs_dir, job)
-    LOGGER.info("job_spawn job_id=%s cap=%s pid=%d chat_id=%s flow=%s",
-                job_id, cap, proc.pid, chat_id or "-", flow or "-")
+    LOGGER.info("job_spawn job_id=%s cap=%s pid=%d chat_id=%s",
+                job_id, cap, proc.pid, chat_id or "-")
     return job
 
 
-def attach_output(jobs_dir: Path, job_id: str, output: str) -> Job:
-    """子进程开了产出目录就回写它的 id：看板从此能把这个作业画到那次产出上。"""
+def attach_output(jobs_dir: Path, job_id: str, output: str, flow: str | None) -> Job:
+    """子进程开了产出目录就回写它的 id 与它记在哪条流程下：看板从此能把这个作业画到那次产出、
+    那条流程上。流程只认产出这一处——`--flow` 省了时是框架替它定的，命令行上看不出来。"""
     job = load(jobs_dir, job_id)
-    job.output = output
+    job.output, job.flow = output, flow
     _save(jobs_dir, job)
     return job
 
@@ -148,7 +151,7 @@ def stop(ws: Workspace, job_id: str, *, by: str) -> Job:
     state = effective_status(job)
     if state != "running":
         raise JobNotRunning(f"作业 {job_id} 不在跑（{state}），停不了")
-    killed = kill_tree(job.pid, job.pid)
+    killed = procs.kill_tree(job.pid, job.pid)
     job.status = "stopped"
     job.exit_code = None
     job.result = f"人停的（{by}）"
@@ -186,14 +189,14 @@ def load(jobs_dir: Path, job_id: str) -> Job:
     path = _path(jobs_dir, job_id)
     if not path.is_file():
         raise JobNotFound(f"没有这个作业：{job_id}（期望 {path}）")
-    return Job(**json.loads(path.read_text(encoding="utf-8")))
+    return Job(**json.loads(read_text(path)))
 
 
 def list_jobs(jobs_dir: Path) -> list[Job]:
     root = Path(jobs_dir)
     if not root.is_dir():
         return []
-    return [Job(**json.loads(p.read_text(encoding="utf-8"))) for p in sorted(root.glob("*.json"))]
+    return [Job(**json.loads(read_text(p))) for p in sorted(root.glob("*.json"))]
 
 
 def jobs_for(jobs_dir: Path, output: str) -> list[Job]:
@@ -225,17 +228,7 @@ def effective_status(job: Job) -> str:
     """记录说 running 但进程不在了，就是 lost：没人回写过结束，不能当它跑完了。"""
     if job.status != "running":
         return job.status
-    return "running" if _alive(job.pid) else "lost"
-
-
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+    return "running" if procs.pid_alive(job.pid) else "lost"
 
 
 def _save(jobs_dir: Path, job: Job) -> None:

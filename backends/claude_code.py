@@ -21,6 +21,7 @@ Bash 工具继承它的环境，实测 agent `sh -c 'test -n "$ANTHROPIC_AUTH_TO
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -33,15 +34,20 @@ import threading
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 
+import procs
 from backends import (
     CUSTOM,
+    INSTALLED_ITEM,
     LOGIN_ITEM,
     OFFICIAL,
+    VERSION_ITEM,
     AgentProbe,
     ChatEvent,
     Choice,
+    Dist,
+    Install,
     KeyMissing,
     Knobs,
     Link,
@@ -51,19 +57,24 @@ from backends import (
     Usage,
     price,
 )
-from backends._procs import kill_tree
 from backends._snapshot import diff, snapshot
+from backends._stdin import feed
+from procs import kill_tree, spawn
 
 __all__ = ["ClaudeCodeRunner", "ClaudeCodeChat", "MODELS", "EFFORTS", "THIRD_EFFORTS", "PROVIDERS",
            "PRICED", "LONG_CONTEXT", "provider", "connect_env", "model_arg",
            "WEB_TOOLS", "usage", "build_env", "bash_rule", "tool_guide", "parse_events",
-           "final_metrics", "final_report", "kill_tree", "probe", "parse_version", "make_runner",
+           "final_metrics", "final_report", "probe", "parse_version", "npm_dist",
+           "INSTALL", "make_runner",
            "make_chat", "login_command", "logout_command", "session_dirname"]
 
 NAME = "claude_code"
 CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
 # 私有配置目录里放 key 的文件（`key_args`），清除平台的家时一起走
 KEY_FILE = "provider-key"
+# 协调层的系统提示落成的文件放这（`prompt_file`）：Windows 一条命令行最多 32767 个字符，研究助理的
+# 系统提示（前言、工具说明、skill 清单、指南原文）装 30 来个 skill 就超了（外层 #210）
+PROMPTS_DIRNAME = "system-prompts"
 # 不读 user/project/local 任何设置源：会话因此不继承本机的 CLAUDE.md、hook、plugin、
 # 自定义 agent（P-11）；自动记忆不归设置源管，靠环境变量关（build_env，外层 #222）。执行层再加
 # --no-session-persistence（一次性会话，不留）；协调层不加：多轮靠 --resume 续接，靠的就是
@@ -241,7 +252,28 @@ def key_args(link: Link) -> list[str]:
     tmp.write_text(link.key, encoding="utf-8")
     tmp.chmod(0o600)
     os.replace(tmp, path)
-    return ["--settings", json.dumps({"apiKeyHelper": f"cat {shlex.quote(str(path))}"})]
+    return ["--settings", json.dumps({"apiKeyHelper": _print_file(path)})]
+
+
+def _print_file(path: Path) -> str:
+    """把文件原样打到 stdout 的一条命令：CLI 在 Windows 上用 cmd.exe 跑 apiKeyHelper（2026-10-07
+    真机：`cat` 报「不是内部或外部命令」），那边是 `type "…"`，别处 `cat`（外层 #210）。"""
+    if procs.WINDOWS:
+        return f'type "{path}"'
+    return f"cat {shlex.quote(str(path))}"
+
+
+def prompt_file(link: Link, text: str) -> Path:
+    """系统提示落成文件交给 `--append-system-prompt-file`：私有配置目录里按内容的哈希命名，同一份
+    只写一次，几个会话同时写也不会读到半截（先写临时文件再换过去）。"""
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    path = link.home / PROMPTS_DIRNAME / f"{digest}.md"
+    if not path.is_file():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{digest}.{os.getpid()}.{threading.get_ident()}.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    return path
 
 
 def build_env(timeout_s: float, link: Link, chat_id: str | None = None) -> dict[str, str]:
@@ -262,6 +294,7 @@ def build_env(timeout_s: float, link: Link, chat_id: str | None = None) -> dict[
     全部后台机制，并把 Bash 超时抬到与本轮超时一样长——唯一会杀它的只有我们自己的定时器。
     `chat_id` 只有协调层有：agent 调用的命令从环境里知道自己属于哪段对话，`--detach` 的作业记下它，
     跑完叫醒（外层 #63）；不给就不留上一段的。
+    关自动更新（外层 #277）：它会去国外的存储桶取新版本，国内取不到；版本由 `ai4sci setup` 管。
     关自动记忆（外层 #222）：`--setting-sources ""` 挡得住 CLAUDE.md，挡不住 CLI 的自动记忆——会话
     所在仓库若被这个人用 Claude Code 开过，他的记忆索引
     （`~/.claude/projects/<仓库>/memory/MEMORY.md`）连同记忆的用法说明整段进了平台的会话：
@@ -275,33 +308,51 @@ def build_env(timeout_s: float, link: Link, chat_id: str | None = None) -> dict[
     env = {**inherited, **connect_env(link), "PATH": path, CONFIG_DIR_ENV: str(link.home),
            "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
            "BASH_DEFAULT_TIMEOUT_MS": millis, "BASH_MAX_TIMEOUT_MS": millis,
-           "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
+           "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "DISABLE_AUTOUPDATER": "1"}
     env.pop(CHAT_ID_ENV, None)
     if chat_id:
         env[CHAT_ID_ENV] = chat_id
+    if procs.WINDOWS:
+        env.update(_windows_shell())
     return env
+
+
+def _windows_shell() -> dict[str, str]:
+    """Windows 上只留 Bash（Git Bash）一扇门（外层 #210）：放行规则只写了 `Bash(ai4sci *)`，CLI 的
+    PowerShell 工具开着的话 agent 用它敲 `ai4sci` 在 dontAsk 下被拒，所以按官方开关关掉；Git Bash
+    在哪显式给，不让 CLI 自己猜。没有 Git Bash 抛 FileNotFoundError，说清装什么。"""
+    return {"CLAUDE_CODE_USE_POWERSHELL_TOOL": "0", "CLAUDE_CODE_GIT_BASH_PATH": procs.bash()}
 
 
 def _abs_glob(path: Path) -> str:
     # 实测：Claude Code 的权限规则里单个 `/` 开头按项目根解释，文件系统绝对路径必须写成 `//`。
     # 写成 `Write(/abs/code/**)` 时对 code/ 下的 Write 照样被拒，改 `//` 后才放行。
-    return f"//{path.resolve().as_posix().lstrip('/')}/**"
+    return f"//{rule_path(path.resolve()).lstrip('/')}/**"
+
+
+def rule_path(resolved: PurePath) -> str:
+    """权限规则里怎么写一个绝对路径：Windows 上 CLI 先把路径换成 POSIX 形式再匹配，`C:\\Users\\a`
+    当成 `/c/Users/a`（官方 permissions 文档，外层 #210）；别处原样。"""
+    if not resolved.drive:
+        return resolved.as_posix()
+    return f"/{resolved.drive[0].lower()}{resolved.as_posix()[len(resolved.drive):]}"
 
 
 class ClaudeCodeRunner:
     name = NAME
 
-    def __init__(self, link: Link, cli: str = "claude") -> None:
+    def __init__(self, link: Link) -> None:
         self.link = link
-        self.cli = cli
+        self.cli = link.cli or INSTALL.command
 
     @staticmethod
     def tool_guide(bash_rules: tuple[str, ...]) -> str:
         return tool_guide(bash_rules)
 
-    def build_argv(self, prompt: str, cwd: Path, allowed_paths: list[Path],
+    def build_argv(self, cwd: Path, allowed_paths: list[Path],
                    bash_rules: tuple[str, ...] = (), tuning: Tuning | None = None,
                    max_turns: int | None = None, max_budget_usd: float | None = None) -> list[str]:
+        """任务说明不在这里：`-p` 不带参数，`run` 从 stdin 喂（命令行长度，外层 #210）。"""
         # bash_rules 由调用方显式给而不是默认放行：dontAsk 下只读 Bash（grep/ls/wc）本就自动放行，
         # 写操作（sed -i）实测被拒——不给 Bash 规则，才守得住"只能改 allowed_paths"
         rules: list[str] = []
@@ -311,7 +362,7 @@ class ClaudeCodeRunner:
         rules += [*(bash_rule(p) for p in bash_rules), *WEB_TOOLS]
         # 按人的设置里这家用什么；没给用这个供应商的起点，从不让 CLI 自己猜
         picked = provider(self.link).knobs().fill(tuning)
-        return [self.cli, "-p", prompt, "--output-format", "stream-json", "--verbose",
+        return [self.cli, "-p", "--output-format", "stream-json", "--verbose",
                 "--permission-mode", "dontAsk", *EXECUTOR_ISOLATION_ARGS,
                 "--allowedTools", *rules,
                 "--max-turns", str(int(_env_num("AI4SCI_EXECUTOR_MAX_TURNS", 30, int))
@@ -326,18 +377,18 @@ class ClaudeCodeRunner:
             tuning: Tuning | None = None, max_turns: int | None = None,
             max_budget_usd: float | None = None) -> RunResult:
         before = snapshot(cwd)
-        argv = self.build_argv(prompt, cwd, allowed_paths, bash_rules, tuning, max_turns,
-                               max_budget_usd)
+        argv = self.build_argv(cwd, allowed_paths, bash_rules, tuning, max_turns, max_budget_usd)
         raw: list[str] = []
         err: list[str] = []
         started = time.monotonic()
-        # start_new_session：自成进程组，超时时 killpg 能一起带走 CLI 派生的子进程（sleep 之类）
-        # stdin 必须给 DEVNULL：实测不给的话 CLI 会等 3 秒 stdin 再继续
+        # spawn：自成一棵树（POSIX 新进程组、Windows 一个 Job），超时时 kill_tree 连 CLI 派生的
+        # 子进程（sleep 之类）一起带走
+        # 任务说明从 stdin 喂、喂完就关：实测 stdin 开着不关的话 CLI 会等 3 秒再继续
         # 环境与协调层同一份：裸 `ai4sci` 找得到、关后台、Bash 超时对齐本轮（skill 脚本会跑几分钟）
-        proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True,
-                                env=build_env(timeout_s, self.link))
+        proc = spawn(argv, cwd=str(cwd), stdin=subprocess.PIPE,
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                     encoding="utf-8", errors="replace", env=build_env(timeout_s, self.link))
+        feed(proc, prompt)
         # stdout 与 stderr 各一个线程排空。只读 stdout 的话，CLI 往 stderr 写满管道缓冲区
         # 就会卡住，表面上是"超时"，真正原因是没人读它（实测 CLI 会往 stderr 打 Warning）
         readers = [threading.Thread(target=lambda: raw.extend(proc.stdout), daemon=True),
@@ -449,7 +500,7 @@ def final_report(events: list[dict]) -> str:
 
 class ClaudeCodeChat:
     """协调层适配器：同一个 CLI，多轮靠 `--resume <session id>`，指南靠开会话那一轮的
-    `--append-system-prompt`。
+    `--append-system-prompt-file`。
 
     指南只在开会话时生效（外层 #200，实测 2026-10-01，2.1.286 + sonnet，三次一致）：首轮送「口令：
     苹果」，`--resume` 时改送「口令：香蕉」，问它口令答「苹果」——续接时 CLI 沿用开会话那份，再送
@@ -472,9 +523,9 @@ class ClaudeCodeChat:
     name = NAME
     cost_reporting = "session"
 
-    def __init__(self, link: Link, cli: str = "claude") -> None:
+    def __init__(self, link: Link) -> None:
         self.link = link
-        self.cli = cli
+        self.cli = link.cli or INSTALL.command
 
     def knobs(self) -> Knobs:
         """有哪些模型、哪几档思考深度，以及起点（按人的设置里没填这家时用；P-25）：跟着供应商走。"""
@@ -497,10 +548,12 @@ class ClaudeCodeChat:
         return chat_tool_guide(bash_rules)
 
     def build_argv(
-        self, message: str, cwd: Path, *, session_id: str | None, system_prompt: str,
+        self, cwd: Path, *, session_id: str | None, system_prompt: str,
         allowed_paths: list[Path], bash_rules: tuple[str, ...],
         readable_paths: list[Path] = (), tuning: Tuning | None = None,
     ) -> list[str]:
+        """这一轮的话不在这里：`-p` 不带参数，`turn` 从 stdin 喂；指南落成文件（命令行长度，
+        外层 #210）。"""
         rules: list[str] = []
         for path in allowed_paths:
             rules += [f"Edit({_abs_glob(path)})", f"Write({_abs_glob(path)})"]
@@ -510,7 +563,7 @@ class ClaudeCodeChat:
         for path in readable_paths:
             rules.append(f"Read({_abs_glob(path)})")
         rules += [*(bash_rule(p) for p in bash_rules), *WEB_TOOLS]
-        argv = [self.cli, "-p", message, "--output-format", "stream-json", "--verbose",
+        argv = [self.cli, "-p", "--output-format", "stream-json", "--verbose",
                 "--include-partial-messages",  # 逐字吐（端口的 delta 事件，外层 #65）
                 "--permission-mode", "dontAsk", *ISOLATION_ARGS,
                 "--allowedTools", *rules,
@@ -522,7 +575,7 @@ class ClaudeCodeChat:
         if session_id:
             argv += ["--resume", session_id]  # 续接：开会话时那份指南还在，再送不生效（见类头）
         elif system_prompt:
-            argv += ["--append-system-prompt", system_prompt]
+            argv += ["--append-system-prompt-file", str(prompt_file(self.link, system_prompt))]
         # 对话 meta 里记的具体值；没给用起点（P-25：从不让 CLI 自己猜）
         picked = self.knobs().fill(tuning)
         return [*argv, "--model", model_arg(self.link, picked.model), "--effort", picked.effort,
@@ -535,20 +588,21 @@ class ClaudeCodeChat:
         tuning: Tuning | None = None,
     ) -> Iterator[ChatEvent]:
         try:
-            argv = self.build_argv(message, cwd, session_id=session_id,
+            argv = self.build_argv(cwd, session_id=session_id,
                                    system_prompt=system_prompt, allowed_paths=allowed_paths,
                                    bash_rules=bash_rules, readable_paths=readable_paths,
                                    tuning=tuning)
             env = build_env(timeout_s, self.link, chat_id)
-        except KeyMissing as exc:  # 选了要 key 的供应商却没填：这一轮说清楚，不起 CLI
+        except (KeyMissing, FileNotFoundError) as exc:  # 没填 key、Windows 上没 Git Bash：说清楚
             yield ChatEvent("error", text=str(exc), is_error=True)
             return
         trust_cost = provider(self.link).reports_cost
         err: list[str] = []
         started = time.monotonic()
-        proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True, env=env)
+        proc = spawn(argv, cwd=str(cwd), stdin=subprocess.PIPE,
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                     encoding="utf-8", errors="replace", env=env)
+        feed(proc, message)
         drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
         drain.start()
         # 超时由定时器杀树：主线程在逐行读 stdout，不能同时 wait(timeout)
@@ -662,7 +716,24 @@ def parse_version(text: str) -> tuple[int, ...] | None:
     return tuple(int(p) for p in parts[:3])
 
 
-def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> AgentProbe:
+# 有原生程序包的平台（npm 的写法；照 2.1.292 主包 install.cjs 的表，Linux 取 glibc 那一版）
+PLATFORMS = ("darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64", "win32-x64", "win32-arm64")
+
+
+def npm_dist(platform: str, version: str) -> Dist:
+    """原生程序每个平台单独一个包（`@anthropic-ai/claude-code-<平台>`），版本号与主包同步，包里就一个
+    程序（2.1.292 实测：主包的 postinstall 只是把它从这个包里拷出来，不出网）。"""
+    if platform not in PLATFORMS:
+        raise ValueError(f"Claude Code 没有 {platform} 的程序包；有：{', '.join(PLATFORMS)}")
+    exe = "claude.exe" if platform.startswith("win32") else "claude"
+    return Dist(package=f"{INSTALL.npm}-{platform}", version=version, root="package", entry=exe)
+
+
+INSTALL = Install(command="claude", min_version=MIN_VERSION, npm="@anthropic-ai/claude-code",
+                  parse_version=parse_version, dist=npm_dist)
+
+
+def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
     """四句人话（纲领 P-25）：装了没、版本够不够、登录了没、能不能说话。
 
     登录看 `claude auth status`（实测 2.1.278 打一份 JSON，`loggedIn` 布尔）；说话是真跑一句 pong，
@@ -670,27 +741,36 @@ def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> Ag
     没有版本，没登录说不了话），但每一步都留一行给人看。
     """
     result = AgentProbe()
+    cli = link.cli or INSTALL.command
     exe = shutil.which(cli)
     if exe is None:
-        result.items.append(("装了没", False, f"找不到 `{cli}`：装 Claude Code 后再检查"))
+        result.items.append((INSTALLED_ITEM, False, f"找不到 `{cli}`"))
         return result
     result.installed = True
-    result.items.append(("装了没", True, exe))
-    version = subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=30)
+    result.items.append((INSTALLED_ITEM, True, exe))
+    version = subprocess.run([cli, "--version"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=30)
     raw = (version.stdout or version.stderr).strip()
     result.version = raw
     parsed = parse_version(raw)
     want = ".".join(map(str, MIN_VERSION))
     if version.returncode != 0 or parsed is None:
-        result.items.append(("版本", False, f"`{cli} --version` 认不出：{raw or '无输出'}"))
+        result.items.append((VERSION_ITEM, False, f"`{cli} --version` 认不出：{raw or '无输出'}"))
         return result
     if parsed < MIN_VERSION:
-        result.items.append(("版本", False, f"{raw}，要 ≥ {want}（`--effort` 与隔离参数）"))
+        result.items.append((VERSION_ITEM, False, f"{raw}，要 ≥ {want}（`--effort` 与隔离参数）"))
         return result
-    result.items.append(("版本", True, raw))
+    result.items.append((VERSION_ITEM, True, raw))
+    if procs.WINDOWS:  # 没 Git Bash，agent 一条命令都跑不了（外层 #210）
+        try:
+            result.items.append(("Git Bash", True, procs.bash()))
+        except FileNotFoundError as exc:
+            result.items.append(("Git Bash", False, str(exc)))
+            return result
     picked = provider(link)
     if picked.key is None:  # 官方订阅：问平台私有目录里的登录，不是用户本机的
         status = subprocess.run([cli, "auth", "status"], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace",
                                 timeout=30, env=build_env(30.0, link))
         try:
             doc = json.loads(status.stdout or "{}")
@@ -714,7 +794,8 @@ def probe(link: Link, cli: str = "claude", speak_timeout_s: float = 120.0) -> Ag
             *EXECUTOR_ISOLATION_ARGS, "--max-turns", "1", "--model", model_arg(link, picked.model),
             *key_args(link)]
     try:
-        spoke = subprocess.run(argv, capture_output=True, text=True, timeout=speak_timeout_s,
+        spoke = subprocess.run(argv, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=speak_timeout_s,
                                stdin=subprocess.DEVNULL, env=build_env(speak_timeout_s, link))
     except subprocess.TimeoutExpired:
         result.items.append(("说话", False, f"{speak_timeout_s:g} 秒没回话"))
@@ -745,14 +826,14 @@ def session_dirname(cwd: Path) -> str:
     return re.sub(r"[^A-Za-z0-9]", "-", str(cwd.resolve()))
 
 
-def login_command(link: Link, cli: str = "claude") -> tuple[list[str], dict[str, str]]:
+def login_command(link: Link) -> tuple[list[str], dict[str, str]]:
     """在平台的配置目录里登录 Claude 订阅：CLI 自己开浏览器授权（外层 #263）。"""
-    return [cli, "auth", "login", "--claudeai"], build_env(600.0, link)
+    return [link.cli or INSTALL.command, "auth", "login", "--claudeai"], build_env(600.0, link)
 
 
-def logout_command(link: Link, cli: str = "claude") -> tuple[list[str], dict[str, str]]:
+def logout_command(link: Link) -> tuple[list[str], dict[str, str]]:
     """登出平台配置目录里的登录：凭据在系统钥匙串里、按配置目录分开，清除家之前要先登出。"""
-    return [cli, "auth", "logout"], build_env(60.0, link)
+    return [link.cli or INSTALL.command, "auth", "logout"], build_env(60.0, link)
 
 
 def make_runner(link: Link) -> ClaudeCodeRunner:
