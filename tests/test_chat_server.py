@@ -136,7 +136,7 @@ def listed_workspaces(base, project_id="p"):
 
 def test_health_and_catalog(served):
     base, _ = served
-    assert json.loads(call(base, "/health")[2]) == {"ok": True, "checks_ok": True}
+    assert json.loads(call(base, "/health")[2]) == {"ok": True, "checks_ok": True, "turns": 0}
     status, _, body = call(base, "/stages")
     assert status == 200
     stages = json.loads(body)

@@ -13,8 +13,9 @@ JSON；所有响应都不许被别的页面嵌进 iframe，`/raw` 端出的文�
 `/studio/…` 是流程助理的域，对话五个端点在两个前缀下共用一套实现；项目里的对话物理上到不了库。
 工作区在项目之下：`/projects/<p>/workspaces/<id>/…`。
 
-    GET  /health                            {"ok": true, "checks_ok":
-    bool}（在用的底座与每台算力上次自检都过）
+    GET  /health                            {"ok": true, "checks_ok": bool, "turns": int}：checks_ok
+                                            在用的底座与每台算力上次自检都过；turns 此刻在跑几轮
+                                            对话（外壳退出前要不要问一句）
     GET  /backends                          每家 agent：产品名、模型清单、深度档位、
     新对话用的值（照设置）、
                                             哪家是「对话用」的缺省
@@ -96,7 +97,9 @@ import json
 import logging
 import mimetypes
 import re
-from collections.abc import Callable, Mapping
+import threading
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -208,6 +211,9 @@ class ChatServer(ThreadingHTTPServer):
         super().__init__(address, Handler)
         # 请求的 Host 认哪些主机名（`refusal`）：本机两个，加上服务听的那个地址（人显式给了别的）
         self.hosts = frozenset({*LOOPBACK_HOSTS, str(address[0]).lower()})
+        # 此刻在跑几轮对话（`/health` 的 turns）：外壳退出前据此问一句「退出会打断它」（外层 #282）
+        self._turns = 0
+        self._turns_lock = threading.Lock()
         self.home = Path(home).resolve()
         self.catalog = catalog
         self.skills = skills
@@ -251,6 +257,21 @@ class ChatServer(ThreadingHTTPServer):
     @property
     def projects_root(self) -> Path:
         return project.projects_root(self.home)
+
+    @property
+    def turns(self) -> int:
+        return self._turns
+
+    @contextmanager
+    def turn(self) -> Iterator[None]:
+        """一轮对话从起到流完（连收件箱接着念的）算在跑。"""
+        with self._turns_lock:
+            self._turns += 1
+        try:
+            yield
+        finally:
+            with self._turns_lock:
+                self._turns -= 1
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -302,7 +323,8 @@ class Handler(BaseHTTPRequestHandler):
             # checks_ok：设置里在用的两家与每台算力上次自检都过了（没检查过也算过：不拦人）
             return self._json({"ok": True,
                                "checks_ok": not settings.problems(knobs=self.server.knobs_of,
-                                                                  home=self.server.home)})
+                                                                  home=self.server.home),
+                               "turns": self.server.turns})
         if parts == ["backends"]:
             # 页面开新对话那一屏的三枚旋钮：哪家（缺省照设置里「对话用」的）、
             # 每家的清单与新对话用的值
@@ -609,6 +631,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream(self, where: scope.Scope, conv: conversation.Conversation, chat: Chat,
                 text: str, tuning: Tuning) -> None:
+        with self.server.turn():
+            self._stream_turn(where, conv, chat, text, tuning)
+
+    def _stream_turn(self, where: scope.Scope, conv: conversation.Conversation, chat: Chat,
+                     text: str, tuning: Tuning) -> None:
         system_prompt = self.server.system_prompt_for(where, chat)
         try:
             events = conversation.send(

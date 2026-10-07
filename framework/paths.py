@@ -70,6 +70,7 @@ UV_CACHE_PARTS = ("cache", "uv")
 BIN_DIRNAME = "bin"
 TOOLS_DIRNAME = "tools"
 PYTHON_DIRNAME = "python"
+RUN_DIRNAME = "run"
 CLI_NAME = "ai4sci"
 
 
@@ -169,6 +170,12 @@ def python_dir() -> Path:
     """uv 装 Python 装到这（`UV_PYTHON_INSTALL_DIR`）：一行命令装平台时、平台起 uv 时都指这里，
     不往本机 uv 的缺省位置放第二份。"""
     return tools_dir() / PYTHON_DIRNAME
+
+
+def run_dir() -> Path:
+    """在跑的服务的登记（外层 #285）：每个 `ai4sci serve` 一份 `serve-<pid>.json`，记着它起的、还没
+    结束的进程树；它崩了、被杀了，下一个起来的按这份收拾。"""
+    return home() / RUN_DIRNAME
 
 
 def workflows_root() -> Path:
