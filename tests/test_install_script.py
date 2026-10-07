@@ -71,6 +71,19 @@ def test_the_script_and_the_platform_agree_on_mirrors_and_places():
         assert f"{name} = '{value}'" in ps1, name
 
 
+def test_both_scripts_keep_the_desktop_contract_the_same_way():
+    """外壳只认一份约定（外层 #282，desktop.md §3）：两份脚本认同样的两个环境变量、「平台还开着」是
+    同一个退出码、暂存在同一个目录。"""
+    sh, ps1 = SCRIPT.read_text(encoding="utf-8"), PS1.read_text(encoding="utf-8")
+    busy_sh = re.search(r"^EXIT_BUSY=(\d+)$", sh, re.M)
+    busy_ps1 = re.search(r"^\$EXIT_BUSY = (\d+)$", ps1, re.M)
+    assert busy_sh and busy_ps1 and busy_sh.group(1) == busy_ps1.group(1) == "75"
+    assert 'STAGING="${TOOLS}/.ai4sci-staging"' in sh
+    assert "$STAGING = Join-Path $TOOLS '.ai4sci-staging'" in ps1
+    for name in ("AI4SCI_NO_SETUP", "AI4SCI_WHEEL_SHA256"):
+        assert f"${{{name}" in sh and f"$env:{name}" in ps1, name
+
+
 def _case_clashes(text: str) -> list[list[str]]:
     """PowerShell 的变量名不分大小写：写法不同的两个名字是同一个变量。"""
     names: dict[str, set[str]] = {}
