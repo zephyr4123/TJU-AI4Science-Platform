@@ -87,8 +87,17 @@ def env_dir(task_dir: Path) -> Path:
 
 
 def venv_python(venv_dir: Path) -> Path:
-    """venv 里的解释器路径；只做 POSIX，本项目不跑 Windows。"""
-    return Path(venv_dir) / "bin" / "python"
+    """本机 venv 里的解释器：Windows 上在 `Scripts\\python.exe`，别处在 `bin/python`
+    （外层 #210）。"""
+    return Path(venv_dir) / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
+def _venv_python_on(compute: Compute, venv_dir: str) -> str:
+    """那台机器上 venv 的解释器：按环境建在哪台机器上选，不按平台跑在哪——本机照本机的系统，
+    远端算力是 Linux（windows-adaptation.md §1.2：远端是 Windows 的不做）。"""
+    if compute.kind == "local":
+        return str(venv_python(Path(venv_dir)))
+    return f"{venv_dir}/bin/python"
 
 
 def read_env(task_dir: Path) -> tuple[EnvSpec | None, list[str]]:
@@ -191,7 +200,7 @@ def build_venv_on(compute: Compute, task_dir: str, venv_dir: str) -> str:
             "不会退回到平台 venv 跑任务"
         )
     uv = list(compute.uv)
-    python = f"{venv_dir}/bin/python"
+    python = _venv_python_on(compute, venv_dir)
     lock = f"{task_dir}/{ENV_DIRNAME}/{REQUIREMENTS_NAME}"
     _run_on(compute, task_dir,
             [*uv, "venv", "--quiet", "--clear", "--python", spec.python_version, venv_dir],
