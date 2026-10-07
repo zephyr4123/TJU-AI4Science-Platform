@@ -102,7 +102,8 @@ def spawn(jobs_dir: Path, argv: list[str], *, cap: str, stage: str, chat_id: str
     if started.warning:
         with log_path.open("a", encoding="utf-8") as log:
             log.write(f"WARNING {started.warning}\n")
-        LOGGER.warning("job_not_detached job_id=%s why=%s", job_id, started.warning)
+        # info 不是 warning：--detach 那条命令还没配日志，WARNING 会原样打到助理的 stderr 最前面
+        LOGGER.info("job_not_detached job_id=%s why=%s", job_id, started.warning)
     job = Job(job_id=job_id, cap=cap, stage=stage, argv=list(argv), pid=started.pid,
               started_at=stamp.isoformat(timespec="seconds"), chat_id=chat_id, log=str(log_path),
               output=output)
