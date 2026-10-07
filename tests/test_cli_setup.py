@@ -226,3 +226,15 @@ def test_the_hand_over_to_serve_carries_every_option_serve_has(machine, monkeypa
     assert len(opened) == 1
     assert main(["setup", "--no-input"]) == 0
     assert len(handed) == 2 and len(opened) == 1
+
+
+def test_a_key_typed_after_a_run_without_a_terminal_still_switches_both(machine):
+    """无终端那次 setup 已经把自检记进 agents.yaml；之后在终端里填 key，两家照样都切到 DeepSeek
+    （以前靠「agents.yaml 还不在」判新家，只切没通的那家，Codex 留在官方登录，外层 #282 审查）。"""
+    machine["tty"] = False
+    assert main(["setup", "--no-serve"]) == 1
+    machine["tty"] = True
+    machine["typed"] = ["sk-good"]
+    assert main(["setup", "--no-serve"]) == 0
+    registry = agents.load()
+    assert {registry.get(n).provider for n in ("claude_code", "codex")} == {"deepseek"}

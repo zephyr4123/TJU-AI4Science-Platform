@@ -39,13 +39,10 @@ from backends import (
     available_backends,
     install_of,
 )
-from framework import agents, keys, paths, toolchain
+from framework import agents, paths, toolchain
 from framework.cli import serve
 from framework.cli._common import EXIT_INVALID, EXIT_OK, refuse_if_assistant
 
-# 新用户唯一可能会的，就是去 DeepSeek 后台申请一个 key（主人 2026-10-07）；别的供应商在设置页换
-SETUP_PROVIDER = "deepseek"
-KEY_SITE = "platform.deepseek.com"
 KEY_ATTEMPTS = 3
 LABEL_WIDTH = 14
 # 一项一行的记号（外壳按它读，`docs/specs/desktop.md` §3）：好了、没好、提醒一句不算失败
@@ -156,7 +153,6 @@ def _cli(name: str, home_only: bool) -> bool:
 
 def _model() -> bool:
     """助理与执行层用的那家能不能说话（真问一句，`ai4sci agent check` 那四项）；不能就问 key。"""
-    fresh = not agents.path().exists()  # 新家：填进来的 key 两家都用上
     try:
         registry = agents.load()
     except agents.AgentsInvalid as exc:
@@ -177,24 +173,21 @@ def _model() -> bool:
     if not interactive():
         print("  ✗ 没有终端，不问 key：页面「设置 → AI」里填")
         return False
-    return _ask_key(failing, list(available_backends()) if fresh else failing)
+    return _ask_key(failing)
 
 
-def _ask_key(failing: list[str], switch: list[str]) -> bool:
-    """问 DeepSeek 的 key、切过去、再问一句；不通再问，回车跳过。key 不上屏。"""
-    key_name = agents.provider_of(failing[0], SETUP_PROVIDER).key
-    title = agents.provider_of(failing[0], SETUP_PROVIDER).title
-    assert key_name is not None, f"{SETUP_PROVIDER} 要 key 才能接"
+def _ask_key(failing: list[str]) -> bool:
+    """问 DeepSeek 的 key，存下、两家都切过去、问一句（`agents.quickstart`，与页面的弹窗同一段）；
+    不通再问，回车跳过。key 不上屏。"""
+    title = agents.provider_of(failing[0], agents.QUICKSTART_PROVIDER).title
     print()
     for _ in range(KEY_ATTEMPTS):
-        typed = ask_secret(f"粘贴 {title} 的 key（{KEY_SITE} 申请，粘贴时不显示；回车跳过）：")
+        typed = ask_secret(f"粘贴 {title} 的 key（{agents.QUICKSTART_SITE} 申请，粘贴时不显示；"
+                           "回车跳过）：")
         if not typed.strip():
             print("  ✗ 跳过了：之后在页面「设置 → AI」里填")
             return False
-        keys.put(key_name, typed)
-        for name in switch:
-            agents.use(name, provider=SETUP_PROVIDER)
-        results = {name: _probe(name) for name in failing}
+        results = agents.quickstart(typed)
         if all(got.ok for got in results.values()):
             for name, got in results.items():
                 _say(True, name, f"问了一句，通了（{title}，{got.spoke_s:.1f} 秒）")

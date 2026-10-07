@@ -16,6 +16,9 @@ DeepSeek 的模型。上次自检（`last_check`）也记在这里，页面与 `
 框架起适配器只走这里的 `chat` / `runner` / `probe`：`Link`（私有目录、供应商、key）只在
 `link()` 造。开新对话把供应商和模型一起抄进对话 meta，续这段对话按 meta 里的供应商接
 （`chat(name, provider)`），改设置只影响之后开的对话（P-25）。
+
+填一把 DeepSeek 的 key 就能用（`quickstart`）也在这里：终端里 `ai4sci setup` 问 key 与页面的弹窗
+（`POST /settings/quickstart`）共用这一段（外层 #282）。
 """
 
 from __future__ import annotations
@@ -53,6 +56,10 @@ from framework import keys, paths, toolchain
 ROLES = ("chat", "executor")
 ROLE_LABELS = {"chat": "对话用", "executor": "执行用"}
 FALLBACK = "claude_code"
+# 填一把 key 就能用的那家（主人 2026-10-07：新用户唯一可能会的，就是去 DeepSeek 后台申请一个 key）；
+# 别的供应商在设置页换
+QUICKSTART_PROVIDER = "deepseek"
+QUICKSTART_SITE = "platform.deepseek.com"
 
 
 class AgentsInvalid(ValueError):
@@ -334,3 +341,25 @@ def record_check(name: str, probe: AgentProbe, knobs: KnobsOf = knobs_of) -> Ent
     entry.last_check = {**probe.to_dict(), "at": datetime.now(UTC).isoformat(timespec="seconds")}
     save(registry)
     return entry
+
+
+def quickstart(key: str, *, probe_agent: Callable[[str], AgentProbe] = probe,
+               knobs: KnobsOf = knobs_of) -> dict[str, AgentProbe]:
+    """填一把 DeepSeek 的 key 就能用（外层 #282）：存进家里的 keys.yaml，两家都切到 DeepSeek（以后在
+    设置里换执行层也不用再填），问助理那家一句（执行层是另一家再问它）并记回 last_check；返回这几家
+    的自检，助理那家在前。key 是空的就 KeysInvalid（ValueError），什么都不改。"""
+    if not key.strip():
+        title = provider_of(FALLBACK, QUICKSTART_PROVIDER).title
+        raise keys.KeysInvalid(f"key 是空的：粘贴 {title} 的 key（{QUICKSTART_SITE} 申请）")
+    for key_name in dict.fromkeys(provider_of(name, QUICKSTART_PROVIDER).key
+                                  for name in available_backends()):
+        assert key_name is not None, f"{QUICKSTART_PROVIDER} 要 key 才能接"
+        keys.put(key_name, key)
+    for name in available_backends():
+        use(name, provider=QUICKSTART_PROVIDER, knobs=knobs)
+    registry = load(knobs)
+    probes: dict[str, AgentProbe] = {}
+    for name in dict.fromkeys((registry.chat, registry.executor)):
+        probes[name] = probe_agent(name)
+        record_check(name, probes[name], knobs)
+    return probes
