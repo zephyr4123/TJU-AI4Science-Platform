@@ -86,11 +86,26 @@ def cli() -> str:
     here = Path(sys.executable).parent
     mine = shutil.which(CLI_NAME, path=str(here))
     if mine is None:  # 只有 `python -m framework.cli` 能跑的安装
-        return f"{shlex.quote(sys.executable)} -m framework.cli"
+        return f"{_typed(sys.executable)} -m framework.cli"
     found = shutil.which(CLI_NAME)
-    if found is not None and Path(found).resolve() == Path(mine).resolve():
+    if found is not None and _same_program(Path(found), Path(mine)):
         return CLI_NAME
-    return shlex.quote(mine)
+    return _typed(mine)
+
+
+def _same_program(a: Path, b: Path) -> bool:
+    """同一份安装：软链解析到同一个文件；Windows 上 uv tool 是把入口复制进 bin（2026-10-07 真机：
+    逐字节相同、不是链接），入口里写死了它那份解释器，内容一样就是同一份（外层 #210）。"""
+    if a.resolve() == b.resolve():
+        return True
+    return sys.platform == "win32" and a.read_bytes() == b.read_bytes()
+
+
+def _typed(program: str) -> str:
+    """照抄进终端的写法：POSIX 的 shell 用 shlex；Windows 是 PowerShell，路径带空格要 `& "…"`。"""
+    if sys.platform != "win32":
+        return shlex.quote(program)
+    return f'& "{program}"' if " " in program else program
 
 
 def home() -> Path:

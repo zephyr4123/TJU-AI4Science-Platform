@@ -103,17 +103,28 @@ def test_cli_names_this_install_not_whatever_ai4sci_is_first_on_path(monkeypatch
     不是同一份就写全路径。入口脚本与解释器在同一个 bin 目录（venv、`uv tool` 都是）。"""
     mine = _script(tmp_path / "my env" / "bin")
     old = _script(tmp_path / "old" / "bin")
+    (old.with_suffix(".py") if os.name == "nt" else old).write_text("old = 1\n", encoding="utf-8")
+    if os.name == "nt":  # 壳一样、旁边的脚本不一样：Windows 上比的是入口本身，换成不一样的入口
+        old.write_bytes(old.read_bytes() + b"old")
     monkeypatch.setattr(paths.sys, "executable", str(mine.parent / "python"))
     monkeypatch.setenv("PATH", str(mine.parent))
     assert paths.cli() == "ai4sci"
-    linked = tmp_path / "local" / "bin"  # uv tool：~/.local/bin/ai4sci 是工具目录里那个的软链
+    # uv tool 放进 bin 的入口：POSIX 是工具目录里那个的软链，Windows 是一份逐字节相同的复制
+    linked = tmp_path / "local" / "bin"
     linked.mkdir(parents=True)
-    (linked / "ai4sci").symlink_to(mine)
+    if os.name == "nt":
+        (linked / mine.name).write_bytes(mine.read_bytes())
+    else:
+        (linked / "ai4sci").symlink_to(mine)
     monkeypatch.setenv("PATH", str(linked))
     assert paths.cli() == "ai4sci"
+    # 路径里有空格，照抄也得跑得通：POSIX 的 shell 加引号，PowerShell 要 `& "…"`
+    typed = f'& "{mine}"' if os.name == "nt" else f"'{mine}'"
     monkeypatch.setenv("PATH", f"{old.parent}{os.pathsep}{mine.parent}")
-    assert paths.cli() == f"'{mine}'"  # 路径里有空格，照抄也得跑得通
+    assert os.path.normcase(paths.cli()) == os.path.normcase(typed)
     monkeypatch.setenv("PATH", str(tmp_path / "nothing"))
-    assert paths.cli() == f"'{mine}'"
+    assert os.path.normcase(paths.cli()) == os.path.normcase(typed)
     mine.unlink()  # 只有 `python -m framework.cli` 能跑的安装
-    assert paths.cli() == f"'{mine.parent / 'python'}' -m framework.cli"
+    python = mine.parent / "python"
+    module = f'& "{python}"' if os.name == "nt" else f"'{python}'"
+    assert paths.cli() == f"{module} -m framework.cli"
