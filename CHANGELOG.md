@@ -14,7 +14,7 @@
 - 页面「助理还不能说话」：助理那家缺 key 时弹窗粘 DeepSeek 的 key、当场试通；`/settings` 加 `assistant`，新端点 `POST /settings/quickstart`（外层 #282）
 - `ai4sci setup --no-input`：不问、不探模型、不开浏览器，不接终端时打下载进度；`ai4sci serve --until-stdin-closes`；`/health` 加 `turns`（外层 #282 #285）
 - 安装脚本认 `AI4SCI_NO_SETUP`、`AI4SCI_WHEEL_SHA256`；平台开着时退 75（Mac 补上这项检查）；升级先装进暂存目录、成了再换，中途断网旧的照样能用（外层 #282）
-- 发版出桌面包、签名的 `platform.json` 与带版本号的 `install.ps1`；`cdn.py` 改成子命令（`wheel` `desktop` `cert` `uv-version`）；CI 加 desktop 作业（外层 #282）
+- 发版出桌面包、签名的 `platform.json` 与带版本号的 `install.ps1`；`cdn.py` 改成子命令（`sign` `wheel` `desktop` `cert` `uv-version`），依赖锁进 `cdn.py.lock`；CI 加 desktop 作业（外层 #282）
 
 ### 变更
 
@@ -25,16 +25,19 @@
 ### 修复
 
 - Windows：对话里起的后台作业跳不出那一轮的 Job，一轮超时就被连带杀掉（外层 #284）
-- 停服务时在跑的那一轮 CLI 的子孙成孤儿继续花 token：服务退出先收掉在跑的轮次，下一个服务收掉崩溃留下的（外层 #285）
+- 停服务时在跑的那一轮 CLI 的子孙成孤儿继续花 token：服务退出（含关掉终端窗口，Windows 上关窗口、注销、关机）先收掉在跑的轮次，下一个服务收掉崩溃留下的（外层 #285）
+- 页面重载、断网时对话流断了，这一轮照样跑完、记下，不再卡住这段对话（外层 #282）
+- Windows：后台作业的日志不再每行多一个回车（外层 #284）
 - 问 Claude Code / Codex 的版本也带平台的私有目录，不再在家外面建 `~/.codex/tmp`（外层 #286）
 - CLI 没装上时对话给一句人话，不再是 500 加英文报错（外层 #282）
 - 中文输入法用回车选词不再把消息发出；玻璃组件在 Mac 桌面 App 的 WebKit 里不再走画不出来的那条路（外层 #282）
 - rc 发版：版本取 wheel 的 PEP 440 写法（以前 rc 一跑就停）（外层 #282）
-- 发版往 CDN 传包：分片失败照 SDK 的说法再调（从断点续传），试够了照样失败；桶里已有、大小一样的带版本号对象跳过，重跑流水线只补没传成的（外层 #281）
+- 发版往 CDN 传包：分片失败照 SDK 的说法再调（从断点续传），试够了照样失败；桶里已有同一份（sha256）的带版本号对象跳过，重跑流水线只补没传成的，签名清单重跑时用桶里那份签名（外层 #281 #282）
 
 ### 安全
 
-- 本机服务只认本机来源：`Host` 只认回环、带 `Origin` 必须同源、POST 只收 JSON、页面不许被别的网站嵌入；用 curl 调写接口要加 `-H 'Content-Type: application/json'`（外层 #283）
+- 本机服务只认本机来源：`Host` 只认回环、带 `Origin` 必须同源、POST 只收 JSON、页面不许被别的网站嵌入；用 curl 调写接口要加 `-H 'Content-Type: application/json'`；`--host 0.0.0.0` 只能本机打开，别的机器要连写这台的 IP（外层 #283）
+- 安装脚本从 CDN 取 uv 时照脚本里写好的 sha256 核（脚本由签名清单盖着），不再信 CDN 上旁边那份；发版时签 `platform.json` 与传 CDN 分两步、各只带自己那组密钥（外层 #282）
 
 ## [1.8.0] - 2026-10-07
 
