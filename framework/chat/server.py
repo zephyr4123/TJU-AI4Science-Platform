@@ -20,7 +20,8 @@ JSON；所有响应都不许被别的页面嵌进 iframe，`/raw` 端出的文�
     新对话用的值（照设置）、
                                             哪家是「对话用」的缺省
     GET  /settings                          设置那一整份：底座（两层各用哪家、每家清单与缺省、
-    上次检查）、算力、存放、key 末四位；读盘不探，几十毫秒
+    上次检查）、助理那家能不能说话（assistant：ready / needs_key / cannot_talk / unchecked 与
+    一句原因，外层 #282）、算力、存放、key 末四位；读盘不探，几十毫秒
     GET  /settings/storage                  {"parts": [{label, bytes}]} 家里每块多大（走遍整棵树，
                                             一秒上下，所以单独一个端点，外层 #268）
     POST /settings/agents                   {"chat"?, "executor"?, "agents"?: {name: {model?,
@@ -32,6 +33,9 @@ JSON；所有响应都不许被别的页面嵌进 iframe，`/raw` 端出的文�
     POST /settings/keys                     {"name", "value"} 存一把 key（家里的 keys.yaml，
                                             外层 #265）；回来的整份里 key 只有末四位
     POST /settings/keys/<name>/remove       删一把
+    POST /settings/quickstart               {"key"} 填一把 DeepSeek 的 key 就能用：存下、两家都切到
+                                            DeepSeek、问助理那家一句（与 setup 问 key 同一段），
+                                            回新的一整份；空的 422（外层 #282）
     POST /settings/reset                    {"confirm": "清除"} 清除平台的家（登出两家、清空），
                                             有作业在跑或不是平台建的家 409（外层 #263）
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
@@ -695,6 +699,16 @@ class Handler(BaseHTTPRequestHandler):
             if len(rest) == 3 and rest[0] == "keys" and rest[2] == "remove":
                 keys.remove(rest[1])
                 return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+            if rest == ["quickstart"]:
+                key = body.get("key")
+                if not isinstance(key, str):
+                    return self._error(HTTPStatus.BAD_REQUEST, "要带 key（字符串）")
+                try:
+                    return self._json(settings.quickstart(key, self.server.knobs_of,
+                                                          self.server.probe_agent,
+                                                          self.server.home))
+                except keys.KeysInvalid as exc:  # 空的：页面照这句提示，不是配置值非法
+                    return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
             if rest == ["reset"]:
                 if body.get("confirm") != CONFIRM_RESET:
                     return self._error(HTTPStatus.BAD_REQUEST, f"要带 confirm: {CONFIRM_RESET}")

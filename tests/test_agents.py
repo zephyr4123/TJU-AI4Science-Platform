@@ -165,3 +165,31 @@ def test_probe_tells_how_to_install_or_upgrade_with_the_command_of_this_install(
     monkeypatch.setattr(agents.backends, "probe", lambda name, link: stale)
     assert agents.probe("claude_code").items[1] == (
         "版本", False, "2.0.0，要 ≥ 2.1.276，终端里跑 `ai4sci setup` 换新版")
+
+
+def test_quickstart_saves_the_key_switches_both_and_asks_the_one_that_chats():
+    """填一把 DeepSeek 的 key 就能用（外层 #282）：页面的弹窗与终端里 setup 问 key 共用这一段。之前
+    那次无终端的 setup 探过一回、agents.yaml 已经在了——「新家才两家都切」不作数，这里一律两家都切；
+    问的是助理那家（执行层是另一家再问它），结果记回 last_check。"""
+    from framework import keys
+
+    agents.record_check("claude_code", AgentProbe(items=[("登录", False, "平台里还没登录")]))
+    asked: list[str] = []
+
+    def probe(name: str) -> AgentProbe:
+        asked.append(name)
+        return AgentProbe(items=[("登录", True, "DeepSeek 的 key 已填"), ("说话", True, "pong")],
+                          installed=True, logged_in=True, spoke_s=1.0)
+
+    got = agents.quickstart(" sk-new-0001 \n", probe_agent=probe)
+    assert keys.get("deepseek") == "sk-new-0001"
+    registry = agents.load()
+    assert {registry.get(n).provider for n in ("claude_code", "codex")} == {"deepseek"}
+    assert asked == ["claude_code"] and list(got) == ["claude_code"] and got["claude_code"].ok
+    assert registry.get("claude_code").last_check["ok"] is True
+    agents.use("codex", roles=("executor",))
+    asked.clear()
+    assert list(agents.quickstart("sk-new-0002", probe_agent=probe)) == ["claude_code", "codex"]
+    with pytest.raises(ValueError, match="key 是空的"):
+        agents.quickstart("  ", probe_agent=probe)
+    assert keys.get("deepseek") == "sk-new-0002"  # 空的不覆盖

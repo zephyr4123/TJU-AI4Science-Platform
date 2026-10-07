@@ -174,6 +174,7 @@ sequenceDiagram
 | `UV_CACHE_DIR` `UV_PYTHON_INSTALL_DIR` | 平台**设给** uv（`skills/run.py` 的 `uv_overlay`，本机实验环境同一份） | uv 缓存在家里的 `cache/uv/`、Python 装在 `tools/python/`；不读用户 shell 里的这两个变量 |
 | `UV_DEFAULT_INDEX` `UV_PYTHON_INSTALL_MIRROR` `HF_ENDPOINT` | 平台**补给** uv（`mirrors.missing`，地址只在 `mirrors.py`，外层 #277） | 国内源：清华 PyPI、npmmirror 的 Python、hf-mirror；用户 shell 里设了的（含 `UV_INDEX_URL`）用他的，CI 设回官方源 |
 | `DISABLE_AUTOUPDATER` | 平台**设给** Claude Code（`backends/claude_code.py` 的 `build_env`） | 关它的自动更新：它去国外的桶取新版；版本由 `ai4sci setup` 管 |
+| `CLAUDE_CODE_MAX_RETRIES` | 平台**设给** Claude Code 的自检（`backends/claude_code.py` 的 `probe`，外层 #282） | 自检那一句最多重试两次：key 错了它也照 401 重试十次、两分多钟才报，自检先超时、分不出是缺 key |
 
 模型、思考深度、哪家 agent 归家里的 `agents.yaml`（`ai4sci agent use`），算力归 `computes.yaml`（`ai4sci compute add`）；两份都不进 git。**key 不走环境变量**（外层 #265）：供应商的 key 与 OpenAlex 的 key 都在家里的 `keys.yaml`（0600，读写点 `keys.py`，设置页填，页面只见末四位）；shell 里设的同名变量平台不认。测试里整个家指到 tmp（`tests/conftest.py`）。
 
