@@ -81,6 +81,8 @@ export const api = {
   putKey: (name: string, value: string) => request<SettingsDoc>('/settings/keys', post({ name, value })),
   removeKey: (name: string) =>
     request<SettingsDoc>(`/settings/keys/${encodeURIComponent(name)}/remove`, post({})),
+  /** 「助理还不能说话」那扇窗的试通（外层 #282）：存 DeepSeek 的 key、两家都切到 DeepSeek、问一句，回来新的整份；空 key 拒 422 */
+  quickstart: (key: string) => request<SettingsDoc>('/settings/quickstart', post({ key })),
   /** 清除平台的家：登出两家、清空（外层 #263）；要带「清除」两个字 */
   resetHome: () => request<SettingsDoc & { done: string[] }>('/settings/reset', post({ confirm: '清除' })),
   stages: () => request<StageInfo[]>('/stages'),

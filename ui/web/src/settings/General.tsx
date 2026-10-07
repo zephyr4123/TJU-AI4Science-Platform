@@ -1,4 +1,5 @@
-// 设置 → 常规（外层 #268）：「分工」两行橡皮滑块选助理、执行层各用哪家（改了只对之后开的对话生效，P-25）；
+// 设置 → 常规（外层 #268）：「分工」两行橡皮滑块选助理、执行层各用哪家（改了只对之后开的对话生效，P-25），
+// 助理那家缺 key、说不了话时那一行底下一句红字写原因（外层 #282：余额不足、连不上不弹窗，只在这里说）；
 // 「自检」一行检查全部；「外观」一行选深浅色（记在本机，`lib/theme.ts`）。
 import { Desktop, Moon, Sun } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
@@ -11,7 +12,7 @@ import RubberSegment from '@/components/reactbits/RubberSegment'
 import { type ThemeChoice, useThemeChoice } from '@/lib/theme'
 
 import { type Ctx, Row, Section } from './kit'
-import { noWebNote, ROLES } from './status'
+import { assistantNote, noWebNote, ROLES } from './status'
 
 const CHECK_ALL_MS = 16000
 const THEMES: { value: ThemeChoice; label: string; icon: ReactNode }[] = [
@@ -28,7 +29,9 @@ export function General({ doc, ctx }: { doc: SettingsDoc; ctx: Ctx }) {
     <>
       <Section title="分工" note="只对之后开的对话生效">
         {ROLES.map(([role, label, note]) => (
-          <Row key={role} label={label} note={<>{note}<RoleWarning entry={table.entries.find((e) => e.name === table[role])} /></>}>
+          <Row key={role} label={label}
+               note={<>{note}<RoleWarning entry={table.entries.find((e) => e.name === table[role])}
+                                          problem={role === 'chat' ? assistantNote(doc.assistant) : undefined} /></>}>
             <RubberSegment aria-label={`${label}用哪家`} items={items} value={table[role]} size="md" radius={14} equalSlots={false}
                            disabled={ctx.busy !== null}
                            onChange={(name) => { if (name !== table[role]) void ctx.act(role, () => api.updateAgents({ [role]: name })) }} />
@@ -51,10 +54,15 @@ export function General({ doc, ctx }: { doc: SettingsDoc; ctx: Ctx }) {
   )
 }
 
-/** 这一层用的那家接的供应商不能联网：琥珀色一行，只提醒不拦（外层 #266） */
-function RoleWarning({ entry }: { entry?: AgentEntry }) {
+/** 这一层用的那家接的供应商不能联网：琥珀色一行，只提醒不拦（外层 #266）；助理此刻说不了话：红字一行写原因（外层 #282） */
+function RoleWarning({ entry, problem }: { entry?: AgentEntry; problem?: string }) {
   const warning = entry && noWebNote(entry)
-  return warning ? <span className="mt-0.5 block text-wait">{warning}</span> : null
+  return (
+    <>
+      {warning && <span className="mt-0.5 block text-wait">{warning}</span>}
+      {problem && <span className="mt-0.5 block text-bad">{problem}</span>}
+    </>
+  )
 }
 
 /** 全部检查算不算过：每家底座与每台算力上次检查都过了（本机不落盘、没记就算过） */

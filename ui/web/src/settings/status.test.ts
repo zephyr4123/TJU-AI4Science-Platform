@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import type { AgentEntry, ProviderRow } from '@/api/types'
+import type { AgentEntry, AssistantStatus, ProviderRow, SettingsDoc } from '@/api/types'
 
-import { agentStatus, computeStatus, noWebNote, parseSsh, providerTag, shortVersion, suggestComputeName, tildify } from './status'
+import { agentPassed, agentStatus, assistantNote, computeStatus, noWebNote, parseSsh, providerTag, shortVersion, suggestComputeName, tildify } from './status'
 
 describe('设置：一个词的状态', () => {
   it('底座：没检查过、四句都过、有一句没过', () => {
@@ -16,6 +16,14 @@ describe('设置：一个词的状态', () => {
                                            { name: '登录', ok: false, note: '没登录：在终端跑 codex login' }], at: 't' }))
       .toEqual({ word: '未登录', tone: 'bad', facts: [], hint: '没登录：在终端跑 codex login' })
     expect(agentStatus({ ok: false, items: [{ name: '装了没', ok: false, note: '找不到 codex' }], at: 't' }).word).toBe('未安装')
+  })
+  it('检查一家之后算不算过：只看那一家上次自检', () => {
+    const entry = (name: string, ok: boolean | null) => ({ name, last_check: ok === null ? null : { ok, items: [], at: 't' } }) as AgentEntry
+    const doc = (...entries: AgentEntry[]) => ({ agents: { chat: 'a', executor: 'a', entries } }) as unknown as SettingsDoc
+    expect(agentPassed('a')(doc(entry('a', true), entry('b', false)))).toBe(true)
+    expect(agentPassed('b')(doc(entry('a', true), entry('b', false)))).toBe(false)
+    expect(agentPassed('a')(doc(entry('a', null)))).toBe(false)
+    expect(agentPassed('c')(doc(entry('a', true)))).toBe(false)
   })
   it('算力：本机没探过、探过带 GPU、没过带原话', () => {
     expect(computeStatus(null).word).toBe('未检查')
@@ -75,5 +83,20 @@ describe('设置：供应商的小签与分工的提醒（外层 #266）', () =>
     const entry = { title: 'Codex', provider: 'deepseek', providers: [row('official'), row('deepseek', { web_search: false })] } as AgentEntry
     expect(noWebNote(entry)).toBe('Codex 用 DeepSeek 时不能联网')
     expect(noWebNote({ ...entry, provider: 'official' })).toBeUndefined()
+  })
+})
+
+describe('设置：助理那一行底下的原因（外层 #282）', () => {
+  const of = (state: AssistantStatus['state'], reason: string | null): AssistantStatus =>
+    ({ agent: 'claude_code', provider: 'deepseek', state, reason, checked_at: 't' })
+  it('缺 key、说不了话时写服务给的原因', () => {
+    expect(assistantNote(of('cannot_talk', 'DeepSeek 余额不足：去充值'))).toBe('DeepSeek 余额不足：去充值')
+    expect(assistantNote(of('needs_key', 'DeepSeek 的 key 不对'))).toBe('DeepSeek 的 key 不对')
+  })
+  it('就绪、没检查过、没给原因、服务没给这一段：不写', () => {
+    expect(assistantNote(of('ready', '多余的一句'))).toBeUndefined()
+    expect(assistantNote(of('unchecked', null))).toBeUndefined()
+    expect(assistantNote(of('cannot_talk', null))).toBeUndefined()
+    expect(assistantNote(undefined)).toBeUndefined()
   })
 })

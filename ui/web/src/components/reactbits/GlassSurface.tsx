@@ -1,9 +1,10 @@
 // 一块玻璃，从 reactbits 的 GlassSurface 捞来改装（MIT，https://reactbits.dev/components/glass-surface）：
 // 输入框的壳，浮在欢迎屏的配图与滚过的对话上面。改装点：深浅色跟项目的 useDark（认 data-theme）而不是只看系统；
 // 尺寸缺省撑满父元素、高度随内容；去掉苹果蓝的焦点环（焦点由调用方画）；退化样式用墨色阴影不用蓝。
-// 真正的折射靠 SVG 滤镜进 backdrop-filter，只有 Chromium 支持；Safari / Firefox 退化成磨砂玻璃。
+// 真正的折射靠 SVG 滤镜进 backdrop-filter，只有 Chromium 支持；WebKit（Safari 与桌面 App 的 WKWebView）/ Firefox 退化成磨砂玻璃。
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react'
 
+import { isWebKit } from '@/lib/browser'
 import { useDark } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
 
@@ -36,9 +37,7 @@ function supportsBackdropFilter(): boolean {
 
 // 只有 Chromium 把 SVG 滤镜接进 backdrop-filter；WebKit 与 Firefox 会报"支持"却画不出来
 function supportsSvgBackdrop(filterId: string): boolean {
-  const isWebkit = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)
-  const isFirefox = /Firefox/.test(navigator.userAgent)
-  if (isWebkit || isFirefox) return false
+  if (isWebKit(navigator.userAgent) || /Firefox/.test(navigator.userAgent)) return false
   const div = document.createElement('div')
   div.style.backdropFilter = `url(#${filterId})`
   return div.style.backdropFilter !== ''
