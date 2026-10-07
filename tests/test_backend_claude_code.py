@@ -284,7 +284,7 @@ def test_kill_tree_reaches_children_in_their_own_process_group(tmp_path: Path):
     while not marker.exists() and time.monotonic() < deadline:
         time.sleep(0.05)
     assert marker.exists(), "子进程没起来，测试前提不成立"
-    child_pid = int(marker.read_text())
+    child_pid = int(marker.read_text(encoding="utf-8"))
     assert os.getpgid(child_pid) != os.getpgid(parent.pid), "测试前提：子进程自成一组"
 
     kill_tree(parent.pid)

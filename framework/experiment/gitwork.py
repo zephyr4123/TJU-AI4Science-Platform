@@ -32,7 +32,8 @@ _IDENTITY = {
 def git(work: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     """跑一条 git。失败默认抛（不吞异常）；只有明确要看退出码的调用才传 check=False。"""
     proc = subprocess.run(
-        ["git", "-C", str(work), *args], capture_output=True, text=True, env=_env(), check=False
+        ["git", "-C", str(work), *args], capture_output=True, text=True,
+        encoding="utf-8", errors="replace", env=_env(), check=False
     )
     if check and proc.returncode != 0:
         raise RuntimeError(

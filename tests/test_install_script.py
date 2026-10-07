@@ -102,6 +102,7 @@ def _run(script: Path, home: Path, dist: Path, extra_path: str = "") -> str:
            "LANG": "en_US.UTF-8",
            "PATH": os.pathsep.join(p for p in (extra_path, python_dir, "/usr/bin", "/bin") if p)}
     done = subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace",
                           stdin=subprocess.DEVNULL, timeout=300, check=False)
     assert done.returncode == 0, done.stdout + done.stderr
     return done.stdout
@@ -127,7 +128,8 @@ def test_install_sets_up_the_home_then_hands_over_and_a_rerun_skips(tmp_path):
                                                           "ai4sci-1.0.0-py3-none-any.whl")],
                          env={**os.environ, "HOME": str(home), "XDG_DATA_HOME": "",
                               "XDG_BIN_HOME": "", "UV_TOOL_DIR": "", "UV_TOOL_BIN_DIR": ""},
-                         capture_output=True, text=True, check=False)
+                         capture_output=True, text=True,
+                         encoding="utf-8", errors="replace", check=False)
     assert old.returncode == 0, old.stderr
     local_bin = str(home / ".local" / "bin")
 
@@ -177,6 +179,7 @@ def test_a_tampered_download_stops_the_install(tmp_path):
            "PATH": os.pathsep.join([str(Path(sys.executable).resolve().parent), "/usr/bin",
                                     "/bin"])}
     done = subprocess.run(["sh", str(_script(tmp_path, "1.0.0"))], env=env, capture_output=True,
-                          text=True, stdin=subprocess.DEVNULL, timeout=300, check=False)
+                          text=True, encoding="utf-8", errors="replace",
+                          stdin=subprocess.DEVNULL, timeout=300, check=False)
     assert done.returncode == 1 and "sha256 对不上，没装" in done.stderr
     assert not (home / ".ai4sci" / paths.BIN_DIRNAME / "ai4sci").exists()

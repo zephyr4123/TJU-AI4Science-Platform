@@ -341,8 +341,8 @@ class ClaudeCodeRunner:
         # stdin 必须给 DEVNULL：实测不给的话 CLI 会等 3 秒 stdin 再继续
         # 环境与协调层同一份：裸 `ai4sci` 找得到、关后台、Bash 超时对齐本轮（skill 脚本会跑几分钟）
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding="utf-8", errors="replace", start_new_session=True,
                                 env=build_env(timeout_s, self.link))
         # stdout 与 stderr 各一个线程排空。只读 stdout 的话，CLI 往 stderr 写满管道缓冲区
         # 就会卡住，表面上是"超时"，真正原因是没人读它（实测 CLI 会往 stderr 打 Warning）
@@ -553,8 +553,8 @@ class ClaudeCodeChat:
         err: list[str] = []
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True, env=env)
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding="utf-8", errors="replace", start_new_session=True, env=env)
         drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
         drain.start()
         # 超时由定时器杀树：主线程在逐行读 stdout，不能同时 wait(timeout)
@@ -700,7 +700,8 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
         return result
     result.installed = True
     result.items.append((INSTALLED_ITEM, True, exe))
-    version = subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=30)
+    version = subprocess.run([cli, "--version"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=30)
     raw = (version.stdout or version.stderr).strip()
     result.version = raw
     parsed = parse_version(raw)
@@ -715,6 +716,7 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
     picked = provider(link)
     if picked.key is None:  # 官方订阅：问平台私有目录里的登录，不是用户本机的
         status = subprocess.run([cli, "auth", "status"], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace",
                                 timeout=30, env=build_env(30.0, link))
         try:
             doc = json.loads(status.stdout or "{}")
@@ -738,7 +740,8 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
             *EXECUTOR_ISOLATION_ARGS, "--max-turns", "1", "--model", model_arg(link, picked.model),
             *key_args(link)]
     try:
-        spoke = subprocess.run(argv, capture_output=True, text=True, timeout=speak_timeout_s,
+        spoke = subprocess.run(argv, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=speak_timeout_s,
                                stdin=subprocess.DEVNULL, env=build_env(speak_timeout_s, link))
     except subprocess.TimeoutExpired:
         result.items.append(("说话", False, f"{speak_timeout_s:g} 秒没回话"))

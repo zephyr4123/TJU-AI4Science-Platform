@@ -200,7 +200,7 @@ def _ruff_fix_imports(pack: Path) -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "ruff", "check", "--isolated", "--no-cache", "--fix-only",
          "--select", LINT_AUTOFIX, "--line-length", str(LINT_LINE_LENGTH), "harness"],
-        cwd=pack, capture_output=True, text=True, check=False,
+        cwd=pack, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     if proc.returncode != 0 or "No module named ruff" in proc.stderr:
         raise DraftFailed(
@@ -225,7 +225,7 @@ def _ruff(pack: Path) -> list[str]:
         [sys.executable, "-m", "ruff", "check", "--isolated", "--no-cache",
          "--output-format", "concise", "--select", LINT_SELECT,
          "--line-length", str(LINT_LINE_LENGTH), "harness"],
-        cwd=pack, capture_output=True, text=True, check=False,
+        cwd=pack, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     if proc.returncode not in (0, 1) or "No module named ruff" in proc.stderr:
         raise DraftFailed(

@@ -76,6 +76,7 @@ class LocalCompute:
         try:
             proc = subprocess.run(cmd, cwd=remote_dir, env={**os.environ, **env},
                                   stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace",
                                   timeout=timeout_s, check=False)
         except subprocess.TimeoutExpired as exc:
             return Outcome(exit_code=124, stdout=str(exc.stdout or ""),
@@ -153,13 +154,15 @@ class LocalCompute:
         """本机：解释器、uv、有没有 GPU（nvidia-smi 在不在）、磁盘。"""
         probe = Probe(hostname=platform.node(), python=platform.python_version())
         probe.items.append(("Python", True, f"{probe.python}（平台 venv）"))
-        uv = subprocess.run([*self.uv, "--version"], capture_output=True, text=True, check=False)
+        uv = subprocess.run([*self.uv, "--version"], capture_output=True, text=True,
+                            encoding="utf-8", errors="replace", check=False)
         probe.uv = uv.stdout.strip().split()[-1] if uv.returncode == 0 else ""
         probe.items.append(("uv", uv.returncode == 0, probe.uv or "平台 venv 里没有 uv：make venv"))
         smi = shutil.which("nvidia-smi")
         if smi:
             out = subprocess.run([smi, "--query-gpu=name,memory.total", "--format=csv,noheader"],
-                                 capture_output=True, text=True, check=False)
+                                 capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", check=False)
             probe.gpu = out.stdout.strip().splitlines()[0] if out.returncode == 0 else ""
         probe.items.append(("GPU", True, probe.gpu or "无"))
         usage = shutil.disk_usage(Path.home())

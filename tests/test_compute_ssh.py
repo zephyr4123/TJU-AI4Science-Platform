@@ -250,7 +250,8 @@ def test_live_baseline_and_one_iteration_run_on_the_box(tmp_path, real_registry)
     runner = ScriptedRunner([train_for_mse(0.001)])
     stop = run_loop(run_dir, runner, ssh, max_iters=1)
     assert stop.iter == 1
-    results = json.loads((run_dir / "iters" / "iter_1" / "results.json").read_text("utf-8"))
+    text = (run_dir / "iters" / "iter_1" / "results.json").read_text(encoding="utf-8")
+    results = json.loads(text)
     assert abs(results["metrics"]["val_mse"] - 0.001) < 1e-9
 
 

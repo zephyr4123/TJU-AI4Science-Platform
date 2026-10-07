@@ -95,7 +95,8 @@ def warm_script(script: Path) -> None:
     uv = uv_argv()
     for what, argv in (("uv lock --check", [*uv, *UV_LOCK_CHECK_ARGS, str(script)]),
                        ("uv sync", [*uv, *UV_SYNC_ARGS, str(script)])):
-        proc = subprocess.run(argv, capture_output=True, text=True, env=uv_env(), check=False)
+        proc = subprocess.run(argv, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", env=uv_env(), check=False)
         if proc.returncode != 0:
             raise SkillInvalid(f"{script}: {what} 失败（退出码 {proc.returncode}）："
                                f"{proc.stderr.strip()[-1500:]}")

@@ -70,6 +70,7 @@ def reset(home: Path, logout: Logout = agents.logout_command) -> list[str]:
             done.append(f"{name}：没装，不用登出")
             continue
         proc = subprocess.run(argv, env=env, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace",
                               timeout=LOGOUT_TIMEOUT_S, stdin=subprocess.DEVNULL, check=False)
         said = (proc.stdout or proc.stderr).strip().splitlines()
         note = said[-1] if said else ""

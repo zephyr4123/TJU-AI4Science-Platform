@@ -480,8 +480,8 @@ class CodexRunner:
         err: list[str] = []
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding="utf-8", errors="replace", start_new_session=True,
                                 env=build_env(timeout_s, home, self.link))
         _write_stdin(proc, prompt)
         readers = [threading.Thread(target=lambda: raw.extend(proc.stdout), daemon=True),
@@ -670,8 +670,8 @@ class CodexChat:
         err: list[str] = []
         started = time.monotonic()
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, start_new_session=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding="utf-8", errors="replace", start_new_session=True,
                                 env=build_env(timeout_s, home, self.link, chat_id))
         _write_stdin(proc, message)
         drain = threading.Thread(target=lambda: err.extend(proc.stderr), daemon=True)
@@ -727,7 +727,8 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
         return result
     result.installed = True
     result.items.append((INSTALLED_ITEM, True, exe))
-    version = subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=30)
+    version = subprocess.run([cli, "--version"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=30)
     raw = (version.stdout or version.stderr).strip()
     result.version = raw
     parsed = parse_version(raw)
@@ -743,6 +744,7 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
     picked = provider(link)
     if picked.key is None:  # 官方登录：问平台私有目录里的登录，不是用户本机的
         status = subprocess.run([cli, "login", "status"], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace",
                                 timeout=30, env=build_env(30.0, home, link))
         result.logged_in = status.returncode == 0
         said = (status.stderr or status.stdout).strip()
@@ -763,7 +765,8 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
             *config_args(link, [], tuning=None, skills_off=skill_off_paths(home, home)), "-"]
     try:
         # cwd 也放在私有 home 里：说一句话不该在谁的目录里留下东西
-        spoke = subprocess.run(argv, capture_output=True, text=True, timeout=speak_timeout_s,
+        spoke = subprocess.run(argv, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=speak_timeout_s,
                                input="Reply with exactly the word pong and nothing else.",
                                env=build_env(speak_timeout_s, home, link), cwd=str(home))
     except subprocess.TimeoutExpired:

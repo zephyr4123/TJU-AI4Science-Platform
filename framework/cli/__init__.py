@@ -19,6 +19,8 @@
 from __future__ import annotations
 
 import argparse
+import io
+import os
 import sys
 from importlib import metadata
 
@@ -82,7 +84,19 @@ def _version() -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _utf8()
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
     args.argv = argv  # 原样的命令行：`cap ... --detach` 要把同一条命令起成作业
     return int(args.func(args))
+
+
+def _utf8() -> None:
+    """平台的输入输出与它起的 Python 一律 UTF-8（外层 #210）：中文 Windows 上标准输出接到管道
+    或文件时 Python 按 GBK 编码，打印 GBK 里没有的字（²、✓）当场崩；skill、harness、作业这些平台
+    起的 Python 也设 UTF-8 模式，`open()` 与打印和 macOS / Linux 上一样。人自己设了 PYTHONUTF8 的
+    照他的。"""
+    os.environ.setdefault("PYTHONUTF8", "1")
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper) and stream.encoding.lower() != "utf-8":
+            stream.reconfigure(encoding="utf-8", errors="replace")

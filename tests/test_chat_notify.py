@@ -127,7 +127,8 @@ def test_wake_records_missing_conversation_or_backend_instead_of_raising(tmp_pat
 def test_mark_wake_lands_in_the_job_record(tmp_path: Path):
     jobs._save(tmp_path / "jobs", _job("chat-x"))
     assert jobs.mark_wake(tmp_path / "jobs", "job-7", "queued").wake == "queued"
-    assert json.loads((tmp_path / "jobs" / "job-7.json").read_text())["wake"] == "queued"
+    text = (tmp_path / "jobs" / "job-7.json").read_text(encoding="utf-8")
+    assert json.loads(text)["wake"] == "queued"
 
 
 def test_awaiting_counts_jobs_that_will_still_wake_this_conversation(tmp_path: Path):

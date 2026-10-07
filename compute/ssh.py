@@ -97,7 +97,8 @@ class SshCompute:
         remote = f"bash -lc {shlex.quote(prelude + chr(10) + script)}"
         try:
             proc = subprocess.run([*self._ssh_argv(), remote], stdin=subprocess.DEVNULL,
-                                  capture_output=True, text=True, timeout=timeout_s, check=False)
+                                  capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", timeout=timeout_s, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise SshError(f"ssh {self.user}@{self.host}:{self.port} 起不来或超时：{exc}") from exc
         if check and proc.returncode != 0:
@@ -109,7 +110,8 @@ class SshCompute:
         argv = ["rsync", "-az", "--delete", *(f"--exclude={name}" for name in IGNORED),
                 "-e", " ".join(shlex.quote(a) for a in self._ssh_argv()[:-1]), src, dst]
         try:
-            proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s,
+            proc = subprocess.run(argv, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=timeout_s,
                                   check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise SshError(f"rsync 起不来或超时：{exc}") from exc
@@ -254,7 +256,8 @@ class SshCompute:
         argv = ["rsync", "-az", *(f"--exclude={name}" for name in IGNORED if name != JOB_DIRNAME),
                 "-e", " ".join(shlex.quote(a) for a in self._ssh_argv()[:-1]),
                 argv_src, f"{Path(local_dir).resolve()}/"]
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=1800, check=False)
+        proc = subprocess.run(argv, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=1800, check=False)
         if proc.returncode != 0:
             raise SshError(f"rsync 回来失败（退出码 {proc.returncode}）："
                            f"{proc.stderr.strip()[-1500:]}")

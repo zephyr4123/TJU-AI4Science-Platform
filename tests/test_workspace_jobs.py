@@ -46,7 +46,7 @@ def test_spawned_job_runs_the_capability_and_writes_back(tmp_path: Path, monkeyp
     job = jobs.spawn(ws.jobs, argv, cap="verify", stage="verification", chat_id="chat-x",
                      flow=None)
     assert job.status == "running" and job.job_id.startswith("job-") and job.chat_id == "chat-x"
-    on_disk = json.loads((ws.jobs / f"{job.job_id}.json").read_text())
+    on_disk = json.loads((ws.jobs / f"{job.job_id}.json").read_text(encoding="utf-8"))
     assert on_disk["argv"] == argv and on_disk["pid"] == job.pid and on_disk["output"] is None
     done = _wait_done(ws.jobs, job.job_id)
     assert done.status == "done" and done.exit_code == 0, done
@@ -103,7 +103,8 @@ def test_stop_kills_the_whole_tree_and_closes_the_output(tmp_path: Path):
          "time.sleep(300)'], start_new_session=True); time.sleep(300)"],
         start_new_session=True)
     time.sleep(1.0)
-    grandchild = subprocess.run(["pgrep", "-P", str(proc.pid)], capture_output=True, text=True)
+    grandchild = subprocess.run(["pgrep", "-P", str(proc.pid)], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace")
     assert grandchild.stdout.split(), "夹具该有一个孙进程"
     record = jobs.Job(job_id="job-s", cap="design", stage="design", argv=[], pid=proc.pid,
                       started_at="t", output="design/1")
@@ -115,8 +116,8 @@ def test_stop_kills_the_whole_tree_and_closes_the_output(tmp_path: Path):
     assert stopped.status == "stopped" and stopped.exit_code is None and "zephyr" in stopped.result
     assert jobs.effective_status(jobs.load(ws.jobs, "job-s")) == "stopped"
     for pid in grandchild.stdout.split():  # 孙进程也死了，不留孤儿烧 CPU
-        assert subprocess.run(["ps", "-p", pid, "-o", "stat="], capture_output=True,
-                              text=True).stdout.strip() in ("", "Z")
+        assert subprocess.run(["ps", "-p", pid, "-o", "stat="], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace").stdout.strip() in ("", "Z")
     meta = output.read_meta(directory)
     assert meta.status == "failed" and "人停的" in meta.error
     with pytest.raises(jobs.JobNotRunning, match="stopped"):

@@ -162,7 +162,8 @@ def test_progress_follows_each_paper_from_reading_to_note(ws):
         if cwd.name != "2":
             write_note(cwd)
     out, _, _ = _read(ws, [second_silent, second_silent])
-    rows = [json.loads(x) for x in (out / "progress.jsonl").read_text().splitlines()]
+    text = (out / "progress.jsonl").read_text(encoding="utf-8")
+    rows = [json.loads(x) for x in text.splitlines()]
     assert all(r.pop("at") for r in rows)
     assert rows[0] == {"papers": [
         {"n": "1", "title": "MemoryBank: Enhancing LLMs with Long-Term Memory（2024）"},

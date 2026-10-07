@@ -39,7 +39,8 @@ def test_remove_chat_forgets_the_cli_session_and_refuses_while_a_turn_runs(tmp_p
     assert chat.forgotten == ["sess-1"] and not conv.dir.exists()
     # 正在一轮里（锁的主人活着）：拒
     conv = _chat_with_session(where, session="sess-2")
-    (conv.dir / conversation.INFLIGHT_NAME).write_text(json.dumps({"pid": os.getpid()}))
+    (conv.dir / conversation.INFLIGHT_NAME).write_text(
+        json.dumps({"pid": os.getpid()}), encoding="utf-8")
     with pytest.raises(conversation.ConversationBusy):
         removal.remove_chat(where, conv.chat_id, lambda name: chat)
     assert conv.dir.exists()

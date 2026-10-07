@@ -74,7 +74,8 @@ def test_build_venv_creates_an_isolated_interpreter_of_the_declared_version(tmp_
     assert python.is_file()
     # 真的是另一个环境：prefix 落在任务目录下，不是平台 venv 的那个
     out = subprocess.run([str(python), "-c", "import sys; print(sys.prefix)"],
-                         capture_output=True, text=True, check=True).stdout.strip()
+                         capture_output=True, text=True,
+                         encoding="utf-8", errors="replace", check=True).stdout.strip()
     assert Path(out).resolve() == (task_dir / ".venv").resolve()
     assert Path(out).resolve() != Path(sys.prefix).resolve()
 

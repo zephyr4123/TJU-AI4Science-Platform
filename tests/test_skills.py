@@ -52,7 +52,8 @@ def write_skill(root: Path, name: str, body: str = "# 正文\n\n用法。\n", *,
 
 def _lock(script: Path) -> None:
     proc = subprocess.run([*run.uv_argv(), "lock", "--script", str(script)],
-                          capture_output=True, text=True, env=run.uv_env(), check=False)
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=run.uv_env(), check=False)
     assert proc.returncode == 0, proc.stderr
 
 
@@ -110,13 +111,15 @@ def test_shipped_pdf_script_runs_locked(tmp_path):
     """`uv run --locked` 能起——平台自带的环境由 `make skills` 预热过，这是 make check 的一步。"""
     script = skills.find("pdf").scripts[0]
     proc = subprocess.run([*run.uv_argv(), *run.UV_RUN_ARGS, str(script), "--help"],
-                          capture_output=True, text=True, env=run.uv_env(), check=False)
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=run.uv_env(), check=False)
     assert proc.returncode == 0, f"跑 make skills 预热 pdf 的环境：{proc.stderr[-800:]}"
     assert "--input" in proc.stdout and "--out" in proc.stdout
     # 输入不存在：退 2、stderr 说清、不写任何东西
     proc = subprocess.run([*run.uv_argv(), *run.UV_RUN_ARGS, str(script),
                            "--input", str(tmp_path / "nope.pdf")],
-                          capture_output=True, text=True, env=run.uv_env(), check=False)
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=run.uv_env(), check=False)
     assert proc.returncode == 2 and "不存在" in proc.stderr and not list(tmp_path.iterdir())
 
 
@@ -626,7 +629,8 @@ def test_cli_run_with_ws_starts_the_script_inside_that_workspace(libraries, capf
 
 def _make_skills() -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, "-m", "framework.skills"], capture_output=True,
-                          text=True, env={**run.uv_env(), "PYTHONPATH": str(REPO_ROOT)},
+                          text=True, encoding="utf-8", errors="replace",
+                          env={**run.uv_env(), "PYTHONPATH": str(REPO_ROOT)},
                           check=False, cwd=REPO_ROOT)
 
 
@@ -692,12 +696,13 @@ def test_download_skill_clones_at_a_commit_and_checks_sha256(tmp_path):
     subprocess.run(["git", "-C", str(up), "commit", "-qm", "init"], check=True,
                    env={**dict(__import__("os").environ), **env})
     sha = subprocess.run(["git", "-C", str(up), "rev-parse", "HEAD"], capture_output=True,
-                         text=True, check=True).stdout.strip()
+                         text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
     ws = tmp_path / "ws"
     ws.mkdir()
     code = run.run_script(fetch, ["git", str(up), "--commit", sha], cwd=ws)
     assert code == 0
-    receipt = json.loads((ws / "materials" / "up" / ".ai4sci-download.json").read_text("utf-8"))
+    text = (ws / "materials" / "up" / ".ai4sci-download.json").read_text(encoding="utf-8")
+    receipt = json.loads(text)
     assert receipt["kind"] == "git" and receipt["commit"] == sha and receipt["license"] == "LICENSE"
     assert receipt["out"] == "materials/up" and receipt["files"] == 2
     assert run.run_script(fetch, ["git", str(up)], cwd=ws) == 2  # 已存在不覆盖

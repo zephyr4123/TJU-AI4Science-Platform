@@ -17,7 +17,8 @@ def _pgids_below(pid: int) -> list[int]:
     pgids: list[int] = []
     frontier = [pid]
     while frontier:
-        proc = subprocess.run(["pgrep", "-P", str(frontier.pop())], capture_output=True, text=True)
+        proc = subprocess.run(["pgrep", "-P", str(frontier.pop())], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
         # pgrep 无匹配时退出码是 1，这是"没有子进程"不是故障；别的非零码才要炸
         if proc.returncode not in (0, 1):
             raise RuntimeError(f"pgrep 失败（退出码 {proc.returncode}）：{proc.stderr.strip()}")

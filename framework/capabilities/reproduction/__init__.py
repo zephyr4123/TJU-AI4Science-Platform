@@ -221,9 +221,11 @@ def _upstream_of(src: Path, name: str) -> dict[str, str]:
                 "commit": str(doc.get("commit", doc.get("sha256", "")))}
     if (src / ".git").exists():
         head = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"],
-                              capture_output=True, text=True, check=False)
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", check=False)
         origin = subprocess.run(["git", "-C", str(src), "remote", "get-url", "origin"],
-                                capture_output=True, text=True, check=False)
+                                capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", check=False)
         return {"name": name, "source": origin.stdout.strip() if origin.returncode == 0 else "",
                 "commit": head.stdout.strip() if head.returncode == 0 else ""}
     return {"name": name, "source": "", "commit": ""}
