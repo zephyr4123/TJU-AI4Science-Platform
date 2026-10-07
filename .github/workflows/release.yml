@@ -152,13 +152,21 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
         run: |
-          # Apple 的签名与公证以后只加 secrets（spec §7）：配了的才交给 tauri。没配的 secret 是空字符串，
-          # tauri 认「设了」不认「空」：会去导入一张空证书，空的 APPLE_SIGNING_IDENTITY 还会盖掉 ad-hoc 签名
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+          # Apple 的签名与公证只靠 secrets（spec §7）：Developer ID 证书签名，App Store Connect 的 API key
+          # 公证（tauri 要的是 .p8 的路径，secret 里是内容，落到 runner 的临时目录）。没配的 secret 是空
+          # 字符串，tauri 认「设了」不认「空」：会去导入一张空证书，空的 APPLE_SIGNING_IDENTITY 还会盖掉
+          # ad-hoc 签名，所以空的一律 unset；Windows 上这几个都用不上
+          if [ -n "${APPLE_API_PRIVATE_KEY}" ]; then
+            APPLE_API_KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY}.p8"
+            printf '%s\n' "${APPLE_API_PRIVATE_KEY}" > "${APPLE_API_KEY_PATH}"
+            export APPLE_API_KEY_PATH
+          fi
+          unset APPLE_API_PRIVATE_KEY
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY; do
             [ -n "${!name}" ] || unset "$name"
           done
           npx tauri build --target "${{ matrix.target }}" --config "{\"version\":\"${GITHUB_REF_NAME#v}\"}"
