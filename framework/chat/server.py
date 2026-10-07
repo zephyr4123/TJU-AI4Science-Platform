@@ -16,7 +16,8 @@
     新对话用的值（照设置）、
                                             哪家是「对话用」的缺省
     GET  /settings                          设置那一整份：底座（两层各用哪家、每家清单与缺省、
-    上次检查）、算力、存放、key 末四位；读盘不探，几十毫秒
+    上次检查）、助理那家能不能说话（assistant：ready / needs_key / cannot_talk / unchecked 与
+    一句原因，外层 #282）、算力、存放、key 末四位；读盘不探，几十毫秒
     GET  /settings/storage                  {"parts": [{label, bytes}]} 家里每块多大（走遍整棵树，
                                             一秒上下，所以单独一个端点，外层 #268）
     POST /settings/agents                   {"chat"?, "executor"?, "agents"?: {name: {model?,
