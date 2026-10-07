@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 import { CHECK_MS, type Ctx, KeyField, Row, Section, StatusLine, Value } from './kit'
-import { agentStatus, providerTag, shortVersion } from './status'
+import { agentPassed, agentStatus, providerTag, shortVersion } from './status'
 
 export function AgentPage({ entry, roles, keys, ctx }: {
   entry: AgentEntry; roles: string[]; keys: Record<string, string>; ctx: Ctx
@@ -31,8 +31,7 @@ export function AgentPage({ entry, roles, keys, ctx }: {
       <Section title="状态">
         <Row label="自检" note={<StatusLine status={agentStatus(entry.last_check)} />}>
           <CallChip label="检查" status={ctx.chip(`check:${entry.name}`)} expectedMs={CHECK_MS} disabled={busy}
-                    onPress={() => void ctx.act(`check:${entry.name}`, () => api.runCheck('agents', entry.name),
-                                                (next) => next.agents.entries.find((e) => e.name === entry.name)?.last_check?.ok === true)} />
+                    onPress={() => void ctx.act(`check:${entry.name}`, () => api.runCheck('agents', entry.name), agentPassed(entry.name))} />
         </Row>
         <Row label="版本"><Value>{shortVersion(entry.last_check?.version) || '未知'}</Value></Row>
         <Row label="分工"><Value className={roles.length ? '' : 'text-muted-foreground'}>{roles.join('、') || '无'}</Value></Row>

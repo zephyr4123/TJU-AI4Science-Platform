@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import type { AgentEntry, AssistantStatus, ProviderRow } from '@/api/types'
+import type { AgentEntry, AssistantStatus, ProviderRow, SettingsDoc } from '@/api/types'
 
-import { agentStatus, assistantNote, computeStatus, noWebNote, parseSsh, providerTag, shortVersion, suggestComputeName, tildify } from './status'
+import { agentPassed, agentStatus, assistantNote, computeStatus, noWebNote, parseSsh, providerTag, shortVersion, suggestComputeName, tildify } from './status'
 
 describe('设置：一个词的状态', () => {
   it('底座：没检查过、四句都过、有一句没过', () => {
@@ -16,6 +16,14 @@ describe('设置：一个词的状态', () => {
                                            { name: '登录', ok: false, note: '没登录：在终端跑 codex login' }], at: 't' }))
       .toEqual({ word: '未登录', tone: 'bad', facts: [], hint: '没登录：在终端跑 codex login' })
     expect(agentStatus({ ok: false, items: [{ name: '装了没', ok: false, note: '找不到 codex' }], at: 't' }).word).toBe('未安装')
+  })
+  it('检查一家之后算不算过：只看那一家上次自检', () => {
+    const entry = (name: string, ok: boolean | null) => ({ name, last_check: ok === null ? null : { ok, items: [], at: 't' } }) as AgentEntry
+    const doc = (...entries: AgentEntry[]) => ({ agents: { chat: 'a', executor: 'a', entries } }) as unknown as SettingsDoc
+    expect(agentPassed('a')(doc(entry('a', true), entry('b', false)))).toBe(true)
+    expect(agentPassed('b')(doc(entry('a', true), entry('b', false)))).toBe(false)
+    expect(agentPassed('a')(doc(entry('a', null)))).toBe(false)
+    expect(agentPassed('c')(doc(entry('a', true)))).toBe(false)
   })
   it('算力：本机没探过、探过带 GPU、没过带原话', () => {
     expect(computeStatus(null).word).toBe('未检查')

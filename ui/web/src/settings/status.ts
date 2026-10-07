@@ -1,7 +1,7 @@
 // 设置那块板上的纯函数（外层 #134）：一家底座 / 一台算力上次检查的状态——一个词、几项事实、一种色调，
 // 不是一句话（主人 2026-09-22：能用词就用词，短句也少）；贴进来的 ssh 一行怎么拆、机器名怎么起。
 // 都不碰 DOM，vitest 直接测。
-import type { AgentCheck, AgentEntry, AssistantStatus, CheckItem, ComputeCheck, ProviderRow } from '@/api/types'
+import type { AgentCheck, AgentEntry, AssistantStatus, CheckItem, ComputeCheck, ProviderRow, SettingsDoc } from '@/api/types'
 import { money } from '@/lib/format'
 
 export type Tone = 'ok' | 'bad' | 'neutral'
@@ -32,6 +32,10 @@ export function agentStatus(check: AgentCheck | null): Status {
   if (check.cost_usd != null) facts.push(money(check.cost_usd))
   return { word: '就绪', tone: 'ok', facts }
 }
+
+/** 检查一家之后这次算不算过：回来的整份里那家上次自检过了（「检查」片据此洗铜绿或红） */
+export const agentPassed = (name: string) => (doc: SettingsDoc): boolean =>
+  doc.agents.entries.find((e) => e.name === name)?.last_check?.ok === true
 
 /** 分工里助理那一行底下的一句（外层 #282）：缺 key、说不了话（余额不足、连不上）时是服务给的原因；就绪、没检查过不写 */
 export function assistantNote(assistant: AssistantStatus | undefined): string | undefined {
