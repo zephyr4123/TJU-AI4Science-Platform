@@ -180,6 +180,14 @@ jobs:
             [ -n "${!name}" ] || unset "$name"
           done
           npx tauri build --target "${{ matrix.target }}" --config "{\"version\":\"${GITHUB_REF_NAME#v}\"}"
+          # tauri 只公证了 .app：给人下载的 dmg 也公证、钉上票据（Gatekeeper 查最外面那层，离线也认）
+          if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+            for dmg in src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg; do
+              xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" \
+                --issuer "$APPLE_API_ISSUER" --wait
+              xcrun stapler staple "$dmg"
+            done
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
