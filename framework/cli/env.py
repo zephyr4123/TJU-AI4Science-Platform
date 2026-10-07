@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from compute import ComputeNotFound
 from framework import computes
@@ -42,7 +42,8 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     if not version:
         path = target / env.PYTHON_VERSION_NAME
         if not path.is_file():
-            print(f"没有 {path.relative_to(ws.root)}，要给 --python X.Y", file=sys.stderr)
+            print(f"没有 {path.relative_to(ws.root).as_posix()}，要给 --python X.Y",
+                  file=sys.stderr)
             return EXIT_USAGE
         version = path.read_text(encoding="utf-8").strip()
     if not env.VERSION_RE.match(version):
@@ -66,7 +67,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         return EXIT_INVALID
     pins = [line for line in lock.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.startswith("#")]
-    print(f"ok {lock.relative_to(ws.root)}\tpython={version}\tpins={len(pins)}"
+    print(f"ok {lock.relative_to(ws.root).as_posix()}\tpython={version}\tpins={len(pins)}"
           f"\tnext=需求「材料」里写明环境是这条命令算的；设计阶段按它建环境")
     return EXIT_OK
 
@@ -87,7 +88,8 @@ def cmd_use(args: argparse.Namespace) -> int:
     ws = current_workspace(args)
     if isinstance(ws, int):
         return ws
-    if not args.python.startswith("/"):
+    if not (PurePosixPath(args.python).is_absolute()
+            or PureWindowsPath(args.python).is_absolute()):  # 远端是 Linux，本机可能是 Windows
         print(f"解释器要写绝对路径（compute check 的「已有环境」里列的），得到 {args.python!r}",
               file=sys.stderr)
         return EXIT_USAGE

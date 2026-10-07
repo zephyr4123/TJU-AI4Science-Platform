@@ -2,6 +2,8 @@
 
 put=rsync 过去，submit=远端 `nohup setsid` 起 launcher 拿 pid，wait=轮询退出码文件，
 cancel=远端杀进程组，get=rsync 回来，check=探一遍（连接、Python、uv 缺就装、GPU、磁盘）。
+本机没有 rsync（Windows 都没有，外层 #210）就打 tar 走 ssh 管道，`--delete` 与排除的效果照旧：
+推过去先删远端多出来的（排除的不碰），拉回来不删本地的。
 只认密钥：参数里只有 主机 / 端口 / 用户 / 密钥路径 / 远端根目录，没有密码这回事（P-23）；
 `ssh` 一律 `BatchMode=yes`，要密码就是没配好，当场失败不挂着等人敲。
 
@@ -16,8 +18,12 @@ cancel=远端杀进程组，get=rsync 回来，check=探一遍（连接、Python
 
 from __future__ import annotations
 
+import os
 import shlex
+import shutil
 import subprocess
+import tarfile
+import tempfile
 import time
 from pathlib import Path
 
@@ -28,6 +34,7 @@ JOB_DIRNAME = ".job"
 EXIT_FILE = "exit.code"
 PGID_FILE = "pgid"  # 远端进程组号，人叫停时另一个进程凭它下手
 _POLL_S = 5.0
+_RM_BATCH = 200  # 推过去时删远端多出来的文件，一条命令删多少个
 _CONNECT_TIMEOUT_S = 20
 _PROBE_TIMEOUT_S = 300  # 装 uv 要联网，给足
 # 装 uv：先走 PyPI 的 wheel（`pip install --user`，国内机器也通、十秒），不行再走 astral 的安装脚本
@@ -77,11 +84,21 @@ class SshCompute:
         return f"{self.root}/.scratch"
 
     def remote_dir_for(self, local_dir: Path) -> str:
-        return f"{self.root}/{Path(local_dir).resolve().as_posix().lstrip('/')}"
+        """本机目录在远端根下的镜像，路径原样接在后面；Windows 的盘符写成一级目录
+        （`C:\\Users\\a` → `<根>/c/Users/a`）：远端是 Linux，路径里不放冒号（外层 #210）。"""
+        resolved = Path(local_dir).resolve()
+        tail = resolved.as_posix()
+        if resolved.drive:
+            tail = resolved.drive[0].lower() + tail[len(resolved.drive):]
+        return f"{self.root}/{tail.lstrip('/')}"
 
     def local_dir_for(self, remote_dir: str) -> Path:
         assert remote_dir.startswith(self.root + "/"), f"{remote_dir} 不在远端根 {self.root} 下"
-        return Path("/" + remote_dir[len(self.root) + 1:])
+        tail = remote_dir[len(self.root) + 1:]
+        if os.name == "nt":
+            drive, _, rest = tail.partition("/")
+            return Path(f"{drive.upper()}:/{rest}")
+        return Path("/" + tail)
 
     # ── ssh 底座 ────────────────────────────────────────────────────────
     def _ssh_argv(self) -> list[str]:
@@ -110,6 +127,64 @@ class SshCompute:
                            f"{proc.stderr.strip()[-1500:]}\n脚本：{script[:300]}")
         return proc
 
+    def _push(self, local_dir: Path, remote_dir: str) -> None:
+        """本机目录同步到远端（`rsync -a --delete` 的效果，排除 IGNORED）。"""
+        if shutil.which("rsync") is not None:
+            self._rsync(f"{Path(local_dir).resolve()}/", f"{self._target()}:{remote_dir}/")
+            return
+        local, q = Path(local_dir).resolve(), shlex.quote(remote_dir)
+        mine = _tree(local)
+        prune = " -o ".join(f"-name {shlex.quote(name)}" for name in IGNORED)
+        listed = self._sh(f"mkdir -p {q} && cd {q} && find . \\( {prune} \\) -prune -o -type f "
+                          "-print").stdout
+        stale = sorted({line[2:] for line in listed.splitlines() if line.startswith("./")}
+                       - {rel for rel, is_dir in mine if not is_dir})
+        for start in range(0, len(stale), _RM_BATCH):  # 一批一条命令：Windows 命令行有上限
+            names = " ".join(shlex.quote(rel) for rel in stale[start:start + _RM_BATCH])
+            self._sh(f"cd {q} && rm -f -- {names}")
+        with tempfile.TemporaryFile() as archive:
+            with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+                for rel, _ in mine:
+                    tar.add(local / rel, arcname=rel, recursive=False)
+            archive.seek(0)
+            self._binary(f"tar -xzf - -C {q}", stdin=archive)
+
+    def _pull(self, remote_dir: str, local_dir: Path) -> None:
+        """远端目录取回本机，不删本地多的（job.json 是本地写的）；排除 IGNORED 里 `.job` 以外的。"""
+        local = Path(local_dir).resolve()
+        excluded = [name for name in IGNORED if name != JOB_DIRNAME]
+        if shutil.which("rsync") is not None:
+            argv = ["rsync", "-az", *(f"--exclude={name}" for name in excluded),
+                    "-e", " ".join(shlex.quote(a) for a in self._ssh_argv()[:-1]),
+                    f"{self._target()}:{remote_dir}/", f"{local}/"]
+            proc = subprocess.run(argv, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=1800, check=False)
+            if proc.returncode != 0:
+                raise SshError(f"rsync 回来失败（退出码 {proc.returncode}）："
+                               f"{proc.stderr.strip()[-1500:]}")
+            return
+        flags = " ".join(f"--exclude={shlex.quote(name)}" for name in excluded)
+        with tempfile.TemporaryFile() as archive:
+            self._binary(f"tar -czf - {flags} -C {shlex.quote(remote_dir)} .", stdout=archive)
+            archive.seek(0)
+            with tarfile.open(fileobj=archive, mode="r:gz") as tar:
+                tar.extractall(local, filter="data")
+
+    def _binary(self, script: str, *, stdin=None, stdout=None) -> None:
+        """在远端跑一段脚本，二进制流从 stdin 进或从 stdout 出（tar 那条路）；失败带 stderr 抛。
+        不走 `bash -lc`：登录 shell 的 profile 往 stdout 打一行字，tar 流就坏了（tar 在哪台 Linux
+        上都在 /usr/bin，不用登录 shell 的 PATH）。"""
+        argv = [*self._ssh_argv(), script]
+        try:
+            proc = subprocess.run(argv, stdin=stdin if stdin is not None else subprocess.DEVNULL,
+                                  stdout=stdout if stdout is not None else subprocess.DEVNULL,
+                                  stderr=subprocess.PIPE, timeout=1800, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise SshError(f"ssh {self.user}@{self.host}:{self.port} 起不来或超时：{exc}") from exc
+        if proc.returncode != 0:
+            raise SshError(f"tar 走 ssh 失败（退出码 {proc.returncode}）："
+                           f"{proc.stderr.decode('utf-8', 'replace').strip()[-1500:]}")
+
     def _rsync(self, src: str, dst: str, *, timeout_s: float = 1800.0) -> None:
         argv = ["rsync", "-az", "--delete", *(f"--exclude={name}" for name in IGNORED),
                 "-e", " ".join(shlex.quote(a) for a in self._ssh_argv()[:-1]), src, dst]
@@ -134,12 +209,12 @@ class SshCompute:
             raise FileExistsError(
                 f"快照目录已存在，可能是被杀的一轮，先续跑对账收尾："
                 f"ai4sci cap auto-research --continue <实验产出> --resume（{remote_dir}）")
-        self._rsync(f"{Path(local_dir).resolve()}/", f"{self._target()}:{remote_dir}/")
+        self._push(local_dir, remote_dir)
 
     def sync(self, local_dir: Path, remote_dir: str) -> None:
         """同步过去（允许已存在）：设计那包建远端 venv、跑基线用；快照那条路走 `put`。"""
         self._sh(f"mkdir -p {shlex.quote(remote_dir)}")
-        self._rsync(f"{Path(local_dir).resolve()}/", f"{self._target()}:{remote_dir}/")
+        self._push(local_dir, remote_dir)
 
     def run(self, remote_dir: str, cmd: list[str], env: dict[str, str],
             timeout_s: float) -> Outcome:
@@ -255,16 +330,8 @@ class SshCompute:
 
     def get(self, remote_dir: str, local_dir: Path) -> None:
         Path(local_dir).mkdir(parents=True, exist_ok=True)
-        argv_src = f"{self._target()}:{remote_dir}/"
         # 回来的时候不 --delete：本地那份可能有远端没有的东西（job.json 是本地写的）
-        argv = ["rsync", "-az", *(f"--exclude={name}" for name in IGNORED if name != JOB_DIRNAME),
-                "-e", " ".join(shlex.quote(a) for a in self._ssh_argv()[:-1]),
-                argv_src, f"{Path(local_dir).resolve()}/"]
-        proc = subprocess.run(argv, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=1800, check=False)
-        if proc.returncode != 0:
-            raise SshError(f"rsync 回来失败（退出码 {proc.returncode}）："
-                           f"{proc.stderr.strip()[-1500:]}")
+        self._pull(remote_dir, local_dir)
 
     # ── 探一遍 ───────────────────────────────────────────────────────────
     def check(self) -> Probe:
@@ -290,6 +357,7 @@ echo GPU=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev
 mkdir -p {shlex.quote(self.root)} \\
   && echo DISK=$(df -h {shlex.quote(self.root)} | awk 'NR==2{{print $4}}')
 echo RSYNC=$(command -v rsync)
+echo TAR=$(command -v tar)
 __envs="$(conda env list --json 2>/dev/null | grep -o '"/[^"]*"' | tr -d '"')"
 __cands="$(for __e in $__envs; do echo "$__e/bin/python"; done)"
 for __py in $__cands /usr/bin/python3 /usr/local/bin/python3; do
@@ -319,12 +387,27 @@ done
         probe.items.append(("GPU", True, probe.gpu or "无"))
         probe.items.append(("磁盘", bool(disk),
                             f"{self.root} 剩 {disk}" if disk else f"{self.root} 建不出来"))
-        rsync = _field(text, "RSYNC")
-        probe.items.append(("rsync", bool(rsync), rsync or "远端没有 rsync：apt install rsync"))
+        if shutil.which("rsync") is not None:
+            rsync = _field(text, "RSYNC")
+            probe.items.append(("rsync", bool(rsync), rsync or "远端没有 rsync：apt install rsync"))
+        else:  # 本机没有 rsync（Windows）：传文件走 tar
+            tar = _field(text, "TAR")
+            probe.items.append(("tar", bool(tar), tar or "远端没有 tar：apt install tar"))
         probe.envs = _envs(text)
         probe.items.append(("已有环境", True,
                             "；".join(env_line(e) for e in probe.envs) or "没盘点到"))
         return probe
+
+
+def _tree(root: Path) -> list[tuple[str, bool]]:
+    """本机目录里要推过去的（相对路径，是不是目录），跳过 IGNORED 里的名字（任何一级）。"""
+    found: list[tuple[str, bool]] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in IGNORED)
+        base = Path(dirpath).relative_to(root)
+        found += [((base / d).as_posix(), True) for d in dirnames]
+        found += [((base / f).as_posix(), False) for f in sorted(filenames) if f not in IGNORED]
+    return found
 
 
 def env_line(env: dict) -> str:

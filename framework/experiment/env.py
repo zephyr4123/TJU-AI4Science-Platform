@@ -28,7 +28,7 @@ import re
 import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from compute import Compute, Outcome
 from framework.skills.run import uv_overlay
@@ -76,10 +76,15 @@ class EnvSpec:
 
 
 def harness_env(python: Path, wall_clock_s: float, inner_k: int) -> dict[str, str]:
-    """框架起 harness（内环的 launcher、基线的 make_run0）时给的那组环境变量，两处走同一个函数。"""
+    """框架起 harness（内环的 launcher、基线的 make_run0）时给的那组环境变量，两处走同一个函数。
+
+    解释器一律写成正斜杠（外层 #210）：harness 是 bash 脚本，Windows 本机的 `C:\\…` 原样进字符串、
+    JSON 就坏了，`C:/…` bash 与 Windows 都认；远端的路径在 Windows 上包成 Path 也会变成反斜杠，
+    这里改回来。"""
     assert inner_k >= 1, f"inner_k 要是正整数：{inner_k!r}"
     assert wall_clock_s > 0, f"wall_clock_s 要是正数：{wall_clock_s!r}"
-    return {PYTHON_ENV: str(python), BUDGET_ENV: f"{wall_clock_s:g}", INNER_K_ENV: str(inner_k)}
+    return {PYTHON_ENV: Path(python).as_posix(), BUDGET_ENV: f"{wall_clock_s:g}",
+            INNER_K_ENV: str(inner_k)}
 
 
 def env_dir(task_dir: Path) -> Path:
@@ -146,8 +151,9 @@ def read_env(task_dir: Path) -> tuple[EnvSpec | None, list[str]]:
     interp_path = edir / INTERPRETER_NAME
     if interp_path.is_file():
         raw = interp_path.read_text(encoding="utf-8").strip()
-        name, _, path = raw.partition(":")
-        if not name or not path.startswith("/"):
+        name, _, path = raw.partition(":")  # 只拆第一个冒号：Windows 本机的路径带盘符（C:\\…）
+        absolute = PurePosixPath(path).is_absolute() or PureWindowsPath(path).is_absolute()
+        if not name or not absolute:
             problems.append(f"{label}{INTERPRETER_NAME}: 期望 <算力名字>:<绝对路径>，实际 {raw!r}")
         else:
             interpreter = (name, path)

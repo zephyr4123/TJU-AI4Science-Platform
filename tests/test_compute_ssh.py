@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+import procs
 from compute import ComputeNotFound, available_computes, get_compute
 from compute.ssh import JOB_DIRNAME, SshCompute
 from framework import computes, paths
@@ -49,10 +50,55 @@ def test_remote_dir_mapping_is_reversible_and_readable(tmp_path):
     ssh = _ssh()
     local = tmp_path / "ws" / "experiment" / "1" / "iters" / "iter_3"
     remote = ssh.remote_dir_for(local)
-    assert remote == f"/data/ai4sci/{local.resolve().as_posix().lstrip('/')}"
+    tail = local.resolve().as_posix()
+    tail = f"{tail[0].lower()}{tail[2:]}" if local.resolve().drive else tail.lstrip("/")
+    assert remote == f"/data/ai4sci/{tail}" and ":" not in remote  # Windows 的盘符是一级目录
     assert ssh.local_dir_for(remote) == local.resolve()
     with pytest.raises(AssertionError, match="不在远端根"):
         ssh.local_dir_for("/elsewhere/x")
+
+
+class _ThisMachine(SshCompute):
+    """「远端」就是本机：ssh 换成本机的 bash（Windows 上是 Git Bash，带 tar 与 find）。"""
+
+    def _ssh_argv(self) -> list[str]:
+        return [procs.bash(), "-c"]
+
+
+def test_without_rsync_files_travel_as_tar_with_the_same_effect(tmp_path, monkeypatch):
+    """本机没有 rsync（Windows 都没有，外层 #210）就打 tar 走 ssh：推过去删远端多出来的、排除的
+    不碰（远端的 .venv 留着），拉回来不删本地的、`.ai4sci` 不带回来。"""
+    which = shutil.which
+    monkeypatch.setattr("compute.ssh.shutil.which",
+                        lambda name: None if name == "rsync" else which(name))
+    box = _ThisMachine(host="h", user="u", key="k", root=(tmp_path / "remote").as_posix())
+    local = tmp_path / "local"
+    (local / "code").mkdir(parents=True)
+    (local / "code" / "train.py").write_text("print('中文')\n", encoding="utf-8")
+    (local / "empty").mkdir()
+    (local / ".venv").mkdir()
+    (local / ".venv" / "mine").write_text("本机的环境", encoding="utf-8")
+    remote = box.remote_dir_for(local)
+    there = Path(remote)
+    (there / ".venv").mkdir(parents=True)
+    (there / ".venv" / "theirs").write_text("远端的环境", encoding="utf-8")
+    (there / "stale.txt").write_text("上一轮留下的", encoding="utf-8")
+
+    box.sync(local, remote)
+    assert (there / "code" / "train.py").read_text(encoding="utf-8") == "print('中文')\n"
+    assert (there / "empty").is_dir() and not (there / "stale.txt").exists()
+    assert (there / ".venv" / "theirs").is_file() and not (there / ".venv" / "mine").exists()
+
+    (there / "out").mkdir()
+    (there / "out" / "results.json").write_text("{}", encoding="utf-8")
+    (there / ".ai4sci").mkdir()
+    (there / ".ai4sci" / "events.jsonl").write_text("", encoding="utf-8")
+    back = tmp_path / "back"
+    back.mkdir()
+    (back / "job.json").write_text("{}", encoding="utf-8")
+    box.get(remote, back)
+    assert (back / "out" / "results.json").is_file() and (back / "code" / "train.py").is_file()
+    assert (back / "job.json").is_file() and not (back / ".ai4sci").exists()
 
 
 def test_ssh_argv_only_uses_keys_and_never_prompts():

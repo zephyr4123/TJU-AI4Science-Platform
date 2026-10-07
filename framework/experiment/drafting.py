@@ -233,5 +233,11 @@ def _ruff(pack: Path) -> list[str]:
             f"{proc.stderr.strip().splitlines()[-1:] or '无输出'}；"
             "平台 venv 里要有 ruff（requirements.lock）"
         )
-    return [line for line in proc.stdout.splitlines()
+    # 路径一律写斜杠（Windows 上 ruff 报 `harness\\evaluate.py:1:1:`），喂回执行层与人看的是同一种
+    return [_slashed(line) for line in proc.stdout.splitlines()
             if line.strip() and not line.startswith(("Found ", "[*]", "All checks passed"))]
+
+
+def _slashed(line: str) -> str:
+    where, sep, rest = line.partition(":")
+    return where.replace("\\", "/") + sep + rest

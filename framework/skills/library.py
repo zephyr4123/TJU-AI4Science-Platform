@@ -382,7 +382,7 @@ def key_mentions(skill: Skill) -> list[str]:
         lines = text.splitlines()
         for number in sorted({text.count("\n", 0, s) + 1 for s in starts}):
             line = lines[number - 1].strip()[:120]
-            hits.append(f"{path.relative_to(skill.dir)}:{number}: {line}")
+            hits.append(f"{path.relative_to(skill.dir).as_posix()}:{number}: {line}")
     return hits
 
 
