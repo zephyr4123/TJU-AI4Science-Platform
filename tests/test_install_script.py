@@ -39,12 +39,12 @@ def _var(name: str) -> str:
 def test_the_script_and_the_platform_agree_on_mirrors_and_places():
     assert _var("PYPI_INDEX") == mirrors.PYPI_INDEX
     assert _var("PYTHON_DOWNLOADS") == mirrors.PYTHON_DOWNLOADS
-    assert _var("BIN") == f"$HOME_DIR/{paths.BIN_DIRNAME}"
-    assert _var("TOOLS") == f"$HOME_DIR/{paths.TOOLS_DIRNAME}"
+    assert _var("BIN") == f"${{HOME_DIR}}/{paths.BIN_DIRNAME}"
+    assert _var("TOOLS") == f"${{HOME_DIR}}/{paths.TOOLS_DIRNAME}"
     text = SCRIPT.read_text(encoding="utf-8")
-    assert f'UV_PYTHON_INSTALL_DIR="$TOOLS/{paths.PYTHON_DIRNAME}"' in text
-    assert f'UV_CACHE_DIR="$HOME_DIR/{"/".join(paths.UV_CACHE_PARTS)}"' in text
-    assert f'"$HOME_DIR/{paths.MARKER_NAME}"' in text
+    assert f'UV_PYTHON_INSTALL_DIR="${{TOOLS}}/{paths.PYTHON_DIRNAME}"' in text
+    assert f'UV_CACHE_DIR="${{HOME_DIR}}/{"/".join(paths.UV_CACHE_PARTS)}"' in text
+    assert f'"${{HOME_DIR}}/{paths.MARKER_NAME}"' in text
 
 
 def _sha(path: Path) -> None:
@@ -56,9 +56,12 @@ def _wheel(dist: Path, version: str) -> None:
     """一个最小的 ai4sci wheel：`--version` 报版本，别的参数原样回显。"""
     info = f"ai4sci-{version}.dist-info"
     files = {
-        "ai4sci_fake.py": ("import sys\n\ndef main():\n    if sys.argv[1:] == ['--version']:\n"
+        "ai4sci_fake.py": ("import os, shutil, sys\n\ndef main():\n"
+                           "    if sys.argv[1:] == ['--version']:\n"
                            f"        print('ai4sci {version}')\n    else:\n"
-                           "        print('ran ' + ' '.join(sys.argv[1:]))\n"),
+                           "        on_path = shutil.which('ai4sci') == sys.argv[0]\n"
+                           "        said = ' on-path' if on_path else ''\n"
+                           "        print('ran ' + ' '.join(sys.argv[1:]) + said)\n"),
         f"{info}/METADATA": f"Metadata-Version: 2.1\nName: ai4sci\nVersion: {version}\n",
         f"{info}/WHEEL": "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\n"
                          "Tag: py3-none-any\n",
@@ -93,7 +96,10 @@ def _uv_release(dist: Path, version: str) -> None:
 
 def _run(script: Path, home: Path, dist: Path, extra_path: str = "") -> str:
     python_dir = str(Path(sys.executable).resolve().parent)  # 真解释器的目录：里面没有 uv
+    # LANG 要是 UTF-8：Mac 的 /bin/sh 在 UTF-8 下会把 `$VAR，` 里全角逗号的头一个字节读进变量名
+    # （2026-10-07 真从 CDN 装时撞上的），不带它测不出来
     env = {"HOME": str(home), "SHELL": "/bin/zsh", "AI4SCI_DIST": dist.as_uri(),
+           "LANG": "en_US.UTF-8",
            "PATH": os.pathsep.join(p for p in (extra_path, python_dir, "/usr/bin", "/bin") if p)}
     done = subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True,
                           stdin=subprocess.DEVNULL, timeout=300, check=False)
@@ -130,7 +136,8 @@ def test_install_sets_up_the_home_then_hands_over_and_a_rerun_skips(tmp_path):
     assert "uv            0.0.0-test，下载完成" in out
     assert "ai4sci        卸掉了以前 uv 装在缺省位置的那份" in out
     assert "ai4sci        1.0.0，安装完成" in out
-    assert out.rstrip().endswith("ran setup")  # 交给平台自己
+    # 交给平台自己，PATH 上已有 bin/：它给人的命令就是短短一个 ai4sci
+    assert out.rstrip().endswith("ran setup on-path")
     assert (ai4sci_home / paths.MARKER_NAME).is_file()
     assert (ai4sci_home / paths.BIN_DIRNAME / "ai4sci").is_file()
     assert not (home / ".local" / "bin" / "ai4sci").exists()
@@ -153,6 +160,7 @@ def test_a_tampered_download_stops_the_install(tmp_path):
     wheel = dist / "1.0.0" / "ai4sci-1.0.0-py3-none-any.whl"
     wheel.write_bytes(wheel.read_bytes() + b"x")  # 改了内容、没改 .sha256
     env = {"HOME": str(home), "SHELL": "/bin/zsh", "AI4SCI_DIST": dist.as_uri(),
+           "LANG": "en_US.UTF-8",
            "PATH": os.pathsep.join([str(Path(sys.executable).resolve().parent), "/usr/bin",
                                     "/bin"])}
     done = subprocess.run(["sh", str(_script(tmp_path, "1.0.0"))], env=env, capture_output=True,
