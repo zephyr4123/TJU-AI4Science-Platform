@@ -24,6 +24,7 @@
 
 ### 修复
 
+- 发版往 CDN 传包改走 COS 全球加速域名：美国的 runner 走桶的默认域名往上海传，24 MB 的 wheel 8 分半传不完、重试三次都失败（1.8.0 与 v1.9.0-rc.1）；`COS_ENDPOINT` 设空串退回默认域名（外层 #281）
 - 发版的 Windows 那格出完安装包又去公证 dmg（Apple 的 secrets 对它也可见），`xcrun` 不存在退 127：Apple 那几步只在 Mac 上做（外层 #282）
 - 外壳的集成测试等假 serve 在 stderr 上报的那一行读进来再取 pid：`start` 读到 stdout 的 `ok` 就返回，CI 的 Windows 上偶发读空（外层 #282）
 - Windows：对话里起的后台作业跳不出那一轮的 Job，一轮超时就被连带杀掉（外层 #284）
