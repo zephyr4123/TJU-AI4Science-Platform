@@ -26,6 +26,7 @@ import argparse
 import os
 import sys
 import time
+from collections.abc import Collection
 from dataclasses import asdict
 from pathlib import Path
 
@@ -52,6 +53,7 @@ from framework.contracts.capability import (
     Ports,
 )
 from framework.contracts.output import Meta
+from framework.contracts.stages import slug_of
 from framework.workspace import jobs, loadout, outputs, project
 from framework.workspace.root import Workspace
 
@@ -195,7 +197,56 @@ def _run(args: argparse.Namespace, ws: Workspace, descriptor: Capability, ports:
         outputs.close_output(directory, meta, ok=False, line=str(exc))
         return EXIT_INVALID, f"{exc}\noutput={meta.id}（没成，留在盘上）"
     outputs.close_output(directory, meta, ok=True, line=line)
-    return EXIT_OK, f"{line}\toutput={meta.id}"
+    then = "" if flow is None or step is None else _then(ws, flow, step, descriptor.name, meta.id)
+    return EXIT_OK, f"{line}{then}\toutput={meta.id}"
+
+
+def _then(ws: Workspace, flow: str, step: int, by: str, oid: str) -> str:
+    """结论行里流程的下一项（`\\tthen=…`）：照工作区里那份实例现算。"""
+    workflow = workflows.load_workflow(ws.flows / f"{flow}.yaml")
+    steps: dict[str, list[str]] = {}
+    for name, module in discover().items():
+        steps.setdefault(module.DESCRIPTOR.stage, []).append(name)
+    return "\tthen=" + flow_next(workflow, step, by, oid, ws.id, abilities.skill_names(), steps)
+
+
+def flow_next(workflow: workflows.Workflow, step: int, by: str, oid: str, ws: str,
+              skills: Collection[str], steps: dict[str, list[str]]) -> str:
+    """这次产出（`oid`，由 `by` 产在第 `step` 项）之后流程往下走什么（外层 #287）：能力的结论行只说
+    本能力内的事，下一项是谁、要不要先请人签，由这里按流程说——换一条流程，说法跟着换。
+    同一格里点了名的下一个步骤；后面紧跟断点的先请人签，再说签了之后；下一个阶段点了名就给命令、
+    没点名就列这个阶段的步骤、一个都没有就自己写；走完了就说走完了。"""
+    item = workflow.stages[step]
+    named = [p.cap for p in item.picks if p.cap not in skills]
+    if by in named and named.index(by) + 1 < len(named):
+        following = named[named.index(by) + 1]
+        return (f"这一格还有 {following}：ai4sci cap {following} --from {oid} "
+                f"--flow {workflow.name} --ws {ws}")
+    stop = workflows.stop_after(workflow, step)
+    if stop is None:
+        return _next_item(workflow, step + 1, oid, ws, skills, steps)
+    what = f"「{stop.note}」" if stop.note else ""
+    after = _next_item(workflow, step + 2, oid, ws, skills, steps)
+    return (f"断点{what}：把 {oid} 该看的念给研究者，他签了（终端里是 ai4sci sign {oid} --ws {ws}）"
+            f"才往下，你不替人签；签了之后{after}")
+
+
+def _next_item(workflow: workflows.Workflow, index: int, oid: str, ws: str,
+               skills: Collection[str], steps: dict[str, list[str]]) -> str:
+    """流程第 index 项（一个阶段）该怎么起；过了末尾就是走完了。"""
+    if index >= len(workflow.stages):
+        return f"流程 {workflow.name} 走完了"
+    item = workflow.stages[index]
+    tail = f"--from {oid} --flow {workflow.name} --ws {ws}"
+    named = [p.cap for p in item.picks if p.cap not in skills]
+    if named:
+        return f"下一项「{item.stage}」：ai4sci cap {named[0]} {tail}"
+    here = sorted(steps.get(item.stage, []))
+    if here:
+        return (f"下一项「{item.stage}」：这个阶段的步骤有 {'、'.join(here)}"
+                f"（ai4sci show cap <名字>），{tail}")
+    return (f"下一项「{item.stage}」：这个阶段没有步骤，ai4sci output new {slug_of(item.stage)} "
+            f"--from {oid} --ws {ws} 开一次产出自己写")
 
 
 def _reopen(ws: Workspace, descriptor: Capability, oid: str, inputs: Inputs, *,
@@ -266,7 +317,8 @@ def _detach(args: argparse.Namespace, ws: Workspace, descriptor: Capability) -> 
               file=sys.stdout if ok else sys.stderr)
         return EXIT_OK if ok else EXIT_INVALID
     print(f"job {job.job_id}\tcap={descriptor.name}\tpid={job.pid}\toutput={job.output or '-'}"
-          f"\tnext=ai4sci show job {job.job_id}")
+          f"\tnext=这一轮可以结束了，跑完框架会叫醒你；研究者问进度再 ai4sci show job {job.job_id}"
+          f" --ws {ws.id}")
     return EXIT_OK
 
 

@@ -248,8 +248,8 @@ def test_cap_auto_research_opens_an_output_and_continues_it(tmp_path, monkeypatc
     assert code == EXIT_OK, out
     run_dir = pack.workspace.root / "experiment" / "1"
     assert seen == [run_dir]
-    assert out.startswith("stop batch_exhausted\titer=0\tbest=0.5\toutput=experiment/1\t")
-    assert out.rstrip().endswith("output=experiment/1")
+    assert out.startswith("stop batch_exhausted\titer=0\tbest=0.5\tnext=")
+    assert "\tthen=下一项「分析」：" in out and out.rstrip().endswith("\toutput=experiment/1")
     meta = output.read_meta(run_dir)
     assert meta.status == "ok" and meta.by == "auto-research" and meta.input_ids == ["design/1"]
     assert meta.requirement == 1 and meta.flow == "open" and meta.result.startswith("stop ")
@@ -326,13 +326,56 @@ def test_flow_take_then_stops_are_enforced_when_following_the_flow(tmp_path, mon
     assert "ai4sci sign design/1" in err
     output.sign(pack.pack, by="人")
     code = main(["cap", "auto-research", "--from", "design/1", "--flow", "research"])
-    assert code == EXIT_OK, capsys.readouterr().err
+    printed = capsys.readouterr()
+    assert code == EXIT_OK, printed.err
+    # 流程里的下一项由驱动现算（外层 #287）：then= 在 output= 前面，output= 仍在最后
+    assert "\tthen=下一项「分析」：这个阶段的步骤有 analysis、reproducibility" in printed.out
+    assert printed.out.rstrip().endswith("\toutput=experiment/1")
     meta = output.read_meta(pack.workspace.root / "experiment" / "1")
     assert meta.flow == "research" and meta.step == 2
     shown = run_cli("show", "workspace", **in_pack(pack))
     assert "flow\tresearch\tstep=3/6\twaiting=assistant" in shown.stdout
     assert "flow\tresearch-5\tstep=0/6\twaiting=assistant" in shown.stdout
 
+
+
+def test_the_driver_says_what_comes_next_in_the_flow():
+    """外层 #287：能力的结论行只说本能力内的事；流程里的下一项由驱动按「流程 + 这次落在第几项」
+    现算——断点（先请人签、签了之后是什么）、同一格里点了名的下一个步骤、下一个阶段点了名的步骤或
+    这个阶段有哪些、没有步骤的阶段自己写、走完了。"""
+    from framework import paths
+    from framework.cli.cap import flow_next
+    from framework.contracts import workflows
+
+    lib = {wf.name: wf for wf in workflows.load_workflows(paths.workflows_root())}
+    steps = {"设计": ["design", "reproduction"], "实验": ["auto-research"],
+             "分析": ["analysis", "reproducibility"], "验证": ["verify"],
+             "文献": ["literature-read", "literature-search"]}
+    skills = frozenset({"pdf", "download"})
+
+    def nxt(flow: str, step: int, by: str, oid: str) -> str:
+        return flow_next(lib[flow], step, by, oid, "w", skills, steps)
+
+    after_design = nxt("research", 0, "design", "design/1")
+    assert after_design.startswith("断点「评分指标核对」：把 design/1 该看的念给研究者")
+    assert ("签了之后下一项「实验」：ai4sci cap auto-research --from design/1 "
+            "--flow research --ws w") in after_design
+    assert nxt("research", 2, "auto-research", "experiment/1") == (
+        "下一项「分析」：这个阶段的步骤有 analysis、reproducibility（ai4sci show cap <名字>），"
+        "--from experiment/1 --flow research --ws w")
+    assert nxt("research", 4, "verify", "verification/1").endswith("签了之后流程 research 走完了")
+    assert nxt("literature-survey", 0, "literature-search", "literature/1") == (
+        "这一格还有 literature-read：ai4sci cap literature-read --from literature/1 "
+        "--flow literature-survey --ws w")
+    assert nxt("literature-survey", 0, "literature-read", "literature/2") == (
+        "流程 literature-survey 走完了")
+    # 格子上只挂 skill 的不算点名：下一个阶段照「这个阶段有哪些步骤」说
+    assert nxt("reproduce", 1, "reproduction", "design/1").startswith("断点「复现结果核对」")
+    early = workflows.parse_workflow("e.yaml", {"name": "e", "title": "t", "summary": "s",
+                                                "stages": ["设计", "假设"]})
+    assert flow_next(early, 0, "design", "design/1", "w", skills, steps) == (
+        "下一项「假设」：这个阶段没有步骤，ai4sci output new hypothesis --from design/1 --ws w "
+        "开一次产出自己写")
 
 def test_a_second_step_in_the_same_cell_stays_there_and_the_stop_after_the_cell_waits(
         tmp_path, monkeypatch, capsys):
@@ -785,7 +828,7 @@ def test_cap_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch
         "design ok\tsession=1\tchanged=5\tsealed=evaluate.py,launcher.sh,make_run0.sh")
     # 后半段：评分脚本封好就接着跑基线、算预检，一条命令到底
     assert "\tinner_k=" in out and "\tbaseline=" in out and "\tgate=" in out
-    assert "auto-research --from design/1" in out and out.rstrip().endswith("output=design/1")
+    assert "\tthen=下一项「实验」：" in out and out.rstrip().endswith("output=design/1")
     pack = ws.root / "design" / "1"
     assert (pack / "executor" / "session-1" / "prompt.md").is_file()
     assert (pack / "baseline" / "results.json").is_file() and (pack / "data" / "val.json").is_file()

@@ -128,7 +128,7 @@ def test_upstream_is_moved_into_code_shell_is_drafted_baseline_runs_and_edits_ar
     assert runner.limits == (cap.SESSION_MAX_TURNS, cap.SESSION_MAX_BUDGET_USD)
     assert "Bash 只放行" in runner.prompts[0]  # 执行层通用段：别拿 Bash 去 cd / mkdir / awk
     assert "baseline=0.025\t" in line and "attainable=0.3\t" in line
-    assert "upstream_changed=1\t" in line and "reproducibility --from design/1" in line
+    assert "upstream_changed=1\tnext=把论文值（attainable）与我们的值（baseline）" in line
     assert (pack / "code" / "README.md").read_text(encoding="utf-8") == README
     assert not (pack / "data" / UPSTREAM).exists()
     assert (pack / "data" / "notes.txt").is_file() and not (pack / "data" / "env").exists()

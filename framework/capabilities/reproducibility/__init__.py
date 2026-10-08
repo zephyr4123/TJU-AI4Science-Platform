@@ -94,7 +94,7 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, feedback: str = "") -
                 output_dir, len(claims), result.cost_usd, result.duration_s)
     cost = "nan" if math.isnan(result.cost_usd) else f"{result.cost_usd:.4f}"
     return (f"reproducibility ok\tclaims={len(claims)}\tcost_usd={cost}\tpath={DOC_NAME}"
-            f"\tnext=ai4sci cap verify --from analysis/{output_dir.name} --from {oid}")
+            f"\tnext=通读 {DOC_NAME}，把结论念给研究者；里面的数核对之前别当定论")
 
 
 def _prompt_values(design_dir: Path, oid: str, inputs: Inputs) -> dict[str, object]:

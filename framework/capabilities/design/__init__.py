@@ -26,6 +26,9 @@ from framework.workspace import project as project_mod
 
 LOGGER = logging.getLogger("ai4sci.design")
 NAME = "design"
+# 成了之后本能力内的下一步：核对、念给人；流程往下走什么由驱动接在后面（then=，外层 #287）
+NEXT = ("next=对照需求「怎么算好」核对 harness/evaluate.py，"
+        "把指标、方向、预算、统计门、尽头念给研究者")
 PROMPT_TEMPLATE = Path(__file__).resolve().parent / "prompt.md"
 MATERIALS_DIRNAME = "materials"
 # 原件里不搬进 data/ 的：env/ 另有去处，其余是别人的状态
@@ -100,8 +103,7 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, domain: str = packs.D
             raise CapabilityFailed("草稿不合约，先喂修改意见改一版：\n" + "\n".join(problems))
         baseline = run_baseline(output_dir, ports.compute)
         return (f"design ok\tsession=-\tchanged=0\tsealed=-\tlint=0\tvalidate=0\tcost_usd=0.0000"
-                f"\t{baseline}\tnext=对照需求「怎么算好」核对 harness/evaluate.py，报给人；"
-                f"人签了就 ai4sci cap auto-research --from {oid}")
+                f"\t{baseline}\t{NEXT}")
     hypotheses = inputs.of_stage("hypothesis")
     hypothesis = "\n\n".join(_read_text_files(h) for h in hypotheses)
     values = {
@@ -126,8 +128,7 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, domain: str = packs.D
             + f"\nnext=把上面的问题喂回：ai4sci cap design --continue {oid} --feedback @<文件>")
     baseline = run_baseline(output_dir, ports.compute)
     return (f"design ok\t{head}\t{baseline}"
-            f"\tnext=对照需求「怎么算好」核对 harness/evaluate.py，报给人；"
-            f"人签了就 ai4sci cap auto-research --from {oid}")
+            f"\t{NEXT}")
 
 
 def _drafted(pack: Path) -> bool:

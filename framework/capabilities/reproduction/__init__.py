@@ -108,8 +108,8 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, code: str = "",
     _prepare(output_dir, Path(inputs.workspace), code)
     upstream_dir = _code_dir(Path(inputs.workspace), packs.read_upstream(output_dir)["name"])
     oid = f"design/{output_dir.name}"
-    next_step = (f"next=把论文值（attainable）与我们的值（baseline）念给研究者，对上了没由他判；"
-                 f"签了就 ai4sci cap reproducibility --from {oid}")
+    next_step = ("next=把论文值（attainable）与我们的值（baseline）、改了几个上游文件念给研究者，"
+                 "对上了没由他按需求里的标准判")
     if _drafted(output_dir) and not feedback.strip():
         # 接着干、没有修改意见 = 草稿留着不动，只重跑基线（环境没装成、机器换了、上次被叫停）
         problems = packs.validate_pack(output_dir, paths.domains_root(), require_baseline=False)

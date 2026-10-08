@@ -81,7 +81,8 @@ def test_writes_the_doc_and_prompt_carries_paper_value_results_upstream_diff_env
     runner = ScriptedRunner([{"analysis.md": _analysis()}])
     line = cap.run(out, inputs, Ports(runner=runner))
     assert line.startswith("reproducibility ok\tclaims=4\tcost_usd=0.0100\tpath=analysis.md")
-    assert "verify --from analysis/1 --from design/1" in line
+    # 本能力内的下一步；流程往下走什么由驱动接（then=，外层 #287），这里不点名别的能力
+    assert line.endswith("\tnext=通读 analysis.md，把结论念给研究者；里面的数核对之前别当定论")
     prompt = runner.prompts[0]
     for token in ("论文值 **0.3**", "design/1/scoring：val_mse = 0.3（论文值）",
                   "design/1/baseline：val_mse = 0.5", "design/1/repeat_43：val_mse = 0.52",

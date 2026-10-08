@@ -130,8 +130,8 @@ def cmd_add(args: argparse.Namespace) -> int:
     lock = (target / env.REQUIREMENTS_NAME).read_text(encoding="utf-8").splitlines()
     pins = [line for line in lock if line.strip() and not line.startswith("#")]
     print(f"ok materials/env/\tcompute={args.compute}\tadded={len(packages)}"
-          f"\tpins={len(pins)}\tnext=接着干：ai4sci cap reproduction --continue design/<n>"
-          "（或重开一次）")
+          f"\tpins={len(pins)}\tnext=接着干那次没跑起来的产出：ai4sci cap <它的能力> --continue "
+          "<阶段目录>/<序号>（或重开一次）")
     return EXIT_OK
 
 
