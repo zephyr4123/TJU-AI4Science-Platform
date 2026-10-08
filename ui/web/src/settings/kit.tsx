@@ -17,6 +17,8 @@ export interface Ctx {
   busy: string | null
   chip: (key: string) => CallChipStatus
   act: (key: string, run: () => Promise<SettingsDoc>, judge?: (doc: SettingsDoc) => boolean) => Promise<void>
+  /** 关掉设置、弹「助理还不能说话」那扇窗（跳过过的也弹） */
+  askKey: () => void
 }
 
 /** 检查大概要跑多久（片上的底色填到九成用这么久）：一家底座 pong 一次几秒，全部一起十几秒 */

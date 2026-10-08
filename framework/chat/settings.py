@@ -2,7 +2,8 @@
 三项同一种形状「探测 → 报告 → 写 last_check」。
 
 页面「设置」与 `ai4sci check` / `agent check` 的共同读取点：`snapshot()` 读盘不连、
-`check()` 真探并记回。
+`check()` 真探并记回。整份里的 `assistant` 是助理那家现在能不能说话（`assistant()`，外层 #282）：
+页面只在缺 key 时弹「填 DeepSeek 的 key」。
 底座（agents.yaml）、算力（computes.yaml）
 各自的读写点仍在 `framework/agents.py` 与 `framework/computes.py`，
 这里只把它们摆成一张表；存放一项是平台的家在哪、每块多大、可写、余量，没有文件。
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 from collections.abc import Callable
 from dataclasses import asdict
@@ -20,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from backends import CUSTOM, AgentProbe, available_backends, providers
+from backends import CUSTOM, LOGIN_ITEM, AgentProbe, available_backends, providers
 from framework import agents, computes, keys, paths
 from framework.agents import KnobsOf
 from framework.chat.conversation import Conversation
@@ -29,6 +31,14 @@ LOGGER = logging.getLogger("ai4sci.settings")
 WHATS = ("all", "agents", "computes", "storage")
 # 谁来自检一家：缺省是真适配器的 probe；服务可以注入（测试里不跑真 CLI）
 ProbeAgent = Callable[[str], AgentProbe]
+# 助理那家的四种状态（外层 #282）：页面只在 needs_key 时弹 key 框，cannot_talk 只显示原因，
+# unchecked 时页面在后台探一次
+READY, NEEDS_KEY, CANNOT_TALK, UNCHECKED = "ready", "needs_key", "cannot_talk", "unchecked"
+# 说话那一句被 API 拒的两类。CLI 只给原文（2026-10-07 实测一把假 key）：Claude Code「API Error: 401
+# Authentication Fails …」，Codex「unexpected status 401 Unauthorized: …」；DeepSeek 余额不够是 402
+# Insufficient Balance（api-docs.deepseek.com 的错误码表）
+_KEY_REJECTED = re.compile(r"\b401\b|unauthori[sz]ed|authenticat|invalid api key", re.IGNORECASE)
+_NO_BALANCE = re.compile(r"\b402\b|insufficient balance|余额不足", re.IGNORECASE)
 
 
 def ensure_tuned(conv: Conversation, knobs: KnobsOf = agents.knobs_of) -> Conversation:
@@ -141,8 +151,61 @@ def _writable(directory: Path) -> bool:
 
 def snapshot(knobs: KnobsOf = agents.knobs_of, home: Path | None = None) -> dict[str, Any]:
     """页面「设置」那一整份，读盘不探。key 只给末四位（外层 #265）。"""
-    return {"agents": agents_table(knobs), "computes": computes_table(),
+    table = agents_table(knobs)
+    return {"agents": table, "assistant": assistant(table), "computes": computes_table(),
             "storage": storage_table(home), "keys": keys.masked()}
+
+
+def assistant(table: dict[str, Any]) -> dict[str, Any]:
+    """助理那家（对话用）现在能不能说话（外层 #282）：算力、存放、执行层那家没过都不算——不然
+    AutoDL 关机也弹「填 key」。`needs_key` 只给填一把 DeepSeek 的 key 就能好的情形（页面照它弹
+    那扇窗，试通会把两家都切到 DeepSeek）：助理用 DeepSeek 而 key 没填、被拒，或官方订阅还没登录过
+    （第一次打开）。别的要 key 的供应商 key 不对、官方订阅登录过期是 `cannot_talk`，原因说去哪改。
+    要 key 的供应商 key 不在，不等自检就是缺 key；其余照 last_check，没检查过是 unchecked。余额
+    不足、没回话、没装照自检的原话，DeepSeek 余额不足换成一句去哪充值。"""
+    name = table["chat"]
+    entry = next(e for e in table["entries"] if e["name"] == name)
+    provider = next((p for p in entry["providers"] if p["id"] == entry["provider"]), {})
+    title, key_name = provider.get("title", entry["provider"]), provider.get("key")
+    quick = entry["provider"] == agents.QUICKSTART_PROVIDER
+    keyed_state = NEEDS_KEY if quick else CANNOT_TALK
+    check = entry["last_check"]
+    row = {"agent": name, "provider": entry["provider"], "state": UNCHECKED, "reason": None,
+           "checked_at": check.get("at") if check else None}
+    if key_name and keys.get(key_name) is None:
+        return {**row, "state": keyed_state, "reason": f"{title} 的 key 还没填：设置 → AI 里粘贴"}
+    if not check:
+        return row
+    if check.get("ok"):
+        return {**row, "state": READY}
+    failed = next((i for i in check.get("items") or () if not i.get("ok")), {})
+    item, note = str(failed.get("name") or ""), str(failed.get("note") or "没有结果")
+    if item == LOGIN_ITEM:
+        return {**row, "state": NEEDS_KEY if quick or not key_name else CANNOT_TALK, "reason": note}
+    if _KEY_REJECTED.search(note):
+        if not key_name:
+            return {**row, "state": CANNOT_TALK,
+                    "reason": f"{title}：登录过期了，终端里运行 {entry['login']}"}
+        where = "换一把再试" if quick else "设置 → AI 里换一把"
+        return {**row, "state": keyed_state, "reason": f"{title} 不认这把 key：{where}"}
+    if quick and _NO_BALANCE.search(note):
+        note = f"{title} 余额不足：去 {agents.QUICKSTART_SITE} 充值"
+    return {**row, "state": CANNOT_TALK, "reason": note}
+
+
+def put_key(name: str, value: str, knobs: KnobsOf = agents.knobs_of,
+            home: Path | None = None) -> dict[str, Any]:
+    """存一把 key，用它的那几家上次自检的结论作废（页面会再探一次），回新的整份。"""
+    keys.put(name, value)
+    agents.forget_checks(name, knobs)
+    return snapshot(knobs, home)
+
+
+def remove_key(name: str, knobs: KnobsOf = agents.knobs_of,
+               home: Path | None = None) -> dict[str, Any]:
+    keys.remove(name)
+    agents.forget_checks(name, knobs)
+    return snapshot(knobs, home)
 
 
 def problems(snap: dict[str, Any] | None = None, knobs: KnobsOf = agents.knobs_of,
@@ -198,6 +261,16 @@ def check(what: str = "all", name: str | None = None, *, knobs: KnobsOf = agents
     if what in ("all", "storage") and not snap["storage"]["writable"]:
         failed.append("storage")
     return {**snap, "ok": not failed, "failed": failed}
+
+
+def quickstart(key: str, knobs: KnobsOf = agents.knobs_of, probe_agent: ProbeAgent = agents.probe,
+               home: Path | None = None) -> dict[str, Any]:
+    """页面弹窗「填 DeepSeek 的 key」：与终端里 setup 问 key 同一段（`agents.quickstart`：存 key、
+    两家都切到 DeepSeek、问助理那家一句），回新的一整份，`assistant` 说通没通。key 是空的
+    KeysInvalid（调用方回 422）。日志只记过没过，不记 key。"""
+    for name, got in agents.quickstart(key, probe_agent=probe_agent, knobs=knobs).items():
+        LOGGER.info("quickstart_check name=%s ok=%s", name, got.ok)
+    return snapshot(knobs, home)
 
 
 def update_agents(body: dict[str, Any], knobs: KnobsOf = agents.knobs_of,

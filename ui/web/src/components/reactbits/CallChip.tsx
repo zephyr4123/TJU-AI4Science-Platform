@@ -103,7 +103,7 @@ export default function CallChip({ label, status, expectedMs = 8000, disabled = 
   }, [status])
 
   const state = (g: Glyph) => (g === roll.current.cur ? 'in' : g === roll.current.prev ? 'out' : undefined)
-  const word = status === 'running' ? '检查中' : status === 'done' ? '已检查' : status === 'error' ? '没过，再检查' : label
+  const word = chipName(label, status)
   return (
     <button ref={rootRef} type="button" disabled={disabled || status === 'running'} onClick={onPress} aria-label={word}
             aria-busy={status === 'running' || undefined} data-status={status} data-mounted={mounted ? '' : undefined}
@@ -120,4 +120,11 @@ export default function CallChip({ label, status, expectedMs = 8000, disabled = 
       {status === 'running' && <span ref={timerRef} className="relative min-w-[5ch] text-right tabular-nums opacity-60" aria-hidden="true">0 ms</span>}
     </button>
   )
+}
+
+const STATUS_WORDS: Record<CallChipStatus, string> = { idle: '', running: '进行中', done: '过了', error: '没过，再试' }
+
+/** 读屏名：一直带着看得见的那个字（语音控制照它点），后面跟此刻怎样 */
+export function chipName(label: string, status: CallChipStatus): string {
+  return STATUS_WORDS[status] ? `${label}：${STATUS_WORDS[status]}` : label
 }

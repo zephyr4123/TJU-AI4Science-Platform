@@ -2,8 +2,8 @@
 
 `ai4sci reset` 与设置页「清除全部数据」都走 `reset()`：先让两家 CLI 在平台的私有目录里登出——
 Claude Code 的登录记在系统钥匙串里（按配置目录分开），只删目录会留下那一条——再删掉家里的一切，
-只留标记与一行命令装的程序（`bin/` `tools/`，外层 #277）：回到刚装好的样子（`AI4SCI_HOME` 指的
-目录也还在，下次起得来）。卸载是删整个家，不归这里。
+只留标记、一行命令装的程序（`bin/` `tools/`，外层 #277）与在跑的服务的登记（`run/`，外层 #285）：
+回到刚装好的样子（`AI4SCI_HOME` 指的目录也还在，下次起得来）。卸载是删整个家，不归这里。
 
 三道闸，任何一道不过都不删（ResetRefused，一句给人看的话）：
 - 家里要有平台放的标记（`paths.MARKER_NAME`）：`AI4SCI_HOME` 指错了（指到 `~`、指到别人的目录）
@@ -26,8 +26,9 @@ from framework.workspace import jobs, project
 
 LOGGER = logging.getLogger("ai4sci.reset")
 LOGOUT_TIMEOUT_S = 60
-# 清除不碰的：家的标记与一行命令装的程序（外层 #277）
-KEPT = frozenset({paths.MARKER_NAME, paths.BIN_DIRNAME, paths.TOOLS_DIRNAME})
+# 清除不碰的：家的标记、一行命令装的程序（外层 #277）、在跑的服务的登记（外层 #285：清除时服务
+# 就开着，删了它，服务崩了以后没人收拾它起的轮次）
+KEPT = frozenset({paths.MARKER_NAME, paths.BIN_DIRNAME, paths.TOOLS_DIRNAME, paths.RUN_DIRNAME})
 
 # 谁来给登出命令：缺省是真适配器（测试里换成不碰 CLI 的）
 Logout = Callable[[str], tuple[list[str], dict[str, str]]]

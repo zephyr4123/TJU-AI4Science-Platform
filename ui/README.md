@@ -5,6 +5,7 @@
 | 目录 | 是什么 | 状态 |
 |---|---|---|
 | `web/` | 网页：React + Tailwind + shadcn，Vite 构建成静态文件，`ai4sci serve` 缺省端它 | 在用 |
+| `desktop/` | 桌面 App 的外壳（Tauri）：不是另一种界面，是给网页套的窗口——起停 `ai4sci serve`、第一次打开装平台、外链交给系统浏览器；只认冻结的那几条约定（`desktop/src-tauri/src/contract.rs`），页面对它零权限。规矩在 [`desktop/README.md`](desktop/README.md)（外层 #282） | 在用 |
 | `tui/` | 终端界面：同一套端点的客户端，给只有 ssh 的场景 | 留位置，没建 |
 
 这份写界面层的规矩：契约、技术栈、代码约定、测试政策、浏览器闭环。视觉与布局在 `../docs/DESIGN.md`，给谁用与原则在 `../docs/PRODUCT.md`，词表在外层纲领 `workflow.md` §5。
@@ -96,7 +97,7 @@ flowchart TB
 ```
 
 - **依赖方向**（目录级没有环）：`App → home / project / studio / places / settings`；`project → workspace → board / files / chat`；`board → keys / progress`；`studio → chat`；`files` 用 `board/OutputSheet` 的正文（横向）；`components` 只引 `lib` 与 `assets`，从不引 `api`；`lib` 可以引 `api`（`useChats`）。组件不直接 `fetch`。
-- **计算下沉到纯函数模块**，组件只拼装：`board/derive.ts`、`project/derive.ts`、`files/derive.ts`、`studio/model.ts`、`chat/trace.ts`、`chat/turns.ts`、`chat/running.ts`、`progress/search.ts`、`progress/read.ts`、`progress/hex.ts`、`settings/status.ts`、`lib/humanize.ts`、`lib/diff.ts`、`lib/slug.ts`、`lib/format.ts`、`lib/clock.ts`。新逻辑先问能不能写成纯函数。
+- **计算下沉到纯函数模块**，组件只拼装：`board/derive.ts`、`project/derive.ts`、`files/derive.ts`、`studio/model.ts`、`chat/trace.ts`、`chat/turns.ts`、`chat/running.ts`、`progress/search.ts`、`progress/read.ts`、`progress/hex.ts`、`settings/status.ts`、`lib/humanize.ts`、`lib/diff.ts`、`lib/slug.ts`、`lib/format.ts`、`lib/clock.ts`、`lib/keyPrompt.ts`（什么时候弹「助理还不能说话」）、`lib/browser.ts`（WebKit 与输入法组词的判断：桌面 App 在 Mac 上是 WKWebView，UA 里没有 Safari；WebKit 用回车选词那次 isComposing 是假，外层 #282）。新逻辑先问能不能写成纯函数。
 - **取数**：`lib/useResource` + `lastSeen`（模块级 Map，换地方不闪）+ `epoch`（每轮对话结束加一，看板重读）+ 只在有作业时每 10 秒轮询；产出运行中时进度面板每 2 秒重读 `progress.jsonl`，产出窗的记录不自己轮询，看板那份已经按时在拉，它的状态变了才重拉一次。
 - **错误**：非 2xx 抛 `ApiError`，显示在 `ErrorNote`（`role=alert`）；静默 `catch` 必须写注释说明为什么可以不管；不留 `console.*`。
 - **删除**一律 `HoldButton` 按住一秒生效，服务端返回 `{removed, leftovers}`；人的两处确认 `ConfirmKey` / `SignKey` 与叫停都不署名，服务端记登录名（本地部署，能按的只有用户自己）。

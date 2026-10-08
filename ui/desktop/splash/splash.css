@@ -1,0 +1,187 @@
+/* 启动页的样子：照 docs/DESIGN.md 的颜色与字（冷白纸面、靛是「在动」、铜绿是「好了」、琥珀是「要注意」、
+   红只给出错），安静、居中一列。没有网络字体：用系统的无衬线与中文。深色跟系统偏好。 */
+:root {
+  color-scheme: light dark;
+  --background: #F5F6F8;
+  --foreground: #1C2230;
+  --muted-foreground: #5B6270;
+  --primary: #2F4BC9;
+  --primary-foreground: #FFFFFF;
+  --border: #D9DDE4;
+  --card: #FFFFFF;
+  --ok: #1F7A6D;
+  --wait: #B8741A;
+  --bad: #A83A2E;
+  --mark-1: #2F4BC9;
+  --mark-2: #6949DF;
+  --mark-3: #328EF2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #171A20;
+    --foreground: #E6E8EE;
+    --muted-foreground: #9AA1AE;
+    --primary: #8FA3F5;
+    --primary-foreground: #0F1530;
+    --border: #2C313B;
+    --card: #1E222A;
+    --ok: #5FC2B0;
+    --wait: #E2A751;
+    --bad: #E07A6E;
+    --mark-1: #6F87F3;
+    --mark-2: #9B7CF4;
+    --mark-3: #4FA8F8;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font: 400 0.9375rem/1.65 -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+.splash {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem 12vh;
+}
+
+.logo {
+  width: 4.5rem;
+  height: 4.5rem;
+}
+
+.logo .a { fill: var(--mark-1); }
+.logo .b { fill: var(--mark-2); }
+.logo .c { fill: var(--mark-3); }
+
+.wordmark {
+  margin: 1rem 0 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.015em;
+}
+
+.wordmark .accent {
+  color: var(--primary);
+}
+
+.status {
+  margin: 1.25rem 0 0;
+  min-height: 1.65em;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.elapsed:not(:empty)::before {
+  content: " · ";
+}
+
+.rows {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  width: min(30rem, 100%);
+}
+
+.rows li {
+  display: grid;
+  grid-template-columns: 1.25rem 7.5rem 1fr;
+  align-items: baseline;
+  padding: 0.25rem 0;
+  animation: rise 200ms ease-out;
+}
+
+.rows .label {
+  font-weight: 500;
+}
+
+.rows .note {
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.rows .m-ok { color: var(--ok); }
+.rows .m-bad { color: var(--bad); }
+.rows .m-wait { color: var(--wait); }
+.rows .m-busy { color: var(--primary); }
+
+.problem {
+  margin-top: 1.75rem;
+  width: min(30rem, 100%);
+  text-align: center;
+}
+
+.problem-text {
+  margin: 0;
+  color: var(--foreground);
+}
+
+.problem-text::before {
+  content: "✗ ";
+  color: var(--bad);
+}
+
+.actions {
+  margin-top: 1.25rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+button {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.4rem 1.1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+  transition: filter 150ms ease-out;
+}
+
+button.primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+button:hover {
+  filter: brightness(0.96);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rows li { animation: none; }
+  button { transition: none; }
+}

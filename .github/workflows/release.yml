@@ -1,21 +1,29 @@
 name: release
 
-# 推送 vX.Y.Z 或 vX.Y.Z-rc.N tag 即发版：校验 tag 与 CHANGELOG 一致 → 取该版本条目做 Release Notes → make package 出包 → 建 GitHub Release 并附上包 → 传到 CDN（一行命令从那取，外层 #277）。
-# 预发布（-rc.N）标 pre-release，Release Notes 取 Unreleased；正式版从 main 打（ADR-0004）。
+# 推送 vX.Y.Z 或 vX.Y.Z-rc.N tag 即发版（ADR-0004、外层 #282 spec §7），两条线并行：
+#   build-wheel：tag 与 CHANGELOG 对账 → make check → make package
+#     → publish-wheel：建 GitHub Release 附 wheel → 传到 CDN（一行命令与桌面 App 从那取，外层 #277）
+#   build-desktop：Mac 出通用包、Windows 出 NSIS，版本号由 tag 注入
+#     → publish-desktop（等 publish-wheel）：附到同一个 Release → 传到 CDN（外壳改过才改写 latest.json）
+# 桌面构建失败不挡 wheel 的发布。每个作业都能重跑：Release 已在就补传，CDN 上带版本号的同一份跳过。
+# 预发布（-rc.N）标 pre-release、Release Notes 取 Unreleased，CDN 上只传带版本号的；正式版从 main 打。
+# 密钥按步分开：签 platform.json 那一步只有更新器的 key，传 CDN 那一步只有 COS 的凭据；cdn.py 的依赖照
+# cdn.py.lock（--locked）。只有两个 publish 作业能写 Release。
 on:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
+
+# CI 在国外：平台缺省从国内源下载（外层 #277），这里设回官方源（用户自己设了源的，平台不盖）
+env:
+  UV_DEFAULT_INDEX: https://pypi.org/simple
+  UV_PYTHON_INSTALL_MIRROR: https://github.com/astral-sh/python-build-standalone/releases/download
 
 jobs:
-  release:
+  build-wheel:
     runs-on: ubuntu-latest
-    # CI 在国外：平台缺省从国内源下载（外层 #277），这里设回官方源（用户自己设了源的，平台不盖）
-    env:
-      UV_DEFAULT_INDEX: https://pypi.org/simple
-      UV_PYTHON_INSTALL_MIRROR: https://github.com/astral-sh/python-build-standalone/releases/download
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,11 +40,8 @@ jobs:
         with:
           enable-cache: true
 
-      - name: tag 与 CHANGELOG 对账，并提取 Release Notes
-        run: |
-          .github/scripts/changelog.sh check --tag "$GITHUB_REF_NAME"
-          .github/scripts/changelog.sh notes "${GITHUB_REF_NAME#v}" > release-notes.md
-          cat release-notes.md
+      - name: tag 与 CHANGELOG 对账
+        run: .github/scripts/changelog.sh check --tag "$GITHUB_REF_NAME"
 
       - name: 门禁
         run: make check
@@ -44,19 +49,182 @@ jobs:
       - name: 出包
         run: make package VERSION="${GITHUB_REF_NAME#v}"
 
-      - name: 建 GitHub Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/
+          if-no-files-found: error
+
+  publish-wheel:
+    needs: build-wheel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # 证书 2026-11-22 到期，过期了一行命令的安装与外壳的更新都会断：剩不到 30 天就不发
+      - name: CDN 证书还够用
+        run: uv run --locked .github/scripts/cdn.py cert
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel
+          path: dist
+
+      - name: 建 GitHub Release（已经有了就补传、同名的覆盖）
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ver="${GITHUB_REF_NAME#v}"
+          .github/scripts/changelog.sh notes "${GITHUB_REF_NAME#v}" > release-notes.md
+          cat release-notes.md
           pre=""
-          case "$ver" in *-rc.*) pre="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file release-notes.md $pre
+          case "$GITHUB_REF_NAME" in *-rc.*) pre="--prerelease" ;; esac
+          if gh release view "$GITHUB_REF_NAME" --json tagName > /dev/null; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file release-notes.md $pre
+          fi
 
-      # 一行命令全程国内源：wheel、安装脚本、uv 的发布包传到自己的 CDN（外层 #277）。凭据是只能写
-      # ai4science/dist/、只能刷 media.zephyrxiang.com 缓存的子账号；预发布只传带版本号的
+      # platform.json 用更新器的 key 签：签名用 ui/desktop 钉的 tauri CLI
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/desktop/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: ui/desktop
+
+      # 备齐要传的（uv 的发布包、填好版本与 uv sha256 的两份安装脚本、platform.json）并签名：这一步只有
+      # 更新器的 key
+      - name: 签 platform.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: uv run --locked .github/scripts/cdn.py sign "$GITHUB_REF_NAME" --work "${RUNNER_TEMP}/cdn"
+
+      # 凭据是只能写 ai4science/dist/、只能刷 media.zephyrxiang.com 缓存的子账号；预发布只传带版本号的
       - name: 传到 CDN
         env:
           TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
           TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
-        run: uv run .github/scripts/cdn.py "${GITHUB_REF_NAME#v}"
+        run: uv run --locked .github/scripts/cdn.py wheel "$GITHUB_REF_NAME" --work "${RUNNER_TEMP}/cdn"
+
+  build-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest            # Apple 芯片的 runner 上交叉编译 Intel，lipo 合成一个通用包
+            target: universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rust-targets: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ui/desktop/src-tauri -> target
+      - run: npm ci --no-audit --no-fund
+        working-directory: ui/desktop
+
+      - name: 准备构建输入（从品牌标生成图标；uv 的 sidecar 照 uv.lock 的版本）
+        run: node ui/desktop/scripts/prepare.mjs --uv-version "$(python .github/scripts/cdn.py uv-version)" --target "${{ matrix.target }}"
+
+      # tauri.conf.json 与 Cargo.toml 里的版本只是占位，版本号由 tag 注入；更新器的 key 让 .sig 里带上
+      # 这个版本（更新器开着 requireSignedVersion）
+      - name: 出安装包
+        working-directory: ui/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          # Apple 的签名与公证只靠 secrets（spec §7）：Developer ID 证书签名，App Store Connect 的 API key
+          # 公证（tauri 要的是 .p8 的路径，secret 里是内容，落到 runner 的临时目录）。没配的 secret 是空
+          # 字符串，tauri 认「设了」不认「空」：会去导入一张空证书，空的 APPLE_SIGNING_IDENTITY 还会盖掉
+          # ad-hoc 签名，所以空的一律 unset；Windows 上这几个都用不上
+          if [ -n "${APPLE_API_PRIVATE_KEY}" ]; then
+            APPLE_API_KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY}.p8"
+            printf '%s\n' "${APPLE_API_PRIVATE_KEY}" > "${APPLE_API_KEY_PATH}"
+            export APPLE_API_KEY_PATH
+          fi
+          unset APPLE_API_PRIVATE_KEY
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY; do
+            [ -n "${!name}" ] || unset "$name"
+          done
+          npx tauri build --target "${{ matrix.target }}" --config "{\"version\":\"${GITHUB_REF_NAME#v}\"}"
+          # tauri 只公证了 .app：给人下载的 dmg 也公证、钉上票据（Gatekeeper 查最外面那层，离线也认）
+          if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+            for dmg in src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg; do
+              xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" \
+                --issuer "$APPLE_API_ISSUER" --wait
+              xcrun stapler staple "$dmg"
+            done
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}
+          path: |
+            ui/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            ui/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz*
+            ui/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe*
+          if-no-files-found: error
+
+  publish-desktop:
+    needs: [publish-wheel, build-desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 外壳改没改：git diff v<CDN 上那一版> <这个 tag>
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: desktop-artifacts
+
+      - name: 附到 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: find desktop-artifacts -type f -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME" --clobber
+
+      # desktop/<版本>/ 只写一次；正式版换固定的下载地址；外壳改过才改写 latest.json；publish-wheel 因为
+      # 外壳没跟上没换的最新 platform.json 这时换上。判定写进作业摘要
+      - name: 传到 CDN
+        env:
+          TENCENTCLOUD_SECRET_ID: ${{ secrets.TENCENTCLOUD_SECRET_ID }}
+          TENCENTCLOUD_SECRET_KEY: ${{ secrets.TENCENTCLOUD_SECRET_KEY }}
+        run: uv run --locked .github/scripts/cdn.py desktop "$GITHUB_REF_NAME" --artifacts desktop-artifacts

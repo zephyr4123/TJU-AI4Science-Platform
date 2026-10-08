@@ -47,11 +47,11 @@ flowchart TB
 | `capabilities/` | 能力库的「步骤」那一半：一个步骤一个子包，互不 import，各导出 `DESCRIPTOR` 与 `run(output_dir, inputs, ports, **params)`；`discover()` 扫目录并断言签名；`abilities.py` 是能力库的出处（步骤 + skill 两个 tag）；`MAIN_FILES` 阶段主文件表 | 现有八个：`literature_search` `literature_read` `design` `reproduction` `auto_research` `analysis` `reproducibility` `verify` |
 | `cli/` | 命令行，一类一个模块，`__init__.py` 逐行装配（没有注册表，加一条就加一行）；`_common.py` 退出码、当前项目与工作区、按名字取端口、`refuse_if_assistant` | 清单以 `ai4sci --help` 为准 |
 
-分层之外的顶层模块是**唯一读取点**：`paths.py`（仓根、出厂件、平台的家与家里每样东西的位置、五个 `*_ROOT` 环境变量）、`computes.py`（家里的 `computes.yaml`）、`agents.py`（家里的 `agents.yaml`，以及起适配器时交给它的 `Link`）、`keys.py`（家里的 `keys.yaml`）、`mirrors.py`（国内源的地址）、`toolchain.py`（两家 CLI 装在家里的 `tools/`：认、下载、校验、解包，外层 #277）。分层包可以 import 它们，它们不许 import 分层包。
+分层之外的顶层模块是**唯一读取点**：`paths.py`（仓根、出厂件、平台的家与家里每样东西的位置、五个 `*_ROOT` 环境变量）、`computes.py`（家里的 `computes.yaml`）、`agents.py`（家里的 `agents.yaml`，以及起适配器时交给它的 `Link`）、`keys.py`（家里的 `keys.yaml`）、`mirrors.py`（国内源的地址）、`toolchain.py`（两家 CLI 装在家里的 `tools/`：认、下载、校验、解包，外层 #277）、`desktop.py`（外壳与后端的约定在后端这一侧的值：后端要求的最低外壳版本 `MIN_DESKTOP`，发版写进 `platform.json`，外层 #282）。分层包可以 import 它们，它们不许 import 分层包。
 
 两个**端口**在包外：`backends/`（`Runner` 执行层一次会话、`Chat` 协调层多轮续接，两个 Protocol；适配器 `claude_code.py`、`codex.py` 各一个文件，`_snapshot.py` 前后快照 diff）与 `compute/`（`Compute` Protocol；`local.py`、`ssh.py`）。端口不 import framework，相互也不 import；按名字取适配器走显式字典 `_BACKENDS` / `_COMPUTES`，名字不对抛 `BackendNotFound` / `ComputeNotFound`，绝不回退。
 
-最底下是 `procs/`（进程树：起、查、杀，POSIX 用进程组、Windows 用 Job Object，外层 #210）：两个端口与框架（`--detach` 的作业、对话锁）都用它，它不 import 仓里任何包。
+最底下是 `procs/`（进程树：起、查、杀，POSIX 用进程组、Windows 用 Job Object，外层 #210）：两个端口与框架（`--detach` 的作业、对话锁）都用它，它不 import 仓里任何包。`spawn` 起的树**登记**在本进程里（`kill_all` 逐棵收掉，`keep_in` 落盘、`reap` 收掉已死的主人留下的，按 pid 加启动时间认人，外层 #285），serve 退出与下一个 serve 启动时用它；后台作业走 `spawn_detached`、不登记：POSIX 经马上退出的中间进程起，Windows 以当前会话的 explorer 为父进程起（同一用户、同一提权级别才借，不然照旧起并说明），作业生来不是任何人的后代、不在任何 Job 里（外层 #284）。
 
 下层要用上层的东西怎么办：**由上层注入函数或回调**，不反向 import。`chat/server.py` 不认识 `capabilities`，能力清单、流程检查、描述符表由 `cli/serve.py` 以函数传进 `ChatServer`；`workspace/removal.py` 通过回调接 `chat/removal.py`。
 
@@ -151,9 +151,9 @@ sequenceDiagram
 | 层 | 约定 |
 |---|---|
 | 异常 | `ValueError` 输入非法、`FileNotFoundError` 不存在、`RuntimeError` 运行失败；各模块定自己的子类（`CapabilityFailed`、`OutputChanged`、`ConfirmRefused`…）。裸 `except` 与不 raise 的 `except Exception` 过不了 ruff；唯一一处 `except Exception`（`cli/cap.py`）是记失败后再 raise |
-| CLI 退出码 | 0 通过；1 没通过（原因一行一条到 stderr）；2 用法错误（目录不存在、名字对不上） |
+| CLI 退出码 | 0 通过；1 没通过（原因一行一条到 stderr）；2 用法错误（目录不存在、名字对不上）；3 `serve` 绑不上地址（被占、Windows 的保留端口段，外层 #282） |
 | stdout | 只留给协调层读的那一行结论：`ok <id>\t键=值…\tnext=<下一条命令>`，其余走 stderr（`cli/_common.py::setup_logging`） |
-| HTTP | `ValueError` → 422（盘上东西不合约，一句话）、`OSError` → 500；另有 400 / 404 / 409（在跑、被引用）/ 403（出厂的不能删）（`chat/server.py`） |
+| HTTP | `ValueError` → 422（盘上东西不合约，一句话）、`OSError` → 500；另有 400 / 404 / 409（在跑、被引用）/ 403（出厂的不能删；`Host` 不是回环、`Origin` 不同源）/ 415（POST 不是 `application/json`）（`chat/server.py`，外层 #283） |
 | 日志 | logger 名 `ai4sci.<模块>`，消息是「snake_case 事件名 键=值 …」，走 stderr；错误日志要带定位信息（路径、id、原因） |
 
 ## 5. 配置与环境变量
@@ -167,6 +167,8 @@ sequenceDiagram
 | `AI4SCI_PROJECT` | `workspace/project.py` | 当前项目（不设从 cwd 往上找 `project.md`） |
 | `AI4SCI_CHAT_ID` | `workspace/jobs.py`、`cli/_common.py`；适配器 `build_env` 设 | 调命令的那段对话：作业记下来，跑完把结果排进它的收件箱；人的动作据此拒助理 |
 | `AI4SCI_JOB_ID` | `workspace/jobs.py` | 子进程凭它知道自己是哪个作业 |
+| `AI4SCI_JOB_LOG` | `workspace/jobs.py` 的 `own_log` | 作业日志在哪：作业进程第一件事按它自己接上 stdout、stderr（Windows 上作业以 explorer 为父进程起，句柄传不过去），用完从环境里去掉（外层 #284） |
+| `AI4SCI_DESKTOP_CLI` `AI4SCI_DIST` `AI4SCI_NO_SETUP` `AI4SCI_WHEEL_SHA256` | 桌面外壳与两份安装脚本（`ui/desktop/src-tauri/src/contract.rs`） | 外壳起哪个 `ai4sci`（源码桌面）、装平台从哪取、脚本装完不交给 setup、wheel 照哪个 sha256 核；框架不读（外层 #282） |
 | `AI4SCI_COORDINATOR_TIMEOUT_S` `_MAX_TURNS` `_MAX_BUDGET_USD` | `chat/conversation.py` | 协调层一轮的上限 |
 | `AI4SCI_EXECUTOR_TIMEOUT_S` `_MAX_TURNS` `_MAX_BUDGET_USD` | `executor/session.py` | 执行层一次会话的上限 |
 | `AI4SCI_ENV_BUILD_TIMEOUT_S` | `experiment/env.py` | 建课题 venv 的超时 |
@@ -174,6 +176,7 @@ sequenceDiagram
 | `UV_CACHE_DIR` `UV_PYTHON_INSTALL_DIR` | 平台**设给** uv（`skills/run.py` 的 `uv_overlay`，本机实验环境同一份） | uv 缓存在家里的 `cache/uv/`、Python 装在 `tools/python/`；不读用户 shell 里的这两个变量 |
 | `UV_DEFAULT_INDEX` `UV_PYTHON_INSTALL_MIRROR` `HF_ENDPOINT` | 平台**补给** uv（`mirrors.missing`，地址只在 `mirrors.py`，外层 #277） | 国内源：清华 PyPI、npmmirror 的 Python、hf-mirror；用户 shell 里设了的（含 `UV_INDEX_URL`）用他的，CI 设回官方源 |
 | `DISABLE_AUTOUPDATER` | 平台**设给** Claude Code（`backends/claude_code.py` 的 `build_env`） | 关它的自动更新：它去国外的桶取新版；版本由 `ai4sci setup` 管 |
+| `CLAUDE_CODE_MAX_RETRIES` | 平台**设给** Claude Code 的自检（`backends/claude_code.py` 的 `probe`，外层 #282） | 自检那一句最多重试两次：key 错了它也照 401 重试十次、两分多钟才报，自检先超时、分不出是缺 key |
 
 模型、思考深度、哪家 agent 归家里的 `agents.yaml`（`ai4sci agent use`），算力归 `computes.yaml`（`ai4sci compute add`）；两份都不进 git。**key 不走环境变量**（外层 #265）：供应商的 key 与 OpenAlex 的 key 都在家里的 `keys.yaml`（0600，读写点 `keys.py`，设置页填，页面只见末四位）；shell 里设的同名变量平台不认。测试里整个家指到 tmp（`tests/conftest.py`）。
 

@@ -2,6 +2,8 @@
 // 样式跟全站）。点地方栏的「设置」不换地方，弹一个玻璃大窗：左栏按分类列——常规；AI 下每家一项；能力下文献检索；
 // 平台下算力、存放——点一项右边出那一页，页里按小标题分节、一项一行（`kit.tsx`）。哪项上次检查没过，项后一枚红点。
 // 窄屏窗铺满，先是分类清单，点进去一页，左上「‹ 设置」回清单。一切改动即刻写回平台的家里的清单（外层 #263）。
+// 页面一起来就取的那一份也给「助理还不能说话」那扇窗（`KeyPrompt`，外层 #282）：助理那家缺 key 时弹，设置窗开着时不弹；
+// 切回窗口时重读一份，key 在页面外面填好了窗自己关。
 import { Books, CaretLeft, CaretRight, Database, GearSix, HardDrives, X } from '@phosphor-icons/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
@@ -20,6 +22,7 @@ import { cn } from '@/lib/utils'
 import { AgentPage } from './AgentPage'
 import { Computes } from './Computes'
 import { General } from './General'
+import { KeyPrompt } from './KeyPrompt'
 import type { Ctx } from './kit'
 import { Literature } from './Literature'
 import { ROLES } from './status'
@@ -70,9 +73,20 @@ export function Settings({ open, onOpenChange, onChanged }: {
   const [inside, setInside] = useState(false)
 
   // 页面一起来就先取一份，点开时已经在手上；每次打开再重读（上次那份先摆着，不闪）
-  useEffect(() => {
+  const reload = useCallback(() => {
     api.settings().then((next) => { setDoc(next); setError(null) }).catch((exc: unknown) => setError(exc instanceof Error ? exc.message : String(exc)))
-  }, [open])
+  }, [])
+  useEffect(reload, [open, reload])
+  // 切回这个窗口也重读：四种用法共用一份后端，key 可能刚在终端里（`ai4sci setup`）或另一个页面里填过，弹着的窗该自己关
+  useEffect(() => {
+    const back = () => { if (!document.hidden) reload() }
+    window.addEventListener('focus', back)
+    document.addEventListener('visibilitychange', back)
+    return () => {
+      window.removeEventListener('focus', back)
+      document.removeEventListener('visibilitychange', back)
+    }
+  }, [reload])
 
   const act = useCallback(async (key: string, run: () => Promise<SettingsDoc>, judge?: (doc: SettingsDoc) => boolean) => {
     setBusy(key)
@@ -90,7 +104,19 @@ export function Settings({ open, onOpenChange, onChanged }: {
     }
   }, [onChanged])
   const chip = (key: string): CallChipStatus => (busy === key ? 'running' : results[key] ?? 'idle')
-  const ctx: Ctx = { busy, chip, act }
+  // 「助理还不能说话」那扇窗：没检查过时后台探一次助理那家。不走 act：不锁设置里的键、不记进「检查」片（人没按它）；
+  // 探着的时候那扇窗先不弹。试通回来的整份换上，检查片都回到没按过（通了还挂着上次的红）
+  const [probing, setProbing] = useState(false)
+  const probe = useCallback((agent: string) => {
+    setProbing(true)
+    api.runCheck('agents', agent).then((next) => { setDoc(next); onChanged() })
+      .catch((exc: unknown) => setError(exc instanceof Error ? exc.message : String(exc)))
+      .finally(() => setProbing(false))
+  }, [onChanged])
+  const quickstarted = useCallback((next: SettingsDoc) => { setDoc(next); setResults({}); onChanged() }, [onChanged])
+  const [asked, setAsked] = useState(0)
+  const askKey = useCallback(() => { onOpenChange(false); setAsked((n) => n + 1) }, [onOpenChange])
+  const ctx: Ctx = { busy, chip, act, askKey }
 
   const all = groups(doc)
   const current = all.flatMap((g) => g.items).find((item) => item.id === page)
@@ -99,51 +125,54 @@ export function Settings({ open, onOpenChange, onChanged }: {
   const showPage = split || inside
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) setInside(false) }}>
-      <DialogPortal>
-        <DialogOverlay />
-        {/* 只淡入不缩放（Claude 的设置窗也是）：缩放中挂上的分段开关会量成缩小后的尺寸 */}
-        <DialogPrimitive.Content aria-describedby={undefined} onInteractOutside={keepMenus}
-                                 className={cn('fixed top-1/2 left-1/2 z-50 flex h-[min(46rem,calc(100dvh-2rem))] w-[min(62rem,calc(100vw-1.5rem))] -translate-1/2 overflow-hidden rounded-[28px] text-sm outline-none',
-                                               'duration-200 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
-                                               GLASS, 'shadow-[inset_0_1px_0_0_var(--glass-shine),0_1px_2px_rgb(0_0_0/0.06),0_28px_72px_-18px_rgb(0_0_0/0.38)]')}>
-          {showList && (
-            <nav aria-label="设置的分类"
-                 className={cn('flex shrink-0 flex-col overflow-y-auto px-3 pb-4', split ? 'w-[15rem] border-r border-foreground/[0.06] bg-foreground/[0.025]' : 'flex-1')}>
-              <div className="flex items-center pt-6 pr-1 pb-2 pl-3">
-                <DialogTitle className="font-serif text-[1.375rem] leading-none font-semibold">设置</DialogTitle>
-                {!split && <Close />}
-              </div>
-              {all.map((group, i) => (
-                <div key={group.title ?? i} className="mt-3">
-                  {group.title && <p className="px-3 pt-2 pb-1.5 text-[0.75rem] text-muted-foreground">{group.title}</p>}
-                  {group.items.map((item) => (
-                    <NavRow key={item.id} item={item} active={split && item.id === page} chevron={!split} onClick={() => pick(item.id)} />
-                  ))}
+    <>
+      <Dialog open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) setInside(false) }}>
+        <DialogPortal>
+          <DialogOverlay />
+          {/* 只淡入不缩放（Claude 的设置窗也是）：缩放中挂上的分段开关会量成缩小后的尺寸 */}
+          <DialogPrimitive.Content aria-describedby={undefined} onInteractOutside={keepMenus}
+                                   className={cn('fixed top-1/2 left-1/2 z-50 flex h-[min(46rem,calc(100dvh-2rem))] w-[min(62rem,calc(100vw-1.5rem))] -translate-1/2 overflow-hidden rounded-[28px] text-sm outline-none',
+                                                 'duration-200 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
+                                                 GLASS, 'shadow-[inset_0_1px_0_0_var(--glass-shine),0_1px_2px_rgb(0_0_0/0.06),0_28px_72px_-18px_rgb(0_0_0/0.38)]')}>
+            {showList && (
+              <nav aria-label="设置的分类"
+                   className={cn('flex shrink-0 flex-col overflow-y-auto px-3 pb-4', split ? 'w-[15rem] border-r border-foreground/[0.06] bg-foreground/[0.025]' : 'flex-1')}>
+                <div className="flex items-center pt-6 pr-1 pb-2 pl-3">
+                  <DialogTitle className="font-serif text-[1.375rem] leading-none font-semibold">设置</DialogTitle>
+                  {!split && <Close />}
                 </div>
-              ))}
-            </nav>
-          )}
-          {showPage && (
-            <div className="relative flex min-w-0 flex-1 flex-col">
-              <div className="flex h-14 shrink-0 items-center gap-1 px-3">
-                {!split && (
-                  <Button variant="ghost" size="sm" className="rounded-full text-muted-foreground" onClick={() => setInside(false)}>
-                    <CaretLeft data-icon="inline-start" />设置
-                  </Button>
-                )}
-                <Close />
+                {all.map((group, i) => (
+                  <div key={group.title ?? i} className="mt-3">
+                    {group.title && <p className="px-3 pt-2 pb-1.5 text-[0.75rem] text-muted-foreground">{group.title}</p>}
+                    {group.items.map((item) => (
+                      <NavRow key={item.id} item={item} active={split && item.id === page} chevron={!split} onClick={() => pick(item.id)} />
+                    ))}
+                  </div>
+                ))}
+              </nav>
+            )}
+            {showPage && (
+              <div className="relative flex min-w-0 flex-1 flex-col">
+                <div className="flex h-14 shrink-0 items-center gap-1 px-3">
+                  {!split && (
+                    <Button variant="ghost" size="sm" className="rounded-full text-muted-foreground" onClick={() => setInside(false)}>
+                      <CaretLeft data-icon="inline-start" />设置
+                    </Button>
+                  )}
+                  <Close />
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-10 sm:px-9">
+                  {!split && current && <h2 className="mb-5 font-serif text-[1.375rem] leading-none font-semibold">{current.label}</h2>}
+                  {error && <ErrorNote text={error} className="mb-5" />}
+                  {doc ? <Page page={page} doc={doc} ctx={ctx} /> : !error && <Skeleton lines={8} />}
+                </div>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-10 sm:px-9">
-                {!split && current && <h2 className="mb-5 font-serif text-[1.375rem] leading-none font-semibold">{current.label}</h2>}
-                {error && <ErrorNote text={error} className="mb-5" />}
-                {doc ? <Page page={page} doc={doc} ctx={ctx} /> : !error && <Skeleton lines={8} />}
-              </div>
-            </div>
-          )}
-        </DialogPrimitive.Content>
-      </DialogPortal>
-    </Dialog>
+            )}
+          </DialogPrimitive.Content>
+        </DialogPortal>
+      </Dialog>
+      <KeyPrompt assistant={doc?.assistant ?? null} paused={open || busy !== null || probing} probe={probe} onDoc={quickstarted} asked={asked} />
+    </>
   )
 }
 
