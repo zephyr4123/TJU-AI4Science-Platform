@@ -57,7 +57,8 @@ def project_detail(project: Project, catalog: dict[str, Capability],
         rows.append({**workspace_summary(ws),
                      "flows": [{"name": f["name"], "title": f.get("title"),
                                 "step": f.get("step"), "total": f.get("total"),
-                                "waiting": f.get("waiting"), "problems": f.get("problems", [])}
+                                "waiting": f.get("waiting"), "stop": f.get("stop"),
+                                "problems": f.get("problems", [])}
                                for f in detail["flows"]],
                      "jobs": [j for j in detail["jobs"] if j["effective_status"] == "running"]})
     return {**project_summary(project), "text": project.text(), "workspaces": rows}

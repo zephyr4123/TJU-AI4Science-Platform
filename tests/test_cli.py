@@ -143,6 +143,10 @@ def test_show_workspace_says_what_a_breakpoint_waits_for(tmp_path):
     shown = run_cli("show", "workspace", **in_pack(pack))
     assert shown.returncode == EXIT_OK, shown.stderr
     assert "flow\tquick\tstep=1/3\twaiting=sign\tstop=核对评分脚本\tsign=design/1" in shown.stdout
+    # 项目一览里同一行（回放里 show project 在这里炸过 KeyError，外层 #287）
+    whole = run_cli("show", "project", **in_pack(pack))
+    assert whole.returncode == EXIT_OK, whole.stderr
+    assert "  flow\tquick\tstep=1/3\twaiting=sign\tstop=核对评分脚本\tsign=design/1" in whole.stdout
     output.sign(pack.pack, by="me")
     shown = run_cli("show", "workspace", **in_pack(pack))
     assert "flow\tquick\tstep=1/3\twaiting=assistant\n" in shown.stdout
