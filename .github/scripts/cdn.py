@@ -28,6 +28,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 import tomllib
 import urllib.request
 from pathlib import Path
@@ -45,6 +46,10 @@ IMMUTABLE = "public, max-age=31536000, immutable"
 LATEST = "public, max-age=300"
 TYPES = {".whl": "application/zip", ".gz": "application/gzip", ".zip": "application/zip"}
 TEXT = "text/plain; charset=utf-8"
+# 美国的 runner 往上海的桶分片上传，偶尔有分片重试到 SDK 的上限仍失败（1.8.0，外层 #281）；SDK 说
+# 「please upload_file again」：再调一次从断点续传
+UPLOAD_TRIES = 4
+UPLOAD_WAIT_S = 10
 
 
 def die(msg: str) -> None:
@@ -102,15 +107,42 @@ def plan(version: str, prefix: str, work: Path) -> list[tuple[str, Path, str]]:
     return items
 
 
-def upload(items: list[tuple[str, Path, str]]) -> None:
+def client_from_env():
+    """COS 的 client 与它会抛的、值得再试一次的错。凭据从环境变量来。"""
     from qcloud_cos import CosConfig, CosS3Client
+    from qcloud_cos.cos_exception import CosClientError, CosServiceError
 
     client = CosS3Client(CosConfig(Region=REGION, SecretId=os.environ["TENCENTCLOUD_SECRET_ID"],
                                    SecretKey=os.environ["TENCENTCLOUD_SECRET_KEY"]))
+    return client, (CosClientError, CosServiceError)
+
+
+def upload(items: list[tuple[str, Path, str]], client, *,
+           retryable: tuple[type[BaseException], ...]) -> None:
+    """一个个传。带版本号的（不可变）桶里已经有、大小一样就跳过：重跑流水线只补没传成的；最新那两份
+    每次都传。传失败照 SDK 的说法再调（从断点续传），试够了照样抛。"""
     for key, path, cache in items:
-        client.upload_file(Bucket=BUCKET, Key=key, LocalFilePath=str(path), ACL="public-read",
-                           CacheControl=cache, ContentType=TYPES.get(path.suffix, TEXT))
+        if cache == IMMUTABLE and _already_there(client, key, path):
+            print(f"skip {CDN}/{key}（桶里已有，大小一样）")
+            continue
+        for attempt in range(1, UPLOAD_TRIES + 1):
+            try:
+                client.upload_file(Bucket=BUCKET, Key=key, LocalFilePath=str(path),
+                                   ACL="public-read", CacheControl=cache,
+                                   ContentType=TYPES.get(path.suffix, TEXT))
+                break
+            except retryable as exc:
+                if attempt == UPLOAD_TRIES:
+                    raise
+                print(f"retry {attempt}/{UPLOAD_TRIES - 1} {key}：{exc}", file=sys.stderr)
+                time.sleep(UPLOAD_WAIT_S * attempt)
         print(f"ok {CDN}/{key}")
+
+
+def _already_there(client, key: str, path: Path) -> bool:
+    if not client.object_exists(Bucket=BUCKET, Key=key):
+        return False
+    return int(client.head_object(Bucket=BUCKET, Key=key)["Content-Length"]) == path.stat().st_size
 
 
 def purge(urls: list[str]) -> None:
@@ -138,7 +170,8 @@ def main() -> int:
             for key, path, cache in items:
                 print(f"{CDN}/{key}\t{path.stat().st_size}\t{cache}")
             return 0
-        upload(items)
+        client, retryable = client_from_env()
+        upload(items, client, retryable=retryable)
     latest = [f"{CDN}/{key}" for key, _, cache in items if cache == LATEST]
     if latest:
         purge(latest)
