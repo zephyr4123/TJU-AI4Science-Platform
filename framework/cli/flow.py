@@ -54,6 +54,10 @@ def cmd_take(args: argparse.Namespace) -> int:
         return EXIT_INVALID
     print(f"ok {taken.name}\tflows/{taken.name}.yaml\t{len(taken.stages)} 项"
           f"\tnext=按需要改它的阶段、能力参数或断点，ai4sci show flows 校验；然后从第一项开始走")
+    # 取到手当场把流程的说明推给助理（外层 #287）：什么时候选它、断点要核什么、怎么走
+    if taken.guide:
+        print()
+        print(taken.guide)
     return EXIT_OK
 
 
@@ -103,7 +107,8 @@ def cmd_new_workflow(args: argparse.Namespace) -> int:
     origin = f"\tfrom={saved.origin.name}" if saved.origin else ""
     # 打实际路径：助理站在 studio/ 里、人在终端站在别处，照着都找得到
     print(f"ok {saved.name}\t{lib.find(saved.name)}{origin}"
-          f"\tnext=改这个文件（阶段、能力、断点、标题、说明；起点与库里某条一样，改出不同之前"
+          f"\tnext=改这个文件（阶段、能力、断点、标题、一句话、给研究助理的 guide；起点与库里某条"
+          f"一样，改出不同之前"
           f" show workflows 会标「一模一样」），ai4sci show workflows 校验")
     return EXIT_OK
 

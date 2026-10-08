@@ -43,7 +43,7 @@ flowchart TB
 | `workspace/` | 项目与工作区的磁盘：`project`（`project.md`）、`root`（`requirement.md`、七个阶段目录、`.ai4sci/`）、`outputs`（`<stage>/<n>/` 的开与收、冻结判断、跨工作区引用）、`progress`（流程实例走到哪，从 meta 现算）、`loadout`（一个项目装载哪些能力：常驻 skill 加各工作区流程实例上挂的，研究助理、执行层、`ai4sci skill` / `cap` 都从这一处取，P-26）、`jobs`（后台作业）、`removal`（删，拒的条件在文件头） | |
 | `executor/` | 起执行层会话：`prompting` 组提示（模板 + 领域约定 + skill 清单 + 联网规矩）、`session` 起会话留档（Bash 只放行 `ai4sci skill`；没开工就失败的隔一会重试两次，外层 #235） | |
 | `experiment/` | 实验这一族能力私下的约定：设计那包合不合约（`pack`）、`env`（`env/` 与 uv venv、保证给 harness 的环境变量）、`headroom` 预检、`layout` 实验目录布局、`checkpoint` `ledger` `notebook` `artifacts` `results` `analysis` `report`、`drafting` 起执行层写草稿、`baseline` 跑基线、`harness_contract.md` 给执行层的 harness 约定；`schemas/` 三份 JSON Schema | 契约层不认识它（纲领 P-19） |
-| `chat/` | 两位助理与页面后端：`scope` 定域（可写目录、指南、命令前缀）、`guide` 注入指南与前言、`conversation` 一段对话（落盘、忙锁、收件箱）、`notify` 作业跑完排进收件箱、`boards` 看板读盘（含首页的「待你确认 / 运行中」）、`spending` 首页的花费（从对话与每次产出的执行层留档汇总，token 与模型问适配器，报不出成本的照适配器的定价表 `PRICES` 折算；按天 / 项目 / 模型 / 会话）、`settings` 设置、`removal` 目录外的删（会话、镜像）、`server` 标准库 HTTP + SSE（端点清单在文件头） | |
+| `chat/` | 两位助理与页面后端：`scope` 定域（可写目录、指南、命令前缀）、`guide` 注入指南与前言（加库的索引：步骤、流程、需求模板，外层 #287）、`conversation` 一段对话（落盘、忙锁、收件箱）、`notify` 作业跑完排进收件箱、`boards` 看板读盘（含首页的「待你确认 / 运行中」）、`spending` 首页的花费（从对话与每次产出的执行层留档汇总，token 与模型问适配器，报不出成本的照适配器的定价表 `PRICES` 折算；按天 / 项目 / 模型 / 会话）、`settings` 设置、`removal` 目录外的删（会话、镜像）、`server` 标准库 HTTP + SSE（端点清单在文件头） | |
 | `capabilities/` | 能力库的「步骤」那一半：一个步骤一个子包，互不 import，各导出 `DESCRIPTOR` 与 `run(output_dir, inputs, ports, **params)`；`discover()` 扫目录并断言签名；`abilities.py` 是能力库的出处（步骤 + skill 两个 tag）；`MAIN_FILES` 阶段主文件表 | 现有八个：`literature_search` `literature_read` `design` `reproduction` `auto_research` `analysis` `reproducibility` `verify` |
 | `cli/` | 命令行，一类一个模块，`__init__.py` 逐行装配（没有注册表，加一条就加一行）；`_common.py` 退出码、当前项目与工作区、按名字取端口、`refuse_if_assistant` | 清单以 `ai4sci --help` 为准 |
 
@@ -152,7 +152,7 @@ sequenceDiagram
 |---|---|
 | 异常 | `ValueError` 输入非法、`FileNotFoundError` 不存在、`RuntimeError` 运行失败；各模块定自己的子类（`CapabilityFailed`、`OutputChanged`、`ConfirmRefused`…）。裸 `except` 与不 raise 的 `except Exception` 过不了 ruff；唯一一处 `except Exception`（`cli/cap.py`）是记失败后再 raise |
 | CLI 退出码 | 0 通过；1 没通过（原因一行一条到 stderr）；2 用法错误（目录不存在、名字对不上）；3 `serve` 绑不上地址（被占、Windows 的保留端口段，外层 #282） |
-| stdout | 只留给协调层读的那一行结论：`ok <id>\t键=值…\tnext=<下一条命令>`，其余走 stderr（`cli/_common.py::setup_logging`） |
+| stdout | 只留给助理读的那一行结论：`<能力> ok\t键=值…\tnext=<本能力内的下一步>\tthen=<流程的下一项>\toutput=<id>`；`next=` 由能力写，`then=` 由 `cli/cap.py::flow_next` 照流程实例现算（外层 #287），其余走 stderr（`cli/_common.py::setup_logging`） |
 | HTTP | `ValueError` → 422（盘上东西不合约，一句话）、`OSError` → 500；另有 400 / 404 / 409（在跑、被引用）/ 403（出厂的不能删；`Host` 不是回环、`Origin` 不同源）/ 415（POST 不是 `application/json`）（`chat/server.py`，外层 #283） |
 | 日志 | logger 名 `ai4sci.<模块>`，消息是「snake_case 事件名 键=值 …」，走 stderr；错误日志要带定位信息（路径、id、原因） |
 

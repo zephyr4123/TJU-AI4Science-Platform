@@ -128,6 +128,30 @@ def test_outside_a_workspace_is_a_usage_error_that_says_what_to_do(tmp_path):
     assert "不在任何项目里" in proc.stderr and "project new" in proc.stderr
 
 
+def test_show_workspace_says_what_a_breakpoint_waits_for(tmp_path):
+    """外层 #287：停在断点时流程那一行带上要核什么（断点的一句话）与该请人签哪次产出——新开的对话
+    看一眼盘就知道下一步是请人签哪个，不用翻流程文件再对 meta。"""
+    pack = pf.make_pack(tmp_path)
+    ws = pack.workspace
+    (ws.flows / "open.yaml").unlink()
+    (ws.flows / "quick.yaml").write_text(
+        "name: quick\ntitle: 快看\nsummary: 设计签过再实验。\nstages:\n"
+        "  - 设计\n  - 断点: 核对评分脚本\n  - 实验\n", encoding="utf-8")
+    meta = output.read_meta(pack.pack)
+    meta.flow, meta.step = "quick", 0
+    output.write_meta(pack.pack, meta)
+    shown = run_cli("show", "workspace", **in_pack(pack))
+    assert shown.returncode == EXIT_OK, shown.stderr
+    assert "flow\tquick\tstep=1/3\twaiting=sign\tstop=核对评分脚本\tsign=design/1" in shown.stdout
+    # 项目一览里同一行（回放里 show project 在这里炸过 KeyError，外层 #287）
+    whole = run_cli("show", "project", **in_pack(pack))
+    assert whole.returncode == EXIT_OK, whole.stderr
+    assert "  flow\tquick\tstep=1/3\twaiting=sign\tstop=核对评分脚本\tsign=design/1" in whole.stdout
+    output.sign(pack.pack, by="me")
+    shown = run_cli("show", "workspace", **in_pack(pack))
+    assert "flow\tquick\tstep=1/3\twaiting=assistant\n" in shown.stdout
+
+
 def test_show_workspace_walks_requirement_outputs_flows_and_jobs(tmp_path):
     run_dir, pack = rf.make_run(tmp_path)
     rf.write_analysis(pack, rf.good_analysis(run_dir))
@@ -248,8 +272,8 @@ def test_cap_auto_research_opens_an_output_and_continues_it(tmp_path, monkeypatc
     assert code == EXIT_OK, out
     run_dir = pack.workspace.root / "experiment" / "1"
     assert seen == [run_dir]
-    assert out.startswith("stop batch_exhausted\titer=0\tbest=0.5\toutput=experiment/1\t")
-    assert out.rstrip().endswith("output=experiment/1")
+    assert out.startswith("stop batch_exhausted\titer=0\tbest=0.5\tnext=")
+    assert "\tthen=下一项「分析」：" in out and out.rstrip().endswith("\toutput=experiment/1")
     meta = output.read_meta(run_dir)
     assert meta.status == "ok" and meta.by == "auto-research" and meta.input_ids == ["design/1"]
     assert meta.requirement == 1 and meta.flow == "open" and meta.result.startswith("stop ")
@@ -297,6 +321,8 @@ def test_flow_take_then_stops_are_enforced_when_following_the_flow(tmp_path, mon
     taken = run_cli("flow", "take", "research", **in_pack(pack))
     assert taken.returncode == EXIT_OK, taken.stderr
     assert taken.stdout.startswith("ok research\tflows/research.yaml\t6 项")
+    # 取到手当场把流程的说明推给助理：什么时候选它、断点要核什么、怎么走（外层 #287）
+    assert "什么时候选它：" in taken.stdout and "断点「评分指标核对」" in taken.stdout
     again = run_cli("flow", "take", "research", **in_pack(pack))
     assert again.returncode == EXIT_INVALID and "已经有" in again.stderr
     renamed = run_cli("flow", "take", "research", "--as", "research-5", **in_pack(pack))
@@ -324,13 +350,56 @@ def test_flow_take_then_stops_are_enforced_when_following_the_flow(tmp_path, mon
     assert "ai4sci sign design/1" in err
     output.sign(pack.pack, by="人")
     code = main(["cap", "auto-research", "--from", "design/1", "--flow", "research"])
-    assert code == EXIT_OK, capsys.readouterr().err
+    printed = capsys.readouterr()
+    assert code == EXIT_OK, printed.err
+    # 流程里的下一项由驱动现算（外层 #287）：then= 在 output= 前面，output= 仍在最后
+    assert "\tthen=下一项「分析」：这个阶段的步骤有 analysis、reproducibility" in printed.out
+    assert printed.out.rstrip().endswith("\toutput=experiment/1")
     meta = output.read_meta(pack.workspace.root / "experiment" / "1")
     assert meta.flow == "research" and meta.step == 2
     shown = run_cli("show", "workspace", **in_pack(pack))
     assert "flow\tresearch\tstep=3/6\twaiting=assistant" in shown.stdout
     assert "flow\tresearch-5\tstep=0/6\twaiting=assistant" in shown.stdout
 
+
+
+def test_the_driver_says_what_comes_next_in_the_flow():
+    """外层 #287：能力的结论行只说本能力内的事；流程里的下一项由驱动按「流程 + 这次落在第几项」
+    现算——断点（先请人签、签了之后是什么）、同一格里点了名的下一个步骤、下一个阶段点了名的步骤或
+    这个阶段有哪些、没有步骤的阶段自己写、走完了。"""
+    from framework import paths
+    from framework.cli.cap import flow_next
+    from framework.contracts import workflows
+
+    lib = {wf.name: wf for wf in workflows.load_workflows(paths.workflows_root())}
+    steps = {"设计": ["design", "reproduction"], "实验": ["auto-research"],
+             "分析": ["analysis", "reproducibility"], "验证": ["verify"],
+             "文献": ["literature-read", "literature-search"]}
+    skills = frozenset({"pdf", "download"})
+
+    def nxt(flow: str, step: int, by: str, oid: str) -> str:
+        return flow_next(lib[flow], step, by, oid, "w", skills, steps)
+
+    after_design = nxt("research", 0, "design", "design/1")
+    assert after_design.startswith("断点「评分指标核对」：把 design/1 该看的念给研究者")
+    assert ("签了之后下一项「实验」：ai4sci cap auto-research --from design/1 "
+            "--flow research --ws w") in after_design
+    assert nxt("research", 2, "auto-research", "experiment/1") == (
+        "下一项「分析」：这个阶段的步骤有 analysis、reproducibility（ai4sci show cap <名字>），"
+        "--from experiment/1 --flow research --ws w")
+    assert nxt("research", 4, "verify", "verification/1").endswith("签了之后流程 research 走完了")
+    assert nxt("literature-survey", 0, "literature-search", "literature/1") == (
+        "这一格还有 literature-read：ai4sci cap literature-read --from literature/1 "
+        "--flow literature-survey --ws w")
+    assert nxt("literature-survey", 0, "literature-read", "literature/2") == (
+        "流程 literature-survey 走完了")
+    # 格子上只挂 skill 的不算点名：下一个阶段照「这个阶段有哪些步骤」说
+    assert nxt("reproduce", 1, "reproduction", "design/1").startswith("断点「复现结果核对」")
+    early = workflows.parse_workflow("e.yaml", {"name": "e", "title": "t", "summary": "s",
+                                                "stages": ["设计", "假设"]})
+    assert flow_next(early, 0, "design", "design/1", "w", skills, steps) == (
+        "下一项「假设」：这个阶段没有步骤，ai4sci output new hypothesis --from design/1 --ws w "
+        "开一次产出自己写")
 
 def test_a_second_step_in_the_same_cell_stays_there_and_the_stop_after_the_cell_waits(
         tmp_path, monkeypatch, capsys):
@@ -436,7 +505,7 @@ def test_finished_job_drops_its_job_id_before_waking_the_chat(tmp_path, monkeypa
     rf.write_analysis(pack, rf.good_analysis(run_dir))
     seen: dict[str, object] = {}
 
-    def fake_wake(ws, job):
+    def fake_wake(ws, job, steps):
         seen["job_id_env"] = os.environ.get("AI4SCI_JOB_ID")  # 叫醒那一刻环境里还有没有作业号
         return "done"
 
@@ -501,6 +570,39 @@ def test_show_caps_lists_stages_with_empty_stages_visible_and_five_columns():
     assert any(line.startswith("  职责：") for line in lines)
     assert any(line.startswith("  终止条件：") for line in lines)
 
+
+
+def test_show_cap_prints_one_capability_its_flags_and_its_guide_for_the_assistant():
+    """外层 #287：一个能力的全部——一行头、五栏、每个参数的写法与缺省、能不能接着干、要不要算力，
+    最后接它给研究助理的说明（assistant.md）。名字不对退 2；是 skill 的名字就指到 skill show。"""
+    proc = run_cli("show", "cap", "design")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert lines[0].startswith("设计\tdesign\t评分脚本与基线\t") and "used_by=" in lines[0]
+    assert any(line.startswith("  职责：") for line in lines)
+    assert "  --domain <文字>，缺省 generic：" in proc.stdout
+    assert "  --continue <阶段目录>/<序号>：" in proc.stdout
+    assert "  --compute <名字>：" in proc.stdout
+    assert "# 评分脚本与基线：给研究助理的说明" in proc.stdout
+    verify = run_cli("show", "cap", "verify")
+    assert verify.returncode == EXIT_OK and "--continue" not in verify.stdout
+    missing = run_cli("show", "cap", "nope")
+    assert missing.returncode == EXIT_USAGE and "库里没有叫 'nope' 的能力（有：" in missing.stderr
+    skill = run_cli("show", "cap", "pdf")
+    assert skill.returncode == EXIT_USAGE and "ai4sci skill show pdf" in skill.stderr
+
+
+def test_show_workflow_prints_one_workflow_and_its_guide():
+    """外层 #287：库里一条流程的全部——来源、经过的阶段、断点、一句话，加给研究助理的说明。"""
+    proc = run_cli("show", "workflow", "research")
+    assert proc.returncode == EXIT_OK, proc.stderr
+    lines = proc.stdout.splitlines()
+    assert lines[0] == ("research\t从设计到验证\t出厂\t"
+                        "设计 → ◆评分指标核对 → 实验(auto-research) → 分析 → 验证 → ◆验收")
+    assert lines[1].startswith("  评分脚本与基线，人核对")
+    assert "什么时候选它：" in proc.stdout and "断点「评分指标核对」" in proc.stdout
+    missing = run_cli("show", "workflow", "nope")
+    assert missing.returncode == EXIT_USAGE and "库里没有叫 'nope' 的流程（有：" in missing.stderr
 
 def test_output_is_utf8_even_when_the_pipe_is_not():
     """中文 Windows 上标准输出接到管道时 Python 按 GBK 编码，平台一打印 GBK 里没有的字（²、✓）就崩，
@@ -750,7 +852,7 @@ def test_cap_design_runs_the_executor_and_reports_the_stop(tmp_path, monkeypatch
         "design ok\tsession=1\tchanged=5\tsealed=evaluate.py,launcher.sh,make_run0.sh")
     # 后半段：评分脚本封好就接着跑基线、算预检，一条命令到底
     assert "\tinner_k=" in out and "\tbaseline=" in out and "\tgate=" in out
-    assert "auto-research --from design/1" in out and out.rstrip().endswith("output=design/1")
+    assert "\tthen=下一项「实验」：" in out and out.rstrip().endswith("output=design/1")
     pack = ws.root / "design" / "1"
     assert (pack / "executor" / "session-1" / "prompt.md").is_file()
     assert (pack / "baseline" / "results.json").is_file() and (pack / "data" / "val.json").is_file()

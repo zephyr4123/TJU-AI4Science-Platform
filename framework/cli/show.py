@@ -17,7 +17,7 @@ import json
 import sys
 
 from framework import computes, paths, skills
-from framework.capabilities import abilities, discover
+from framework.capabilities import abilities, assistant_guide, discover
 from framework.chat import boards
 from framework.cli._common import (
     EXIT_INVALID,
@@ -28,9 +28,10 @@ from framework.cli._common import (
     current_workspace,
     library,
 )
+from framework.cli.cap import CONTINUE_HELP
 from framework.cli.workspace import read_template
 from framework.contracts import output, workflow_library, workflows
-from framework.contracts.capability import COLUMNS
+from framework.contracts.capability import COLUMNS, Capability
 from framework.contracts.stages import STAGE_SLUGS, STAGES
 from framework.skills.shelves import shelf_of
 from framework.workspace import jobs, loadout, outputs, project
@@ -68,14 +69,22 @@ def cmd_project(args: argparse.Namespace) -> int:
             if flow["problems"]:
                 print(f"  flow\t{flow['name']}\t坏了：{flow['problems'][0]}", file=sys.stderr)
                 continue
-            print(f"  flow\t{flow['name']}\tstep={flow['step'] + 1}/{flow['total']}"
-                  f"\twaiting={flow['waiting']}")
+            print(f"  flow\t{flow['name']}\t{_where(flow)}")
         for job in ws["jobs"]:
             print(f"  job\t{job['job_id']}\t{job['effective_status']}\t{job['cap']}"
                   f"\t{job['output'] or '-'}")
     if not detail["workspaces"]:
         print("（还没有工作区：ai4sci workspace new <名字>）")
     return EXIT_OK
+
+
+def _where(flow: dict) -> str:
+    """一条流程走到哪、在等谁；停在断点就带上要核什么、该请人签哪几次（外层 #287）。"""
+    where = f"step={flow['step'] + 1}/{flow['total']}\twaiting={flow['waiting']}"
+    stop = flow["stop"]
+    if stop is None:
+        return where
+    return f"{where}\tstop={stop['note'] or '-'}\tsign={','.join(stop['sign']) or '-'}"
 
 
 def cmd_workspace(args: argparse.Namespace) -> int:
@@ -105,8 +114,7 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         if flow.get("problems"):
             print(f"flow\t{flow['name']}\t坏了：{flow['problems'][0]}", file=sys.stderr)
             continue
-        print(f"flow\t{flow['name']}\tstep={flow['step'] + 1}/{flow['total']}"
-              f"\twaiting={flow['waiting']}")
+        print(f"flow\t{flow['name']}\t{_where(flow)}")
     for job in detail["jobs"]:
         print(f"job\t{job['job_id']}\t{job['effective_status']}\t{job['cap']}"
               f"\t{job['output'] or '-'}")
@@ -227,11 +235,7 @@ def cmd_caps(args: argparse.Namespace) -> int:
             print(f"{stage.name}\t-\t这个阶段还没有能力"
                   f"（助理可以 ai4sci output new {stage.slug} 自己写）")
         for d in caps:
-            params = " ".join(f"--{p.name.replace('_', '-')}" for p in d.params) or "-"
-            print(f"{stage.name}\t{d.name}\t{d.title}\t{d.brief}\t参数 {params}"
-                  f"\tused_by={','.join(uses.get(d.name, [])) or '-'}")
-            for key, label in COLUMNS:
-                print(f"  {label}：{getattr(d, key)}")
+            print("\n".join(_cap_head(d, uses)))
     # 能力库的另一半：tag 为 skill 的，几百个，这里只按架计数；清单与一句话由 show skills 查
     entries = abilities.skill_entries()
     for stage in dict.fromkeys(e["stage"] for e in entries):
@@ -239,6 +243,51 @@ def cmd_caps(args: argparse.Namespace) -> int:
         used = ",".join(dict.fromkeys(f for e in mine for f in uses.get(e["name"], []))) or "-"
         print(f"skill\t{stage}\t{len(mine)} 个\tused_by={used}")
     print("skill 的清单与一句话：ai4sci show skills [词…] [--stage <阶段>]")
+    return EXIT_OK
+
+
+def _cap_head(d: Capability, uses: dict[str, list[str]]) -> list[str]:
+    """一个能力的一行头（阶段、名字、名、一行、参数、用在哪几条流程）加五栏：`show caps` 与
+    `show cap` 同一种写法。"""
+    params = " ".join(f"--{p.name.replace('_', '-')}" for p in d.params) or "-"
+    return ([f"{d.stage}\t{d.name}\t{d.title}\t{d.brief}\t参数 {params}"
+             f"\tused_by={','.join(uses.get(d.name, [])) or '-'}"]
+            + [f"  {label}：{getattr(d, key)}" for key, label in COLUMNS])
+
+
+# 参数值在命令行上的写法
+TYPE_WORDS = {"int": "<整数>", "float": "<数>", "str": "<文字>"}
+
+
+def cmd_cap(args: argparse.Namespace) -> int:
+    """一个能力的全部（外层 #287）：一行头与五栏、每个参数怎么写与缺省、能不能接着干、要不要算力，
+    最后是它给研究助理的说明（能力目录里的 assistant.md）。"""
+    found = discover()
+    module = found.get(args.name)
+    if module is None:
+        if args.name in abilities.skill_names():
+            print(f"{args.name} 是 skill，不是步骤：ai4sci skill show {args.name}", file=sys.stderr)
+        else:
+            print(f"库里没有叫 {args.name!r} 的能力（有：{', '.join(found)}）", file=sys.stderr)
+        return EXIT_USAGE
+    d: Capability = module.DESCRIPTOR
+    print("\n".join(_cap_head(d, workflows.used_by(library().load_valid()))))
+    print("参数：")
+    for p in d.params:
+        flag = f"--{p.name.replace('_', '-')}"
+        if p.type == "bool":
+            print(f"  {flag}：{p.help}")
+            continue
+        default = "" if p.default in (None, "") else f"，缺省 {p.default}"
+        print(f"  {flag} {TYPE_WORDS[p.type]}{default}：{p.help}")
+    if d.continuable:
+        print(f"  --continue <阶段目录>/<序号>：{CONTINUE_HELP}")
+    if d.needs_compute:
+        print("  --compute <名字>：在哪台机器上跑（ai4sci show computes），不给就用清单里的缺省")
+    print("  每个步骤都有：--from <阶段目录>/<序号>（读哪几次产出，可几个）、--flow、--ws、"
+          "--detach")
+    print()
+    print(assistant_guide(module))
     return EXIT_OK
 
 
@@ -310,6 +359,23 @@ def cmd_flows(args: argparse.Namespace) -> int:
         if row["name"] in readable:
             row.update(workflow_library.lineage(readable[row["name"]], lib, _catalog()))
     return _print_flows(rows, args.json)
+
+
+def cmd_workflow(args: argparse.Namespace) -> int:
+    """库里一条流程的全部（外层 #287）：与 `show workflows` 同一行，加一句话与给研究助理的说明。"""
+    lib = library()
+    row = next((r for r in lib.describe(_catalog(), _skills()) if r["name"] == args.name), None)
+    if row is None:
+        print(f"库里没有叫 {args.name!r} 的流程（有：{', '.join(lib.names()) or '-'}）",
+              file=sys.stderr)
+        return EXIT_USAGE
+    code = _print_flows([row], False, source=True)
+    if row["summary"]:
+        print(f"  {row['summary']}")
+    if row.get("guide"):
+        print()
+        print(row["guide"])
+    return code
 
 
 def _print_flows(found: list[dict], as_json: bool, *, source: bool = False) -> int:
@@ -398,6 +464,10 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
                            help="能力清单：七个研究阶段各有什么能力、每个五栏说明，带用在哪几条流程")
     caps.add_argument("--json", action="store_true", help="打 JSON（给页面与脚本）")
     caps.set_defaults(func=cmd_caps)
+    cap = what.add_parser(
+        "cap", help="一个能力：五栏、参数、给研究助理的说明（什么时候选、各种结局怎么接）")
+    cap.add_argument("name", help="能力的名字（ai4sci show caps 里的）")
+    cap.set_defaults(func=cmd_cap)
     found = what.add_parser(
         "skills", help="查库里的 skill：名字、位置、本项目装了没有、一句话（按词、按阶段筛）")
     found.add_argument("words", nargs="*",
@@ -410,6 +480,10 @@ def add_parser(groups: argparse._SubParsersAction) -> None:
                                "来源、经过哪些阶段、有无问题")
     wfs.add_argument("--json", action="store_true", help="打 JSON（给页面）")
     wfs.set_defaults(func=cmd_workflows)
+    one_wf = what.add_parser(
+        "workflow", help="库里的一条流程：经过哪些阶段、断点，给研究助理的说明")
+    one_wf.add_argument("name", help="流程的名字（ai4sci show workflows 里的）")
+    one_wf.set_defaults(func=cmd_workflow)
     tpls = what.add_parser("templates", help="库里的需求模板：通用一份、按学科加")
     tpls.set_defaults(func=cmd_templates)
     tpl = what.add_parser("template", help="一份需求模板的原文")

@@ -34,8 +34,11 @@ def test_opens_the_experiment_then_loops_and_points_at_analysis(tmp_path, monkey
     monkeypatch.setattr(paths, "domains_root", lambda: pack.domains_root)
     out, inputs = new_out(pack)
     line = auto_research.run(out, inputs, ports(0.015), max_iters=1)
-    assert line.startswith("stop batch_exhausted\titer=1\tbest=0.015\toutput=experiment/1")
-    assert line.endswith("next=ai4sci cap analysis --from experiment/1")
+    # 结论行只说本能力内的事：这批用完、实验没停就接着跑；往下走什么由驱动按流程说（外层 #287）。
+    # output= 由驱动接在最后，能力自己不写
+    assert line.startswith("stop batch_exhausted\titer=1\tbest=0.015\tnext=")
+    assert "ai4sci cap auto-research --continue experiment/1" in line and "output=" not in line
+    assert "cap analysis" not in line
     state = read_checkpoint(out)
     assert state["output"] == "experiment/1" and state["last_iter"] == 1
     assert state["chat_id"] is None

@@ -10,12 +10,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from backends import Chat
 from framework import paths
 from framework.chat import guide
+from framework.contracts.capability import Capability
 from framework.workspace.project import Project
 
 CHATS_DIRNAME = "chats"
@@ -30,11 +32,12 @@ class Scope:
     readable_paths: tuple[Path, ...] = ()
     project: Project | None = None
 
-    def system_prompt(self, chat: Chat | None = None) -> str:
+    def system_prompt(self, chat: Chat | None = None, *,
+                      steps: Mapping[str, Capability]) -> str:
         """这个域的指南；给了适配器就带上它自己的「工具怎么用」那段；项目域带本项目装载的 skill 清单
-        （每次现算，纲领 P-26）。"""
+        （每次现算，纲领 P-26）；两个域都带库的索引，步骤的描述符由调用方给（外层 #287）。"""
         tool = chat.tool_guide(guide.bash_rules(self.kind)) if chat is not None else ""
-        return guide.system_prompt(self.kind, tool_guide=tool, project=self.project)
+        return guide.system_prompt(self.kind, tool_guide=tool, project=self.project, steps=steps)
 
 
 def for_project(project: Project) -> Scope:

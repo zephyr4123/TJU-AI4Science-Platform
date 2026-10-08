@@ -37,7 +37,7 @@ def scripted(monkeypatch):
     chat = ScriptedChat([])
     monkeypatch.setattr(notify.agents, "chat", lambda name, provider=None: chat)
     monkeypatch.setattr(notify.guide, "system_prompt",
-                        lambda kind, tool_guide="", project=None: "指南")
+                        lambda kind, tool_guide="", project=None, steps=None: "指南")
     return chat
 
 
@@ -45,7 +45,7 @@ def test_wake_sends_a_framework_turn_with_the_job_result(tmp_path: Path, scripte
     ws = _ws(tmp_path)
     conv = conv_mod.new_conversation(project_mod.of(ws).chats, "claude_code", ws.root)
     scripted.turns.append(reply("收到，第 2 轮有改进"))
-    assert notify.wake(ws, _job(conv.chat_id)) == "done"
+    assert notify.wake(ws, _job(conv.chat_id), {}) == "done"
     call = scripted.calls[0]
     assert call["chat_id"] == conv.chat_id and call["system_prompt"] == "指南"
     assert call["allowed_paths"] == [project_mod.of(ws).root]  # 叫醒的一轮也只在项目里写
@@ -68,7 +68,7 @@ def test_wake_reports_a_failed_job_and_an_unfinished_turn(tmp_path: Path, script
     ws = _ws(tmp_path)
     conv = conv_mod.new_conversation(project_mod.of(ws).chats, "claude_code", ws.root)
     scripted.turns.append(failure("超时"))
-    status = notify.wake(ws, _job(conv.chat_id, exit_code=1))
+    status = notify.wake(ws, _job(conv.chat_id, exit_code=1), {})
     assert status == "error: 超时"
     assert "没跑成，退出码 1" in scripted.calls[0]["message"]
 
@@ -90,13 +90,13 @@ def test_wake_queues_while_the_conversation_is_busy_and_follow_up_reads_the_inbo
         if len(naps) == 2:
             inflight.unlink()  # 第二次等完人说完了
 
-    assert notify.wake(ws, _job(conv.chat_id), settle_s=60.0, sleep=sleep) == "done"
+    assert notify.wake(ws, _job(conv.chat_id), {}, settle_s=60.0, sleep=sleep) == "done"
     assert naps == [1.0, 1.0] and scripted.calls[-1]["message"].startswith("工作区 w1 的作业 job-7")
     # 一直忙：留在收件箱，queued；两条作业排两条
     inflight.write_text("{}", encoding="utf-8")
-    assert notify.wake(ws, _job(conv.chat_id), settle_s=3.0, sleep=lambda s: None) == "queued"
+    assert notify.wake(ws, _job(conv.chat_id), {}, settle_s=3.0, sleep=lambda s: None) == "queued"
     failed = _job(conv.chat_id, exit_code=1)
-    assert notify.wake(ws, failed, settle_s=0, sleep=lambda s: None) == "queued"
+    assert notify.wake(ws, failed, {}, settle_s=0, sleep=lambda s: None) == "queued"
     assert len(conv_mod.pending_notes(conv)) == 2
     # 人那一轮结束（锁摘了）：follow_up 一轮念完两条，事件照吐；再调一次收件箱空、一个事件都没有
     inflight.unlink()
@@ -113,15 +113,15 @@ def test_wake_queues_while_the_conversation_is_busy_and_follow_up_reads_the_inbo
 
 def test_wake_records_missing_conversation_or_backend_instead_of_raising(tmp_path, monkeypatch):
     ws = _ws(tmp_path)
-    status = notify.wake(ws, _job("chat-nope"))
+    status = notify.wake(ws, _job("chat-nope"), {})
     assert status.startswith("failed: 对话不存在")
     conv = conv_mod.new_conversation(project_mod.of(ws).chats, "nope", ws.root)
     monkeypatch.setattr(notify.agents, "chat",
                         lambda name, provider=None: (_ for _ in ()).throw(
                             BackendNotFound(f"未知 {name}")))
-    assert notify.wake(ws, _job(conv.chat_id)) == "failed: 未知 nope"
+    assert notify.wake(ws, _job(conv.chat_id), {}) == "failed: 未知 nope"
     with pytest.raises(AssertionError):
-        notify.wake(ws, _job(None))
+        notify.wake(ws, _job(None), {})
 
 
 def test_mark_wake_lands_in_the_job_record(tmp_path: Path):

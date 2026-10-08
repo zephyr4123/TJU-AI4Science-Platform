@@ -35,7 +35,8 @@ def test_system_prompt_is_preamble_plus_guide(tmp_path):
     path.write_text("# 指南正文\n", encoding="utf-8")
     text = guide.system_prompt(guide.PROJECT, path)
     assert text.startswith("# 你在服务里") and text.rstrip().endswith("# 指南正文")
-    assert "流程实例在 `flows/`" in text and "--detach" in text and "--ws" in text
+    # 盘上是什么样归指南（外层 #287，一个事实一个家）；前言只留服务里才有的几条
+    assert "--detach" in text and "--ws" in text and "去编辑台拼一条" in text
     studio = guide.system_prompt(guide.STUDIO, path)
     assert studio.startswith("# 你在服务里") and "流程助理" in studio and "--detach" not in studio
     with pytest.raises(AssertionError, match="指南只有"):
@@ -95,12 +96,56 @@ def test_bash_rules_only_allow_bare_ai4sci():
     assert "新名字" not in guide.PREAMBLES[guide.STUDIO]
     # 分权的机器判据之二（P-16）：流程助理连 cap / sign / requirement confirm 的前缀都不放行
     assert guide.bash_rules(guide.PROJECT) == guide.BASH_RULES
-    assert guide.bash_rules(guide.STUDIO) == ("ai4sci show", "ai4sci workflow",
-                                             ".venv/bin/ai4sci show")
+    assert guide.bash_rules(guide.STUDIO) == ("ai4sci show", "ai4sci workflow", "ai4sci skill show",
+                                             ".venv/bin/ai4sci show")  # skill run 不放行
     assert not any(p in ("ai4sci", ".venv/bin/ai4sci") for p in guide.bash_rules(guide.STUDIO))
     assert "`ai4sci show …`" in guide.PREAMBLES[guide.STUDIO]
     with pytest.raises(AssertionError, match="指南只有"):
         guide.bash_rules("nope")
+
+
+def test_the_prompt_carries_a_generated_index_of_the_library(tmp_path):
+    """外层 #287：指南不写库里有什么，system prompt 里放一份生成的索引——全库的步骤（本项目装载的
+    标出来，取流程之前一个都没装载）、库里的流程、需求模板，名字加一句话，每轮现算；流程助理只有步骤
+    与流程。一块一节、内容确定：挂上一格只动步骤那一节，续接的会话只补发它。"""
+    from framework.capabilities import abilities
+    from framework.chat import boards, conversation
+    from framework.contracts.workflow_library import Library
+
+    steps = abilities.steps()
+    ws = spaces.make_workspace(tmp_path, "w")
+    project = project_mod.of(ws)
+    path = tmp_path / "guide.md"
+    path.write_text("# 指南正文\n", encoding="utf-8")
+
+    def head(kind: str, **kw) -> str:
+        text = guide.system_prompt(kind, path, steps=steps, **kw)
+        assert text.endswith("# 指南正文\n")  # 索引在指南原文之前
+        return text.partition("# 指南正文")[0]
+
+    bare = head(guide.PROJECT, project=project)
+    for name, d in steps.items():
+        assert f"- `{name}`（{d.stage}）：{d.title}——{d.brief}\n" in bare
+    flows = Library(paths.workflows_root(), paths.user_workflows_root()).load_valid()
+    assert flows and all(f"- `{wf.name}`：{wf.title}——{wf.summary}\n" in bare for wf in flows)
+    templates = boards.list_templates(paths.templates_root())
+    assert templates and all(f"- `{t['name']}`：" in bare for t in templates)
+    assert "（已装载）" not in bare
+
+    spaces.give_flow(ws, "  - 设计: [design]\n  - 分析\n")
+    loaded = head(guide.PROJECT, project=project)
+    on = {line.split("`")[1] for line in loaded.splitlines() if line.endswith("（已装载）")}
+    assert on == {"design", "analysis", "reproducibility"}  # 点了名的，加没点名的阶段里的
+    assert loaded == head(guide.PROJECT, project=project)  # 确定：不然每轮都补发
+    old, new = conversation._sections(bare), conversation._sections(loaded)
+    assert [key for key, body in new.items() if old.get(key) != body] == [(guide.INDEX_STEPS, 1)]
+
+    studio = head(guide.STUDIO)
+    assert guide.INDEX_STEPS in studio and guide.INDEX_FLOWS in studio
+    assert guide.INDEX_TEMPLATES not in studio and "已装载" not in studio
+    assert "flow take" not in studio and "ai4sci workflow new --from <名字>" in studio
+    # 没给步骤表（起服务时只核对指南在不在）就没有索引
+    assert guide.INDEX_STEPS not in guide.system_prompt(guide.PROJECT, path, project=project)
 
 
 @pytest.mark.parametrize("kind", guide.KINDS)
@@ -148,17 +193,72 @@ def test_studio_guide_builds_flows_and_never_runs_experiments():
     assert "ai4sci cap " not in "\n".join(_commands(text))
 
 
-def test_the_studio_guides_example_workflow_actually_loads_and_passes(tmp_path):
-    """流程助理指南里给它抄的样例必须真能过 `show workflows`，否则它照抄就撞墙。"""
-    from framework.capabilities import discover
+def test_the_skeleton_the_studio_starts_from_passes_the_shape_check(tmp_path, monkeypatch, capsys):
+    """流程助理指南里不放样例流程（样例里的能力名一改就过时，外层 #287）：它从 `workflow new` 起的
+    骨架改，骨架本身得过形状检查，否则它照着改就撞墙。"""
+    from framework.capabilities import abilities
+    from framework.cli import main
     from framework.contracts import workflows
 
-    text = guide.GUIDE_PATHS[guide.STUDIO].read_text(encoding="utf-8")
-    block = re.search(r"```yaml\n(name: quick-look\n.*?)```", text, re.S).group(1)
-    (tmp_path / "quick-look.yaml").write_text(block, encoding="utf-8")
-    [wf] = workflows.load_workflows(tmp_path)
-    catalog = {name: module.DESCRIPTOR for name, module in discover().items()}
-    assert workflows.workflow_problems(wf, catalog) == []
-    [described] = workflows.describe([wf], catalog)
-    assert described["covers"] == ["实验", "分析"] and len(described["remarks"]) == 1
-    assert wf.stages[0].picks[0].with_ == {"max_iters": 2}
+    monkeypatch.setenv(paths.HOME_ENV, str(tmp_path))
+    assert main(["workflow", "new", "probe", "--title", "试一条"]) == 0
+    path = paths.user_workflows_root() / "probe.yaml"
+    assert str(path) in capsys.readouterr().out
+    wf = workflows.load_workflow(path)
+    assert workflows.workflow_problems(wf, abilities.steps(), abilities.skill_names()) == []
+
+
+# ── 指南只写不变的（外层 #287）：库里的名字、数量写进来就会过时，机器守着 ──────────────────
+
+# 一个名字：前后不接名字里的字符，后面也不接 `/` `.`——阶段目录 `design/`、文件名 `analysis.md` 不算
+NAME = re.compile(r"(?<![A-Za-z0-9_\-])[A-Za-z0-9][A-Za-z0-9_\-]*(?![A-Za-z0-9_\-/.])")
+# 库里东西的个数：「八个能力」「三条出厂流程」；「一个步骤」是泛指，不算
+COUNT = re.compile(r"[二三四五六七八九十两百千\d]+\s*[个条种份][^，。、\s]{0,4}?"
+                   r"(?:能力|步骤|流程|模板|skill)")
+# 两份指南加各自的前言，字数上限：只装世界模型与去哪查，涨过它多半是又写进了库里的实例内容
+BUDGET = {guide.PROJECT: 9000, guide.STUDIO: 4000}
+
+
+def _library_names() -> tuple[set[str], set[str]]:
+    """（步骤、流程、需求模板的名字，skill 的名字）：skill 有几百个，不少是常见英文词，只在反引号与
+    代码块里查。"""
+    from framework.capabilities import abilities
+    from framework.chat import boards
+    from framework.contracts.workflow_library import Library
+
+    named = set(abilities.steps())
+    named |= set(Library(paths.workflows_root(), paths.user_workflows_root()).names())
+    named |= {t["name"] for t in boards.list_templates(paths.templates_root())}
+    return named, set(abilities.skill_names())
+
+
+def _named(text: str) -> list[str]:
+    named, skills = _library_names()
+    code = re.findall(r"`([^`\n]+)`", text) + re.findall(r"```[a-z]*\n(.*?)```", text, re.S)
+    found = {n for n in NAME.findall(text) if n in named}
+    found |= {n for span in code for n in NAME.findall(span) if n in skills | named}
+    return sorted(found)
+
+
+def test_the_guards_catch_what_they_are_for():
+    """守卫本身的反例：点名一个步骤、一条流程、反引号里的 skill、数个数都抓得到；阶段目录、文件名、
+    泛指的「一个步骤」放过。"""
+    named, skills = _library_names()
+    step, skill = sorted(named)[0], sorted(skills)[0]
+    assert _named(f"先跑 {step} 再说") == [step]
+    assert _named(f"挂上 `{skill}`") == [skill]
+    assert _named("读 `design/1/harness/evaluate.py` 与 `analysis.md`") == []
+    assert COUNT.findall("现在有八个能力、三条出厂流程、5 份需求模板") == [
+        "八个能力", "三条出厂流程", "5 份需求模板"]
+    assert COUNT.findall("一个步骤就是一条命令") == []
+
+
+@pytest.mark.parametrize("kind", guide.KINDS)
+def test_guides_name_nothing_in_the_library_and_count_nothing(kind):
+    """指南与前言里不出现库里任何步骤、流程、需求模板、skill 的名字，也不数库里有几个：那些由生成的
+    索引与 `show` 给，写死的内容就长不回来。"""
+    for text in (guide.GUIDE_PATHS[kind].read_text(encoding="utf-8"), guide.PREAMBLES[kind]):
+        assert _named(text) == []
+        assert COUNT.findall(text) == []
+    total = len(guide.GUIDE_PATHS[kind].read_text(encoding="utf-8")) + len(guide.PREAMBLES[kind])
+    assert total <= BUDGET[kind], f"{kind} 的指南加前言 {total} 字，超了 {BUDGET[kind]}"

@@ -458,6 +458,8 @@ export interface WorkflowDraft {
   name: string
   title: string
   summary: string
+  /** 给研究助理读的说明（外层 #287）：画布不编辑，原样交还 */
+  guide?: string
   /** 父流程：只给名字是「从它派生」（hash 平台填），给全的是改自己时原样留着 */
   from?: string | Origin
   stages: DraftItem[]
@@ -479,6 +481,8 @@ export interface Workflow {
   name: string
   title: string
   summary: string
+  /** 给研究助理读的说明（外层 #287），没写是空串 */
+  guide?: string
   /** 派生自库里哪条；从零拼的是 null */
   from: Origin | null
   /** 家族名：顺着 from 走到底的那条；页面按它分组 */

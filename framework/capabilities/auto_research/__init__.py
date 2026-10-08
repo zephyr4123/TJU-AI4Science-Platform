@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 
 from framework.capabilities.auto_research.loop import (
+    BATCH_EXHAUSTED,
     InflightPending,
     ResumeMismatch,
     StopReason,
@@ -136,5 +137,10 @@ def run(
         # 通用驱动只认能力契约里的异常；内环自己的两种"现状不许往下跑"原话照转
         raise CapabilityFailed(str(exc)) from exc
     oid = f"experiment/{output_dir.name}"
-    return (f"stop {stop.reason}\titer={stop.iter}\tbest={stop.best_metric}\toutput={oid}"
-            f"\tnext=ai4sci cap analysis --from {oid}")
+    if stop.reason == BATCH_EXHAUSTED:
+        own = (f"这批轮数用完、实验没停：接着跑就 ai4sci cap auto-research --continue {oid}；"
+                "不跑了就往下走")
+    else:
+        own = (f"实验停了（原因在 stop.json）：读 notebook.md，和研究者定加预算接着跑"
+                f"（--continue {oid} --patience <轮数> --reason <为什么>）、回设计重开，还是往下走")
+    return f"stop {stop.reason}\titer={stop.iter}\tbest={stop.best_metric}\tnext={own}"

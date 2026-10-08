@@ -17,6 +17,7 @@ from pathlib import Path
 
 from backends import BackendNotFound, ChatEvent, Tuning
 from framework import agents, paths
+from framework.capabilities import abilities
 from framework.chat import conversation, guide, notify, removal, scope, settings
 from framework.cli._common import (
     EXIT_INVALID,
@@ -97,7 +98,7 @@ def cmd_send(args: argparse.Namespace) -> int:
         text = path.read_text(encoding="utf-8")
     try:
         chat = agents.chat(conv.backend, provider=conv.provider)
-        system_prompt = where.system_prompt(chat)
+        system_prompt = where.system_prompt(chat, steps=abilities.steps())
     except (guide.GuideMissing, BackendNotFound) as exc:
         print(str(exc), file=sys.stderr)
         return EXIT_INVALID

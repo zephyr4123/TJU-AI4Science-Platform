@@ -1,8 +1,8 @@
 """一条流程走到哪：不另存记录，从产出的 meta（在哪条流程第几项下产的）与签字现算（纲领 P-19）。
 
 每个产出记 `flow` / `step`，所以「这条流程的第 k 项」有哪几次产出、成没成、签没签，扫一遍就知道。
-「在等谁」也现算：作业在跑 → 等作业；下一项是断点而前一项的产出没签 → 等人签；下一项是阶段 →
-轮到助理；
+「在等谁」也现算：作业在跑 → 等作业；下一项是断点而前一项的产出没签 → 等人签（带上断点的一句话与
+该签哪几次）；下一项是阶段 → 轮到助理；
 走完 → done。同一条流程走两遍就是同一项下两次产出，都列出来，页面按 from 链分辨。
 """
 
@@ -53,8 +53,13 @@ def flow_progress(workspace: Workspace, workflow: workflows.Workflow,
             DONE if step + 2 >= len(items) else WAITING_ASSISTANT)
     else:
         waiting = WAITING_ASSISTANT
+    # 停在断点：要核什么（断点的一句话）、该请人签哪次产出（它前一项成了的那几次）——新开的对话
+    # 看盘就知道下一步请人签哪个（外层 #287）
+    stop = None if waiting != WAITING_SIGN else {
+        "note": items[step + 1]["note"] or "",
+        "sign": [o["id"] for o in items[step]["outputs"] if o["status"] == "ok"]}
     return {"name": workflow.name, "title": workflow.title, "summary": workflow.summary,
-            "items": items, "step": step, "total": len(items), "waiting": waiting,
+            "items": items, "step": step, "total": len(items), "waiting": waiting, "stop": stop,
             "job": None if running is None else running.to_dict()}
 
 

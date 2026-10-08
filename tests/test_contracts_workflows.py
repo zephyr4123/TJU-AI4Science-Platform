@@ -228,6 +228,36 @@ def test_layout_is_optional_and_round_trips(tmp_path):
 
 
 
+
+def test_guide_is_optional_round_trips_as_a_block_and_stays_out_of_the_hash(tmp_path):
+    """流程的说明（外层 #287）：给研究助理读的「什么时候选它、断点要核什么、怎么走」，选填；存盘写成
+    多行块；不算结构——改说明不改 hash、不算不一样（P-15）。"""
+    write(tmp_path, GOOD)
+    [bare] = workflows.load_workflows(tmp_path)
+    assert bare.guide == "" and bare.to_dict()["guide"] == ""
+    guide = "什么时候选它：改进一个方法。\n\n断点要核什么：评分脚本与需求一条条对。"
+    raw = yaml.safe_load(GOOD) | {"guide": guide + "\n"}
+    saved = workflows.save_workflow(tmp_path / "out", raw, catalog())
+    assert saved.guide == guide and saved.content_hash() == bare.content_hash()
+    text = (tmp_path / "out" / "w.yaml").read_text(encoding="utf-8")
+    assert "guide: |-\n  什么时候选它：改进一个方法。\n\n  断点要核什么" in text
+    [again] = workflows.load_workflows(tmp_path / "out")
+    assert again.guide == guide and again.to_dict()["guide"] == guide
+    with pytest.raises(workflows.WorkflowInvalid, match="guide 要是一段文字"):
+        workflows.parse_workflow("w.yaml", yaml.safe_load(GOOD) | {"guide": ["不是", "文字"]})
+
+
+def test_every_shipped_workflow_carries_a_guide_and_a_derived_one_keeps_it(tmp_path):
+    """出厂的每条都写了说明（`show workflow` 与 `flow take` 打出来给研究助理）；派生、取到工作区
+    都照抄它，不丢。"""
+    for wf in workflows.load_workflows(paths.workflows_root()):
+        assert wf.guide.strip(), f"{wf.name} 没写 guide"
+    lib = library(tmp_path)
+    doc = lib.derive("research")
+    doc["stages"] = doc["stages"][:-1]
+    derived = lib.save(doc, catalog())
+    assert derived.guide == lib.load("research").guide
+
 def test_a_skill_hangs_on_any_stage_without_params_and_is_tagged(tmp_path):
     """主人 2026-09-22：skill 是能力的一种（tag skill）。哪个阶段都能挂、不带参数；响应体给每个名字
     标 kind，步骤与 skill 不许重名（framework/capabilities/abilities.py 查）。"""
