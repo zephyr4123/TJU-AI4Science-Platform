@@ -107,7 +107,8 @@ def cmd_new_workflow(args: argparse.Namespace) -> int:
     origin = f"\tfrom={saved.origin.name}" if saved.origin else ""
     # 打实际路径：助理站在 studio/ 里、人在终端站在别处，照着都找得到
     print(f"ok {saved.name}\t{lib.find(saved.name)}{origin}"
-          f"\tnext=改这个文件（阶段、能力、断点、标题、说明；起点与库里某条一样，改出不同之前"
+          f"\tnext=改这个文件（阶段、能力、断点、标题、一句话、给研究助理的 guide；起点与库里某条"
+          f"一样，改出不同之前"
           f" show workflows 会标「一模一样」），ai4sci show workflows 校验")
     return EXIT_OK
 

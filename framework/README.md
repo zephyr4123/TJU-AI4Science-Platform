@@ -152,7 +152,7 @@ sequenceDiagram
 |---|---|
 | 异常 | `ValueError` 输入非法、`FileNotFoundError` 不存在、`RuntimeError` 运行失败；各模块定自己的子类（`CapabilityFailed`、`OutputChanged`、`ConfirmRefused`…）。裸 `except` 与不 raise 的 `except Exception` 过不了 ruff；唯一一处 `except Exception`（`cli/cap.py`）是记失败后再 raise |
 | CLI 退出码 | 0 通过；1 没通过（原因一行一条到 stderr）；2 用法错误（目录不存在、名字对不上）；3 `serve` 绑不上地址（被占、Windows 的保留端口段，外层 #282） |
-| stdout | 只留给协调层读的那一行结论：`ok <id>\t键=值…\tnext=<下一条命令>`，其余走 stderr（`cli/_common.py::setup_logging`） |
+| stdout | 只留给助理读的那一行结论：`<能力> ok\t键=值…\tnext=<本能力内的下一步>\tthen=<流程的下一项>\toutput=<id>`；`next=` 由能力写，`then=` 由 `cli/cap.py::flow_next` 照流程实例现算（外层 #287），其余走 stderr（`cli/_common.py::setup_logging`） |
 | HTTP | `ValueError` → 422（盘上东西不合约，一句话）、`OSError` → 500；另有 400 / 404 / 409（在跑、被引用）/ 403（出厂的不能删；`Host` 不是回环、`Origin` 不同源）/ 415（POST 不是 `application/json`）（`chat/server.py`，外层 #283） |
 | 日志 | logger 名 `ai4sci.<模块>`，消息是「snake_case 事件名 键=值 …」，走 stderr；错误日志要带定位信息（路径、id、原因） |
 
