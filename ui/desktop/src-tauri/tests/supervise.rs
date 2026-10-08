@@ -59,12 +59,21 @@ impl Lines {
         self.0.lock().unwrap().clone()
     }
 
-    /// 假 serve 在 stderr 上报的那一轮对话的 pid
-    fn turn_pid(&self) -> u32 {
-        self.all()
-            .iter()
-            .find_map(|(_, _, line)| line.strip_prefix("turn ")?.parse().ok())
-            .expect("假 serve 没报对话轮次的 pid")
+    /// 假 serve 在 stderr 上报的那一轮对话的 pid。stdout 与 stderr 各一个读线程，`start` 读到 `ok`
+    /// 那一行就返回，这时 stderr 上先打的那一行不一定已经读进来（CI 的 Windows 上撞到过）：等一会儿
+    async fn turn_pid(&self) -> u32 {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let found = self
+                .all()
+                .iter()
+                .find_map(|(_, _, line)| line.strip_prefix("turn ")?.parse().ok());
+            if let Some(pid) = found {
+                return pid;
+            }
+            assert!(Instant::now() < deadline, "假 serve 没报对话轮次的 pid");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     }
 }
 
@@ -169,7 +178,7 @@ async fn closing_stdin_stops_serve_and_the_turns_it_started() {
     let turns = serve::turns(&aaai4s::http::loopback().unwrap(), &running.url).await;
     assert_eq!(turns, Some(0));
     let serve_pid = running.serve.pid.unwrap();
-    let turn_pid = lines.turn_pid();
+    let turn_pid = lines.turn_pid().await;
     assert!(alive(turn_pid));
     sup.shutdown(Duration::from_secs(5)).await;
     assert_eq!(
@@ -200,7 +209,7 @@ async fn a_serve_that_ignores_its_stdin_is_cleared_with_its_whole_tree() {
     .await
     .unwrap();
     let serve_pid = running.serve.pid.unwrap();
-    let turn_pid = lines.turn_pid();
+    let turn_pid = lines.turn_pid().await;
     let started = Instant::now();
     sup.shutdown(Duration::from_millis(500)).await;
     assert!(started.elapsed() < Duration::from_secs(4));
@@ -238,7 +247,7 @@ async fn a_busy_port_is_reported_so_the_shell_can_take_another() {
     .await
     .unwrap();
     assert_ne!(other.url.port(), Some(47123));
-    let turn_pid = lines.turn_pid();
+    let turn_pid = lines.turn_pid().await;
     sup.stop(&other.serve, Duration::from_secs(5)).await;
     assert!(gone(turn_pid).await);
 }

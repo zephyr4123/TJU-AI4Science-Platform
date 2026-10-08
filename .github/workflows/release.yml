@@ -169,8 +169,9 @@ jobs:
           # Apple 的签名与公证只靠 secrets（spec §7）：Developer ID 证书签名，App Store Connect 的 API key
           # 公证（tauri 要的是 .p8 的路径，secret 里是内容，落到 runner 的临时目录）。没配的 secret 是空
           # 字符串，tauri 认「设了」不认「空」：会去导入一张空证书，空的 APPLE_SIGNING_IDENTITY 还会盖掉
-          # ad-hoc 签名，所以空的一律 unset；Windows 上这几个都用不上
-          if [ -n "${APPLE_API_PRIVATE_KEY}" ]; then
+          # ad-hoc 签名，所以空的一律 unset。secrets 对 Windows 那格也可见：Apple 那几步只在 Mac 上做
+          # （v1.9.0-rc.1 的 Windows 那格出完安装包又去公证 dmg，xcrun 不存在退 127）
+          if [ "${RUNNER_OS}" = macOS ] && [ -n "${APPLE_API_PRIVATE_KEY}" ]; then
             APPLE_API_KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY}.p8"
             printf '%s\n' "${APPLE_API_PRIVATE_KEY}" > "${APPLE_API_KEY_PATH}"
             export APPLE_API_KEY_PATH
