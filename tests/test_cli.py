@@ -481,7 +481,7 @@ def test_finished_job_drops_its_job_id_before_waking_the_chat(tmp_path, monkeypa
     rf.write_analysis(pack, rf.good_analysis(run_dir))
     seen: dict[str, object] = {}
 
-    def fake_wake(ws, job):
+    def fake_wake(ws, job, steps):
         seen["job_id_env"] = os.environ.get("AI4SCI_JOB_ID")  # 叫醒那一刻环境里还有没有作业号
         return "done"
 

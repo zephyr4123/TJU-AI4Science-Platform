@@ -8,14 +8,23 @@
 研究助理的 system prompt 里还有一份 skill 清单（`<available_skills>`，纲领 P-22）：本项目装载的那套
 （P-26，`workspace/loadout.py`），每轮发消息时现算——流程实例上刚挂的下一句话就在。流程助理不跑
 东西，不给清单。
+指南不写库里有什么（外层 #287）：清单之后是一份生成的索引——全库的步骤（研究助理那份标出本项目装载
+了哪些）、库里的流程、需求模板（只给研究助理），名字加一句话，细节由助理用 `show` 读。一块一节、内容
+确定：续接的会话只补发变了的那一节（`conversation._guide_update`）。步骤的描述符在能力层，这一层不
+认识，由调用方传进来。
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from framework import paths, skills
+from framework.chat import boards
+from framework.contracts.capability import Capability
+from framework.contracts.workflow_library import Library
 from framework.workspace import loadout
+from framework.workspace.loadout import Loadout
 from framework.workspace.project import Project
 
 PROJECT = "project"
@@ -120,10 +129,48 @@ class GuideMissing(FileNotFoundError):
     """指南文件不在：服务不能带着空指南起会话。"""
 
 
+INDEX_STEPS = "## 库里的步骤"
+INDEX_FLOWS = "## 库里的流程"
+INDEX_TEMPLATES = "## 库里的需求模板"
+INDEX_HOW = {
+    (PROJECT, INDEX_STEPS): ("跑之前 `ai4sci show cap <名字>` 读它的说明。"
+                             "标「已装载」的这个项目能跑；没标的要先在某个工作区的流程实例上"
+                             "挂上它的阶段。"),
+    (STUDIO, INDEX_STEPS): "`ai4sci show cap <名字>` 看它读什么、产什么、有哪些参数。",
+    (PROJECT, INDEX_FLOWS): ("出厂的与编辑台存的。`ai4sci show workflow <名字>` 读说明，"
+                             "`ai4sci flow take <名字> --ws <工作区>` 取一条。"),
+    (STUDIO, INDEX_FLOWS): ("出厂的与编辑台存的。`ai4sci show workflow <名字>` 看全文，"
+                            "`ai4sci workflow new --from <名字>` 派生一条。"),
+    (PROJECT, INDEX_TEMPLATES): "`ai4sci show template <名字>` 读全文。",
+}
+
+
+def index(kind: str, steps: Mapping[str, Capability], loaded: Loadout | None = None) -> list[str]:
+    """生成的索引，一块一节（外层 #287）：全库的步骤（给了装载就标出装载了哪些）、库里的流程、
+    需求模板（只给研究助理）。按名字排，同一个库每轮拼出来一字不差。"""
+    rows = []
+    for name in sorted(steps):
+        d = steps[name]
+        on = loaded is not None and loaded.allows_step(name, d.stage, steps)
+        rows.append(f"- `{name}`（{d.stage}）：{d.title}——{d.brief}" + ("（已装载）" if on else ""))
+    sections = [(INDEX_STEPS, rows)]
+    flows = Library(paths.workflows_root(), paths.user_workflows_root()).load_valid()
+    sections.append((INDEX_FLOWS, [f"- `{wf.name}`：{wf.title}——{' '.join(wf.summary.split())}"
+                                   for wf in sorted(flows, key=lambda wf: wf.name)]))
+    if kind == PROJECT:
+        # 模板的一级标题是占位的「课题标题」，说它是什么的是开头那段的第一句
+        sections.append((INDEX_TEMPLATES, [
+            f"- `{t['name']}`：{t['summary'].split('。')[0]}。"
+            for t in boards.list_templates(paths.templates_root())]))
+    return [f"{heading}\n\n{INDEX_HOW[kind, heading]}\n\n" + ("\n".join(rows) or "（没有）")
+            for heading, rows in sections]
+
+
 def system_prompt(kind: str, guide_path: Path | None = None, tool_guide: str = "",
-                  project: Project | None = None) -> str:
+                  project: Project | None = None,
+                  steps: Mapping[str, Capability] | None = None) -> str:
     """前言 + 这家 CLI 的「工具怎么用」（`Chat.tool_guide`，可空）+ 本项目装载的 skill 清单
-    （研究助理、给了项目才有）+ 指南原文。"""
+    （研究助理、给了项目才有）+ 库的索引（给了步骤表才有：起服务时只核对指南在不在）+ 指南原文。"""
     assert kind in KINDS, f"指南只有 {KINDS}，得到 {kind!r}"
     guide_path = GUIDE_PATHS[kind] if guide_path is None else guide_path  # 调用时取，测试可换指南
     if not guide_path.is_file():
@@ -137,10 +184,12 @@ def system_prompt(kind: str, guide_path: Path | None = None, tool_guide: str = "
     parts = [preamble.strip()]
     if tool_guide.strip():
         parts.append(tool_guide.strip())
-    if kind == PROJECT and project is not None:
-        loaded = loadout.of(project)
+    loaded = loadout.of(project) if kind == PROJECT and project is not None else None
+    if loaded is not None:
         catalog = skills.catalog_text(loaded.skills, loaded.unavailable)  # 都没有就是空串
         if catalog:
             parts.append(catalog.strip())
+    if steps is not None:
+        parts += index(kind, steps, loaded)
     parts.append(text)
     return "\n\n".join(parts) + "\n"

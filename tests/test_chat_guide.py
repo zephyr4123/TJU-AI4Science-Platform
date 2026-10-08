@@ -103,6 +103,50 @@ def test_bash_rules_only_allow_bare_ai4sci():
         guide.bash_rules("nope")
 
 
+def test_the_prompt_carries_a_generated_index_of_the_library(tmp_path):
+    """外层 #287：指南不写库里有什么，system prompt 里放一份生成的索引——全库的步骤（本项目装载的
+    标出来，取流程之前一个都没装载）、库里的流程、需求模板，名字加一句话，每轮现算；流程助理只有步骤
+    与流程。一块一节、内容确定：挂上一格只动步骤那一节，续接的会话只补发它。"""
+    from framework.capabilities import abilities
+    from framework.chat import boards, conversation
+    from framework.contracts.workflow_library import Library
+
+    steps = abilities.steps()
+    ws = spaces.make_workspace(tmp_path, "w")
+    project = project_mod.of(ws)
+    path = tmp_path / "guide.md"
+    path.write_text("# 指南正文\n", encoding="utf-8")
+
+    def head(kind: str, **kw) -> str:
+        text = guide.system_prompt(kind, path, steps=steps, **kw)
+        assert text.endswith("# 指南正文\n")  # 索引在指南原文之前
+        return text.partition("# 指南正文")[0]
+
+    bare = head(guide.PROJECT, project=project)
+    for name, d in steps.items():
+        assert f"- `{name}`（{d.stage}）：{d.title}——{d.brief}\n" in bare
+    flows = Library(paths.workflows_root(), paths.user_workflows_root()).load_valid()
+    assert flows and all(f"- `{wf.name}`：{wf.title}——{wf.summary}\n" in bare for wf in flows)
+    templates = boards.list_templates(paths.templates_root())
+    assert templates and all(f"- `{t['name']}`：" in bare for t in templates)
+    assert "（已装载）" not in bare
+
+    spaces.give_flow(ws, "  - 设计: [design]\n  - 分析\n")
+    loaded = head(guide.PROJECT, project=project)
+    on = {line.split("`")[1] for line in loaded.splitlines() if line.endswith("（已装载）")}
+    assert on == {"design", "analysis", "reproducibility"}  # 点了名的，加没点名的阶段里的
+    assert loaded == head(guide.PROJECT, project=project)  # 确定：不然每轮都补发
+    old, new = conversation._sections(bare), conversation._sections(loaded)
+    assert [key for key, body in new.items() if old.get(key) != body] == [(guide.INDEX_STEPS, 1)]
+
+    studio = head(guide.STUDIO)
+    assert guide.INDEX_STEPS in studio and guide.INDEX_FLOWS in studio
+    assert guide.INDEX_TEMPLATES not in studio and "已装载" not in studio
+    assert "flow take" not in studio and "ai4sci workflow new --from <名字>" in studio
+    # 没给步骤表（起服务时只核对指南在不在）就没有索引
+    assert guide.INDEX_STEPS not in guide.system_prompt(guide.PROJECT, path, project=project)
+
+
 @pytest.mark.parametrize("kind", guide.KINDS)
 def test_shipped_guides_never_show_the_agent_a_raw_command(kind):
     """纲领 P-14 的机器判据：两份指南里给 agent 抄的每条命令都以 `ai4sci ` 开头——不带路径、

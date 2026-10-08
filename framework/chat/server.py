@@ -258,7 +258,7 @@ class ChatServer(ThreadingHTTPServer):
         """这个域的指南 + 这家 CLI 的「工具怎么用」+（研究助理）本项目装载的 skill 清单，由 scope
         拼；测试注入的指南直接接上「工具怎么用」。"""
         if self.system_prompts is None:
-            return where.system_prompt(chat)
+            return where.system_prompt(chat, steps=self.descriptors())
         tool = chat.tool_guide(guide.bash_rules(where.kind))
         return self.system_prompts[where.kind] + ("\n\n" + tool.strip() + "\n" if tool.strip()
                                                   else "")

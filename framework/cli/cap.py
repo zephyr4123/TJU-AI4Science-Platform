@@ -113,7 +113,7 @@ def cmd_cap(args: argparse.Namespace) -> int:
         os.environ.pop(jobs.JOB_ID_ENV, None)
         if job.chat_id:
             # 作业是某段对话里起的：跑完以框架的身份叫醒那段对话，结果记回作业
-            jobs.mark_wake(ws.jobs, job_id, notify.wake(ws, job))
+            jobs.mark_wake(ws.jobs, job_id, notify.wake(ws, job, abilities.steps()))
     return code
 
 
@@ -139,7 +139,7 @@ def _close_failed_job(ws: Workspace, job_id: str | None, result: str) -> None:
     _fail_open_output(ws, job.output, job.result)
     os.environ.pop(jobs.JOB_ID_ENV, None)
     if job.chat_id:
-        jobs.mark_wake(ws.jobs, job_id, notify.wake(ws, job))
+        jobs.mark_wake(ws.jobs, job_id, notify.wake(ws, job, abilities.steps()))
 
 
 def _fail_open_output(ws: Workspace, oid: str | None, line: str) -> None:
