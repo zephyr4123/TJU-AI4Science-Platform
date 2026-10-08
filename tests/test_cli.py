@@ -128,6 +128,26 @@ def test_outside_a_workspace_is_a_usage_error_that_says_what_to_do(tmp_path):
     assert "不在任何项目里" in proc.stderr and "project new" in proc.stderr
 
 
+def test_show_workspace_says_what_a_breakpoint_waits_for(tmp_path):
+    """外层 #287：停在断点时流程那一行带上要核什么（断点的一句话）与该请人签哪次产出——新开的对话
+    看一眼盘就知道下一步是请人签哪个，不用翻流程文件再对 meta。"""
+    pack = pf.make_pack(tmp_path)
+    ws = pack.workspace
+    (ws.flows / "open.yaml").unlink()
+    (ws.flows / "quick.yaml").write_text(
+        "name: quick\ntitle: 快看\nsummary: 设计签过再实验。\nstages:\n"
+        "  - 设计\n  - 断点: 核对评分脚本\n  - 实验\n", encoding="utf-8")
+    meta = output.read_meta(pack.pack)
+    meta.flow, meta.step = "quick", 0
+    output.write_meta(pack.pack, meta)
+    shown = run_cli("show", "workspace", **in_pack(pack))
+    assert shown.returncode == EXIT_OK, shown.stderr
+    assert "flow\tquick\tstep=1/3\twaiting=sign\tstop=核对评分脚本\tsign=design/1" in shown.stdout
+    output.sign(pack.pack, by="me")
+    shown = run_cli("show", "workspace", **in_pack(pack))
+    assert "flow\tquick\tstep=1/3\twaiting=assistant\n" in shown.stdout
+
+
 def test_show_workspace_walks_requirement_outputs_flows_and_jobs(tmp_path):
     run_dir, pack = rf.make_run(tmp_path)
     rf.write_analysis(pack, rf.good_analysis(run_dir))

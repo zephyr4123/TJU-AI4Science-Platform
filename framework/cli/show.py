@@ -69,14 +69,22 @@ def cmd_project(args: argparse.Namespace) -> int:
             if flow["problems"]:
                 print(f"  flow\t{flow['name']}\t坏了：{flow['problems'][0]}", file=sys.stderr)
                 continue
-            print(f"  flow\t{flow['name']}\tstep={flow['step'] + 1}/{flow['total']}"
-                  f"\twaiting={flow['waiting']}")
+            print(f"  flow\t{flow['name']}\t{_where(flow)}")
         for job in ws["jobs"]:
             print(f"  job\t{job['job_id']}\t{job['effective_status']}\t{job['cap']}"
                   f"\t{job['output'] or '-'}")
     if not detail["workspaces"]:
         print("（还没有工作区：ai4sci workspace new <名字>）")
     return EXIT_OK
+
+
+def _where(flow: dict) -> str:
+    """一条流程走到哪、在等谁；停在断点就带上要核什么、该请人签哪几次（外层 #287）。"""
+    where = f"step={flow['step'] + 1}/{flow['total']}\twaiting={flow['waiting']}"
+    stop = flow["stop"]
+    if stop is None:
+        return where
+    return f"{where}\tstop={stop['note'] or '-'}\tsign={','.join(stop['sign']) or '-'}"
 
 
 def cmd_workspace(args: argparse.Namespace) -> int:
@@ -106,8 +114,7 @@ def cmd_workspace(args: argparse.Namespace) -> int:
         if flow.get("problems"):
             print(f"flow\t{flow['name']}\t坏了：{flow['problems'][0]}", file=sys.stderr)
             continue
-        print(f"flow\t{flow['name']}\tstep={flow['step'] + 1}/{flow['total']}"
-              f"\twaiting={flow['waiting']}")
+        print(f"flow\t{flow['name']}\t{_where(flow)}")
     for job in detail["jobs"]:
         print(f"job\t{job['job_id']}\t{job['effective_status']}\t{job['cap']}"
               f"\t{job['output'] or '-'}")
