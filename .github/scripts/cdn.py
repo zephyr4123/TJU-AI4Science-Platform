@@ -74,7 +74,8 @@ MIN_DESKTOP = runpy.run_path(str(ROOT / "framework" / "desktop.py"))["MIN_DESKTO
 BUCKET = os.environ.get("COS_BUCKET", "zephyr-media-1322280257")
 REGION = os.environ.get("COS_REGION", "ap-shanghai")
 # 传包走 COS 全球加速域名（桶上已开，境外上传按量计费）：美国的 runner 走桶的默认域名往上海传，
-# 24 MB 的 wheel 8 分半传不完，重试三次都失败（1.8.0 与 v1.9.0-rc.1，外层 #281）；设成空串就走默认域名
+# 24 MB 的 wheel 8 分半传不完，重试三次都失败（1.8.0 与 v1.9.0-rc.1，外层 #281）；
+# 设成空串就走默认域名
 ENDPOINT = os.environ.get("COS_ENDPOINT", "cos.accelerate.myqcloud.com")
 CDN = os.environ.get("CDN_BASE", "https://media.zephyrxiang.com")
 PREFIX = "ai4science/dist"
