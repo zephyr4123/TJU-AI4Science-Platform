@@ -110,7 +110,7 @@ ai4sci cap verify --from analysis/1 --from experiment/1            # verificatio
 ai4sci sign verification/1 --by <你>                               # 断点：验收
 ```
 
-`cap auto-research` 开实验时按 `design/1/env/` 建 `experiment/1/.venv`、把那包搬进 `work/` 起一个 git 仓，之后不再回头看设计目录。哪次产出喂给谁是你（或助理）看着磁盘定的：`--from` 可以点名多次产出（分析多次实验），没有「缺省读最新」。
+`cap auto-research` 开实验时按 `design/1/env/` 建 `experiment/1/.venv`、把那包搬进 `work/` 起一个 git 仓，之后不再回头看设计目录。哪次产出喂给谁是你（或助理）看着磁盘定的：`--from` 可以点名多次产出（分析多次实验），没有「缺省读最新」。每个步骤成了打一行结论：`next=` 是这个步骤自己的下一步，`then=` 是照你取的流程算出来的下一项（要不要先停在断点请人签、下一项怎么起）；跑之前 `ai4sci show cap <名字>` 读它的参数与各种结局。
 
 ## 常见报错
 

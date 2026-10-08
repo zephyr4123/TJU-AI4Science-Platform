@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- App 与它起的 serve、助理的命令读写这些目录时，系统以 AAAI4S 的名义问；不写就是英文的缺省文案（spec §4） -->
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>AAAI4S 的助理要读写你放在桌面上的数据与结果。</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>AAAI4S 的助理要读写你放在「文稿」里的数据与结果。</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>AAAI4S 把页面上下载的文件存进「下载」，助理也会读你下载的论文与数据。</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>AAAI4S 要连局域网里你接上的算力（SSH）。</string>
+</dict>
+</plist>

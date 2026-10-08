@@ -31,7 +31,7 @@
 1. **进哪个阶段。** 七个里选一个：文献、假设、设计、实验、分析、写作、验证。一个能力只属于一个阶段；同一段代码想在两个阶段用，就是两个能力。
 2. **非要上游的哪几个文件。** 按阶段说（「分析阶段的 `analysis.md`」），不按能力说。这些文件不在，你开工就报错。
 3. **留下哪几个文件。** 必须包含本阶段的主文件；其它按需要。
-4. **那句结论怎么说。** 助理和页面只看这一句决定下一步，所以要说清「留下了什么、下一步能拿它干什么」：「初稿 4 节 2300 字，图 3 张，引用 12 条」，不是「done」。
+4. **那句结论怎么说。** 助理和页面只看这一句决定下一步，所以要说清「留下了什么、下一步能拿它干什么」：「初稿 4 节 2300 字，图 3 张，引用 12 条」，不是「done」。结论行里的 `next=` 只写本能力内的下一步（接着改、带意见重来、把什么念给人）；流程里的下一项由驱动接在后面（`then=`）。
 
 ## 文件名按阶段定，不按能力定
 
@@ -83,7 +83,7 @@ writing/2/draft.md     meta: by: report-draft   from: [analysis/2]
 | 一行 | `brief` | hover | 一句，三十字内，说拿什么做出什么；不带路径、参数名 | 自动迭代代码，逐轮记账 |
 | 详情 | 五栏 `does` `does_not` `brings` `leaves` `stops` | 点击跳详情页，栏名 职责 / 边界 / 输入 / 产出 / 终止条件 | 工程语言陈述句；文件名可以写（它们在工作区里真实存在）；CLI 参数不写（`--from design/<n>` 写成「设计阶段的一次产出」）；框架内部机制不写（目录 hash 校验、`refs/attempts`）；口语不写（「这包」「越界」「续命」「签了」） | 见下 |
 
-参数的 `label` 是页面上的名字（`max_iters` → 本次轮数），`help` 是 hover 的一句。协调层读的就是这份详情，不另写用户版；执行者的种类（`needs_executor`、能不能续跑）是机器读的，不上屏。字数、禁用词、CLI 参数这些规矩都在 `Capability.__post_init__` 与 `Param.__post_init__` 里断言（`framework/contracts/capability.py`），写错了 `discover()` 当场炸、信息说到哪一栏撞了哪个词。
+参数的 `label` 是页面上的名字（`max_iters` → 本次轮数），`help` 是 hover 的一句。页面与研究者读的就是这份详情，不另写用户版；执行者的种类（`needs_executor`、能不能续跑）是机器读的，不上屏。字数、禁用词、CLI 参数这些规矩都在 `Capability.__post_init__` 与 `Param.__post_init__` 里断言（`framework/contracts/capability.py`），写错了 `discover()` 当场炸、信息说到哪一栏撞了哪个词。
 
 写成什么样，看出厂的：`ai4sci show caps` 把出厂步骤的五栏原样打出来（出处是各子包 `__init__.py` 的 `DESCRIPTOR`），照 `auto_research/__init__.py` 那份的口吻写。
 
@@ -126,6 +126,7 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, sections: int = 4) ->
 - 失败 `raise CapabilityFailed`，不降级不兜底；产出目录留着，meta 记 `status: failed`。
 - 起执行层的能力：提示模板放子包里的 `prompt.md`，交给 `executor.prompting.build_prompt`，它会接上通用段——领域包给这一族的补充（`domains/<包>/prompts/<族>.md`，由你这个能力快照进产出目录再传进去，看 `auto_research/open.py::_snapshot_domain`）、skill 清单（`loadout.around(产出目录)`：本项目装载的那套，纲领 P-26，执行层按需 `ai4sci skill show`）、联网规矩。执行层会话的 Bash 只放行 `ai4sci skill *`（`executor.session`）。
 - 能力互不 import。同族共用的读写放 `framework/<族>/`，`tests/test_layering.py` 查。
+- 给研究助理的说明放子包里的 `assistant.md`（外层 #287；`prompt.md` 给执行层，这一份给助理，按读者起名），`ai4sci show cap <name>` 接在五栏与参数后面打出来，指南里不写死任何能力。写这几样：什么时候选它（同一阶段有别的步骤时怎么挑）、前提、怎么跑（`--from` 给什么）、每种结局（结论行的第一个词、退 1 的几种）助理接下来做什么、哪些事不要替执行层做。只写本能力内的动作：**不点名别的能力**——流程里的下一项是谁，由驱动按流程现算、写在结论行的 `then=`（`tests/test_contracts_capability.py` 查）。没有这份 `discover()` 当场炸；`pyproject.toml` 的 package-data 加上它（`tests/test_packaging.py` 查）。
 
 不用写的：CLI 子命令、`--from` / `--flow` / `--continue` / `--detach`、页面上的节点与能力小片、`show caps`——都从描述符生成。
 
@@ -161,3 +162,4 @@ def run(output_dir: Path, inputs: Inputs, ports: Ports, *, sections: int = 4) ->
 - `make check` 绿（changelog + ruff + skills + pytest + 页面）。
 - `CHANGELOG.md` Unreleased 一条，外层 issue 为锚。
 - 描述符的名、一行、详情照上面「文案」那张表：研究者、助理、工程师读同一份；工程语言，不写 CLI 参数与框架内部机制，不用「按钮」「键」这类比喻。
+- `assistant.md` 写了，不点名别的能力；`ai4sci show cap <name>` 打出来读一遍。

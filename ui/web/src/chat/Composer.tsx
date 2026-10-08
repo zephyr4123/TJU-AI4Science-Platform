@@ -12,6 +12,7 @@ import { BRAND } from '@/brand'
 import GlassSurface from '@/components/reactbits/GlassSurface'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { composing } from '@/lib/browser'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -54,7 +55,7 @@ export function Composer({ busy, thinking, onSend, placeholder = 'Enter 发送�
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // 中文输入法组词时的回车是选词，不是发送
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === 'Enter' && !event.shiftKey && !composing(event.nativeEvent)) {
       event.preventDefault()
       submit()
     }

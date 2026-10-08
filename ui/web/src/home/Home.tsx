@@ -25,6 +25,7 @@ import { Scene } from '@/components/Scene'
 import { Wordmark } from '@/components/Wordmark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { composing } from '@/lib/browser'
 import { day } from '@/lib/format'
 import { useToken } from '@/lib/tokens'
 import { useEdgeFade } from '@/lib/useEdgeFade'
@@ -171,13 +172,13 @@ function remember(key: string, value: string | number) {
   }
 }
 
-/** 搜索框：输入即筛；有字时右端一枚清空，Esc 也清 */
+/** 搜索框：输入即筛；有字时右端一枚清空，Esc 也清（输入法组词时的 Esc 只撤掉候选） */
 function Search({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
   return (
     <div className={cn('relative', className)}>
       <MagnifyingGlass aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input type="search" value={value} placeholder="搜索项目" aria-label="搜索项目"
-             onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') onChange('') }}
+             onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape' && !composing(e.nativeEvent)) onChange('') }}
              className="h-8 rounded-full bg-card/70 pr-8 pl-9 backdrop-blur-sm [&::-webkit-search-cancel-button]:appearance-none" />
       {value && (
         <Button variant="ghost" size="icon-xs" aria-label="清空搜索" onClick={() => onChange('')}

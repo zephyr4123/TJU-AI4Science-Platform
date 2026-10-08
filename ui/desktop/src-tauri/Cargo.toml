@@ -1,0 +1,55 @@
+# 桌面 App 的外壳（外层 #282，spec docs/specs/desktop.md）：只守进程、显示启动页、把窗口交给 serve 的页面。
+# 版本号是占位：发版时由 tag 经 `tauri build --config '{"version":"X.Y.Z"}'` 注入，代码里只读
+# package_info().version；占位版本的外壳（源码桌面）从不更新自己。
+[package]
+name = "aaai4s"
+version = "0.0.0"
+description = "AAAI4S 桌面 App 的外壳"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[lib]
+name = "aaai4s"
+
+[build-dependencies]
+tauri-build = { version = "2.7.1", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.1", features = [] }
+tauri-plugin-single-instance = "2.5.2"
+tauri-plugin-updater = "2.13.1"
+tauri-plugin-dialog = "2.8.1"
+tauri-plugin-opener = "2.7.0"
+tauri-plugin-window-state = "2.5.0"
+# 守进程：Windows 上每个子进程挂起、放进 KILL_ON_JOB_CLOSE 的 Job 再恢复；Unix 上各自一个进程组
+process-wrap = { version = "10.0.1", default-features = false, features = ["tokio1", "job-object", "kill-on-drop", "creation-flags", "process-group"] }
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+# 与更新器同一套 HTTP 客户端与 TLS（rustls + ring），依赖树里不多出第二份
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+minisign-verify = "0.2"
+base64 = "0.22"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+log = { version = "0.4", features = ["std"] }
+time = { version = "0.3", features = ["formatting"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", default-features = false, features = ["signal", "process"] }
+
+[target.'cfg(windows)'.dependencies]
+# 与 process-wrap 用的是同一份 windows：CreationFlags 收的就是它的 PROCESS_CREATION_FLAGS
+windows = { version = "0.62", features = ["Win32_System_Threading"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "time"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

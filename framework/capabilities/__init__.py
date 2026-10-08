@@ -30,6 +30,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import pkgutil
+from pathlib import Path
 from types import ModuleType
 from typing import Any
 
@@ -37,6 +38,10 @@ from framework.contracts import stages
 from framework.contracts.capability import Capability
 
 ENTRYPOINT = "run"
+# 给研究助理的说明（外层 #287）：什么时候选它、怎么跑、各种结局怎么接；`ai4sci show cap` 打出来。
+# 能力目录里 prompt.md 给执行层、这一份给助理，按读者起名；不点名别的能力（流程里的下一项由驱动
+# 现算）
+ASSISTANT_GUIDE = "assistant.md"
 # 前三个参数：产出目录、输入、端口（纲领 P-19：能力是纯函数，显式输入 → 一个产出目录）
 LEADING_PARAMS = ("output_dir", "inputs", "ports")
 # 阶段主文件（P-20）：进这个阶段的能力都得留下它，「产出」栏里要写到它的名字。
@@ -83,8 +88,18 @@ def discover() -> dict[str, ModuleType]:
             continue
         module = importlib.import_module(f"{__name__}.{info.name}")
         descriptor = check_capability_module(info.name, module)
+        assistant_guide(module)  # 没写说明的能力注册不了
         found[descriptor.name] = module
     return found
+
+
+def assistant_guide(module: ModuleType) -> str:
+    """能力目录里给研究助理的说明（`ASSISTANT_GUIDE`）；没有或是空的就断言炸掉。"""
+    path = Path(getattr(module, "__file__", "") or ".").parent / ASSISTANT_GUIDE
+    text = path.read_text(encoding="utf-8").strip() if path.is_file() else ""
+    assert text, (f"能力 {module.__name__} 的目录里没有 {ASSISTANT_GUIDE}（给研究助理的说明），"
+                  "或者是空的：见 docs/add-a-capability.md")
+    return text
 
 
 def check_capability_module(package_name: str, module: ModuleType) -> Capability:

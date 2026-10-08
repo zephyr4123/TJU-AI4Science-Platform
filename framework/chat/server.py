@@ -6,17 +6,22 @@
 点名的能力）由调用方以函数传入——这一层不认识 capabilities，依赖方向不能反过来。
 页面是这些端点的客户端，换一种 UI 也是同一套（`ui/README.md`）。
 
+每个请求先过一道门（`refusal`，外层 #283）：Host 只认本机、带 Origin 就得与 Host 同源、POST 只收
+JSON；所有响应都不许被别的页面嵌进 iframe，`/raw` 端出的文件另关进沙箱。
+
 端点按域分前缀（纲领 P-16）：项目 `/projects/<p>/…` 是研究助理的域（一个项目一位助理，外层 #136），
 `/studio/…` 是流程助理的域，对话五个端点在两个前缀下共用一套实现；项目里的对话物理上到不了库。
 工作区在项目之下：`/projects/<p>/workspaces/<id>/…`。
 
-    GET  /health                            {"ok": true, "checks_ok":
-    bool}（在用的底座与每台算力上次自检都过）
+    GET  /health                            {"ok": true, "checks_ok": bool, "turns": int}：checks_ok
+                                            在用的底座与每台算力上次自检都过；turns 此刻在跑几轮
+                                            对话（外壳退出前要不要问一句）
     GET  /backends                          每家 agent：产品名、模型清单、深度档位、
     新对话用的值（照设置）、
                                             哪家是「对话用」的缺省
     GET  /settings                          设置那一整份：底座（两层各用哪家、每家清单与缺省、
-    上次检查）、算力、存放、key 末四位；读盘不探，几十毫秒
+    上次检查）、助理那家能不能说话（assistant：ready / needs_key / cannot_talk / unchecked 与
+    一句原因，外层 #282）、算力、存放、key 末四位；读盘不探，几十毫秒
     GET  /settings/storage                  {"parts": [{label, bytes}]} 家里每块多大（走遍整棵树，
                                             一秒上下，所以单独一个端点，外层 #268）
     POST /settings/agents                   {"chat"?, "executor"?, "agents"?: {name: {model?,
@@ -28,6 +33,9 @@
     POST /settings/keys                     {"name", "value"} 存一把 key（家里的 keys.yaml，
                                             外层 #265）；回来的整份里 key 只有末四位
     POST /settings/keys/<name>/remove       删一把
+    POST /settings/quickstart               {"key"} 填一把 DeepSeek 的 key 就能用：存下、两家都切到
+                                            DeepSeek、问助理那家一句（与 setup 问 key 同一段），
+                                            回新的一整份；空的 422（外层 #282）
     POST /settings/reset                    {"confirm": "清除"} 清除平台的家（登出两家、清空），
                                             有作业在跑或不是平台建的家 409（外层 #263）
     GET  /stages                            七个研究阶段：名字与目录名，按清单顺序
@@ -92,7 +100,11 @@ import getpass
 import json
 import logging
 import mimetypes
-from collections.abc import Callable
+import re
+import sys
+import threading
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -136,6 +148,43 @@ SIGNER = getpass.getuser()
 CONFIRM_RESET = "清除"
 API_ROOTS = ("health", "backends", "settings", "stages", "cap", "skills", "workflows", "templates",
              "projects", "studio", "attention", "usage")
+# 请求的门（外层 #283）：任何网页都能对本机服务发不预检的 POST（存 key、清空家、让助理动手），DNS
+# rebinding 之后还能同源读走对话与文件。Host 的主机名只认这两个，端口不限（Vite 开发代理、SSH 隧道都
+# 换了端口）；人显式让服务听在别的地址上，再加那一个（`ChatServer.hosts`）
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost")
+_HOST_RE = re.compile(r"(?P<name>[a-z0-9.-]+|\[[0-9a-f:.]+\])(?::\d{1,5})?")
+# 所有响应都不许被别的页面嵌进 iframe（诱导点击）；`/raw` 原样端出 agent 写的 HTML / SVG，再关进
+# 沙箱：以页面的来源跑起来，它就能调页面的接口
+FRAME_POLICY = "frame-ancestors 'none'"
+RAW_POLICY = f"sandbox; {FRAME_POLICY}"
+
+
+def refusal(method: str, headers: Mapping[str, str],
+            hosts: frozenset[str]) -> tuple[HTTPStatus, str] | None:
+    """这个请求该不该拒：拒就回状态码与一句话，收是 None。
+
+    Host 要认得出、主机名在 `hosts` 里（不带 Host 的也拒：浏览器总会带）；带 Origin 就得等于
+    `http://` + 这次的 Host——相对请求本身同源，Vite 代理与 SSH 隧道照样过，`Origin: null`（沙箱里的
+    iframe、本地文件打开的页面）一律拒；POST 不论有没有 body 都得是 `application/json`：表单与
+    text/plain 的 fetch 不用预检，跨站发得出来，JSON 的发不出来。"""
+    host = (headers.get("Host") or "").strip().lower()
+    named = _HOST_RE.fullmatch(host)
+    if named is None or named["name"].strip("[]") not in hosts:
+        return HTTPStatus.FORBIDDEN, "只收发给本机的请求（Host 要是 127.0.0.1 或 localhost）"
+    origin = headers.get("Origin")
+    if origin is not None:
+        origin = origin.strip().lower()
+        if origin == "null":
+            return HTTPStatus.FORBIDDEN, "来源不明的请求不收（Origin: null）"
+        if origin != f"http://{host}":
+            return HTTPStatus.FORBIDDEN, "别的网页发来的请求不收（Origin 与 Host 不同源）"
+    if method == "POST":
+        ctype = (headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            return (HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "POST 只收 JSON：带上 Content-Type: application/json"
+                    "（curl 加 -H 'Content-Type: application/json'）")
+    return None
 
 
 def _no_add_compute(body: dict[str, Any]) -> dict[str, Any]:
@@ -147,6 +196,10 @@ class ChatServer(ThreadingHTTPServer):
     """把运行参数挂在 server 上，handler 从 `self.server` 拿；不用全局变量。"""
 
     daemon_threads = True
+    # Windows 上 SO_REUSEADDR 是「别人占着也照样绑」：第二个服务悄悄绑上同一个端口、抢走一半请求，
+    # 不设它端口被占就是 WSAEADDRINUSE。也不设 SO_EXCLUSIVEADDRUSE：它让自己关掉以后留下的 TIME_WAIT
+    # 挡住马上重开同一个端口（外层 #282 审查）。POSIX 上照旧设：那边它只管 TIME_WAIT
+    allow_reuse_address = sys.platform != "win32"
 
     def __init__(self, address: tuple[str, int], *, home: Path,
                  catalog: Callable[[], list[dict[str, Any]]],
@@ -165,6 +218,11 @@ class ChatServer(ThreadingHTTPServer):
                  system_prompts: dict[str, str] | None = None,
                  ui_dir: Path | None = None) -> None:
         super().__init__(address, Handler)
+        # 请求的 Host 认哪些主机名（`refusal`）：本机两个，加上服务听的那个地址（人显式给了别的）
+        self.hosts = frozenset({*LOOPBACK_HOSTS, str(address[0]).lower()})
+        # 此刻在跑几轮对话（`/health` 的 turns）：外壳退出前据此问一句「退出会打断它」（外层 #282）
+        self._turns = 0
+        self._turns_lock = threading.Lock()
         self.home = Path(home).resolve()
         self.catalog = catalog
         self.skills = skills
@@ -200,7 +258,7 @@ class ChatServer(ThreadingHTTPServer):
         """这个域的指南 + 这家 CLI 的「工具怎么用」+（研究助理）本项目装载的 skill 清单，由 scope
         拼；测试注入的指南直接接上「工具怎么用」。"""
         if self.system_prompts is None:
-            return where.system_prompt(chat)
+            return where.system_prompt(chat, steps=self.descriptors())
         tool = chat.tool_guide(guide.bash_rules(where.kind))
         return self.system_prompts[where.kind] + ("\n\n" + tool.strip() + "\n" if tool.strip()
                                                   else "")
@@ -209,15 +267,51 @@ class ChatServer(ThreadingHTTPServer):
     def projects_root(self) -> Path:
         return project.projects_root(self.home)
 
+    @property
+    def turns(self) -> int:
+        return self._turns
+
+    @contextmanager
+    def turn(self) -> Iterator[None]:
+        """一轮对话从起到流完（连收件箱接着念的）算在跑。"""
+        with self._turns_lock:
+            self._turns += 1
+        try:
+            yield
+        finally:
+            with self._turns_lock:
+                self._turns -= 1
+
 
 class Handler(BaseHTTPRequestHandler):
     server: ChatServer
+    # 这个响应的 Content-Security-Policy；`/raw` 换成带沙箱的。HTTP/1.0：一个连接一个请求、一个实例
+    csp = FRAME_POLICY
 
     def log_message(self, fmt: str, *args: Any) -> None:  # noqa: D401 - 走 logging，不打 stderr
         LOGGER.info("http %s", fmt % args)
 
+    def end_headers(self) -> None:
+        """每个响应（连 501、被拒的）都不许被嵌进 iframe（外层 #283）。"""
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", self.csp)
+        super().end_headers()
+
+    def _refused(self) -> bool:
+        """过门（`refusal`）：拒了就回那句话、记一行，返回 True。"""
+        found = refusal(self.command, self.headers, self.server.hosts)
+        if found is None:
+            return False
+        LOGGER.warning("http_refused method=%s path=%s host=%r origin=%r type=%r", self.command,
+                       self.path, self.headers.get("Host"), self.headers.get("Origin"),
+                       self.headers.get("Content-Type"))
+        self._error(*found)
+        return True
+
     # ── GET ──────────────────────────────────────────────────────────────
     def do_GET(self) -> None:
+        if self._refused():
+            return
         # 盘上的东西不合约（坏的 yaml、坏的报告、少了快照）是 422 一句话，不是掉线：连接一断
         # 页面只看得到「Failed to fetch」，什么都说不清（实测：flows/ 里一个只有一行的文件）
         try:
@@ -238,7 +332,8 @@ class Handler(BaseHTTPRequestHandler):
             # checks_ok：设置里在用的两家与每台算力上次自检都过了（没检查过也算过：不拦人）
             return self._json({"ok": True,
                                "checks_ok": not settings.problems(knobs=self.server.knobs_of,
-                                                                  home=self.server.home)})
+                                                                  home=self.server.home),
+                               "turns": self.server.turns})
         if parts == ["backends"]:
             # 页面开新对话那一屏的三枚旋钮：哪家（缺省照设置里「对话用」的）、
             # 每家的清单与新对话用的值
@@ -329,10 +424,13 @@ class Handler(BaseHTTPRequestHandler):
             data, ctype = boards.raw_file(ws, rel)
         except FileNotFoundError as exc:
             return self._error(HTTPStatus.NOT_FOUND, str(exc))
+        # 工作区里的文件是 agent 写的：不许浏览器按内容猜类型，HTML / SVG 关进沙箱跑（外层 #283）
+        self.csp = RAW_POLICY
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Content-Disposition", f'inline; filename="{Path(rel).name}"')
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(data)
 
@@ -357,6 +455,8 @@ class Handler(BaseHTTPRequestHandler):
     # ── POST ─────────────────────────────────────────────────────────────
     def do_POST(self) -> None:
         self.streaming = False  # 头已经发出去（SSE）之后再出错，只能断流，不能再回一个 JSON
+        if self._refused():
+            return
         try:
             self._post()
         except ValueError as exc:
@@ -540,6 +640,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream(self, where: scope.Scope, conv: conversation.Conversation, chat: Chat,
                 text: str, tuning: Tuning) -> None:
+        with self.server.turn():
+            self._stream_turn(where, conv, chat, text, tuning)
+
+    def _stream_turn(self, where: scope.Scope, conv: conversation.Conversation, chat: Chat,
+                     text: str, tuning: Tuning) -> None:
         system_prompt = self.server.system_prompt_for(where, chat)
         try:
             events = conversation.send(
@@ -558,12 +663,26 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
-        self._sse(first)
+        gone = False
+
+        def deliver(event: ChatEvent) -> None:
+            # 页面重载、断网（外层 #282 审查）：这一轮照样读完、落盘，重开页面在历史里看得到，
+            # turns 也照样数它；扔下不读，真 CLI 的输出管道写满就卡在那里，这段对话一直锁着
+            nonlocal gone
+            if gone:
+                return
+            try:
+                self._sse(event)
+            except OSError as exc:
+                gone = True
+                LOGGER.info("chat_stream_gone chat_id=%s why=%s", conv.chat_id, exc)
+
+        deliver(first)
         for event in events:
-            self._sse(event)
+            deliver(event)
         # 人这一轮说着话时跑完的作业排在收件箱里：接着以「框架」的身份念，事件接在同一条流后面
         for event in notify.follow_up(where, conv, chat, system_prompt):
-            self._sse(event)
+            deliver(event)
 
     def _post_settings(self, rest: list[str], body: dict[str, Any]) -> None:
         """设置那块板的动作，都落到 chat/settings、清单与 key 的读写点、清除。"""
@@ -589,11 +708,21 @@ class Handler(BaseHTTPRequestHandler):
                 name, value = body.get("name"), body.get("value")
                 if not isinstance(name, str) or not isinstance(value, str):
                     return self._error(HTTPStatus.BAD_REQUEST, "要带 name 与 value（字符串）")
-                keys.put(name, value)
-                return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+                return self._json(settings.put_key(name, value, self.server.knobs_of,
+                                                   self.server.home))
             if len(rest) == 3 and rest[0] == "keys" and rest[2] == "remove":
-                keys.remove(rest[1])
-                return self._json(settings.snapshot(self.server.knobs_of, self.server.home))
+                return self._json(settings.remove_key(rest[1], self.server.knobs_of,
+                                                      self.server.home))
+            if rest == ["quickstart"]:
+                key = body.get("key")
+                if not isinstance(key, str):
+                    return self._error(HTTPStatus.BAD_REQUEST, "要带 key（字符串）")
+                try:
+                    return self._json(settings.quickstart(key, self.server.knobs_of,
+                                                          self.server.probe_agent,
+                                                          self.server.home))
+                except keys.KeysInvalid as exc:  # 空的：页面照这句提示，不是配置值非法
+                    return self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc))
             if rest == ["reset"]:
                 if body.get("confirm") != CONFIRM_RESET:
                     return self._error(HTTPStatus.BAD_REQUEST, f"要带 confirm: {CONFIRM_RESET}")

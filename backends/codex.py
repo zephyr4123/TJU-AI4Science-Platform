@@ -94,6 +94,7 @@ from backends import (
     LOGIN_ITEM,
     OFFICIAL,
     VERSION_ITEM,
+    AgentMissing,
     AgentProbe,
     ChatEvent,
     Choice,
@@ -107,6 +108,7 @@ from backends import (
     Tuning,
     Usage,
     price,
+    require_cli,
 )
 from backends._snapshot import diff, snapshot
 from backends._stdin import feed
@@ -209,15 +211,15 @@ TOOL_GUIDE = """## 工具怎么用
   没有网络，pip、curl、git 这类不要去凑，被拒（operation not permitted）就换路子，不要反复试。
 - 写完不用自己查行宽、跑 lint：框架会跑 ruff 与校验，问题喂回给你。
 """
-# 协调层的同一段：这家没有单独的读文件工具，看文件就是 shell 的只读命令；「只能运行 ai4sci」
-# 说的是动作
+# 两位助理的同一段：这家没有单独的读文件工具，看文件就是 shell 的只读命令；「只能运行 ai4sci」
+# 说的是动作。两个域都用它，不说哪个域的目录（流程助理没有工作区、没有原件，外层 #287）
 CHAT_TOOL_GUIDE = """## 工具怎么用
 
-- 看文件、列目录、搜内容用 shell 的只读命令：ls、cat、head、rg、find（原件在 `materials/`，要看
-  就直接看）。这不算「运行动作」——沙箱只让你写工作区，读是放开的。
+- 看文件、列目录、搜内容用 shell 的只读命令：ls、cat、head、rg、find。这不算「运行动作」——沙箱
+  只让你写能写的目录，读是放开的。
 - 运行动作只用 {commands} 一类命令：它们在沙箱外跑，能起作业、能联网。别的命令都在沙箱里、没有
   网络，不要拿 pip、curl、git、python 去凑（没有对应的命令就停下来说缺什么）。
-- 改文件（需求、流程实例）用 apply_patch 或 ai4sci 的命令，只在工作区里。
+- 改文件用 apply_patch 或 ai4sci 的命令，只在你能写的目录里。
 """
 
 
@@ -249,7 +251,7 @@ def npm_dist(platform: str, version: str) -> Dist:
 
 
 INSTALL = Install(command="codex", min_version=MIN_VERSION, npm="@openai/codex",
-                  parse_version=parse_version, dist=npm_dist)
+                  parse_version=parse_version, dist=npm_dist, home_env=HOME_ENV)
 
 
 def toml_str(text: str) -> str:
@@ -502,6 +504,7 @@ class CodexRunner:
             tuning: Tuning | None = None, max_turns: int | None = None,
             max_budget_usd: float | None = None) -> RunResult:
         # max_turns / max_budget_usd：Codex 没有这两个闸（文档与 --help 都没有），超时是唯一的闸
+        require_cli(NAME, self.cli)  # 找不到就抛 AgentMissing：一句人话，不是 Popen 的英文 errno
         home = codex_home(self.link, "executor")
         before = snapshot(cwd)
         argv = self.build_argv(cwd, allowed_paths, bash_rules, tuning, home=home)
@@ -693,7 +696,9 @@ class CodexChat:
             argv = self.build_argv(cwd, session_id=session_id, system_prompt=system_prompt,
                                    allowed_paths=allowed_paths, bash_rules=bash_rules,
                                    tuning=tuning, home=home)
-        except KeyMissing as exc:  # 选了要 key 的供应商却没填：这一轮说清楚，不起 CLI
+            require_cli(NAME, self.cli)
+        # 选了要 key 的供应商却没填、CLI 没装上：这一轮说清楚，不起 CLI
+        except (KeyMissing, AgentMissing) as exc:
             yield ChatEvent("error", text=str(exc), is_error=True)
             return
         err: list[str] = []
@@ -745,8 +750,9 @@ class CodexChat:
 def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
     """四句人话（纲领 P-25）：装了没、版本够不够、登录了没、能不能说话。
 
-    登录看 `codex login status` 的退出码（0 / 1，文字在 stderr），在平台的 CODEX_HOME 下跑——问的是
-    平台自己的登录，不是用户本机的；说话真跑一句 pong，走与真会话同一组隔离参数。
+    每一句都在平台的 CODEX_HOME 下跑（外层 #286），连问版本也是。登录看 `codex login status` 的
+    退出码（0 / 1，文字在 stderr）——问的是平台自己的登录，不是用户本机的；说话真跑一句 pong，走与
+    真会话同一组隔离参数。
     """
     result = AgentProbe()
     cli = link.cli or INSTALL.command
@@ -756,8 +762,11 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
         return result
     result.installed = True
     result.items.append((INSTALLED_ITEM, True, exe))
+    home = codex_home(link, "chat")
+    # 问版本也在平台的 CODEX_HOME 下：Codex 一起来就在 home 里建 tmp/（外层 #286）
     version = subprocess.run([cli, "--version"], capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=30)
+                             encoding="utf-8", errors="replace", timeout=30,
+                             env={**os.environ, HOME_ENV: str(home)})
     raw = (version.stdout or version.stderr).strip()
     result.version = raw
     parsed = parse_version(raw)
@@ -769,7 +778,6 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
         result.items.append((VERSION_ITEM, False, f"{raw}，要 ≥ {want}（这版实测过的 flag）"))
         return result
     result.items.append((VERSION_ITEM, True, raw))
-    home = codex_home(link, "chat")
     picked = provider(link)
     if picked.key is None:  # 官方登录：问平台私有目录里的登录，不是用户本机的
         status = subprocess.run([cli, "login", "status"], capture_output=True, text=True,

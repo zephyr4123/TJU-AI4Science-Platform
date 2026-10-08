@@ -56,6 +56,7 @@ from backends import (
     Tuning,
     Usage,
     price,
+    require_cli,
 )
 from backends._snapshot import diff, snapshot
 from backends._stdin import feed
@@ -150,6 +151,9 @@ INHERITED_DROPPED = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BAS
                      "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX")
 # 自检认的最低版本：`--effort` 与 `--setting-sources` 都是这之后才有的
 MIN_VERSION = (2, 1, 276)
+# 自检说的那一句最多重试几次（外层 #282）：key 错了 CLI 也照 401 重试十次、退避两分多钟（2026-10-07
+# 实测 2.1.292），自检等不到它的报错就超时，「key 不对」成了「没回话」；两次实测 7 秒报出来
+PROBE_RETRIES = {"CLAUDE_CODE_MAX_RETRIES": "2"}
 _TAIL_CHARS = 4000
 # tool_result 进事件的正文上限：页面与 CLI 打印只要开头，全文在 raw 里落盘
 _RESULT_CHARS = 4000
@@ -164,12 +168,13 @@ TOOL_GUIDE = """## 工具怎么用
 - Bash 里会改东西的只放行 {commands} 一类命令；建目录不用 mkdir：Write 会自己建。
 - 写完不用自己查行宽、跑 lint：框架会跑 ruff 与校验，问题喂回给你。
 """
-# 协调层的同一段：助理看文件、找文件用自带的工具与只读命令，跑动作只有放行的命令
+# 两位助理的同一段：看文件、找文件用自带的工具与只读命令，跑动作只有放行的命令。两个域都用它，
+# 不说哪个域的目录（流程助理没有工作区、没有原件，外层 #287）
 CHAT_TOOL_GUIDE = """## 工具怎么用
 
-- 看文件用 Read 工具；列目录、找文件、搜内容用 ls、find、grep，一条命令单独跑（原件在 `materials/`，
-  要看就直接看）。接管道、用 `&&` 串起来、cd 到别处的都会被拒。
-- Bash 里会改东西的只放行 {commands} 一类命令。改文件用 Edit / Write，只在工作区里。
+- 看文件用 Read 工具；列目录、找文件、搜内容用 ls、find、grep，一条命令单独跑。接管道、用 `&&`
+  串起来、cd 到别处的都会被拒。
+- Bash 里会改东西的只放行 {commands} 一类命令。改文件用 Edit / Write，只在你能写的目录里。
 """
 
 
@@ -376,6 +381,7 @@ class ClaudeCodeRunner:
             allowed_paths: list[Path], bash_rules: tuple[str, ...] = (),
             tuning: Tuning | None = None, max_turns: int | None = None,
             max_budget_usd: float | None = None) -> RunResult:
+        require_cli(NAME, self.cli)  # 找不到就抛 AgentMissing：一句人话，不是 Popen 的英文 errno
         before = snapshot(cwd)
         argv = self.build_argv(cwd, allowed_paths, bash_rules, tuning, max_turns, max_budget_usd)
         raw: list[str] = []
@@ -593,7 +599,9 @@ class ClaudeCodeChat:
                                    bash_rules=bash_rules, readable_paths=readable_paths,
                                    tuning=tuning)
             env = build_env(timeout_s, self.link, chat_id)
-        except (KeyMissing, FileNotFoundError) as exc:  # 没填 key、Windows 上没 Git Bash：说清楚
+            require_cli(NAME, self.cli)
+        # 没填 key、Windows 上没 Git Bash、CLI 没装上（AgentMissing）：这一轮说清楚，不起 CLI
+        except (KeyMissing, FileNotFoundError) as exc:
             yield ChatEvent("error", text=str(exc), is_error=True)
             return
         trust_cost = provider(self.link).reports_cost
@@ -730,7 +738,7 @@ def npm_dist(platform: str, version: str) -> Dist:
 
 
 INSTALL = Install(command="claude", min_version=MIN_VERSION, npm="@anthropic-ai/claude-code",
-                  parse_version=parse_version, dist=npm_dist)
+                  parse_version=parse_version, dist=npm_dist, home_env=CONFIG_DIR_ENV)
 
 
 def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
@@ -748,8 +756,10 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
         return result
     result.installed = True
     result.items.append((INSTALLED_ITEM, True, exe))
+    # 问版本也指到平台的配置目录：平台起 CLI 的每一处都不碰用户的 ~/.claude（外层 #286）
     version = subprocess.run([cli, "--version"], capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=30)
+                             encoding="utf-8", errors="replace", timeout=30,
+                             env={**os.environ, CONFIG_DIR_ENV: str(link.home)})
     raw = (version.stdout or version.stderr).strip()
     result.version = raw
     parsed = parse_version(raw)
@@ -796,14 +806,16 @@ def probe(link: Link, speak_timeout_s: float = 120.0) -> AgentProbe:
     try:
         spoke = subprocess.run(argv, capture_output=True, text=True,
                                encoding="utf-8", errors="replace", timeout=speak_timeout_s,
-                               stdin=subprocess.DEVNULL, env=build_env(speak_timeout_s, link))
+                               stdin=subprocess.DEVNULL,
+                               env={**build_env(speak_timeout_s, link), **PROBE_RETRIES})
     except subprocess.TimeoutExpired:
         result.items.append(("说话", False, f"{speak_timeout_s:g} 秒没回话"))
         return result
     events, _ = parse_events(spoke.stdout.splitlines(keepends=True))
     reply = final_report(events)
     if spoke.returncode != 0 or "pong" not in reply.lower():
-        tail = (spoke.stderr or reply or "无输出").strip()[-300:]
+        # API 报的错在 result 里（「API Error: 401 …」）；stderr 用第三方模型时每次都有一行杂讯
+        tail = (reply or spoke.stderr or "无输出").strip()[-300:]
         result.items.append(("说话", False, f"退出码 {spoke.returncode}：{tail}"))
         return result
     result.spoke_s = time.monotonic() - started

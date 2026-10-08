@@ -14,12 +14,15 @@ import re
 import shlex
 import sys
 import tempfile
+import time
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+import procs
 from backends import BackendNotFound, Link, Runner, RunResult, available_backends, get_backend
+from backends import claude_code as cc
 from backends._snapshot import diff, snapshot
 from backends.claude_code import (
     WEB_TOOLS,
@@ -132,8 +135,9 @@ def test_runner_uses_the_same_env_as_chat_so_bare_ai4sci_resolves(monkeypatch, t
 
     monkeypatch.setattr("backends.claude_code.spawn", fake_popen)
     monkeypatch.setenv("PATH", "/usr/bin")
+    present = Link(home=HOME, cli=sys.executable)  # 起之前要找得到它；起的那一步换成了假的
     with pytest.raises(RuntimeError, match="没有 result 事件"):
-        ClaudeCodeRunner(LINK).run("hi", tmp_path, 7.0, [tmp_path])
+        ClaudeCodeRunner(present).run("hi", tmp_path, 7.0, [tmp_path])
     env = seen["env"]
     assert env["PATH"].endswith(str(Path(sys.executable).parent))
     assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
@@ -376,6 +380,36 @@ def test_sessions_live_in_the_platform_home_not_the_persons_claude_dir(tmp_path:
     chat.forget(SID, cwd)
     assert not session.exists() and not (home / "session-env" / SID).exists()
     chat.forget(SID, cwd)  # 幂等
+
+
+def test_probe_reports_a_rejected_key_in_seconds_in_the_apis_own_words(tmp_path: Path,
+                                                                        monkeypatch):
+    """key 错了 CLI 也照 401 重试十次、退避两分多钟（2026-10-07 实测 2.1.292，`api_retry` 事件
+    error_status 401），自检等不到它的报错就超时：「key 不对」成了「120 秒没回话」，页面分不出该不该
+    弹「填 key」（外层 #282）。自检只说一句，少重试几次就报；报的是 API 自己那句，不是 stderr 里
+    CLI 的杂讯（用 DeepSeek 的模型时它每次都打一行 unrecognized_model）。"""
+    reply = "Failed to authenticate. API Error: 401 Authentication Fails, Your api key: ****0000"
+    (tmp_path / "bin").mkdir()
+    cli = fake_cli(tmp_path / "bin" / "claude", f"""import json, os, sys, time
+if sys.argv[1:] == ["--version"]:
+    print("2.1.292 (Claude Code)")
+    sys.exit(0)
+if "CLAUDE_CODE_MAX_RETRIES" not in os.environ:
+    time.sleep(30)  # 照真 CLI：401 也重试十次
+print(json.dumps({{"type": "system", "subtype": "init", "session_id": "s"}}))
+print(json.dumps({{"type": "result", "subtype": "success", "is_error": True,
+                  "api_error_status": 401, "result": {reply!r}}}))
+print('[claude-code:unrecognized_model] {{"model":"deepseek-flash[1m]"}}', file=sys.stderr)
+sys.exit(1)
+""")
+    monkeypatch.setattr(procs, "bash", lambda: "bash")  # Windows 上探测要 Git Bash
+    started = time.monotonic()
+    got = cc.probe(Link(home=tmp_path / "home", provider="deepseek", key="sk-0000", cli=cli),
+                   speak_timeout_s=20)
+    assert time.monotonic() - started < 15
+    name, ok, note = got.items[-1]
+    assert (name, ok) == ("说话", False) and not got.ok
+    assert "401 Authentication Fails" in note and "unrecognized_model" not in note
 
 
 def test_login_and_logout_run_in_the_platform_home(tmp_path: Path):
@@ -693,6 +727,21 @@ def test_a_missing_key_says_where_to_fill_it_instead_of_starting_the_cli():
                   .turn("hi", Path("/tmp"), 5, session_id=None, system_prompt="",
                         allowed_paths=[], bash_rules=()))
     assert [e.kind for e in events] == ["error"] and "设置" in events[0].text
+
+
+def test_a_missing_cli_is_one_sentence_not_a_crash(tmp_path):
+    """外层 #282：外壳、计划任务起的服务拿到的 PATH 与终端里的不一样，CLI 找不到时 Popen 抛的是英文
+    errno，页面上是 500。对话那一轮吐一条人话的错误，执行层抛 AgentMissing，都不起进程。"""
+    from backends import AgentMissing
+    from backends.claude_code import ClaudeCodeChat
+
+    gone = Link(home=tmp_path / "cc", cli=str(tmp_path / "nope" / "claude"))
+    events = list(ClaudeCodeChat(gone).turn("hi", tmp_path, 5, session_id=None,
+                                            system_prompt="", allowed_paths=[], bash_rules=()))
+    assert [e.kind for e in events] == ["error"] and events[0].is_error
+    assert events[0].text.startswith("Claude Code 没装上：找不到")
+    with pytest.raises(AgentMissing, match="Claude Code 没装上"):
+        ClaudeCodeRunner(gone).run("hi", tmp_path, 5, [tmp_path])
 
 
 def test_models_follow_the_provider_and_third_party_ids_go_straight_to_the_cli(tmp_path):

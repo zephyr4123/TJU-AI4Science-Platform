@@ -14,6 +14,7 @@
     0  通过
     1  没通过（问题一行一条打到 stderr）
     2  用法错误：目录不存在、发现阶段的拓扑冲突
+    3  `serve` 绑不上端口（被占、保留端口段）：一句话，外壳换一个端口再起
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ from framework.cli import (
     skill,
     workspace,
 )
+from framework.workspace import jobs
 
 __all__ = ["build_parser", "main"]
 
@@ -84,6 +86,7 @@ def _version() -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    jobs.own_log()  # 是作业就先把输出接到作业日志（外层 #284）；不是什么都不做
     _utf8()
     toolchain.use_private_git()  # Windows 上家里装的 Git（外层 #210）
     argv = list(sys.argv[1:] if argv is None else argv)

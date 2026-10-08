@@ -11,7 +11,7 @@ export interface StopItem { uid: number; kind: 'stop'; note: string; pos?: XY }
 export type Item = StageItem | StopItem
 /** 画布上的这条。`name` 空着就是还没存过（存的时候平台起名）；`from` 是父流程：
  *  只有名字是「从它派生」，带 hash 的是载入的那条本来就有的血缘，覆盖存时原样留着 */
-export interface Draft { name: string; title: string; summary: string; items: Item[]; from: Origin | { name: string } | null }
+export interface Draft { name: string; title: string; summary: string; items: Item[]; from: Origin | { name: string } | null; guide?: string }
 
 export const EMPTY: Draft = { name: '', title: '', summary: '', items: [], from: null }
 
@@ -151,6 +151,8 @@ export function toDraft(draft: Draft): WorkflowDraft {
     return { [item.stage]: Object.fromEntries(item.caps.map((p) => [p.cap, Object.keys(p.with).length ? p.with : null])) }
   })
   const doc: WorkflowDraft = { name: draft.name.trim(), title: draft.title.trim(), summary: draft.summary.trim(), stages }
+  // 给研究助理读的说明（外层 #287）：画布不编辑它，载入时带着、存回去原样交还，不然一存就丢
+  if (draft.guide?.trim()) doc.guide = draft.guide
   if (draft.from) doc.from = 'hash' in draft.from ? draft.from : draft.from.name
   if (arranged(draft.items)) doc.layout = positions(draft.items).map(({ x, y }) => [Math.round(x), Math.round(y)])
   return doc
@@ -159,7 +161,7 @@ export function toDraft(draft: Draft): WorkflowDraft {
 /** 库里的一条 → 画布：名字与血缘照旧（存回去是覆盖它自己）；文件里有 layout 就照它摆 */
 export function fromWorkflow(wf: Workflow): Draft {
   const items = wf.stages.map((item, i) => fromItem(item, wf.layout?.[i] ? { x: wf.layout[i][0], y: wf.layout[i][1] } : undefined))
-  return { name: wf.name, title: wf.title, summary: wf.summary, items, from: wf.from }
+  return { name: wf.name, title: wf.title, summary: wf.summary, items, from: wf.from, guide: wf.guide ?? '' }
 }
 
 /** 从库里一条派生：照抄它，名字空着（平台起「家族名-序号」），父流程记它 */

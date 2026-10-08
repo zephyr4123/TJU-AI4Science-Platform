@@ -21,6 +21,14 @@ from framework.cli._common import EXIT_INVALID, EXIT_OK, EXIT_USAGE
 
 _SSH_RE = re.compile(r"^(?P<user>[A-Za-z0-9._-]+)@(?P<host>[A-Za-z0-9.-]+)(?::(?P<port>\d{1,5}))?$")
 DEFAULT_ROOT = "~/ai4sci"
+# 探测过了，下一步是 P-23 的那一问：在接上机器的那一刻说，指南里不写（外层 #287）
+ENV_QUESTION = ("next=定这台机器用什么环境，先问研究者它是租的还是实验室自己的："
+                "租的（AutoDL 这类）用镜像自带的现成环境，从「已有环境」里挑"
+                "（多半是带 torch 且 cuda 可用的），"
+                "ai4sci env use --compute {name} <解释器绝对路径> --ws <工作区>，"
+                "缺包再 ai4sci env add；实验室的可以隔离新建 "
+                "ai4sci env resolve --compute {name} --python <X.Y> <包名>… --ws <工作区>"
+                "（版本锁死，第一次要下几 GB）")
 
 
 def add_and_check(name: str, ssh: str, key: str, root: str = DEFAULT_ROOT,
@@ -54,7 +62,7 @@ def cmd_add(args: argparse.Namespace) -> int:
     _print_probe(probe)
     state = "可用" if probe.ok else "探测没过，记录留着"
     print(f"ok {entry.name}\t{state}\t写入 {computes.path()}"
-          + ("\tdefault" if args.default else ""))
+          + ("\tdefault" if args.default else "") + _next(entry.name, probe))
     return EXIT_OK if probe.ok else EXIT_INVALID
 
 
@@ -66,7 +74,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     computes.record_check(args.name, probe)
     _print_probe(probe)
-    print(f"ok {args.name}\t{'可用' if probe.ok else '探测没过'}")
+    print(f"ok {args.name}\t{'可用' if probe.ok else '探测没过'}" + _next(args.name, probe))
     return EXIT_OK if probe.ok else EXIT_INVALID
 
 
@@ -100,6 +108,11 @@ def cmd_default(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     print(f"ok {args.name}\tdefault")
     return EXIT_OK
+
+
+def _next(name: str, probe: Probe) -> str:
+    """探测过了接那一问；没过不推，照 ✗ 那几项跟研究者说。"""
+    return "\t" + ENV_QUESTION.format(name=name) if probe.ok else ""
 
 
 def _print_probe(probe: Probe) -> None:

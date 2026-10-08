@@ -112,7 +112,7 @@ def find(name: str) -> Found | None:
         if exe is not None and sys.platform == "win32" and exe.suffix.lower() != ".exe":
             return Found(exe=str(exe), version="", ok=False, private=private)
         if exe is not None:
-            raw = _version(exe)
+            raw = _version(exe, name)
             parsed = spec.parse_version(raw)
             return Found(exe=str(exe), version=raw, private=private,
                          ok=parsed is not None and parsed >= spec.min_version)
@@ -148,7 +148,7 @@ def install(name: str, progress: Progress | None = None) -> Found:
         if not exe.is_file():
             raise ToolchainError(f"{tarball} 里没有 {dist.root}/{dist.entry}")
         exe.chmod(exe.stat().st_mode | 0o111)
-        raw = _version(exe)
+        raw = _version(exe, name)
         parsed = spec.parse_version(raw)
         if parsed is None or parsed < spec.min_version:
             raise ToolchainError(f"装出来的 {dist.entry} 跑不起来或版本不对：{raw or '无输出'}")
@@ -268,12 +268,15 @@ def _swap(staging: Path, target: Path) -> None:
     shutil.rmtree(old, ignore_errors=True)
 
 
-def _version(exe: Path) -> str:
-    """`--version` 的原文；起不来是空串（由调用方判版本认不出）。"""
+def _version(exe: Path, name: str) -> str:
+    """`--version` 的原文；起不来是空串（由调用方判版本认不出）。只问版本也把这家指到它在家里的
+    私有目录（适配器的 `Install.home_env`）：Codex 一起来就在 home 里建 `tmp/`，不指就建到了用户的
+    `~/.codex`（外层 #286）。"""
+    env = {**os.environ, backends.install_of(name).home_env: str(paths.agent_home(name))}
     try:
         done = subprocess.run([str(exe), "--version"], capture_output=True, text=True,
                               encoding="utf-8", errors="replace", timeout=VERSION_TIMEOUT_S,
-                              stdin=subprocess.DEVNULL, check=False)
+                              stdin=subprocess.DEVNULL, env=env, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         LOGGER.warning("cli_version_failed exe=%s why=%s", exe, exc)
         return ""

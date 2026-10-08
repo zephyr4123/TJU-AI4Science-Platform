@@ -321,9 +321,21 @@ export interface ComputeRow {
   last_check: ComputeCheck | null
 }
 
-/** `GET /settings`：底座、算力、存放三段（P-25） */
+/** 助理那家此刻能不能说话（外层 #282）：只看助理用的那一家。`needs_key` 页面弹窗问 DeepSeek 的 key；`cannot_talk`
+ *  （余额不足、连不上）不弹，只把原因写在设置里；`unchecked` 页面后台探一次。`reason` 是一句给人看的话；
+ *  `checked_at` 是这个判断依据的那次自检，没自检过是 null */
+export interface AssistantStatus {
+  agent: string
+  provider: string
+  state: 'ready' | 'needs_key' | 'cannot_talk' | 'unchecked'
+  reason: string | null
+  checked_at: string | null
+}
+
+/** `GET /settings`：底座、算力、存放三段（P-25），外加助理那家此刻的状态 */
 export interface SettingsDoc {
   agents: { chat: string; executor: string; entries: AgentEntry[] }
+  assistant: AssistantStatus
   computes: ComputeRow[]
   /** 平台的家（外层 #263）：在哪、清除认不认它（平台建的家才有标记）；每块多大另取（`StoragePart`） */
   storage: { home: string; resettable: boolean; writable: boolean; free_gb: number; projects: number; workspaces: number }
@@ -446,6 +458,8 @@ export interface WorkflowDraft {
   name: string
   title: string
   summary: string
+  /** 给研究助理读的说明（外层 #287）：画布不编辑，原样交还 */
+  guide?: string
   /** 父流程：只给名字是「从它派生」（hash 平台填），给全的是改自己时原样留着 */
   from?: string | Origin
   stages: DraftItem[]
@@ -467,6 +481,8 @@ export interface Workflow {
   name: string
   title: string
   summary: string
+  /** 给研究助理读的说明（外层 #287），没写是空串 */
+  guide?: string
   /** 派生自库里哪条；从零拼的是 null */
   from: Origin | null
   /** 家族名：顺着 from 走到底的那条；页面按它分组 */

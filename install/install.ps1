@@ -7,19 +7,34 @@
 # 就是升级。装出来的都在平台的家里（~\.ai4sci），落在外面的只有用户 Path 里一项。
 #
 # 下面的地址与目录名和 framework/mirrors.py、framework/paths.py 是同一份事实，
-# tests/test_install_script.py 对账。__VERSION__ 这类占位由发版流水线写进去（.github/scripts/cdn.py）。
+# tests/test_install_script.py 对账。__VERSION__ 这类占位由发版流水线写进去（.github/scripts/cdn.py）：
+# 版本是 PEP 440 的写法，与 `ai4sci --version`、wheel 的文件名、CDN 上的目录一样（rc 写成 1.9.0rc1）。
 #
 # `irm | iex` 是在人自己的会话里跑的：整段包在一个脚本块里（变量、$ErrorActionPreference 不漏到他的
 # 会话），出错只说一句、不 exit（exit 会关掉他的窗口）；不靠执行策略（iex 跑的是字符串，不是 .ps1）。
+#
+# 桌面 App 也跑这一份（外层 #282，docs/specs/desktop.md §3「装与升级」，只加不改）：外壳用 5.1 的
+# powershell.exe -NoProfile -NonInteractive -Command 把它按 UTF-8 读成字符串交给脚本块、无窗口起
+# （与 iex 一样不受执行策略管；-File 在组策略设了 AllSigned 的机器上起不来）。AI4SCI_NO_SETUP=1 时
+# 第一句把输出设成 UTF-8（无窗口起的 Write-Host 按 GBK 出，✓ 成了 ?）、装好平台就退、不交给
+# setup，退出码作数：0 装好，75 平台还开着、什么都没动，其余是失败。AI4SCI_WHEEL_SHA256 是签名清单里 wheel 的 sha256，给了就照它
+# 核、不信 CDN 上的 .sha256。升级先装进暂存目录（下载都在这一步），成了再离线换进去：中途断了，原来
+# 那份照样能用。
 
 & {
+$NO_SETUP = $env:AI4SCI_NO_SETUP -eq '1'
+if ($NO_SETUP) { [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false }
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'  # 5.1 的下载进度条让 Invoke-WebRequest 慢几十倍
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $VERSION = '__VERSION__'
 $UV_VERSION = '__UV_VERSION__'
+# uv 发布包的 sha256（`<平台>=<sha256>`，空格分隔）：发版时照 GitHub 上核过的写进来。这份脚本由签名
+# 清单盖着（外层 #282），uv 也就跟着在签名链里，不信 CDN 上它旁边那份 .sha256
+$UV_SHA256 = '__UV_SHA256__'
 $DIST = if ($env:AI4SCI_DIST) { $env:AI4SCI_DIST } else { 'https://media.zephyrxiang.com/ai4science/dist' }
+$DIST = $DIST.TrimEnd('/')  # 末尾带 / 的也拼成一道斜杠（外层 #282）
 $PYPI_INDEX = 'https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple'
 $PYTHON_DOWNLOADS = 'https://registry.npmmirror.com/-/binary/python-build-standalone'
 $PYTHON_WANTED = '>=3.12'
@@ -28,8 +43,11 @@ $HOME_DIR = if ($env:AI4SCI_HOME) { $env:AI4SCI_HOME } else { Join-Path $HOME '.
 $BIN = Join-Path $HOME_DIR 'bin'
 $TOOLS = Join-Path $HOME_DIR 'tools'
 $LOG = Join-Path $HOME_DIR 'install.log'
+$STAGING = Join-Path $TOOLS '.ai4sci-staging'
 $UTF8 = New-Object Text.UTF8Encoding $false
 $STOP = 'ai4sci-install-stop'  # 已经说过为什么的停：外面只补一句怎么办
+$STOP_BUSY = 'ai4sci-install-busy'  # 平台还开着：什么都没动
+$EXIT_BUSY = 75
 
 function Say([string]$mark, [string]$label, [string]$note) {
   Write-Host ('  {0} {1,-14}{2}' -f $mark, $label, $note)
@@ -39,15 +57,16 @@ function Stop-Install([string]$label, [string]$note) {
   throw $STOP
 }
 
-# 下载 $url 到 $dest 并和旁边的 .sha256 对账：对不上就停，不装半份
-function Fetch([string]$url, [string]$dest, [string]$label) {
+# 下载 $url 到 $dest；sha256 照 $signed（签名清单里的）核，没给就照 CDN 上旁边的 .sha256：对不上就停，
+# 不装半份
+function Fetch([string]$url, [string]$dest, [string]$label, [string]$signed = '') {
   try {
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $dest
-    Invoke-WebRequest -UseBasicParsing -Uri "$url.sha256" -OutFile "$dest.sha256"
+    if (-not $signed) { Invoke-WebRequest -UseBasicParsing -Uri "$url.sha256" -OutFile "$dest.sha256" }
   } catch {
     Stop-Install $label "取不到 ${url}：$($_.Exception.Message)"
   }
-  $want = ([IO.File]::ReadAllText("$dest.sha256")).Trim().Split()[0]
+  $want = if ($signed) { $signed.Trim() } else { ([IO.File]::ReadAllText("$dest.sha256")).Trim().Split()[0] }
   # 用 .NET 算，不用 Get-FileHash：5.1 里它是模块的脚本函数，从 pwsh 里开的 5.1 加载不到
   $sha = [Security.Cryptography.SHA256]::Create()
   $stream = [IO.File]::OpenRead($dest)
@@ -82,6 +101,23 @@ $UV_HOME = @{
 # 找以前装在 uv 缺省位置的那份：工具目录用缺省的，缓存仍在家里
 $UV_DEFAULT = @{ UV_CACHE_DIR = (Join-Path $HOME_DIR 'cache\uv') }
 
+# 够版本的 uv：低于钉的版本（外壳带的那份会变老）当没有。X.Y.Z 逐段比，-test 这类尾巴不算
+# 删一个目录，里面的路径过了 260 个字符也删得掉：平台带的 skill 里有很深的文件，没开长路径时 Remove-Item
+# 删不掉（外层 #282 真机）。stderr 在 cmd 里扔掉，5.1 在 Stop 下会把原生程序写 stderr 当错误。删没删掉照实返回
+function Clear-Dir([string]$path) {
+  if (Test-Path -LiteralPath $path) { cmd.exe /d /c "rd /s /q `"\\?\$path`" 2>nul" | Out-Null }
+  -not (Test-Path -LiteralPath $path)
+}
+
+function Test-Uv([string]$path) {
+  if (-not $path -or -not (Test-Path $path)) { return $false }
+  $ErrorActionPreference = 'Continue'
+  if ("$(& $path --version 2>$null)" -notmatch '^uv (\d+\.\d+\.\d+)') { return $false }
+  $seen = [version]$Matches[1]
+  $null = $UV_VERSION -match '^(\d+\.\d+\.\d+)'
+  return $seen -ge [version]$Matches[1]
+}
+
 try {
   Write-Host 'AAAI4S 安装（全程国内源）'
   # 家的标记（同 framework/paths.py 的 mark）：新家、空家才放；指到一个已有东西的目录不放，清除就不认它
@@ -95,12 +131,13 @@ try {
   New-Item -ItemType Directory $work | Out-Null
 
   try {
-    # 1. uv：用户有就用他的；家里装过就用家里的；都没有从我们的 CDN 取
+    # 1. uv：用户有就用他的；家里装过就用家里的；都没有、或都低于钉的版本，从我们的 CDN 取
     $mine = Join-Path $TOOLS 'uv\uv.exe'
-    if ($found = Get-Command uv -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1) {
+    $found = Get-Command uv -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found -and (Test-Uv $found.Source)) {
       $UV = $found.Source
       Say '✓' 'uv' '已装，跳过'
-    } elseif (Test-Path $mine) {
+    } elseif (Test-Uv $mine) {
       $UV = $mine
       Say '✓' 'uv' '已装，跳过'
     } else {
@@ -110,7 +147,9 @@ try {
         'Arm64' { 'aarch64-pc-windows-msvc' }
         default { Stop-Install 'uv' "Windows $arch 没有现成的安装包" }
       }
-      Fetch "$DIST/uv/$UV_VERSION/uv-$triple.zip" (Join-Path $work 'uv.zip') 'uv'
+      $signed = $UV_SHA256.Split(' ') | Where-Object { $_.StartsWith("$triple=") } | Select-Object -First 1
+      if (-not $signed) { Stop-Install 'uv' "这份安装脚本里没有 $triple 的 uv 的 sha256" }
+      Fetch "$DIST/uv/$UV_VERSION/uv-$triple.zip" (Join-Path $work 'uv.zip') 'uv' $signed.Substring($triple.Length + 1)
       # 不用 Expand-Archive：模块里的函数不认这里的 $ProgressPreference，会画一大片进度条
       Add-Type -AssemblyName System.IO.Compression.FileSystem
       [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $work 'uv.zip'), (Join-Path $work 'uv'))
@@ -165,11 +204,23 @@ try {
         $_.Path -and ($_.Path -eq $exe -or $_.Path.StartsWith("$tool\", [StringComparison]::OrdinalIgnoreCase))
       })
       if ($busy) {
-        Stop-Install 'ai4sci' "平台还开着（$($busy.Count) 个进程在用它）：关掉服务的窗口，作业在跑就等它跑完或在页面上停掉"
+        Say '✗' 'ai4sci' "平台还开着（$($busy.Count) 个进程在用它）：关掉服务的窗口，作业在跑就等它跑完或在页面上停掉"
+        throw $STOP_BUSY
       }
       $wheel = "ai4sci-$VERSION-py3-none-any.whl"
-      Fetch "$DIST/$VERSION/$wheel" (Join-Path $work $wheel) 'ai4sci'
+      Fetch "$DIST/$VERSION/$wheel" (Join-Path $work $wheel) 'ai4sci' $env:AI4SCI_WHEEL_SHA256
       $argv = @('tool', 'install', '--force', '--python', $PYTHON_WANTED, (Join-Path $work $wheel))
+      if (Test-Path $tool) {
+        # 升级：uv 先删掉旧环境再下依赖，中途断了原来那份就没了。先装进暂存目录，下载都在这一步、
+        # 旧的不动；成了再从缓存离线换进去
+        [void](Clear-Dir $STAGING)  # 上次没删干净的：uv 装的时候 --force 盖过去，下面再删
+        $into = $UV_HOME.Clone()
+        $into.UV_TOOL_DIR = Join-Path $STAGING 'tools'; $into.UV_TOOL_BIN_DIR = Join-Path $STAGING 'bin'
+        $staged = Invoke-Logged $UV $argv $into
+        if (-not (Clear-Dir $STAGING)) { Say '!' 'ai4sci' "升级用的暂存 $STAGING 删不干净，可以手动删掉" }
+        if ($staged -ne 0) { Stop-Install 'ai4sci' "$VERSION 没装上，原来那份照样能用；详情在 $LOG" }
+        $argv = @('tool', 'install', '--force', '--offline', '--python', $PYTHON_WANTED, (Join-Path $work $wheel))
+      }
       if ((Invoke-Logged $UV $argv $UV_HOME) -ne 0) { Stop-Install 'ai4sci' "装不上，详情在 $LOG" }
       Say '✓' 'ai4sci' "$VERSION，安装完成"
     }
@@ -199,11 +250,15 @@ try {
   if (($env:Path -split ';') -notcontains $BIN) { $env:Path = "$BIN;$env:Path" }
 
   # 5. 剩下的交给平台自己。装到这里已经成了，setup 成没成它自己说；它起的服务往 stderr 写日志，
-  #    stderr 被并进来的宿主（ISE、`| Tee-Object`）里 5.1 在 Stop 下会把第一行日志当异常、掐断服务
+  #    stderr 被并进来的宿主（ISE、`| Tee-Object`）里 5.1 在 Stop 下会把第一行日志当异常、掐断服务。
+  #    桌面 App 自己起 setup（不问 key、不起服务），到这里就算装好
+  if ($NO_SETUP) { exit 0 }
   $ErrorActionPreference = 'Continue'
   & (Join-Path $BIN 'ai4sci.exe') setup
 } catch {
-  if ("$_" -ne $STOP) { Say '✗' 'ai4sci' "$_" }
+  if ("$_" -ne $STOP -and "$_" -ne $STOP_BUSY) { Say '✗' 'ai4sci' "$_" }
+  # 桌面 App 是起这个脚本的程序，不是人的窗口：退出码作数
+  if ($NO_SETUP) { exit $(if ("$_" -eq $STOP_BUSY) { $EXIT_BUSY } else { 1 }) }
   Write-Host '没装完：照上面那句处理后，再跑一次同一行命令。'
 }
 }

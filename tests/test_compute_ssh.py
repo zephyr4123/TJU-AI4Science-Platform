@@ -224,6 +224,34 @@ def test_cli_list_remove_default_and_add_rejects_missing_key(registry_file, caps
     assert main(["compute", "remove", "box"]) == 0 and main(["compute", "remove", "box"]) == 2
 
 
+def test_a_machine_that_checks_out_is_followed_by_the_environment_question(
+        registry_file, capsys, tmp_path, monkeypatch):
+    """外层 #287：探测过了，下一步是 P-23 的那一问——用机器上现成的环境还是隔离新建——在接上机器的
+    那一刻由 CLI 说，指南里不再写一大段；探测没过不推，照 ✗ 那几项说。"""
+    from compute import Probe
+
+    key = tmp_path / "id"
+    key.write_text("k", encoding="utf-8")
+    probe = Probe(items=[("连接", True, "box"), ("已有环境", True, "/opt/py 3.11 torch 2.3 cuda")])
+
+    class Checks:
+        def check(self) -> Probe:
+            return probe
+
+    monkeypatch.setattr(computes, "instance", lambda name: Checks())
+    assert main(["compute", "add", "box", "--ssh", "u@h:22", "--key", str(key)]) == 0
+    added = capsys.readouterr().out.splitlines()[-1]
+    assert added.startswith("ok box\t可用\t写入 ") and "\tnext=" in added
+    tail = added.partition("\tnext=")[2]
+    assert "租的" in tail and "实验室" in tail
+    assert "ai4sci env use --compute box" in tail and "ai4sci env resolve --compute box" in tail
+    assert main(["compute", "check", "box"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == f"ok box\t可用\tnext={tail}"
+    probe.items.append(("GPU", False, "nvidia-smi 不在"))
+    assert main(["compute", "check", "box"]) == 1
+    assert "next=" not in capsys.readouterr().out
+
+
 # ── 连真机器 ────────────────────────────────────────────────────────────────
 live = pytest.mark.skipif(not LIVE, reason="AI4SCI_LIVE_SSH=<清单里的名字> 才连真机器")
 

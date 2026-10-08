@@ -29,6 +29,9 @@ from framework.workspace.root import Workspace
 EXIT_OK = 0
 EXIT_INVALID = 1
 EXIT_USAGE = 2
+# serve 绑不上地址（端口被占、Windows 的保留端口段、没权限）：外壳拿它换一个空闲端口（外层 #282 §3，
+# 外壳与后端的约定，只加不改）
+EXIT_PORT = 3
 WS_HELP = "哪个工作区（项目里的名字，ai4sci show project 列出）；不给就按当前目录"
 
 

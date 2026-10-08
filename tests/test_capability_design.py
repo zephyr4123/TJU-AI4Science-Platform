@@ -302,7 +302,7 @@ def test_capability_entry_runs_draft_then_baseline_and_reads_hypothesis(ws, monk
     runner = ScriptedRunner([{"harness/launcher.sh": pf.LAUNCHER_SH}])
     ports = Ports(runner=runner, compute=LocalCompute())
     line = design_cap.run(pack, inputs, ports, feedback="别裸调 python")
-    assert line.startswith("design ok\t") and "auto-research --from design/1" in line
+    assert line.startswith("design ok\t") and line.endswith("\t" + design_cap.NEXT)
     assert (pack / "baseline" / "sigma.json").is_file()
 
 
@@ -337,7 +337,7 @@ def test_continue_without_feedback_reruns_only_the_baseline(ws, monkeypatch):
     idle = ScriptedRunner([])
     line = design_cap.run(pack, inputs, Ports(runner=idle, compute=LocalCompute()))
     assert idle.calls == 0 and line.startswith("design ok\tsession=-\tchanged=0")
-    assert (pack / "baseline" / "sigma.json").is_file() and "auto-research --from design/1" in line
+    assert (pack / "baseline" / "sigma.json").is_file() and line.endswith("\t" + design_cap.NEXT)
 
 
 def test_binary_files_in_the_pack_are_named_not_pasted(ws):

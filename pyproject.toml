@@ -11,9 +11,10 @@ dependencies = [
   "ruff>=0.12",         # 设计草稿封 harness 前的 lint（`python -m ruff`，experiment/drafting.py）
 ]
 
-# 开发时的工具：`uv sync` 缺省装上（PEP 735），装的包里没有
+# 开发时的工具：`uv sync` 缺省装上（PEP 735），装的包里没有。cryptography：发版脚本 cdn.py 照更新器
+# 验 minisign 签名（Ed25519，标准库没有），测试要能 import 它（外层 #282）
 [dependency-groups]
-dev = ["pytest>=8.3"]
+dev = ["pytest>=8.3", "cryptography>=50"]
 
 [project.scripts]
 ai4sci = "framework.cli:main"
@@ -31,19 +32,21 @@ include = ["framework*", "backends*", "compute*", "procs*"]
 
 # 框架在运行时要读的文件都要随包带走，装出来的 ai4sci 才找得到（外层 #138）：
 #   experiment/pack.py::SCHEMA_DIR（scoring / results / report 三份 schema）
-#   capabilities/<能力>/*.md（提示模板，多数一份 prompt.md；tests/test_packaging.py 查这里有没有漏）
+#   capabilities/<能力>/*.md（给执行层的提示模板，多数一份 prompt.md；给研究助理的说明 assistant.md；
+#   tests/test_packaging.py 查这里有没有漏）
 #   framework/shipped/（make package 拷进来的出厂件：流程库、模板、领域、skill、指南、页面；paths.py 读）
 [tool.setuptools.package-data]
 "framework" = ["shipped/**/*"]
 "backends" = ["catalog/*.json"]
 "framework.experiment" = ["schemas/*.json", "harness_contract.md"]
-"framework.capabilities.design" = ["prompt.md"]
-"framework.capabilities.auto_research" = ["prompt.md"]
-"framework.capabilities.analysis" = ["prompt.md"]
-"framework.capabilities.reproduction" = ["prompt.md"]
-"framework.capabilities.reproducibility" = ["prompt.md"]
-"framework.capabilities.literature_search" = ["seed.md", "screen.md"]
-"framework.capabilities.literature_read" = ["prompt.md"]
+"framework.capabilities.design" = ["prompt.md", "assistant.md"]
+"framework.capabilities.auto_research" = ["prompt.md", "assistant.md"]
+"framework.capabilities.analysis" = ["prompt.md", "assistant.md"]
+"framework.capabilities.reproduction" = ["prompt.md", "assistant.md"]
+"framework.capabilities.reproducibility" = ["prompt.md", "assistant.md"]
+"framework.capabilities.literature_search" = ["seed.md", "screen.md", "assistant.md"]
+"framework.capabilities.literature_read" = ["prompt.md", "assistant.md"]
+"framework.capabilities.verify" = ["assistant.md"]
 
 [tool.ruff]
 line-length = 100

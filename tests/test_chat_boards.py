@@ -78,16 +78,20 @@ def test_stages_list_outputs_with_signature_and_flows_carry_progress(tmp_path):
     assert flow["waiting"] == progress.WAITING_SIGN  # 设计完了要签
     assert flow["items"][0]["outputs"][0]["id"] == "design/1"
     assert flow["items"][1]["signed"] is False
+    # 停在断点：要核什么、该请人签哪次产出（外层 #287，新开的对话看盘就知道）
+    assert flow["stop"] == {"note": "核对评分脚本", "sign": ["design/1"]}
     output.sign(pack.pack, by="me")
     detail = boards.workspace_detail(ws, catalog())
     [flow] = detail["flows"]
     assert flow["waiting"] == progress.WAITING_ASSISTANT and flow["items"][1]["signed"] is True
+    assert flow["stop"] is None
     e1, me = outputs.open_output(ws, "experiment", title="t", by="auto-research",
                                  inputs=["design/1"], params={}, flow="quick", step=2,
                                  requirement=1, chat_id=None)
     outputs.close_output(e1, me, ok=True, line="stop")
     [flow] = boards.workspace_detail(ws, catalog())["flows"]
     assert flow["step"] == 2 and flow["waiting"] == progress.WAITING_SIGN
+    assert flow["stop"] == {"note": "看一眼", "sign": ["experiment/1"]}
     # 签了实验，下一项是分析：轮到助理；分析做完就 done
     output.sign(e1, by="me")
     [flow] = boards.workspace_detail(ws, catalog())["flows"]

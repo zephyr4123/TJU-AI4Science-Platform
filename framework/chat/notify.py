@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 
 from backends import BackendNotFound, Chat, ChatEvent
 from framework import agents
 from framework.chat import conversation, guide, scope, settings
+from framework.contracts.capability import Capability
 from framework.workspace import jobs, project
 from framework.workspace.jobs import Job
 from framework.workspace.root import Workspace
@@ -60,17 +61,19 @@ def awaiting(proj: project.Project, conv: conversation.Conversation) -> int:
     return count
 
 
-def wake(workspace: Workspace, job: Job, *, settle_s: float = SETTLE_S,
+def wake(workspace: Workspace, job: Job, steps: Mapping[str, Capability], *,
+         settle_s: float = SETTLE_S,
          sleep: Callable[[float], None] = time.sleep) -> str:
     """作业跑完：结果排进收件箱，然后尽量当场念完。返回一句状态：done / queued（对话忙，留给它
     自己念）
-    / error: …（那一轮没走完）/ failed: …（对话不在、后端不对，话没排进去）。"""
+    / error: …（那一轮没走完）/ failed: …（对话不在、后端不对，话没排进去）。`steps` 是能力库的
+    步骤描述符，拼指南里的索引用（这一层不认识 capabilities，起作业的 cli 给）。"""
     assert job.chat_id, "没有 chat_id 的作业不该来叫醒"
     try:
         where = scope.for_project(project.of(workspace))
         conv = settings.ensure_tuned(conversation.load_conversation(where.chats, job.chat_id))
         chat = agents.chat(conv.backend, provider=conv.provider)
-        system_prompt = where.system_prompt(chat)
+        system_prompt = where.system_prompt(chat, steps=steps)
     except (project.ProjectNotFound, conversation.ConversationNotFound, BackendNotFound,
             guide.GuideMissing) as exc:
         LOGGER.error("wake_failed job_id=%s chat_id=%s why=%s", job.job_id, job.chat_id, exc)

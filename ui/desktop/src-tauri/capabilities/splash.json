@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "splash",
+  "description": "只给本地的启动页：外壳自己的几条命令。后端页面是远程来源，这里不写 remote，它一条也调不到（spec §2）",
+  "local": true,
+  "windows": ["main"],
+  "permissions": ["allow-attach", "allow-retry", "allow-open-log", "allow-open-webview2-download"]
+}

@@ -4,8 +4,9 @@
 为什么在工作区层：作业是框架的磁盘状态，"在盘上、谁都能读"；它不认识能力，
 也不认识对话——属于哪段对话只是记一个 id，跑完叫醒 agent 的活在 chat 层。
 为什么是独立进程不是线程：调用命令的是协调 agent 的一轮对话，轮次一结束它的进程树就没了；
-作业要活过那一刻，只能另起一棵进程树（`procs.spawn(detach=True)`），stdout / stderr 落到自己的
-日志文件。
+作业要活过那一刻（还有服务退出、外壳退出），只能另起一棵谁都不是它祖先的进程树
+（`procs.spawn_detached`，外层 #284）。三个标准流一个都不接：Windows 上作业以 explorer 为父进程起，
+句柄传不过去，所以 stdout / stderr 由作业自己按路径接到日志文件（`own_log`，两边同一个办法）。
 
 记录只写两次：起的时候（running）、结束的时候（done / failed，由子进程自己回写）。中途死了
 （机器重启、`kill -9`）记录停在 running，`effective_status` 拿 pid 探一下不在了就报 lost——
@@ -19,7 +20,6 @@ import json
 import logging
 import os
 import secrets
-import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -38,6 +38,8 @@ LOGGER = logging.getLogger("ai4sci.jobs")
 JOB_ID_ENV = "AI4SCI_JOB_ID"
 # 调用命令的那段对话：chat 层起 agent 时设，作业记下来，跑完好知道该叫醒谁
 CHAT_ID_ENV = "AI4SCI_CHAT_ID"
+# 作业的日志在哪：起作业时设，作业进程第一件事按它接好 stdout / stderr（`own_log`）就从环境里去掉
+LOG_ENV = "AI4SCI_JOB_LOG"
 STATUSES = ("running", "done", "failed", "stopped")
 
 
@@ -81,10 +83,12 @@ def _path(jobs_dir: Path, job_id: str) -> Path:
 
 def spawn(jobs_dir: Path, argv: list[str], *, cap: str, stage: str, chat_id: str | None,
           output: str | None = None) -> Job:
-    """起 `ai4sci <argv>` 当作业：新会话、日志落盘、记录写 running，立刻返回。
+    """起 `ai4sci <argv>` 当作业：谁都不是它的祖先、日志落盘、记录写 running，立刻返回。
 
-    `argv` 是去掉了 `--detach` 的那条命令；子进程从 `AI4SCI_JOB_ID` 知道自己是作业。
-    起的是本解释器的 `framework.cli`，不是 PATH 上的 `ai4sci`：作业必须和命令跑在同一份代码里。
+    `argv` 是去掉了 `--detach` 的那条命令；子进程从 `AI4SCI_JOB_ID` 知道自己是作业、从
+    `AI4SCI_JOB_LOG` 知道日志在哪。起的是本解释器的 `framework.cli`，不是 PATH 上的 `ai4sci`：作业
+    必须和命令跑在同一份代码里。没能脱离起它的进程（Windows 上没有 explorer）的那句话写在日志
+    第一行。
     """
     assert "--detach" not in argv, "作业的命令里不该还有 --detach"
     root = Path(jobs_dir)
@@ -92,19 +96,45 @@ def spawn(jobs_dir: Path, argv: list[str], *, cap: str, stage: str, chat_id: str
     stamp = datetime.now(UTC)
     job_id = f"job-{stamp:%Y%m%dT%H%M%SZ}-{secrets.token_hex(2)}"
     log_path = root / f"{job_id}.log"
-    with log_path.open("w", encoding="utf-8") as log:
-        proc = procs.spawn(
-            [sys.executable, "-m", "framework.cli", *argv], detach=True,
-            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-            env={**os.environ, JOB_ID_ENV: job_id},
-        )
-    job = Job(job_id=job_id, cap=cap, stage=stage, argv=list(argv), pid=proc.pid,
+    log_path.write_text("", encoding="utf-8")
+    started = procs.spawn_detached([sys.executable, "-m", "framework.cli", *argv],
+                                   env={**os.environ, JOB_ID_ENV: job_id, LOG_ENV: str(log_path)})
+    if started.warning:
+        with log_path.open("a", encoding="utf-8") as log:
+            log.write(f"WARNING {started.warning}\n")
+        # info 不是 warning：--detach 那条命令还没配日志，WARNING 会原样打到助理的 stderr 最前面
+        LOGGER.info("job_not_detached job_id=%s why=%s", job_id, started.warning)
+    job = Job(job_id=job_id, cap=cap, stage=stage, argv=list(argv), pid=started.pid,
               started_at=stamp.isoformat(timespec="seconds"), chat_id=chat_id, log=str(log_path),
               output=output)
     _save(jobs_dir, job)
     LOGGER.info("job_spawn job_id=%s cap=%s pid=%d chat_id=%s",
-                job_id, cap, proc.pid, chat_id or "-")
+                job_id, cap, started.pid, chat_id or "-")
     return job
+
+
+def own_log() -> None:
+    """作业进程第一件事：stdout / stderr 接到 `AI4SCI_JOB_LOG` 那个文件、stdin 接空，再把这个变量从
+    环境里去掉（作业起的执行层、harness、叫醒的那一轮不该再接一遍）。不是作业什么都不做。
+
+    在文件描述符这一层换（`dup2`）：作业起的子进程不另接也写进同一份日志（Windows 上 dup2 到
+    0 / 1 / 2 同时换掉进程的标准句柄，子进程继承的就是它）。Python 这一层的三个流也重新包一遍：
+    Windows 上原来接着控制台时，它们直接写控制台、不经文件描述符。进程活多久它们就开多久。"""
+    path = os.environ.pop(LOG_ENV, None)
+    if not path:
+        return
+    # O_BINARY：Windows 上 os.open 缺省开成文本模式，dup2 会把它带到 1、2，每行成了 \r\r\n
+    binary = getattr(os, "O_BINARY", 0)
+    log = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | binary)
+    null = os.open(os.devnull, os.O_RDONLY | binary)
+    for fd, std in ((null, 0), (log, 1), (log, 2)):
+        os.dup2(fd, std)
+    os.close(log)
+    os.close(null)
+    sys.stdin = open(0, encoding="utf-8", closefd=False)
+    sys.stdout = open(1, "w", encoding="utf-8", errors="replace", buffering=1, closefd=False)
+    sys.stderr = open(2, "w", encoding="utf-8", errors="backslashreplace", buffering=1,
+                      closefd=False)
 
 
 def attach_output(jobs_dir: Path, job_id: str, output: str, flow: str | None) -> Job:

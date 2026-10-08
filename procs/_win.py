@@ -1,12 +1,26 @@
-"""Windows 上的进程树：Job Object（外层 #210）。只在 Windows 上 import，用到的都是 kernel32 的公开
-接口，外加 ntdll 的 `NtResumeProcess`（Popen 拿到线程句柄就关了，挂起起的进程只能整个放行）。
+"""Windows 上的进程树：Job Object（外层 #210）。只在 Windows 上 import，用到的都是 kernel32 /
+user32 的公开接口，外加 ntdll 的 `NtResumeProcess`（Popen 拿到线程句柄就关了，挂起起的进程只能整个
+放行）。
 
 一棵树一个 Job，按根的 pid 起名（`ai4sci-tree-<pid>`），页面服务、续跑的那一次按名字再打开它。
 名字只在还有人握着句柄时查得到（最后一个句柄一关，名字就从命名空间里摘掉，Job 里的进程还在也
 一样，2026-10-07 真机实测），所以把句柄复制一份给根自己握着：根活着就找得到这棵树。作业「还在跑」
 的判据本来就是根活着（`workspace/jobs.py`），根没了作业就是 lost、不再叫停，两边对得上。不设
 「关句柄就全杀」：起它的进程退了树照跑，与 POSIX 上自成会话一致。根先挂起、放进 Job、递句柄、
-再放行：放行之前它派生不了任何东西，没有漏网的窗口。
+再放行：放行之前它派生不了任何东西，没有漏网的窗口。每棵树的 Job 都不许脱离（breakaway）：Git for
+Windows 的 bash 只要所在的 Job 许脱离，就给它起的每个子进程都带上脱离的标志，一轮里的命令、harness
+起的 python 都会跳出去成杀不掉的孤儿（外层 #284 审查）。
+
+作业（`spawn_detached`，外层 #284）要活过起它的那一轮、那个服务、外壳的 Job，又不能靠从这些 Job 里脱
+离：以当前会话的 explorer 为父进程起（`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`），Job 从指定的父进程继
+承、与起它的进程在哪个 Job 里无关；Windows 11 的 explorer 自己就在一个许脱离的 Job 里（它起应用都带
+脱离的标志），所以作业也带上，生来就不在任何 Job 里、也不是任何人的后代，再照常放进它自己那棵树的
+Job（外层 #282 真机：只看到「explorer 在 Job 里」就不借，作业落回外壳的 Job，App 一退就跟着没了）。
+句柄同样从 explorer 继承，所以作业的三个标准流一个都不接，日志由作业自己按路径打开。身份（token）也
+从 explorer 继承：只有它与本进程是同一个用户、同一级权限时才借它——以管理员身份跑的服务借普通权限的
+explorer，作业就降了权，写不进服务建的只给管理员的目录（2026-10-07 真机：Python 3.13 起
+`mkdir(mode=0o700)` 建的目录就是这样）。会话里没有 explorer（SSH、服务里起的）或身份对不上，就照旧
+起、试着脱离，把为什么没能脱离说出来。
 """
 
 from __future__ import annotations
@@ -17,22 +31,30 @@ import shutil
 import subprocess
 from ctypes import wintypes
 from pathlib import Path
-from typing import Any
 
 LOGGER = logging.getLogger("ai4sci.procs")
 
 CREATE_SUSPENDED = 0x00000004
 CREATE_NEW_PROCESS_GROUP = 0x00000200
+CREATE_UNICODE_ENVIRONMENT = 0x00000400
+EXTENDED_STARTUPINFO_PRESENT = 0x00080000
 CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 CREATE_NO_WINDOW = 0x08000000
+# 一棵树的根怎么起：挂起（放进 Job 再放行）、单独一个 Ctrl+C 组、一个看不见的控制台
+TREE_FLAGS = CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+PROC_THREAD_ATTRIBUTE_PARENT_PROCESS = 0x00020000
 JOB_OBJECT_QUERY = 0x0004
 JOB_OBJECT_TERMINATE = 0x0008
 JOB_OBJECT_ALL_ACCESS = 0x1F001F
 PROCESS_TERMINATE = 0x0001
+PROCESS_CREATE_PROCESS = 0x0080
 PROCESS_DUP_HANDLE = 0x0040
 PROCESS_SET_QUOTA = 0x0100
 PROCESS_SUSPEND_RESUME = 0x0800
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+TOKEN_QUERY = 0x0008
+TOKEN_USER = 1  # TOKEN_INFORMATION_CLASS
+TOKEN_ELEVATION = 20
 STILL_ACTIVE = 259
 ERROR_ACCESS_DENIED = 5
 ERROR_ALREADY_EXISTS = 183
@@ -49,8 +71,59 @@ class _Accounting(ctypes.Structure):
                 ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD)]
 
 
+class _StartupInfo(ctypes.Structure):
+    _fields_ = [("cb", wintypes.DWORD), ("lpReserved", wintypes.LPWSTR),
+                ("lpDesktop", wintypes.LPWSTR), ("lpTitle", wintypes.LPWSTR),
+                ("dwX", wintypes.DWORD), ("dwY", wintypes.DWORD), ("dwXSize", wintypes.DWORD),
+                ("dwYSize", wintypes.DWORD), ("dwXCountChars", wintypes.DWORD),
+                ("dwYCountChars", wintypes.DWORD), ("dwFillAttribute", wintypes.DWORD),
+                ("dwFlags", wintypes.DWORD), ("wShowWindow", wintypes.WORD),
+                ("cbReserved2", wintypes.WORD), ("lpReserved2", wintypes.LPVOID),
+                ("hStdInput", wintypes.HANDLE), ("hStdOutput", wintypes.HANDLE),
+                ("hStdError", wintypes.HANDLE)]
+
+
+class _StartupInfoEx(ctypes.Structure):
+    _fields_ = [("StartupInfo", _StartupInfo), ("lpAttributeList", wintypes.LPVOID)]
+
+
+class _ProcessInformation(ctypes.Structure):
+    _fields_ = [("hProcess", wintypes.HANDLE), ("hThread", wintypes.HANDLE),
+                ("dwProcessId", wintypes.DWORD), ("dwThreadId", wintypes.DWORD)]
+
+
 _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_u32 = ctypes.WinDLL("user32", use_last_error=True)
+_a32 = ctypes.WinDLL("advapi32", use_last_error=True)
+_a32.OpenProcessToken.argtypes = (wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE))
+_a32.OpenProcessToken.restype = wintypes.BOOL
+_a32.GetTokenInformation.argtypes = (wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID,
+                                     wintypes.DWORD, wintypes.LPDWORD)
+_a32.GetTokenInformation.restype = wintypes.BOOL
+_a32.GetLengthSid.argtypes = (wintypes.LPVOID,)
+_a32.GetLengthSid.restype = wintypes.DWORD
 _ntdll = ctypes.WinDLL("ntdll")
+_u32.GetShellWindow.restype = wintypes.HWND
+_u32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, wintypes.LPDWORD)
+_u32.GetWindowThreadProcessId.restype = wintypes.DWORD
+_k32.InitializeProcThreadAttributeList.argtypes = (wintypes.LPVOID, wintypes.DWORD,
+                                                   wintypes.DWORD, ctypes.POINTER(ctypes.c_size_t))
+_k32.InitializeProcThreadAttributeList.restype = wintypes.BOOL
+_k32.UpdateProcThreadAttribute.argtypes = (wintypes.LPVOID, wintypes.DWORD, ctypes.c_size_t,
+                                           wintypes.LPVOID, ctypes.c_size_t, wintypes.LPVOID,
+                                           wintypes.LPVOID)
+_k32.UpdateProcThreadAttribute.restype = wintypes.BOOL
+_k32.DeleteProcThreadAttributeList.argtypes = (wintypes.LPVOID,)
+_k32.DeleteProcThreadAttributeList.restype = None
+_k32.CreateProcessW.argtypes = (wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.LPVOID,
+                                wintypes.LPVOID, wintypes.BOOL, wintypes.DWORD, wintypes.LPVOID,
+                                wintypes.LPCWSTR, ctypes.POINTER(_StartupInfoEx),
+                                ctypes.POINTER(_ProcessInformation))
+_k32.CreateProcessW.restype = wintypes.BOOL
+_k32.TerminateProcess.argtypes = (wintypes.HANDLE, wintypes.UINT)
+_k32.TerminateProcess.restype = wintypes.BOOL
+_k32.GetProcessTimes.argtypes = (wintypes.HANDLE, *[ctypes.POINTER(wintypes.FILETIME)] * 4)
+_k32.GetProcessTimes.restype = wintypes.BOOL
 _k32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
 _k32.CreateJobObjectW.restype = wintypes.HANDLE
 _k32.OpenJobObjectW.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR)
@@ -67,6 +140,8 @@ _k32.IsProcessInJob.restype = wintypes.BOOL
 _k32.GetCurrentProcess.restype = wintypes.HANDLE
 _k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
 _k32.OpenProcess.restype = wintypes.HANDLE
+_k32.GetProcessId.argtypes = (wintypes.HANDLE,)
+_k32.GetProcessId.restype = wintypes.DWORD
 _k32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, wintypes.LPDWORD)
 _k32.GetExitCodeProcess.restype = wintypes.BOOL
 _k32.DuplicateHandle.argtypes = (wintypes.HANDLE, wintypes.HANDLE, wintypes.HANDLE,
@@ -88,24 +163,129 @@ def _fail(what: str) -> OSError:
     return OSError(code, f"{what} 失败：{ctypes.FormatError(code).strip()}（WinError {code}）")
 
 
-def spawn(argv: list[str], *, detach: bool, **popen: Any) -> subprocess.Popen:
-    flags = popen.pop("creationflags", 0) | CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP \
-        | CREATE_NO_WINDOW
-    if detach:
-        try:
-            proc = subprocess.Popen(argv, creationflags=flags | CREATE_BREAKAWAY_FROM_JOB, **popen)
-        except PermissionError:  # 起它的那个 Job 不许脱离：只能留在里面
-            LOGGER.info("spawn_breakaway_denied argv0=%s", argv[0])
-            proc = subprocess.Popen(argv, creationflags=flags, **popen)
-    else:
-        proc = subprocess.Popen(argv, creationflags=flags, **popen)
+def adopt(proc: subprocess.Popen) -> None:
+    """`TREE_FLAGS` 起的根放进它的 Job 再放行；放不进去就杀掉它（还挂着、什么都没跑），不让它跑成
+    一棵管不住的树。"""
     try:
         _adopt(proc.pid)
     except OSError:
-        proc.kill()  # 还挂着、什么都没跑：放不进 Job 就不让它跑成一棵管不住的树
+        proc.kill()
         proc.wait()
         raise
-    return proc
+
+
+def spawn_detached(argv: list[str], *, env: dict[str, str] | None,
+                   cwd: str | None) -> tuple[int, str]:
+    """起作业的根：以当前会话的 explorer 为父进程、不在任何 Job 里，再放进它自己那棵树的 Job。
+    返回 pid 与要人知道的一句（借不上 explorer 时为什么照旧起；空是没事）。"""
+    shell, why = _shell()
+    if shell:
+        pid, why = _spawn_under(shell, argv, env=env, cwd=cwd)
+        if pid:
+            return pid, ""
+    # 为什么交给调用方写进作业日志、记 WARNING；这里只留一行 info
+    LOGGER.info("spawn_detached_without_shell why=%s argv0=%s", why, argv[0])
+    return _spawn_in_place(argv, env=env, cwd=cwd), (
+        f"作业没能脱离起它的进程（{why}）：起它的那一轮或服务结束时，它可能被一起结束")
+
+
+def _spawn_under(shell: int, argv: list[str], *, env: dict[str, str] | None,
+                 cwd: str | None) -> tuple[int, str]:
+    """以 explorer 为父进程起，脱离它所在的 Job（不在 Job 里时这个标志不起作用）：pid 与空串；
+    它的 Job 不许脱离是 0 与为什么。用完关掉 explorer 的句柄。"""
+    attributes = None
+    try:
+        size = ctypes.c_size_t()
+        _k32.InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(size))  # 问要多大，必然失败
+        attributes = ctypes.create_string_buffer(size.value)
+        if not _k32.InitializeProcThreadAttributeList(attributes, 1, 0, ctypes.byref(size)):
+            raise _fail("准备进程属性")
+        parent = wintypes.HANDLE(shell)
+        if not _k32.UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS,
+                                              ctypes.byref(parent), ctypes.sizeof(parent),
+                                              None, None):
+            raise _fail("把父进程指定成 explorer")
+        info = _StartupInfoEx()
+        info.StartupInfo.cb = ctypes.sizeof(info)
+        info.lpAttributeList = ctypes.cast(attributes, wintypes.LPVOID)
+        started = _ProcessInformation()
+        line = ctypes.create_unicode_buffer(subprocess.list2cmdline(argv))
+        block = None if env is None else ctypes.create_unicode_buffer(
+            "".join(f"{k}={v}\0" for k, v in sorted(env.items(), key=lambda kv: kv[0].upper()))
+            + "\0")
+        if not _k32.CreateProcessW(None, line, None, None, False,
+                                   TREE_FLAGS | CREATE_BREAKAWAY_FROM_JOB
+                                   | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
+                                   block, cwd, ctypes.byref(info), ctypes.byref(started)):
+            if ctypes.get_last_error() == ERROR_ACCESS_DENIED:
+                return 0, f"explorer（进程 {_k32.GetProcessId(shell)}）所在的 Job 不许脱离"
+            raise _fail(f"起 {argv[0]}")
+    finally:
+        if attributes is not None:
+            _k32.DeleteProcThreadAttributeList(attributes)
+        _k32.CloseHandle(shell)
+    try:
+        _adopt(started.dwProcessId)
+    except OSError:
+        _k32.TerminateProcess(started.hProcess, KILLED_EXIT_CODE)  # 还挂着、什么都没跑
+        raise
+    finally:
+        _k32.CloseHandle(started.hThread)
+        _k32.CloseHandle(started.hProcess)
+    return started.dwProcessId, ""
+
+
+def _shell() -> tuple[int, str]:
+    """当前会话的 explorer（桌面那个窗口的主人）：打开的句柄与空串；用不了就是 0 与为什么。"""
+    window = _u32.GetShellWindow()
+    if not window:
+        return 0, "这个会话里没有 explorer：SSH、服务里起的"
+    pid = wintypes.DWORD()
+    _u32.GetWindowThreadProcessId(window, ctypes.byref(pid))
+    shell = _k32.OpenProcess(PROCESS_CREATE_PROCESS | PROCESS_QUERY_LIMITED_INFORMATION, False,
+                             pid.value)
+    if not shell:
+        code = ctypes.get_last_error()
+        return 0, f"打不开 explorer（进程 {pid.value}，WinError {code}）"
+    ours = _identity(_k32.GetCurrentProcess())
+    if ours is None or _identity(shell) != ours:
+        _k32.CloseHandle(shell)
+        return 0, (f"explorer（进程 {pid.value}）与本进程不是同一个用户或同一级权限"
+                   "（以管理员身份运行的？），借它起的作业会换成它的身份")
+    return shell, ""
+
+
+def _identity(process: int) -> tuple[bytes, int] | None:
+    """进程的身份：用户的 SID 与提没提权（TokenElevation）；查不出是 None。"""
+    token = wintypes.HANDLE()
+    if not _a32.OpenProcessToken(process, TOKEN_QUERY, ctypes.byref(token)):
+        return None
+    try:
+        size = wintypes.DWORD()
+        _a32.GetTokenInformation(token, TOKEN_USER, None, 0, ctypes.byref(size))  # 问要多大
+        user = ctypes.create_string_buffer(size.value)
+        elevated = wintypes.DWORD()
+        if not (_a32.GetTokenInformation(token, TOKEN_USER, user, size, ctypes.byref(size))
+                and _a32.GetTokenInformation(token, TOKEN_ELEVATION, ctypes.byref(elevated),
+                                             ctypes.sizeof(elevated), ctypes.byref(size))):
+            return None
+        sid = ctypes.cast(user, ctypes.POINTER(wintypes.LPVOID))[0]  # TOKEN_USER 开头是 SID 指针
+        return ctypes.string_at(sid, _a32.GetLengthSid(sid)), elevated.value
+    finally:
+        _k32.CloseHandle(token)
+
+
+def _spawn_in_place(argv: list[str], *, env: dict[str, str] | None, cwd: str | None) -> int:
+    """没有 explorer 时照旧起：试着脱离起它的 Job（终端、ssh 的 Job 许脱离就脱离得了；树的 Job
+    不许），不许就留在原地。"""
+    std = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    try:
+        proc = subprocess.Popen(argv, creationflags=TREE_FLAGS | CREATE_BREAKAWAY_FROM_JOB,
+                                env=env, cwd=cwd, **std)
+    except PermissionError:  # 起它的那个 Job 不许脱离：只能留在里面
+        proc = subprocess.Popen(argv, creationflags=TREE_FLAGS, env=env, cwd=cwd, **std)
+    adopt(proc)
+    return proc.pid
 
 
 def _adopt(pid: int) -> None:
@@ -207,6 +387,23 @@ def _registered_git() -> list[Path]:
         except OSError:
             continue  # 这一级没登记
     return found
+
+
+def birth(pid: int) -> str:
+    """进程的创建时间（FILETIME，100 纳秒一格）：认人用；进程不在是空串。"""
+    process = _k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not process:
+        return ""
+    try:
+        code = wintypes.DWORD()
+        if not _k32.GetExitCodeProcess(process, ctypes.byref(code)) or code.value != STILL_ACTIVE:
+            return ""
+        times = [wintypes.FILETIME() for _ in range(4)]
+        if not _k32.GetProcessTimes(process, *(ctypes.byref(t) for t in times)):
+            raise _fail(f"查进程 {pid} 的创建时间")
+        return str(times[0].dwHighDateTime << 32 | times[0].dwLowDateTime)
+    finally:
+        _k32.CloseHandle(process)
 
 
 def pid_alive(pid: int) -> bool:

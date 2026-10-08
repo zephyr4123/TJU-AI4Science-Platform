@@ -119,6 +119,9 @@ class Workflow:
     """页面画布上每一项的坐标（与 stages 一样长），人摆过才有；框架不读它。"""
     layout: tuple[tuple[float, float], ...] | None = None
     origin: Origin | None = None  # 文件里的 `from`
+    """给研究助理读的说明（外层 #287）：什么时候选这条、配哪份需求模板、每个断点要核什么、怎么走。
+    `ai4sci show workflow` 与 `flow take` 打出来；不算结构。"""
+    guide: str = ""
 
     def structure(self) -> tuple:
         """结构：阶段、点名的能力与参数、断点位置。标题、说明、断点那句话、画布坐标不算——
@@ -152,6 +155,7 @@ class Workflow:
 
     def to_dict(self, kinds: dict[str, str] | None = None) -> dict[str, Any]:
         return {"name": self.name, "title": self.title, "summary": self.summary,
+                "guide": self.guide,
                 "from": self.origin.to_dict() if self.origin else None,
                 "stages": [r.to_dict(kinds) if isinstance(r, Stage) else r.to_dict()
                            for r in self.stages],
@@ -212,9 +216,12 @@ def parse_workflow(filename: str, raw: Any) -> Workflow:
         if isinstance(stages[i], Stop) and isinstance(stages[i - 1], Stop):
             raise WorkflowInvalid(
                 f"{filename}: 第 {i} 项与第 {i + 1} 项都是断点：两个断点挨着等于一个")
+    guide = raw.get("guide", "")
+    if not isinstance(guide, str):
+        raise WorkflowInvalid(f"{filename}: guide 要是一段文字")
     return Workflow(name=name, title=title.strip(), summary=" ".join(summary.split()),
                     stages=stages, layout=_layout(filename, raw.get("layout"), len(stages)),
-                    origin=_origin(filename, raw.get("from")))
+                    origin=_origin(filename, raw.get("from")), guide=guide.strip())
 
 
 HASH_RE = re.compile(r"[0-9a-f]{8,64}")
@@ -306,8 +313,10 @@ def save_workflow(root: Path, raw: dict[str, Any], catalog: dict[str, Capability
     doc: dict[str, Any] = {"name": workflow.name}
     if workflow.origin:
         doc["from"] = workflow.origin.to_dict()
-    doc |= {"title": workflow.title, "summary": workflow.summary,
-            "stages": [_item_doc(item) for item in workflow.stages]}
+    doc |= {"title": workflow.title, "summary": workflow.summary}
+    if workflow.guide:
+        doc["guide"] = _Block(workflow.guide)
+    doc["stages"] = [_item_doc(item) for item in workflow.stages]
     if workflow.layout:
         doc["layout"] = [_Row((round(x), round(y))) for x, y in workflow.layout]
     Path(root).mkdir(parents=True, exist_ok=True)
@@ -329,6 +338,17 @@ def _represent_row(dumper: yaml.SafeDumper, data: _Row) -> yaml.Node:
 
 
 yaml.SafeDumper.add_representer(_Row, _represent_row)
+
+
+class _Block(str):
+    """流程的说明：写成 YAML 的多行块（`|-`），人打开文件照原样读，不是一行转义串。"""
+
+
+def _represent_block(dumper: yaml.SafeDumper, data: _Block) -> yaml.Node:
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(data), style="|")
+
+
+yaml.SafeDumper.add_representer(_Block, _represent_block)
 
 
 def _item_doc(item: Stage | Stop) -> Any:
@@ -440,8 +460,9 @@ def describe_dir(root: Path, catalog: dict[str, Capability], skills: Collection[
         try:
             wf = load_workflow(path)
         except WorkflowInvalid as exc:
-            out.append({"name": path.stem, "title": path.stem, "summary": "", "stages": [],
-                        "covers": [], "remarks": [], "problems": [str(exc)], "shipped": shipped})
+            out.append({"name": path.stem, "title": path.stem, "summary": "", "guide": "",
+                        "stages": [], "covers": [], "remarks": [], "problems": [str(exc)],
+                        "shipped": shipped})
             continue
         out += describe([wf], catalog, skills, shipped=shipped)
     return out
