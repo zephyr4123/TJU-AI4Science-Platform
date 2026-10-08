@@ -8,6 +8,8 @@
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-08
+
 ### 新增
 
 - `show workspace` / `show project` 停在断点时，流程那一行加 `stop=`（断点的一句话）与 `sign=`（该请人签的那几次产出）；看板的流程进度加 `stop`（外层 #287）
@@ -352,7 +354,8 @@
 - 变更日志与发布流水线：CHANGELOG 机器校验、`make release` 轮转、tag 触发 CI 出包并建 GitHub Release
 - `make check` 门禁入口（lint / test 为占位，定栈后接入）
 
-[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.2...v1.8.0
 [1.7.2]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/zephyr4123/TJU-AI4Science-Platform/compare/v1.7.0...v1.7.1
