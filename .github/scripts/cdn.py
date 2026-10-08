@@ -73,6 +73,9 @@ PACKAGES = ROOT / "dist"  # make package 出的包
 MIN_DESKTOP = runpy.run_path(str(ROOT / "framework" / "desktop.py"))["MIN_DESKTOP"]
 BUCKET = os.environ.get("COS_BUCKET", "zephyr-media-1322280257")
 REGION = os.environ.get("COS_REGION", "ap-shanghai")
+# 传包走 COS 全球加速域名（桶上已开，境外上传按量计费）：美国的 runner 走桶的默认域名往上海传，
+# 24 MB 的 wheel 8 分半传不完，重试三次都失败（1.8.0 与 v1.9.0-rc.1，外层 #281）；设成空串就走默认域名
+ENDPOINT = os.environ.get("COS_ENDPOINT", "cos.accelerate.myqcloud.com")
 CDN = os.environ.get("CDN_BASE", "https://media.zephyrxiang.com")
 PREFIX = "ai4science/dist"
 UV_RELEASES = "https://github.com/astral-sh/uv/releases/download"
@@ -88,8 +91,7 @@ TYPES = {".whl": "application/zip", ".gz": "application/gzip", ".zip": "applicat
 TEXT = "text/plain; charset=utf-8"
 # 每个对象传的时候记下 sha256：重跑时判断桶里那份是不是同一份（外层 #282）
 META_SHA256 = "x-cos-meta-sha256"
-# 美国的 runner 往上海的桶分片上传，偶尔有分片重试到 SDK 的上限仍失败（1.8.0，外层 #281）；SDK 说
-# 「please upload_file again」：再调一次从断点续传
+# 分片重试到 SDK 的上限仍失败时 SDK 说「please upload_file again」：再调一次从断点续传（外层 #281）
 UPLOAD_TRIES = 4
 UPLOAD_WAIT_S = 10
 # CDN 的证书剩不到这么多天就不发版：过期了一行命令的安装与外壳的更新都会断（spec §7）
@@ -365,7 +367,8 @@ def client_from_env():
     from qcloud_cos import CosConfig, CosS3Client
     from qcloud_cos.cos_exception import CosClientError, CosServiceError
 
-    client = CosS3Client(CosConfig(Region=REGION, SecretId=os.environ["TENCENTCLOUD_SECRET_ID"],
+    client = CosS3Client(CosConfig(Region=REGION, Endpoint=ENDPOINT or None,
+                                   SecretId=os.environ["TENCENTCLOUD_SECRET_ID"],
                                    SecretKey=os.environ["TENCENTCLOUD_SECRET_KEY"]))
     return client, (CosClientError, CosServiceError)
 
